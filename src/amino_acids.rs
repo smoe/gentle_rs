@@ -119,7 +119,6 @@ mod tests {
     fn test_from_json_file() {
         let aas = AminoAcids::load();
         assert_eq!(aas.get('C').unwrap().atoms.S,1);
-        println!("{:#?}",aas.get('F').unwrap().species_codons);
         assert_eq!(aas.get('F').unwrap().species_codons.get("Chlamydomonas reinhardtii").unwrap(),"TTC");
     }
 }

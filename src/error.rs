@@ -1,11 +1,14 @@
 use std::error::Error;
 use std::fmt;
 
+use gb_io::reader::GbParserError;
+
 #[derive(Debug)]
 pub enum GENtleError {
     String(String),
     Io(std::io::Error),
     Serde(serde_json::Error),
+    GbParser(GbParserError),
 }
 
 impl Error for GENtleError {}
@@ -34,3 +37,10 @@ impl From<serde_json::Error> for GENtleError {
         GENtleError::Serde(err)
     }
 }
+
+impl From<GbParserError> for GENtleError {
+    fn from(err: GbParserError) -> Self {
+        GENtleError::GbParser(err)
+    }
+}
+

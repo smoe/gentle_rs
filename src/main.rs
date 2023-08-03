@@ -16,12 +16,14 @@ lazy_static! {
 }
 
 fn main() {
-    let enzymes = enzymes::Enzymes::from_json_file("assets/enzymes.json").unwrap();
-    let res = enzymes.restriction_enzymes().into_iter().filter(|re|re.name=="EcoRI").cloned().collect();
+    // let enzymes = enzymes::Enzymes::from_json_file("assets/enzymes.json").unwrap();
+    // let res = enzymes.restriction_enzymes().into_iter().filter(|re|re.name=="EcoRI").cloned().collect();
 
-    let dna: DNAsequence = "AAAGAATTCTT".to_string().into();
-    let all = dna.restriction_enzyme_sites(&res, None);
-    let max4 = dna.restriction_enzyme_sites(&res, Some(4));
-    println!("{} / {}",all.len(),max4.len());
-    // println!("Hello, world!");
+    // let dna: DNAsequence = "AAAGAATTCTT".to_string().into();
+    // let all = dna.restriction_enzyme_sites(&res, None);
+    // let max4 = dna.restriction_enzyme_sites(&res, Some(4));
+    // println!("{} / {}",all.len(),max4.len());
+    
+    let _dna = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
+    // println!()
 }
