@@ -1,4 +1,5 @@
-use std::{fs, collections::HashMap};
+use std::{fs::{self, File}, collections::HashMap};
+use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -35,6 +36,8 @@ pub struct AminoAcid {
     pub halflife: Vec<isize>,
     pub chou_fasman: Vec<f32>,
     pub hydrophobicity: AminoAcidHydrophobicity,
+    #[serde(skip_serializing,default)]
+    pub species_codons: HashMap<String,String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -60,7 +63,28 @@ impl AminoAcids {
             ret.aas.insert(aa.aa,aa);
         }
         ret.codon_tables = Self::get_codon_tables();
+        ret.load_codon_catalog();
         ret
+    }
+
+    fn load_codon_catalog(&mut self) {
+        let file = File::open("assets/codon_catalog.csv").expect("Codon catalog file not found");
+        let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(file);
+        let mut header = vec![];
+        for result in rdr.records() {
+            let record = result.expect("Bad CSV line");
+            if header.is_empty() {
+                header = record.iter().skip(2).map(|s|s.to_string()).collect();
+                continue;
+            }
+            let mut record = record.iter();
+            let letter = record.next().expect("Bad record").chars().next().unwrap();
+            let record = record.skip(1); // TLA
+            self.aas.get_mut(&letter).expect("Wrong letter").species_codons = record
+                .zip(header.iter())
+                .map(|(codon,species)|(species.to_string(),codon.to_string()))
+                .collect();
+        }
     }
 
     fn get_codon_tables() -> HashMap<usize,CodonTable> {
@@ -95,5 +119,7 @@ mod tests {
     fn test_from_json_file() {
         let aas = AminoAcids::load();
         assert_eq!(aas.get('C').unwrap().atoms.S,1);
+        println!("{:#?}",aas.get('F').unwrap().species_codons);
+        assert_eq!(aas.get('F').unwrap().species_codons.get("Chlamydomonas reinhardtii").unwrap(),"TTC");
     }
 }
