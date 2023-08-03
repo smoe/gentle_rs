@@ -278,6 +278,7 @@ dependencies = [
  "lazy_static",
  "serde",
  "serde_json",
+ "svg",
 ]
 
 [[package]]
@@ -912,6 +913,12 @@ dependencies = [
  "rustversion",
  "syn 2.0.28",
 ]
+
+[[package]]
+name = "svg"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a863ec1f8e7cfd4ea449f77445cca06aac240b9a677ccf12b0f65ef020db52c7"
 
 [[package]]
 name = "syn"

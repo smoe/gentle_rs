@@ -144,6 +144,10 @@ impl DNAsequence {
             .collect()
     }
 
+    pub fn len(&self) -> usize {
+        self.forward.len()
+    }
+
     pub fn from_genbank_seq(seq: Seq) -> Self {
         // Not imported: date, len, molecule_type, division, definition, accession, version, source, dblink, keywords, references, contig
         Self {
