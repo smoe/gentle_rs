@@ -1,0 +1,19 @@
+[
+{ "id": 1 , "sequence":"FFLLSSSSYY||CC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Standard" },
+{ "id": 2 , "sequence":"FFLLSSSSYY||CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSS||VVVVAAAADDEEGGGG" , "organism": "Vertebrate mitochondrial" },
+{ "id": 3 , "sequence":"FFLLSSSSYY||CCWWTTTTPPPPHHQQRRRRIIMMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Yeast mitochondrial" },
+{ "id": 4 , "sequence":"FFLLSSSSYY||CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Mold,Protozoan,Coelenterate Mitochondrial,Myco-/Spiroplasma" },
+{ "id": 5 , "sequence":"FFLLSSSSYY||CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSSSVVVVAAAADDEEGGGG" , "organism": "Invertebrate mitochondrial" },
+{ "id": 6 , "sequence":"FFLLSSSSYYQQCC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Ciliate, Dasycladacean and Hexamita nuclear" },
+{ "id": 9 , "sequence":"FFLLSSSSYY||CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG" , "organism": "Echinoderm mitochondrial" },
+{ "id": 10 , "sequence":"FFLLSSSSYY||CCCWLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Euplotid nuclear" },
+{ "id": 11 , "sequence":"FFLLSSSSYY||CC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Bacterial" },
+{ "id": 12 , "sequence":"FFLLSSSSYY||CC|WLLLSPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Alternative Yeast nuclear" },
+{ "id": 13 , "sequence":"FFLLSSSSYY||CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNKKSSGGVVVVAAAADDEEGGGG" , "organism": "Ascidian mitochondrial" },
+{ "id": 14 , "sequence":"FFLLSSSSYYY|CCWWLLLLPPPPHHQQRRRRIIIMTTTTNNNKSSSSVVVVAAAADDEEGGGG" , "organism": "Flatworm mitochondrial" },
+{ "id": 15 , "sequence":"FFLLSSSSYY|QCC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Blepharisma nuclear" },
+{ "id": 16 , "sequence":"FFLLSSSSYY|LCC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Chlorophycean mitochondrial" },
+{ "id": 21 , "sequence":"FFLLSSSSYY||CCWWLLLLPPPPHHQQRRRRIIMMTTTTNNNKSSSSVVVVAAAADDEEGGGG" , "organism": "Trematode mitochondrial" },
+{ "id": 22 , "sequence":"FFLLSS|SYY|LCC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Scenedesmus obliquus mitochondrial" },
+{ "id": 23 , "sequence":"FF|LSSSSYY||CC|WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG" , "organism": "Thraustochytrium mitochondrial" }
+]
