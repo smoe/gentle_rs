@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use bio::alphabets::dna;
 
 use crate::dna_sequence::DNAsequence;
 
@@ -33,12 +32,7 @@ impl RestrictionEnzyme {
 
     fn get_sequence_rc(&self) -> String {
         // TODO cache this?
-        let rc: Vec<u8> = self.sequence.to_ascii_uppercase()
-            .as_bytes()
-            .iter()
-            .map(|c|dna::complement(*c))
-            .rev()
-            .collect();
+        let rc = DNAsequence::validate_dna_sequence(self.sequence.as_bytes());
         let rc = match std::str::from_utf8(&rc) {
             Ok(rc) => rc,
             Err(_) => panic!("RestrictionEnzyme::check_palimdromic: non-utf8 char")

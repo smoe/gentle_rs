@@ -102,7 +102,6 @@ pub struct Feature {
 
 impl Feature {
     pub fn from_genbank(f: gb_io::seq::Feature) -> Self {
-        // println!("{:#?}",&f);
         Self {
             kind: FeatureKind::from_string(f.kind.to_string()),
             location: Location::from_genbank_location(f.location),
@@ -187,6 +186,10 @@ impl DNAsequence {
         &self.forward
     }
 
+    pub fn get_forward_string(&self) -> String {
+        std::str::from_utf8(&self.forward).unwrap().to_string()
+    }
+
     pub fn to_string(&self) -> String {
         String::from_utf8_lossy(&self.forward).into()
     }
@@ -204,7 +207,7 @@ impl DNAsequence {
         // TODO clear overhang if is_circular=true?
     }
 
-    fn validate_dna_sequence(v: &[u8]) -> Vec<u8> {
+    pub fn validate_dna_sequence(v: &[u8]) -> Vec<u8> {
         v.iter()
             .filter(|c|!c.is_ascii_whitespace())
             .map(|c| c.to_ascii_uppercase())
@@ -216,13 +219,7 @@ impl DNAsequence {
 impl From<String> for DNAsequence {
     fn from(s: String) -> Self {
         let mut ret = DNAsequence::default();
-        let allowed_chars = b"ACGTN"; // TODO IUPAC
-        ret.forward = s.to_ascii_uppercase()
-            .as_bytes()
-            .iter()
-            .filter(|c|!c.is_ascii_whitespace())
-            .map(|c| if allowed_chars.contains(c) { *c } else { b'N' } )
-            .collect();
+        ret.forward = Self::validate_dna_sequence(s.as_bytes());
         ret
     }
 }
