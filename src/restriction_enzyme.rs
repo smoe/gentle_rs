@@ -32,7 +32,7 @@ impl RestrictionEnzyme {
 
     fn get_sequence_rc(&self) -> String {
         // TODO cache this?
-        let rc = DNAsequence::validate_dna_sequence(self.sequence.as_bytes());
+        let rc = self.sequence.as_bytes();
         let rc = match std::str::from_utf8(&rc) {
             Ok(rc) => rc,
             Err(_) => panic!("RestrictionEnzyme::check_palimdromic: non-utf8 char")
@@ -44,7 +44,7 @@ impl RestrictionEnzyme {
         // TODO reverse-complement if required
         let mut ret = vec![];
         let recognition_len = self.sequence.len();
-        let forward = seq.get_forward();
+        let forward = seq.forward();
         let seq_len = if seq.is_circular() {
             forward.len()
         } else {
