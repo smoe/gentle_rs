@@ -1,4 +1,6 @@
-// use std::io::stdout;
+#![allow(non_snake_case)]
+// import the prelude to get access to the `rsx!` macro and the `Scope` and `Element` types
+use dioxus::prelude::*;
 
 use std::io::stdout;
 
@@ -22,57 +24,27 @@ lazy_static! {
     pub static ref FACILITY: Facility = Facility::new();
 }
 
-struct CircularDnaImageData {
-    image: slint::Image,
+fn main() {
+    dioxus_desktop::launch(App);
 }
 
-
-fn main() {
+fn App(cx: Scope) -> Element {
     let dna = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
     let dna = dna.get(0).unwrap();
     let r = RenderCircularMapSVG::from_dna_sequence(dna);
     if false {
         let _ = svg::write(stdout(),&r.document);
     }
-    let image = CircularDnaImageData {
-        image: slint::Image::load_from_svg_data(r.document.to_string().as_bytes()).expect("Can't create image from SVG"),
-    };
-    // println!("{:?}",image.image.size());
-    let main_window = MainWindow::new().unwrap();
-    main_window.set_render(image.image);
-    main_window.run().unwrap();
-}
+    let svg_str = r.document.to_string();
 
-slint::slint! {
-    component CircularDnaRender inherits Rectangle {
-        callback clicked;
 
-        in property <image> render;
-
-        width: 640px;
-        height: 480px;
-    
-        Image {
-            source: render;
-            width: parent.width;
-            height: parent.height;
+    cx.render(rsx! {
+        div {
+            color:"blue",
+            "Hello, world!"
         }
-
-        TouchArea {
-            clicked => {
-                root.clicked();
-            }
+        div {
+            dangerous_inner_html: "{svg_str}",
         }
-    }
-
-    export component MainWindow inherits Window {
-        in property <image> render;
-
-        CircularDnaRender {
-            render: render;
-            clicked => {
-                
-            }
-        }
-    }
+    })
 }
