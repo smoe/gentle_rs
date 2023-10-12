@@ -8,11 +8,11 @@ const FONT_SIZE_SMALL: i32 = 48;
 const FONT_SIZE_LARGE: i32 = FONT_SIZE_SMALL*2;
 
 #[derive(Clone, Debug)]
-pub struct RenderSVG {
+pub struct RenderCircularMapSVG {
     pub document: svg::Document,
 }
 
-impl RenderSVG {
+impl RenderCircularMapSVG {
     pub fn from_dna_sequence(dna: &DNAsequence) -> Self {
         let c = svg::node::element::Circle::new()
             .set("cx",2000)
@@ -73,7 +73,7 @@ impl RenderSVG {
         ret
     }
 
-    fn render_feature_from_range(ret: &RenderSVG, feature: &Feature, max_pos: i64, start: (i64,gb_io::seq::Before), end: (i64,gb_io::seq::After)) -> SVG {
+    fn render_feature_from_range(ret: &RenderCircularMapSVG, feature: &Feature, max_pos: i64, start: (i64,gb_io::seq::Before), end: (i64,gb_io::seq::After)) -> SVG {
         let from = start.0;
         let to = end.0;
         let inner = 1000.0 + (Self::feature_band(feature) as f64)*100.0 - FEATURE_HEIGHT/2.0 + FEATURE_HEIGHT/10.0;

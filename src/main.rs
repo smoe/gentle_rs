@@ -1,8 +1,10 @@
 // use std::io::stdout;
 
+use std::io::stdout;
+
 use lazy_static::lazy_static;
 use dna_sequence::DNAsequence;
-use render_dna::RenderSVG;
+use render_dna::RenderCircularMapSVG;
 
 use crate::facility::Facility;
 
@@ -28,12 +30,14 @@ struct CircularDnaImageData {
 fn main() {
     let dna = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
     let dna = dna.get(0).unwrap();
-    let r = RenderSVG::from_dna_sequence(dna);
-    // let _ = svg::write(stdout(),&r.document);
+    let r = RenderCircularMapSVG::from_dna_sequence(dna);
+    if false {
+        let _ = svg::write(stdout(),&r.document);
+    }
     let image = CircularDnaImageData {
         image: slint::Image::load_from_svg_data(r.document.to_string().as_bytes()).expect("Can't create image from SVG"),
     };
-    println!("{:?}",image.image.size());
+    // println!("{:?}",image.image.size());
     let main_window = MainWindow::new().unwrap();
     main_window.set_render(image.image);
     main_window.run().unwrap();
@@ -45,8 +49,8 @@ slint::slint! {
 
         in property <image> render;
 
-        width: 512px;
-        height: 512px;
+        width: 640px;
+        height: 480px;
     
         Image {
             source: render;
