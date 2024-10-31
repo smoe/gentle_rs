@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
-
 use crate::{
     dna_sequence::DNAsequence,
     icons::{ICON_CIRCULAR_LINEAR, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
+    render_dna_circular::RenderDnaCircular,
 };
-use eframe::egui::{self, Vec2};
+use eframe::egui::{self, vec2, Vec2};
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub struct MainAreaDna {
@@ -40,7 +40,8 @@ impl MainAreaDna {
                     .show(ctx, |ui| {
                         self.render_sequence(ui);
                     });
-                egui::CentralPanel::default().show(ctx, |ui| {
+                let frame = egui::Frame::default().fill(egui::Color32::LIGHT_YELLOW);
+                egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
                     self.render_middle(ui);
                 });
             } else {
@@ -64,7 +65,7 @@ impl MainAreaDna {
                     .rounding(5.0),
             );
             if ui.add(button).clicked() {
-                let mut dna = self.dna.lock().unwrap();
+                let mut dna = self.dna.lock().expect("DNA lock poisoned");
                 let is_circular = dna.is_circular();
                 dna.set_circular(!is_circular);
             }
@@ -82,14 +83,14 @@ impl MainAreaDna {
     }
 
     pub fn render_sequence(&mut self, ui: &mut egui::Ui) {
-        ui.label(self.dna.lock().unwrap().to_string());
+        ui.label(self.dna.lock().expect("DNA lock poisoned").to_string());
     }
 
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         ui.heading(
             self.dna
                 .lock()
-                .unwrap()
+                .expect("DNA lock poisoned")
                 .name()
                 .as_ref()
                 .map(|s| s.as_str())
@@ -98,24 +99,43 @@ impl MainAreaDna {
     }
 
     pub fn render_description(&mut self, ui: &mut egui::Ui) {
-        ui.heading(self.dna.lock().unwrap().description().join("\n"));
+        let mut description = self
+            .dna
+            .lock()
+            .expect("DNA lock poisoned")
+            .description()
+            .join("\n");
+        description += "\nTHIS IS THE END";
+        ui.heading(description);
     }
 
     pub fn render_dna_map(&mut self, ui: &mut egui::Ui) {
-        if self.dna.lock().unwrap().is_circular() {
-            ui.heading("Circular DNA");
+        if self.dna.lock().expect("DNA lock poisoned").is_circular() {
+            let renderer = RenderDnaCircular::new(self.dna.clone());
+            renderer.render_dna_circular(ui);
         } else {
             ui.heading("Linear DNA");
         }
     }
 
     pub fn render_middle(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                self.render_features(ui);
-                self.render_description(ui);
-            });
-            self.render_dna_map(ui);
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            egui::Frame::none()
+                .fill(egui::Color32::LIGHT_BLUE)
+                .show(ui, |ui| {
+                    ui.vertical(|ui| {
+                        self.render_features(ui);
+                        self.render_description(ui);
+                    });
+                });
+
+            egui::Frame::none()
+                .fill(egui::Color32::LIGHT_BLUE)
+                .show(ui, |ui| {
+                    // ui.allocate_space(ui.available_size());
+
+                    self.render_dna_map(ui);
+                });
         });
     }
 }

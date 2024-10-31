@@ -25,13 +25,21 @@ impl GENtleApp {
         let mut ret = Self {
             main_area: None,
             left_panel: Default::default(),
-            dna_sequence: vec![
-                Self::load_dna_from_genbank_file("test_files/pGEX-3X.gb").unwrap(),
-                Self::load_dna_from_fasta_file("test_files/pGEX_3X.fa").unwrap(),
-            ],
+            dna_sequence: Self::load_demo_data(), // For testing
         };
-        ret.main_area = Some(MainArea::new_dna(ret.dna_sequence[0].clone()));
+
+        // Select first DNA sequence, if any
+        if let Some(dna) = ret.dna_sequence.first() {
+            ret.main_area = Some(MainArea::new_dna(dna.clone()));
+        }
         ret
+    }
+
+    fn load_demo_data() -> Vec<Arc<Mutex<DNAsequence>>> {
+        vec![
+            Self::load_dna_from_genbank_file("test_files/pGEX-3X.gb").unwrap(),
+            Self::load_dna_from_fasta_file("test_files/pGEX_3X.fa").unwrap(),
+        ]
     }
 
     pub fn dna_sequence(&self) -> &Vec<Arc<Mutex<DNAsequence>>> {
@@ -65,6 +73,8 @@ impl eframe::App for GENtleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::SidePanel::left("left_panel")
             .resizable(true)
+            .default_width(200.0)
+            .min_width(200.0)
             .show(ctx, |ui| {
                 let mut left_panel = self.left_panel.clone();
                 left_panel.render(self, ui);

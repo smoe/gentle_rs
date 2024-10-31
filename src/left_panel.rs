@@ -18,7 +18,7 @@ impl LeftPanel {
                             for (i, dna) in app.dna_sequence().clone().iter().enumerate() {
                                 let name = dna
                                     .lock()
-                                    .unwrap()
+                                    .expect("DNA lock poisoned")
                                     .name()
                                     .as_ref()
                                     .unwrap_or(&format!("DNA #{i}"))
