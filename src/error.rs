@@ -15,7 +15,12 @@ impl Error for GENtleError {}
 
 impl fmt::Display for GENtleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self) // user-facing output
+        match self {
+            GENtleError::String(err) => write!(f, "{}", err),
+            GENtleError::Io(err) => write!(f, "IO: {}", err),
+            GENtleError::Serde(err) => write!(f, "SERDE: {}", err),
+            GENtleError::GbParser(err) => write!(f, "GBPARSER: {}", err),
+        }
     }
 }
 
@@ -24,7 +29,6 @@ impl From<String> for GENtleError {
         GENtleError::String(err)
     }
 }
-
 
 impl From<std::io::Error> for GENtleError {
     fn from(err: std::io::Error) -> Self {
@@ -43,4 +47,3 @@ impl From<GbParserError> for GENtleError {
         GENtleError::GbParser(err)
     }
 }
-

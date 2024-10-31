@@ -1,8 +1,12 @@
-use std::fs::File;
 use bio::io::fasta;
-use gb_io::seq::{Seq, Feature, Topology};
+use gb_io::seq::{Feature, Seq, Topology};
+use std::fs::File;
 
-use crate::{restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite}, error::GENtleError, FACILITY};
+use crate::{
+    error::GENtleError,
+    restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
+    FACILITY,
+};
 
 type DNAstring = Vec<u8>;
 
@@ -16,10 +20,10 @@ pub struct DNAoverhang {
 
 impl DNAoverhang {
     pub fn is_blunt(&self) -> bool {
-        self.forward_3.is_empty() &&
-        self.forward_5.is_empty() &&
-        self.reverse_3.is_empty() &&
-        self.reverse_5.is_empty()
+        self.forward_3.is_empty()
+            && self.forward_5.is_empty()
+            && self.reverse_3.is_empty()
+            && self.reverse_5.is_empty()
     }
 
     pub fn is_sticky(&self) -> bool {
@@ -34,26 +38,31 @@ pub struct DNAsequence {
 }
 
 impl DNAsequence {
-    pub fn from_fasta_file(filename: &str) -> Result<Vec<DNAsequence>,GENtleError> {
+    pub fn from_fasta_file(filename: &str) -> Result<Vec<DNAsequence>, GENtleError> {
         let file = File::open(filename)?;
         Ok(fasta::Reader::new(file)
             .records()
             .into_iter()
-            .filter_map(|record|record.ok())
-            .map(|record|DNAsequence::from_fasta_record(&record))
+            .filter_map(|record| record.ok())
+            .map(|record| DNAsequence::from_fasta_record(&record))
             .collect())
     }
 
-    pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>,GENtleError> {
+    pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>, GENtleError> {
         Ok(gb_io::reader::parse_file(filename)?
             .into_iter()
-            .map(|seq|DNAsequence::from_genbank_seq(seq))
+            .map(|seq| DNAsequence::from_genbank_seq(seq))
             .collect())
     }
 
-    pub fn restriction_enzyme_sites(&self, restriction_enzymes: &Vec<RestrictionEnzyme>, max: Option<usize>) -> Vec<RestrictionEnzymeSite> {
-        restriction_enzymes.iter()
-            .flat_map(|re|re.get_sites(&self, max))
+    pub fn restriction_enzyme_sites(
+        &self,
+        restriction_enzymes: &Vec<RestrictionEnzyme>,
+        max: Option<usize>,
+    ) -> Vec<RestrictionEnzymeSite> {
+        restriction_enzymes
+            .iter()
+            .flat_map(|re| re.get_sites(&self, max))
             .collect()
     }
 
@@ -85,7 +94,7 @@ impl DNAsequence {
     }
 
     fn from_u8(s: &[u8]) -> Self {
-        let seq = Seq{
+        let seq = Seq {
             name: None,
             topology: Topology::Linear,
             date: None,
@@ -136,7 +145,7 @@ impl DNAsequence {
     }
 
     pub fn is_circular(&self) -> bool {
-        self.seq.topology==Topology::Circular
+        self.seq.topology == Topology::Circular
     }
 
     pub fn set_circular(&mut self, is_circular: bool) {
@@ -149,9 +158,15 @@ impl DNAsequence {
 
     pub fn validate_dna_sequence(v: &[u8]) -> Vec<u8> {
         v.iter()
-            .filter(|c|!c.is_ascii_whitespace())
+            .filter(|c| !c.is_ascii_whitespace())
             .map(|c| c.to_ascii_uppercase())
-            .map(|c| if FACILITY.dna_iupac[c as usize]>0 { c } else { b'N' } )
+            .map(|c| {
+                if FACILITY.dna_iupac[c as usize] > 0 {
+                    c
+                } else {
+                    b'N'
+                }
+            })
             .collect()
     }
 }
@@ -164,26 +179,26 @@ impl From<String> for DNAsequence {
 
 #[cfg(test)]
 mod tests {
-    use crate::enzymes::Enzymes;
     use super::*;
+    use crate::enzymes::Enzymes;
 
     #[test]
     fn test_pgex_3x_fasta() {
         let seq = DNAsequence::from_fasta_file("test_files/pGEX_3X.fa").unwrap();
         let seq = seq.get(0).unwrap();
-        assert_eq!(seq.name().clone().unwrap(),"U13852.1");
+        assert_eq!(seq.name().clone().unwrap(), "U13852.1");
 
         let enzymes = Enzymes::from_json_file("assets/enzymes.json").unwrap();
-        let all = seq.restriction_enzyme_sites(&enzymes.restriction_enzymes(),None);
-        let max3 = seq.restriction_enzyme_sites(&enzymes.restriction_enzymes(),Some(3));
-        assert!(all.len()>max3.len());
+        let all = seq.restriction_enzyme_sites(&enzymes.restriction_enzymes(), None);
+        let max3 = seq.restriction_enzyme_sites(&enzymes.restriction_enzymes(), Some(3));
+        assert!(all.len() > max3.len());
     }
 
     #[test]
     fn test_pgex_3x_genbank() {
         let dna = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
         let dna = dna.get(0).unwrap();
-        assert_eq!(dna.name().clone().unwrap(),"XXU13852");
-        assert_eq!(dna.features().len(),12);
+        assert_eq!(dna.name().clone().unwrap(), "XXU13852");
+        assert_eq!(dna.features().len(), 12);
     }
 }

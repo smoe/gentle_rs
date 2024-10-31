@@ -13,6 +13,15 @@ lazy_static = "^1"
 csv = "^1"
 gb-io = "*"
 svg = "*"
-#slint = "1"
-dioxus = "0.4.0"
-dioxus-desktop = "0.4.0"
+anyhow = "*"
+eframe = { version = "*", features = [
+	"accesskit",
+	"default_fonts",
+	"glow",
+	"wayland",
+	# "web_screen_reader",
+	"x11",
+	"persistence",
+] }
+egui_extras = { version = "*", features = ["all_loaders"] }
+image = { version = "*", features = ["jpeg", "png"] }

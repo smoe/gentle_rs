@@ -1,6 +1,9 @@
-use std::{fs::{self, File}, collections::HashMap};
 use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CodonTable {
@@ -8,7 +11,6 @@ pub struct CodonTable {
     pub sequence: String,
     pub organism: String,
 }
-
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AminoAcidHydrophobicity {
@@ -36,14 +38,14 @@ pub struct AminoAcid {
     pub halflife: Vec<isize>,
     pub chou_fasman: Vec<f32>,
     pub hydrophobicity: AminoAcidHydrophobicity,
-    #[serde(skip_serializing,default)]
-    pub species_codons: HashMap<String,String>,
+    #[serde(skip_serializing, default)]
+    pub species_codons: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AminoAcids {
-    pub aas : HashMap<char,AminoAcid>,
-    pub codon_tables: HashMap<usize,CodonTable>,
+    pub aas: HashMap<char, AminoAcid>,
+    pub codon_tables: HashMap<usize, CodonTable>,
 }
 
 impl AminoAcids {
@@ -56,11 +58,11 @@ impl AminoAcids {
             let aa: AminoAcid = match serde_json::from_str(&row.to_string()) {
                 Ok(aa) => aa,
                 Err(e) => {
-                    eprintln!("Bad restriction enzyme: {}: {e}",row.to_string());
-                    continue
+                    eprintln!("Bad restriction enzyme: {}: {e}", row);
+                    continue;
                 }
             };
-            ret.aas.insert(aa.aa,aa);
+            ret.aas.insert(aa.aa, aa);
         }
         ret.codon_tables = Self::get_codon_tables();
         ret.load_codon_catalog();
@@ -74,20 +76,23 @@ impl AminoAcids {
         for result in rdr.records() {
             let record = result.expect("Bad CSV line");
             if header.is_empty() {
-                header = record.iter().skip(2).map(|s|s.to_string()).collect();
+                header = record.iter().skip(2).map(|s| s.to_string()).collect();
                 continue;
             }
             let mut record = record.iter();
             let letter = record.next().expect("Bad record").chars().next().unwrap();
             let record = record.skip(1); // TLA
-            self.aas.get_mut(&letter).expect("Wrong letter").species_codons = record
+            self.aas
+                .get_mut(&letter)
+                .expect("Wrong letter")
+                .species_codons = record
                 .zip(header.iter())
-                .map(|(codon,species)|(species.to_string(),codon.to_string()))
+                .map(|(codon, species)| (species.to_string(), codon.to_string()))
                 .collect();
         }
     }
 
-    fn get_codon_tables() -> HashMap<usize,CodonTable> {
+    fn get_codon_tables() -> HashMap<usize, CodonTable> {
         let mut ret = HashMap::new();
         let data = fs::read_to_string("assets/codon_tables.json").expect("File not found");
         let res: serde_json::Value = serde_json::from_str(&data).expect("Invalid JSON");
@@ -96,11 +101,11 @@ impl AminoAcids {
             let ct: CodonTable = match serde_json::from_str(&row.to_string()) {
                 Ok(ct) => ct,
                 Err(e) => {
-                    eprintln!("Invalid codon table: {}: {e}",row.to_string());
-                    continue
+                    eprintln!("Invalid codon table: {}: {e}", row);
+                    continue;
                 }
             };
-            ret.insert(ct.id,ct);
+            ret.insert(ct.id, ct);
         }
         ret
     }
@@ -110,7 +115,6 @@ impl AminoAcids {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,7 +122,14 @@ mod tests {
     #[test]
     fn test_from_json_file() {
         let aas = AminoAcids::load();
-        assert_eq!(aas.get('C').unwrap().atoms.S,1);
-        assert_eq!(aas.get('F').unwrap().species_codons.get("Chlamydomonas reinhardtii").unwrap(),"TTC");
+        assert_eq!(aas.get('C').unwrap().atoms.S, 1);
+        assert_eq!(
+            aas.get('F')
+                .unwrap()
+                .species_codons
+                .get("Chlamydomonas reinhardtii")
+                .unwrap(),
+            "TTC"
+        );
     }
 }
