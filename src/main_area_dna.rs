@@ -2,6 +2,7 @@ use crate::{
     dna_sequence::DNAsequence,
     icons::{ICON_CIRCULAR_LINEAR, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
     render_dna_circular::RenderDnaCircular,
+    render_dna_linear::RenderDnaLinear,
 };
 use eframe::egui::{self, Frame, PointerState, Sense, Vec2};
 use std::sync::{Arc, Mutex};
@@ -9,7 +10,8 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug)]
 pub struct MainAreaDna {
     dna: Arc<Mutex<DNAsequence>>,
-    circular_map: Option<RenderDnaCircular>,
+    map_circular: Option<RenderDnaCircular>,
+    map_linear: Option<RenderDnaLinear>,
     show_sequence: bool,
     show_map: bool,
 }
@@ -18,7 +20,8 @@ impl MainAreaDna {
     pub fn new(dna: Arc<Mutex<DNAsequence>>) -> Self {
         Self {
             dna,
-            circular_map: None,
+            map_circular: None,
+            map_linear: None,
             show_sequence: true,
             show_map: true,
         }
@@ -117,16 +120,21 @@ impl MainAreaDna {
 
     pub fn render_dna_map(&mut self, ui: &mut egui::Ui) {
         if self.is_circular() {
-            // TODO remove linear renderer
-            if self.circular_map.is_none() {
-                self.circular_map = Some(RenderDnaCircular::new(self.dna.clone()));
+            self.map_linear = None;
+            if self.map_circular.is_none() {
+                self.map_circular = Some(RenderDnaCircular::new(self.dna.clone()));
             }
-            if let Some(renderer) = &mut self.circular_map {
+            if let Some(renderer) = &mut self.map_circular {
                 renderer.render(ui);
             }
         } else {
-            self.circular_map = None;
-            ui.heading("Linear DNA");
+            self.map_circular = None;
+            if self.map_linear.is_none() {
+                self.map_linear = Some(RenderDnaLinear::new(self.dna.clone()));
+            }
+            if let Some(renderer) = &mut self.map_linear {
+                renderer.render(ui);
+            }
         }
     }
 
@@ -148,10 +156,11 @@ impl MainAreaDna {
 
         if ui.response().interact(Sense::click()).clicked() {
             let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-            if let Some(dna_map) = &self.circular_map {
+            if let Some(dna_map) = &mut self.map_circular {
+                dna_map.on_click(pointer_state);
+            } else if let Some(dna_map) = &mut self.map_linear {
                 dna_map.on_click(pointer_state);
             }
-            // TODO linear
         }
     }
 }

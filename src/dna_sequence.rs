@@ -1,6 +1,6 @@
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
-use std::fs::File;
+use std::{fmt, fs::File};
 
 use crate::{
     error::GENtleError,
@@ -42,7 +42,6 @@ impl DNAsequence {
         let file = File::open(filename)?;
         Ok(fasta::Reader::new(file)
             .records()
-            .into_iter()
             .filter_map(|record| record.ok())
             .map(|record| DNAsequence::from_fasta_record(&record))
             .collect())
@@ -51,18 +50,18 @@ impl DNAsequence {
     pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>, GENtleError> {
         Ok(gb_io::reader::parse_file(filename)?
             .into_iter()
-            .map(|seq| DNAsequence::from_genbank_seq(seq))
+            .map(DNAsequence::from_genbank_seq)
             .collect())
     }
 
     pub fn restriction_enzyme_sites(
         &self,
-        restriction_enzymes: &Vec<RestrictionEnzyme>,
+        restriction_enzymes: &[RestrictionEnzyme],
         max: Option<usize>,
     ) -> Vec<RestrictionEnzymeSite> {
         restriction_enzymes
             .iter()
-            .flat_map(|re| re.get_sites(&self, max))
+            .flat_map(|re| re.get_sites(self, max))
             .collect()
     }
 
@@ -72,6 +71,10 @@ impl DNAsequence {
 
     pub fn len(&self) -> usize {
         self.forward().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.forward().is_empty()
     }
 
     pub fn from_genbank_seq(seq: Seq) -> Self {
@@ -133,11 +136,7 @@ impl DNAsequence {
     }
 
     pub fn get_forward_string(&self) -> String {
-        std::str::from_utf8(&self.forward()).unwrap().to_string()
-    }
-
-    pub fn to_string(&self) -> String {
-        String::from_utf8_lossy(&self.forward()).into()
+        std::str::from_utf8(self.forward()).unwrap().to_string()
     }
 
     pub fn get_overhang(&self) -> &DNAoverhang {
@@ -171,6 +170,12 @@ impl DNAsequence {
     }
 }
 
+impl fmt::Display for DNAsequence {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", String::from_utf8_lossy(self.forward()))
+    }
+}
+
 impl From<String> for DNAsequence {
     fn from(s: String) -> Self {
         DNAsequence::from_u8(s.as_bytes())
@@ -185,19 +190,19 @@ mod tests {
     #[test]
     fn test_pgex_3x_fasta() {
         let seq = DNAsequence::from_fasta_file("test_files/pGEX_3X.fa").unwrap();
-        let seq = seq.get(0).unwrap();
+        let seq = seq.first().unwrap();
         assert_eq!(seq.name().clone().unwrap(), "U13852.1");
 
         let enzymes = Enzymes::from_json_file("assets/enzymes.json").unwrap();
-        let all = seq.restriction_enzyme_sites(&enzymes.restriction_enzymes(), None);
-        let max3 = seq.restriction_enzyme_sites(&enzymes.restriction_enzymes(), Some(3));
+        let all = seq.restriction_enzyme_sites(enzymes.restriction_enzymes(), None);
+        let max3 = seq.restriction_enzyme_sites(enzymes.restriction_enzymes(), Some(3));
         assert!(all.len() > max3.len());
     }
 
     #[test]
     fn test_pgex_3x_genbank() {
         let dna = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
-        let dna = dna.get(0).unwrap();
+        let dna = dna.first().unwrap();
         assert_eq!(dna.name().clone().unwrap(), "XXU13852");
         assert_eq!(dna.features().len(), 12);
     }

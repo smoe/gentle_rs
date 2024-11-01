@@ -13,10 +13,9 @@ lazy_static! {
     };
 }
 
-#[derive(Debug)]
-pub struct FeaturePosition {
+#[derive(Debug, Clone)]
+struct FeaturePosition {
     feature_number: usize,
-    _feature: Feature,
     from: i64,
     to: i64,
     angle_start: f32,
@@ -41,6 +40,7 @@ pub struct RenderDnaCircular {
     center: Pos2,
     radius: f32,
     features: Vec<FeaturePosition>,
+    selected_feature_number: Option<usize>,
 }
 
 impl RenderDnaCircular {
@@ -51,6 +51,7 @@ impl RenderDnaCircular {
             center: Pos2::ZERO,
             radius: 0.0,
             features: vec![],
+            selected_feature_number: None,
         }
     }
 
@@ -63,7 +64,7 @@ impl RenderDnaCircular {
         (angle, distance)
     }
 
-    pub fn on_click(&self, pointer_state: PointerState) {
+    pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             let (angle, distance) = self.get_angle_distance(pos);
             let clicked_features = self
@@ -71,11 +72,16 @@ impl RenderDnaCircular {
                 .iter()
                 .filter(|feature| feature.contains_point(angle, distance))
                 .collect::<Vec<_>>();
-            println!("{clicked_features:?}");
+            self.selected_feature_number = clicked_features.first().map(|f| f.feature_number);
         }
     }
 
+    pub fn selected_feature_number(&self) -> Option<usize> {
+        self.selected_feature_number.to_owned()
+    }
+
     pub fn render(&mut self, ui: &mut egui::Ui) {
+        self.features.clear();
         self.area = ui.available_rect_before_wrap();
         self.radius = self.area.width().min(self.area.height()) * 0.4;
         self.center = self.area.center();
@@ -164,7 +170,6 @@ impl RenderDnaCircular {
         }
         let mut ret: FeaturePosition = FeaturePosition {
             feature_number: 0,
-            _feature: feature.to_owned(),
             from: start.0,
             to: end.0,
             angle_start: 0.0,
