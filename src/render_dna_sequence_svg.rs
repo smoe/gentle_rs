@@ -1,3 +1,5 @@
+// THIS FILE IS CURRENTLY NOT IN USE
+
 use std::io::{self, Write};
 // use gb_io::seq::Feature;
 // use svg::node::element::{path::Data, Path, SVG};

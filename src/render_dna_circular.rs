@@ -102,23 +102,24 @@ impl RenderDnaCircular {
         }
 
         let font_tick = FontId {
-            size: 8.0,
+            size: 9.0,
             family: FontFamily::Monospace,
         };
 
         let mut pos = tick; // Skip 0 point
         while pos < bp {
             let p1 = self.pos2xy(pos, bp, self.radius);
-            let p2 = self.pos2xy(pos, bp, self.radius * 0.9);
+            let p2 = self.pos2xy(pos, bp, self.radius * 0.87);
+            let p3 = self.pos2xy(pos, bp, self.radius * 0.85);
             painter.line_segment([p1, p2], BLACK_1.to_owned());
 
-            let align = if pos < bp / 2 {
+            let align = if pos > bp / 2 {
                 Align2::LEFT_CENTER
             } else {
                 Align2::RIGHT_CENTER
             };
             painter.text(
-                p2,
+                p3,
                 align,
                 format!("{pos}"),
                 font_tick.to_owned(),
