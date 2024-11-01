@@ -5,7 +5,10 @@ use crate::{
     render_dna_linear::RenderDnaLinear,
 };
 use eframe::egui::{self, Frame, PointerState, Sense, Vec2};
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Debug)]
 pub struct MainAreaDna {
@@ -91,6 +94,16 @@ impl MainAreaDna {
         ui.label(self.dna.lock().expect("DNA lock poisoned").to_string());
     }
 
+    fn get_selected_feature_id(&self) -> Option<usize> {
+        if let Some(ref map) = self.map_circular {
+            return map.selected_feature_number();
+        }
+        if let Some(ref map) = self.map_linear {
+            return map.selected_feature_number();
+        }
+        None
+    }
+
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         ui.heading(
             self.dna
@@ -101,17 +114,95 @@ impl MainAreaDna {
                 .map(|s| s.as_str())
                 .unwrap_or("<Unnamed DNA sequence>"),
         );
-    }
 
-    pub fn render_description(&mut self, ui: &mut egui::Ui) {
-        let description = self
+        let selected_id = self.get_selected_feature_id();
+        let typed_features = self
             .dna
             .lock()
             .expect("DNA lock poisoned")
+            .features()
+            .iter()
+            .enumerate()
+            .map(|(id, feature)| {
+                let kind = feature.kind.to_string();
+
+                (kind, id)
+            })
+            .collect::<Vec<_>>();
+        let mut grouped_features: HashMap<String, Vec<usize>> = HashMap::new();
+        for (kind, id) in typed_features {
+            grouped_features.entry(kind).or_default().push(id);
+        }
+        let mut group_keys = grouped_features.keys().collect::<Vec<_>>();
+        group_keys.sort();
+        for kind in group_keys {
+            let ids = grouped_features.get(kind).unwrap();
+            ui.collapsing(kind, |ui| {
+                for id in ids {
+                    let name = match &self
+                        .dna
+                        .lock()
+                        .expect("DNA lock poisoned")
+                        .features()
+                        .get(*id)
+                    {
+                        Some(feature) => RenderDnaCircular::feature_name(feature),
+                        None => continue,
+                    };
+                    let selected = selected_id == Some(*id);
+                    ui.horizontal(|ui| {
+                        let button = egui::Button::new(name).selected(selected);
+                        if ui.add(button).clicked() {
+                            // println!("Selected feature #{id}");
+                            if let Some(map) = self.map_circular.as_mut() {
+                                map.select_feature(Some(*id));
+                            } else if let Some(map) = self.map_linear.as_mut() {
+                                map.select_feature(Some(*id));
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    }
+
+    fn get_sequence_description(&self) -> String {
+        self.dna
+            .lock()
+            .expect("DNA lock poisoned")
             .description()
-            .join("\n");
-        // description += "\nTHIS IS THE END";
-        ui.heading(description);
+            .join("\n")
+    }
+
+    pub fn render_description(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.set_min_height(150.0);
+
+            match self.get_selected_feature_id() {
+                Some(id) => {
+                    let feature = self
+                        .dna
+                        .lock()
+                        .expect("DNA lock poisoned")
+                        .features()
+                        .get(id)
+                        .unwrap()
+                        .to_owned(); // Temporary copy
+
+                    let name = RenderDnaCircular::feature_name(&feature);
+                    ui.heading(name);
+                    let desc = &match feature.location.find_bounds() {
+                        Ok((from, to)) => format!("{from}..{to}"),
+                        Err(_) => String::new(),
+                    };
+                    ui.monospace(desc);
+                }
+                None => {
+                    let description = self.get_sequence_description();
+                    ui.heading(description);
+                }
+            };
+        });
     }
 
     fn is_circular(&self) -> bool {

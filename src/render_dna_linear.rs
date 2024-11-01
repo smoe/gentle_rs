@@ -39,4 +39,8 @@ impl RenderDnaLinear {
     pub fn selected_feature_number(&self) -> Option<usize> {
         self.selected_feature_number.to_owned()
     }
+
+    pub fn select_feature(&mut self, feature_number: Option<usize>) {
+        self.selected_feature_number = feature_number;
+    }
 }

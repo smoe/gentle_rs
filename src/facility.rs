@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs};
+// Various constants and DNA-related functions
 
 use crate::amino_acids::AminoAcids;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fs};
 
 const DNA_A: u8 = 1;
 const DNA_C: u8 = 2;

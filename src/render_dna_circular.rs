@@ -80,6 +80,10 @@ impl RenderDnaCircular {
         self.selected_feature_number.to_owned()
     }
 
+    pub fn select_feature(&mut self, feature_number: Option<usize>) {
+        self.selected_feature_number = feature_number;
+    }
+
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.features.clear();
         self.area = ui.available_rect_before_wrap();
@@ -187,12 +191,6 @@ impl RenderDnaCircular {
             ret.outer = self.radius + 2.0 * Self::feature_band(feature) * feature_thickness;
         }
 
-        // let feature_kind = feature.kind.to_string().to_ascii_uppercase();
-        // if feature_label != "bla" || feature_kind != "GENE" {
-        //     return; // TESTING FIXME
-        // }
-        // println!("{feature_label}: {}", feature.kind);
-
         let mut feature_points: Vec<Pos2> = vec![];
         feature_points.push(self.pos2xy(ret.from, bp, ret.outer));
         feature_points.push(self.pos2xy(ret.from, bp, ret.inner));
@@ -265,9 +263,20 @@ impl RenderDnaCircular {
         Some(ret)
     }
 
-    fn feature_name(feature: &Feature) -> String {
-        let mut label_text = String::new();
-        for k in ["gene", "product", "standard_name", "protein_id"] {
+    pub fn feature_name(feature: &Feature) -> String {
+        let mut label_text = match feature.location.find_bounds() {
+            Ok((from, to)) => format!("{from}..{to}"),
+            Err(_) => String::new(),
+        };
+        for k in [
+            "name",
+            "standard_name",
+            "gene",
+            "protein_id",
+            "product",
+            "region_name",
+            "bound_moiety",
+        ] {
             label_text = match feature.qualifier_values(k.into()).next() {
                 Some(s) => s.to_owned(),
                 None => continue,

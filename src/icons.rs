@@ -1,3 +1,5 @@
+// Some icons used in the GUI
+
 use eframe::egui;
 use lazy_static::lazy_static;
 
