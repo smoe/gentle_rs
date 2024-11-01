@@ -5,7 +5,6 @@ pub mod amino_acids;
 pub mod app;
 pub mod dna_sequence;
 pub mod enzymes;
-pub mod error;
 pub mod facility;
 pub mod icons;
 pub mod left_panel;

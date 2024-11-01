@@ -1,6 +1,6 @@
+use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
+use anyhow::{anyhow, Result};
 use std::fs;
-
-use crate::{error::GENtleError, protease::Protease, restriction_enzyme::RestrictionEnzyme};
 
 #[derive(Clone, Debug, Default)]
 pub struct Enzymes {
@@ -11,13 +11,13 @@ pub struct Enzymes {
 }
 
 impl Enzymes {
-    pub fn from_json_file(filename: &str) -> Result<Self, GENtleError> {
+    pub fn from_json_file(filename: &str) -> Result<Self> {
         let mut ret = Self::default();
         let data = fs::read_to_string(filename)?;
         let res: serde_json::Value = serde_json::from_str(&data)?;
-        let arr = res.as_array().ok_or(GENtleError::String(format!(
-            "JSON in file '{filename}' is not an array"
-        )))?;
+        let arr = res
+            .as_array()
+            .ok_or(anyhow!("JSON in file '{filename}' is not an array"))?;
         for row in arr {
             let enzyme_type = match row.get("type") {
                 Some(et) => et,
@@ -28,11 +28,7 @@ impl Enzymes {
                     let mut re: RestrictionEnzyme =
                         match serde_json::from_str(&row.to_string()).ok() {
                             Some(re) => re,
-                            None => {
-                                return Err(GENtleError::String(format!(
-                                    "Bad restriction enzyme: {row}"
-                                )))
-                            }
+                            None => return Err(anyhow!("Bad restriction enzyme: {row}")),
                         };
                     re.check_palimdromic();
                     ret.restriction_enzymes.push(re);
@@ -40,22 +36,12 @@ impl Enzymes {
                 Some("protease") => {
                     let pt: Protease = match serde_json::from_str(&row.to_string()).ok() {
                         Some(pt) => pt,
-                        None => return Err(GENtleError::String(format!("Bad protease: {row}"))),
+                        None => return Err(anyhow!("Bad protease: {row}")),
                     };
                     ret.proteases.push(pt);
                 }
-                Some(other) => {
-                    return Err(GENtleError::String(format!(
-                        "Unknown enzyme type '{other}' in {}",
-                        row
-                    )))
-                }
-                None => {
-                    return Err(GENtleError::String(format!(
-                        "Missing enzyme type for {}",
-                        row
-                    )))
-                }
+                Some(other) => return Err(anyhow!("Unknown enzyme type '{other}' in {}", row)),
+                None => return Err(anyhow!("Missing enzyme type for {}", row)),
             }
         }
         ret.max_re_length = ret

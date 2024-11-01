@@ -1,12 +1,11 @@
-use bio::io::fasta;
-use gb_io::seq::{Feature, Seq, Topology};
-use std::{fmt, fs::File};
-
 use crate::{
-    error::GENtleError,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
     FACILITY,
 };
+use anyhow::Result;
+use bio::io::fasta;
+use gb_io::seq::{Feature, Seq, Topology};
+use std::{fmt, fs::File};
 
 type DNAstring = Vec<u8>;
 
@@ -38,7 +37,7 @@ pub struct DNAsequence {
 }
 
 impl DNAsequence {
-    pub fn from_fasta_file(filename: &str) -> Result<Vec<DNAsequence>, GENtleError> {
+    pub fn from_fasta_file(filename: &str) -> Result<Vec<DNAsequence>> {
         let file = File::open(filename)?;
         Ok(fasta::Reader::new(file)
             .records()
@@ -47,7 +46,7 @@ impl DNAsequence {
             .collect())
     }
 
-    pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>, GENtleError> {
+    pub fn from_genbank_file(filename: &str) -> Result<Vec<DNAsequence>> {
         Ok(gb_io::reader::parse_file(filename)?
             .into_iter()
             .map(DNAsequence::from_genbank_seq)
