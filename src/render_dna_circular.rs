@@ -62,6 +62,10 @@ impl RenderDnaCircular {
         }
     }
 
+    pub fn area(&self) -> &Rect {
+        &self.area
+    }
+
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             let (angle, distance) = self.get_angle_distance(pos);

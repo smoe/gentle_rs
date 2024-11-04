@@ -218,9 +218,11 @@ impl MainAreaDna {
                 });
         });
 
-        if ui.response().interact(Sense::click()).clicked() {
+        if ui.response().clicked() {
+            // .interact(Sense::click())
             let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
             println!("{pointer_state:?}");
+
             self.map_dna.on_click(pointer_state);
         }
     }

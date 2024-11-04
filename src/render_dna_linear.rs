@@ -12,7 +12,7 @@ struct FeaturePosition {
 
 #[derive(Debug)]
 pub struct RenderDnaLinear {
-    _area: Rect,
+    area: Rect,
     _dna: Arc<RwLock<DNAsequence>>,
     _features: Vec<FeaturePosition>,
     selected_feature_number: Option<usize>,
@@ -21,14 +21,19 @@ pub struct RenderDnaLinear {
 impl RenderDnaLinear {
     pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         Self {
-            _area: Rect::NOTHING,
+            area: Rect::NOTHING,
             _dna: dna,
             _features: vec![],
             selected_feature_number: None,
         }
     }
 
+    pub fn area(&self) -> &Rect {
+        &self.area
+    }
+
     pub fn render(&mut self, ui: &mut egui::Ui) {
+        self.area = ui.available_rect_before_wrap();
         ui.heading("Linear DNA");
     }
 

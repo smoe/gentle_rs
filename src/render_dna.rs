@@ -24,6 +24,13 @@ impl RenderDnaEnum {
         }
     }
 
+    pub fn area(&self) -> &egui::Rect {
+        match self {
+            RenderDnaEnum::Circular(renderer) => renderer.area(),
+            RenderDnaEnum::Linear(renderer) => renderer.area(),
+        }
+    }
+
     pub fn is_circular(&self) -> bool {
         match self {
             RenderDnaEnum::Circular(_) => true,
