@@ -41,6 +41,7 @@ impl FeaturePosition {
 #[derive(Debug)]
 pub struct RenderDnaCircular {
     dna: Arc<RwLock<DNAsequence>>,
+    sequence_length: i64,
     area: Rect,
     center: Pos2,
     radius: f32,
@@ -52,6 +53,7 @@ impl RenderDnaCircular {
     pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         Self {
             dna,
+            sequence_length: 0,
             area: Rect::NOTHING,
             center: Pos2::ZERO,
             radius: 0.0,
@@ -85,17 +87,14 @@ impl RenderDnaCircular {
         self.area = ui.available_rect_before_wrap();
         self.radius = self.area.width().min(self.area.height()) * 0.4;
         self.center = self.area.center();
-        let bp = self.dna.read().expect("DNA lock poisoned").len() as i64;
+        self.sequence_length = self.dna.read().expect("DNA lock poisoned").len() as i64;
 
         let painter = ui.painter();
-        self.draw_backbone(painter, bp);
+        self.draw_backbone(painter);
         self.draw_main_label(painter);
-        self.draw_bp(painter, bp);
-        if self.features.is_empty() {
-            // TODO invalidate on update
-            self.layout_features(bp);
-        }
-        self.draw_features(painter, bp);
+        self.draw_bp(painter);
+        self.layout_features(); // TODO cache and invalidate on update
+        self.draw_features(painter);
     }
 
     fn get_angle_distance(&self, pos: Pos2) -> (f32, f32) {
@@ -107,10 +106,10 @@ impl RenderDnaCircular {
         (angle, distance)
     }
 
-    fn draw_backbone(&mut self, painter: &egui::Painter, bp: i64) {
+    fn draw_backbone(&mut self, painter: &egui::Painter) {
         painter.circle_stroke(self.center.to_owned(), self.radius, BLACK_1.to_owned());
         let mut tick: i64 = 1;
-        while tick * 10 < bp {
+        while tick * 10 < self.sequence_length {
             tick *= 10;
         }
 
@@ -120,13 +119,13 @@ impl RenderDnaCircular {
         };
 
         let mut pos = tick; // Skip 0 point
-        while pos < bp {
-            let p1 = self.pos2xy(pos, bp, self.radius);
-            let p2 = self.pos2xy(pos, bp, self.radius * 0.87);
-            let p3 = self.pos2xy(pos, bp, self.radius * 0.85);
+        while pos < self.sequence_length {
+            let p1 = self.pos2xy(pos, self.radius);
+            let p2 = self.pos2xy(pos, self.radius * 0.87);
+            let p3 = self.pos2xy(pos, self.radius * 0.85);
             painter.line_segment([p1, p2], BLACK_1.to_owned());
 
-            let align = if pos > bp / 2 {
+            let align = if pos > self.sequence_length / 2 {
                 Align2::LEFT_CENTER
             } else {
                 Align2::RIGHT_CENTER
@@ -143,7 +142,7 @@ impl RenderDnaCircular {
         }
     }
 
-    fn layout_features(&mut self, bp: i64) {
+    fn layout_features(&mut self) {
         self.features.clear();
         let features = self
             .dna
@@ -154,7 +153,7 @@ impl RenderDnaCircular {
         for (feature_number, feature) in features.iter().enumerate() {
             let fp_opt = match feature.location {
                 gb_io::seq::Location::Range(from, to) => {
-                    self.layout_feature_from_range(feature, from, to, bp)
+                    self.layout_feature_from_range(feature, from, to)
                 }
                 gb_io::seq::Location::Between(_, _) => todo!(),
                 gb_io::seq::Location::Complement(_) => todo!(),
@@ -181,7 +180,6 @@ impl RenderDnaCircular {
         feature: &Feature,
         start: (i64, gb_io::seq::Before),
         end: (i64, gb_io::seq::After),
-        bp: i64,
     ) -> Option<FeaturePosition> {
         if !Self::draw_feature(feature) {
             return None;
@@ -212,30 +210,30 @@ impl RenderDnaCircular {
         } else {
             ret.to
         };
-        ret.angle_start = self.angle(ret.from, bp);
-        ret.angle_stop = self.angle(ret.to_90, bp);
+        ret.angle_start = self.angle(ret.from);
+        ret.angle_stop = self.angle(ret.to_90);
         Some(ret)
     }
 
-    fn draw_features(&mut self, painter: &egui::Painter, bp: i64) {
+    fn draw_features(&mut self, painter: &egui::Painter) {
         for feature in &self.features {
-            self.draw_feature_from_range(painter, feature, bp);
+            self.draw_feature_from_range(painter, feature);
         }
     }
 
-    fn draw_feature_from_range(&self, painter: &egui::Painter, ret: &FeaturePosition, bp: i64) {
+    fn draw_feature_from_range(&self, painter: &egui::Painter, ret: &FeaturePosition) {
         let mut feature_points: Vec<Pos2> = vec![];
-        feature_points.push(self.pos2xy(ret.from, bp, ret.outer));
-        feature_points.push(self.pos2xy(ret.from, bp, ret.inner));
+        feature_points.push(self.pos2xy(ret.from, ret.outer));
+        feature_points.push(self.pos2xy(ret.from, ret.inner));
 
         let points = self.generate_arc(ret.inner, ret.angle_start, ret.angle_stop);
         feature_points.extend(points);
 
         if ret.is_pointy {
-            feature_points.push(self.pos2xy(ret.to, bp, (ret.outer + ret.inner) / 2.0));
+            feature_points.push(self.pos2xy(ret.to, (ret.outer + ret.inner) / 2.0));
         }
 
-        feature_points.push(self.pos2xy(ret.to_90, bp, ret.outer));
+        feature_points.push(self.pos2xy(ret.to_90, ret.outer));
 
         let points = self.generate_arc(ret.outer, ret.angle_stop, ret.angle_start);
         feature_points.extend(points);
@@ -256,19 +254,18 @@ impl RenderDnaCircular {
         let middle = (ret.to + ret.from) / 2;
         let point = self.pos2xy(
             middle,
-            bp,
             ret.outer + ret.band * self.feature_thickness() / 2.0,
         );
         let align = if ret.band < 0.0 {
             // Inside
-            if middle < bp / 2 {
+            if middle < self.sequence_length / 2 {
                 Align2::RIGHT_CENTER
             } else {
                 Align2::LEFT_CENTER
             }
         } else {
             // Outside
-            if middle > bp / 2 {
+            if middle > self.sequence_length / 2 {
                 Align2::RIGHT_CENTER
             } else {
                 Align2::LEFT_CENTER
@@ -320,7 +317,7 @@ impl RenderDnaCircular {
         );
     }
 
-    fn draw_bp(&self, painter: &egui::Painter, bp: i64) {
+    fn draw_bp(&self, painter: &egui::Painter) {
         let font_label = FontId {
             size: 12.0,
             family: FontFamily::Monospace,
@@ -328,7 +325,7 @@ impl RenderDnaCircular {
         painter.text(
             self.center.to_owned(),
             Align2::CENTER_TOP,
-            format!("{bp} bp"),
+            format!("{} bp", self.sequence_length),
             font_label,
             Color32::BLACK,
         );
@@ -362,12 +359,12 @@ impl RenderDnaCircular {
         }
     }
 
-    fn angle(&self, pos: i64, max_pos: i64) -> f32 {
-        360.0 * (pos as f32) / (max_pos as f32) - 90.0
+    fn angle(&self, pos: i64) -> f32 {
+        360.0 * (pos as f32) / (self.sequence_length as f32) - 90.0
     }
 
-    fn pos2xy(&self, pos: i64, max_pos: i64, radius: f32) -> Pos2 {
-        let angle = self.angle(pos, max_pos);
+    fn pos2xy(&self, pos: i64, radius: f32) -> Pos2 {
+        let angle = self.angle(pos);
         let t = angle * std::f32::consts::PI / 180.0;
         let x = radius * t.cos() + self.center.x;
         let y = radius * t.sin() + self.center.y;
