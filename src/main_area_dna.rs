@@ -219,15 +219,13 @@ impl MainAreaDna {
             let response = ui.add(self.map_dna.to_owned());
 
             if response.clicked() {
-                // self.map_dna.set_area(response.rect.to_owned());
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_click(pointer_state);
             }
 
             if response.double_clicked() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-                self.map_dna.on_click(pointer_state);
-                println!("Double clicked");
+                self.map_dna.on_double_click(pointer_state);
             }
         });
     }

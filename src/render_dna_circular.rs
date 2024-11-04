@@ -74,15 +74,27 @@ impl RenderDnaCircular {
 
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
-            let (angle, distance) = self.get_angle_distance(pos);
-            let angle = Self::normalize_angle(angle - 90.0);
-            let clicked_features = self
-                .features
-                .iter()
-                .filter(|feature| feature.contains_angle_distance(angle, distance))
-                .collect::<Vec<_>>();
-            self.selected_feature_number = clicked_features.first().map(|f| f.feature_number);
+            self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
         }
+    }
+
+    pub fn on_double_click(&mut self, pointer_state: PointerState) {
+        if let Some(pos) = pointer_state.latest_pos() {
+            if let Some(feature) = self.get_clicked_feature(pos) {
+                println!("Double-clicked {:?}", feature);
+            }
+        }
+    }
+
+    fn get_clicked_feature(&self, pos: Pos2) -> Option<&FeaturePosition> {
+        let (angle, distance) = self.get_angle_distance(pos);
+        let angle = Self::normalize_angle(angle - 90.0);
+        let clicked_features = self
+            .features
+            .iter()
+            .filter(|feature| feature.contains_angle_distance(angle, distance))
+            .collect::<Vec<_>>();
+        clicked_features.first().map(|f| f.to_owned())
     }
 
     pub fn set_area(&mut self, area: Rect) {

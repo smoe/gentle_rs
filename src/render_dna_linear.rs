@@ -32,16 +32,18 @@ impl RenderDnaLinear {
         &self.area
     }
 
-    pub fn set_area(&mut self, area: Rect) {
-        self.area = area;
-    }
-
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.area = ui.available_rect_before_wrap();
         ui.heading("Linear DNA");
     }
 
     pub fn on_click(&mut self, pointer_state: PointerState) {
+        if let Some(_pos) = pointer_state.latest_pos() {
+            todo!()
+        }
+    }
+
+    pub fn on_double_click(&mut self, pointer_state: PointerState) {
         if let Some(_pos) = pointer_state.latest_pos() {
             todo!()
         }

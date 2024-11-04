@@ -24,13 +24,6 @@ impl RenderDna {
         }
     }
 
-    pub fn set_area(&self, area: Rect) {
-        match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().set_area(area),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().set_area(area),
-        }
-    }
-
     fn area(&self) -> Rect {
         match self {
             RenderDna::Circular(renderer) => renderer.read().unwrap().area().to_owned(),
@@ -49,6 +42,15 @@ impl RenderDna {
         match self {
             RenderDna::Circular(renderer) => renderer.write().unwrap().on_click(pointer_state),
             RenderDna::Linear(renderer) => renderer.write().unwrap().on_click(pointer_state),
+        }
+    }
+
+    pub fn on_double_click(&self, pointer_state: PointerState) {
+        match self {
+            RenderDna::Circular(renderer) => {
+                renderer.write().unwrap().on_double_click(pointer_state)
+            }
+            RenderDna::Linear(renderer) => renderer.write().unwrap().on_double_click(pointer_state),
         }
     }
 
