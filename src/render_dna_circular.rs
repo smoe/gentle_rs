@@ -1,4 +1,4 @@
-use crate::{dna_sequence::DNAsequence, render_dna::RenderDnaEnum};
+use crate::{dna_sequence::DNAsequence, render_dna::RenderDna};
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
 };
@@ -200,7 +200,7 @@ impl RenderDnaCircular {
             is_pointy: Self::is_feature_pointy(feature),
             color: Self::feature_color(feature),
             band: Self::feature_band(feature),
-            label: RenderDnaEnum::feature_name(feature),
+            label: RenderDna::feature_name(feature),
         };
         if Self::feature_band(feature) == 0.0 {
             ret.inner = self.radius - self.feature_thickness() / 2.0;

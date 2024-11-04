@@ -10,59 +10,59 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-pub enum RenderDnaEnum {
+pub enum RenderDna {
     Circular(RenderDnaCircular),
     Linear(RenderDnaLinear),
 }
 
-impl RenderDnaEnum {
+impl RenderDna {
     pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         let is_circular = dna.read().unwrap().is_circular();
         match is_circular {
-            true => RenderDnaEnum::Circular(RenderDnaCircular::new(dna)),
-            false => RenderDnaEnum::Linear(RenderDnaLinear::new(dna)),
+            true => RenderDna::Circular(RenderDnaCircular::new(dna)),
+            false => RenderDna::Linear(RenderDnaLinear::new(dna)),
         }
     }
 
     pub fn area(&self) -> &egui::Rect {
         match self {
-            RenderDnaEnum::Circular(renderer) => renderer.area(),
-            RenderDnaEnum::Linear(renderer) => renderer.area(),
+            RenderDna::Circular(renderer) => renderer.area(),
+            RenderDna::Linear(renderer) => renderer.area(),
         }
     }
 
     pub fn is_circular(&self) -> bool {
         match self {
-            RenderDnaEnum::Circular(_) => true,
-            RenderDnaEnum::Linear(_) => false,
+            RenderDna::Circular(_) => true,
+            RenderDna::Linear(_) => false,
         }
     }
 
     pub fn on_click(&mut self, pointer_state: PointerState) {
         match self {
-            RenderDnaEnum::Circular(renderer) => renderer.on_click(pointer_state),
-            RenderDnaEnum::Linear(renderer) => renderer.on_click(pointer_state),
+            RenderDna::Circular(renderer) => renderer.on_click(pointer_state),
+            RenderDna::Linear(renderer) => renderer.on_click(pointer_state),
         }
     }
 
     pub fn get_selected_feature_id(&self) -> Option<usize> {
         match self {
-            RenderDnaEnum::Circular(renderer) => renderer.selected_feature_number(),
-            RenderDnaEnum::Linear(renderer) => renderer.selected_feature_number(),
+            RenderDna::Circular(renderer) => renderer.selected_feature_number(),
+            RenderDna::Linear(renderer) => renderer.selected_feature_number(),
         }
     }
 
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
         match self {
-            RenderDnaEnum::Circular(renderer) => renderer.select_feature(feature_number),
-            RenderDnaEnum::Linear(renderer) => renderer.select_feature(feature_number),
+            RenderDna::Circular(renderer) => renderer.select_feature(feature_number),
+            RenderDna::Linear(renderer) => renderer.select_feature(feature_number),
         }
     }
 
     fn render(&mut self, ui: &mut egui::Ui) {
         match self {
-            RenderDnaEnum::Circular(renderer) => renderer.render(ui),
-            RenderDnaEnum::Linear(renderer) => renderer.render(ui),
+            RenderDna::Circular(renderer) => renderer.render(ui),
+            RenderDna::Linear(renderer) => renderer.render(ui),
         }
     }
 
@@ -90,7 +90,7 @@ impl RenderDnaEnum {
     }
 }
 
-impl Widget for RenderDnaEnum {
+impl Widget for RenderDna {
     fn ui(mut self, ui: &mut Ui) -> Response {
         self.render(ui);
         let response = ui.allocate_response(self.area().size(), Sense::click());

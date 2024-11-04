@@ -1,7 +1,7 @@
 use crate::{
     dna_sequence::DNAsequence,
     icons::{ICON_CIRCULAR_LINEAR, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
-    render_dna::RenderDnaEnum,
+    render_dna::RenderDna,
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use std::{
@@ -12,7 +12,7 @@ use std::{
 #[derive(Debug)]
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
-    map_dna: RenderDnaEnum,
+    map_dna: RenderDna,
     show_sequence: bool,
     show_map: bool,
 }
@@ -21,7 +21,7 @@ impl MainAreaDna {
     pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         Self {
             dna: dna.clone(),
-            map_dna: RenderDnaEnum::new(dna),
+            map_dna: RenderDna::new(dna),
             show_sequence: true,
             show_map: true,
         }
@@ -139,7 +139,7 @@ impl MainAreaDna {
                         .features()
                         .get(*id)
                     {
-                        Some(feature) => RenderDnaEnum::feature_name(feature),
+                        Some(feature) => RenderDna::feature_name(feature),
                         None => continue,
                     };
                     let selected = selected_id == Some(*id);
@@ -177,7 +177,7 @@ impl MainAreaDna {
                         .unwrap()
                         .to_owned(); // Temporary copy
 
-                    let name = RenderDnaEnum::feature_name(&feature);
+                    let name = RenderDna::feature_name(&feature);
                     ui.heading(name);
                     let desc = &match feature.location.find_bounds() {
                         Ok((from, to)) => format!("{from}..{to}"),
@@ -199,7 +199,7 @@ impl MainAreaDna {
 
     pub fn update_dna_map(&mut self) {
         if self.is_circular() != self.map_dna.is_circular() {
-            self.map_dna = RenderDnaEnum::new(self.dna.clone());
+            self.map_dna = RenderDna::new(self.dna.clone());
         }
     }
 
