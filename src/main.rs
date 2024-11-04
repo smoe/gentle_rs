@@ -1,5 +1,6 @@
-use crate::facility::Facility;
+use facility::Facility;
 use lazy_static::lazy_static;
+use translations::Translations;
 
 pub mod amino_acids;
 pub mod app;
@@ -15,10 +16,14 @@ pub mod render_dna;
 pub mod render_dna_circular;
 pub mod render_dna_linear;
 pub mod restriction_enzyme;
+pub mod translations;
 
 lazy_static! {
     // IUPAC codes etc.
     pub static ref FACILITY: Facility = Facility::new();
+
+    // Interface translations
+    pub static ref TRANSLATIONS: Translations = Translations::new();
 }
 
 fn main() {

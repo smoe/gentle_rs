@@ -2,14 +2,14 @@ use crate::{
     dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
 };
-use eframe::egui::{self, PointerState};
+use eframe::egui::{self, PointerState, Response, Sense, Ui, Widget};
 use gb_io::seq::Feature;
 use std::{
     fmt::Debug,
     sync::{Arc, RwLock},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RenderDnaEnum {
     Circular(RenderDnaCircular),
     Linear(RenderDnaLinear),
@@ -59,7 +59,7 @@ impl RenderDnaEnum {
         }
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
+    fn render(&mut self, ui: &mut egui::Ui) {
         match self {
             RenderDnaEnum::Circular(renderer) => renderer.render(ui),
             RenderDnaEnum::Linear(renderer) => renderer.render(ui),
@@ -87,5 +87,14 @@ impl RenderDnaEnum {
             break;
         }
         label_text
+    }
+}
+
+impl Widget for RenderDnaEnum {
+    fn ui(mut self, ui: &mut Ui) -> Response {
+        self.render(ui);
+        let response = ui.allocate_response(self.area().size(), Sense::click());
+        response
+        // Response::new(self.area().clone())
     }
 }

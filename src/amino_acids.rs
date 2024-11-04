@@ -1,9 +1,6 @@
 use csv::ReaderBuilder;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    fs::{self, File},
-};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CodonTable {
@@ -51,8 +48,8 @@ pub struct AminoAcids {
 impl AminoAcids {
     pub fn load() -> Self {
         let mut ret = Self::default();
-        let data = fs::read_to_string("assets/amino_acids.json").expect("File not found");
-        let res: serde_json::Value = serde_json::from_str(&data).expect("Can not parse JSON");
+        let data = include_str!("../assets/amino_acids.json");
+        let res: serde_json::Value = serde_json::from_str(data).expect("Can not parse JSON");
         let arr = res.as_array().expect("JSON is not an array");
         for row in arr {
             let aa: AminoAcid = match serde_json::from_str(&row.to_string()) {
@@ -70,8 +67,10 @@ impl AminoAcids {
     }
 
     fn load_codon_catalog(&mut self) {
-        let file = File::open("assets/codon_catalog.csv").expect("Codon catalog file not found");
-        let mut rdr = ReaderBuilder::new().has_headers(false).from_reader(file);
+        let text = include_str!("../assets/codon_catalog.csv");
+        let mut rdr = ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(text.as_bytes());
         let mut header = vec![];
         for result in rdr.records() {
             let record = result.expect("Bad CSV line");
@@ -94,8 +93,8 @@ impl AminoAcids {
 
     fn get_codon_tables() -> HashMap<usize, CodonTable> {
         let mut ret = HashMap::new();
-        let data = fs::read_to_string("assets/codon_tables.json").expect("File not found");
-        let res: serde_json::Value = serde_json::from_str(&data).expect("Invalid JSON");
+        let data = include_str!("../assets/codon_tables.json");
+        let res: serde_json::Value = serde_json::from_str(data).expect("Invalid JSON");
         let arr = res.as_array().expect("JSON not an array");
         for row in arr {
             let ct: CodonTable = match serde_json::from_str(&row.to_string()) {

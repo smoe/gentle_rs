@@ -1,6 +1,5 @@
 use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
 use anyhow::{anyhow, Result};
-use std::fs;
 
 #[derive(Clone, Debug, Default)]
 pub struct Enzymes {
@@ -11,13 +10,13 @@ pub struct Enzymes {
 }
 
 impl Enzymes {
-    pub fn from_json_file(filename: &str) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let mut ret = Self::default();
-        let data = fs::read_to_string(filename)?;
-        let res: serde_json::Value = serde_json::from_str(&data)?;
+        let data = include_str!("../assets/enzymes.json");
+        let res: serde_json::Value = serde_json::from_str(data)?;
         let arr = res
             .as_array()
-            .ok_or(anyhow!("JSON in file '{filename}' is not an array"))?;
+            .ok_or(anyhow!("Enzymes file is not a JSON array"))?;
         for row in arr {
             let enzyme_type = match row.get("type") {
                 Some(et) => et,
@@ -72,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_from_json_file() {
-        let enzymes = Enzymes::from_json_file("assets/enzymes.json").unwrap();
+        let enzymes = Enzymes::new().unwrap();
         assert!(enzymes
             .restriction_enzymes
             .iter()

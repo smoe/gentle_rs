@@ -38,7 +38,7 @@ impl FeaturePosition {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RenderDnaCircular {
     dna: Arc<RwLock<DNAsequence>>,
     sequence_length: i64,

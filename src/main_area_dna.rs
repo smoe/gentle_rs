@@ -3,7 +3,7 @@ use crate::{
     icons::{ICON_CIRCULAR_LINEAR, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
     render_dna::RenderDnaEnum,
 };
-use eframe::egui::{self, Frame, PointerState, Sense, Vec2};
+use eframe::egui::{self, Frame, PointerState, Vec2};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -51,7 +51,9 @@ impl MainAreaDna {
                 });
             } else {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    self.render_dna_map(ui);
+                    self.update_dna_map();
+                    ui.add(self.map_dna.to_owned());
+                    // self.render_dna_map(ui);
                 });
             }
         } else {
@@ -195,15 +197,16 @@ impl MainAreaDna {
         self.dna.read().expect("DNA lock poisoned").is_circular()
     }
 
-    pub fn render_dna_map(&mut self, ui: &mut egui::Ui) {
+    pub fn update_dna_map(&mut self) {
         if self.is_circular() != self.map_dna.is_circular() {
             self.map_dna = RenderDnaEnum::new(self.dna.clone());
         }
-        self.map_dna.render(ui);
     }
 
     pub fn render_middle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            self.update_dna_map();
+
             Frame::none().show(ui, |ui| {
                 ui.vertical(|ui| {
                     self.render_features(ui);
@@ -211,19 +214,19 @@ impl MainAreaDna {
                 });
             });
 
-            Frame::none()
-                .fill(egui::Color32::LIGHT_BLUE)
-                .show(ui, |ui| {
-                    self.render_dna_map(ui);
-                });
+            ui.separator();
+
+            let response = ui.add(self.map_dna.to_owned());
+
+            if response.clicked() {
+                let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
+                self.map_dna.on_click(pointer_state);
+            }
+
+            // if response.double_clicked() {
+            //     let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
+            //     self.map_dna.on_click(pointer_state);
+            // }
         });
-
-        if ui.response().clicked() {
-            // .interact(Sense::click())
-            let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-            println!("{pointer_state:?}");
-
-            self.map_dna.on_click(pointer_state);
-        }
     }
 }

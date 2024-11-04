@@ -10,7 +10,7 @@ struct FeaturePosition {
     _to: i64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RenderDnaLinear {
     area: Rect,
     _dna: Arc<RwLock<DNAsequence>>,

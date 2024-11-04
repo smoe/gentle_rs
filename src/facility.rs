@@ -2,7 +2,7 @@
 
 use crate::amino_acids::AminoAcids;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs};
+use std::collections::HashMap;
 
 const DNA_A: u8 = 1;
 const DNA_C: u8 = 2;
@@ -60,8 +60,8 @@ impl Facility {
 
     fn get_dna_markers() -> HashMap<String, Vec<DNAmarkerPart>> {
         let mut ret = HashMap::new();
-        let data = fs::read_to_string("assets/dna_markers.json").expect("File not found");
-        let res: serde_json::Value = serde_json::from_str(&data).expect("Invalid JSON");
+        let data = include_str!("../assets/dna_markers.json");
+        let res: serde_json::Value = serde_json::from_str(data).expect("Invalid JSON");
         let map = res.as_object().expect("JSON is not an object");
         for (name, parts) in map.iter() {
             let parts: Vec<DNAmarkerPart> = parts
