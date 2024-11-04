@@ -30,11 +30,17 @@ struct FeaturePosition {
 }
 
 impl FeaturePosition {
-    fn contains_point(&self, angle: f32, distance: f32) -> bool {
-        self.inner <= distance
-            && distance <= self.outer
-            && self.angle_start <= angle
-            && angle <= self.angle_stop
+    fn contains_angle_distance(&self, angle: f32, distance: f32) -> bool {
+        if self.inner > distance || self.outer < distance {
+            return false;
+        }
+        if self.angle_stop < self.angle_start {
+            // Feature extends over zero point
+            (angle >= self.angle_start && angle <= 360.0)
+                || (angle >= 0.0 && angle <= self.angle_stop)
+        } else {
+            angle >= self.angle_start && angle <= self.angle_stop
+        }
     }
 }
 
@@ -69,13 +75,19 @@ impl RenderDnaCircular {
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             let (angle, distance) = self.get_angle_distance(pos);
+            let angle = Self::normalize_angle(angle - 90.0);
             let clicked_features = self
                 .features
                 .iter()
-                .filter(|feature| feature.contains_point(angle, distance))
+                .filter(|feature| feature.contains_angle_distance(angle, distance))
                 .collect::<Vec<_>>();
             self.selected_feature_number = clicked_features.first().map(|f| f.feature_number);
         }
+    }
+
+    pub fn set_area(&mut self, area: Rect) {
+        self.area = area;
+        self.center = self.area.center();
     }
 
     pub fn selected_feature_number(&self) -> Option<usize> {
@@ -105,7 +117,7 @@ impl RenderDnaCircular {
         let diff_x = pos.x - self.center.x;
         let diff_y = pos.y - self.center.y;
         let angle = diff_y.atan2(diff_x) * 180.0 / std::f32::consts::PI + 90.0;
-        let angle = if angle < 0.0 { angle + 360.0 } else { angle };
+        let angle = Self::normalize_angle(angle);
         let distance = (diff_x.powi(2) + diff_y.powi(2)).sqrt();
         (angle, distance)
     }
@@ -197,8 +209,8 @@ impl RenderDnaCircular {
             inner: 0.0,
             outer: 0.0,
             to_90: 0,
-            is_pointy: Self::is_feature_pointy(feature),
-            color: Self::feature_color(feature),
+            is_pointy: RenderDna::is_feature_pointy(feature),
+            color: RenderDna::feature_color(feature),
             band: Self::feature_band(feature),
             label: RenderDna::feature_name(feature),
         };
@@ -208,6 +220,9 @@ impl RenderDnaCircular {
         } else {
             ret.inner = self.radius + Self::feature_band(feature) * self.feature_thickness();
             ret.outer = self.radius + 2.0 * Self::feature_band(feature) * self.feature_thickness();
+        }
+        if ret.inner > ret.outer {
+            std::mem::swap(&mut ret.inner, &mut ret.outer);
         }
         ret.to_90 = if ret.is_pointy {
             ret.to - (ret.to - ret.from) / 20
@@ -275,7 +290,9 @@ impl RenderDnaCircular {
                 Align2::LEFT_CENTER
             }
         };
-        painter.text(point, align, ret.label.to_owned(), font_feature, ret.color);
+        let text = ret.label.to_owned();
+        // let text = format!("{}: {}-{}", ret.label, ret.inner, ret.outer);
+        painter.text(point, align, text, font_feature, ret.color);
     }
 
     fn generate_arc(&self, radius: f32, angle_start: f32, angle_stop: f32) -> Vec<Pos2> {
@@ -348,23 +365,18 @@ impl RenderDnaCircular {
         feature_kind != "SOURCE"
     }
 
-    fn is_feature_pointy(feature: &Feature) -> bool {
-        matches!(
-            feature.kind.to_string().to_ascii_uppercase().as_str(),
-            "CDS" | "GENE"
-        )
-    }
-
-    fn feature_color(feature: &Feature) -> Color32 {
-        match feature.kind.to_string().to_ascii_uppercase().as_str() {
-            "CDS" => Color32::RED,
-            "GENE" => Color32::BLUE,
-            _ => Color32::GRAY,
+    fn normalize_angle(angle: f32) -> f32 {
+        if angle < 0.0 {
+            angle + 360.0
+        } else if angle > 360.0 {
+            angle - 360.0
+        } else {
+            angle
         }
     }
 
     fn angle(&self, pos: i64) -> f32 {
-        360.0 * (pos as f32) / (self.sequence_length as f32) - 90.0
+        Self::normalize_angle(360.0 * (pos as f32) / (self.sequence_length as f32) - 90.0)
     }
 
     fn pos2xy(&self, pos: i64, radius: f32) -> Pos2 {

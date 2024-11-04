@@ -32,6 +32,10 @@ impl RenderDnaLinear {
         &self.area
     }
 
+    pub fn set_area(&mut self, area: Rect) {
+        self.area = area;
+    }
+
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.area = ui.available_rect_before_wrap();
         ui.heading("Linear DNA");

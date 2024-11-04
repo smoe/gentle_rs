@@ -2,7 +2,7 @@ use crate::{
     dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
 };
-use eframe::egui::{self, PointerState, Response, Sense, Ui, Widget};
+use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
 use gb_io::seq::Feature;
 use std::{
     fmt::Debug,
@@ -11,23 +11,30 @@ use std::{
 
 #[derive(Debug, Clone)]
 pub enum RenderDna {
-    Circular(RenderDnaCircular),
-    Linear(RenderDnaLinear),
+    Circular(Arc<RwLock<RenderDnaCircular>>),
+    Linear(Arc<RwLock<RenderDnaLinear>>),
 }
 
 impl RenderDna {
     pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         let is_circular = dna.read().unwrap().is_circular();
         match is_circular {
-            true => RenderDna::Circular(RenderDnaCircular::new(dna)),
-            false => RenderDna::Linear(RenderDnaLinear::new(dna)),
+            true => RenderDna::Circular(Arc::new(RwLock::new(RenderDnaCircular::new(dna)))),
+            false => RenderDna::Linear(Arc::new(RwLock::new(RenderDnaLinear::new(dna)))),
         }
     }
 
-    pub fn area(&self) -> &egui::Rect {
+    pub fn set_area(&self, area: Rect) {
         match self {
-            RenderDna::Circular(renderer) => renderer.area(),
-            RenderDna::Linear(renderer) => renderer.area(),
+            RenderDna::Circular(renderer) => renderer.write().unwrap().set_area(area),
+            RenderDna::Linear(renderer) => renderer.write().unwrap().set_area(area),
+        }
+    }
+
+    fn area(&self) -> Rect {
+        match self {
+            RenderDna::Circular(renderer) => renderer.read().unwrap().area().to_owned(),
+            RenderDna::Linear(renderer) => renderer.read().unwrap().area().to_owned(),
         }
     }
 
@@ -38,31 +45,48 @@ impl RenderDna {
         }
     }
 
-    pub fn on_click(&mut self, pointer_state: PointerState) {
+    pub fn on_click(&self, pointer_state: PointerState) {
         match self {
-            RenderDna::Circular(renderer) => renderer.on_click(pointer_state),
-            RenderDna::Linear(renderer) => renderer.on_click(pointer_state),
+            RenderDna::Circular(renderer) => renderer.write().unwrap().on_click(pointer_state),
+            RenderDna::Linear(renderer) => renderer.write().unwrap().on_click(pointer_state),
         }
     }
 
     pub fn get_selected_feature_id(&self) -> Option<usize> {
         match self {
-            RenderDna::Circular(renderer) => renderer.selected_feature_number(),
-            RenderDna::Linear(renderer) => renderer.selected_feature_number(),
+            RenderDna::Circular(renderer) => renderer.read().unwrap().selected_feature_number(),
+            RenderDna::Linear(renderer) => renderer.read().unwrap().selected_feature_number(),
         }
     }
 
-    pub fn select_feature(&mut self, feature_number: Option<usize>) {
+    pub fn select_feature(&self, feature_number: Option<usize>) {
         match self {
-            RenderDna::Circular(renderer) => renderer.select_feature(feature_number),
-            RenderDna::Linear(renderer) => renderer.select_feature(feature_number),
+            RenderDna::Circular(renderer) => {
+                renderer.write().unwrap().select_feature(feature_number)
+            }
+            RenderDna::Linear(renderer) => renderer.write().unwrap().select_feature(feature_number),
         }
     }
 
-    fn render(&mut self, ui: &mut egui::Ui) {
+    fn render(&self, ui: &mut egui::Ui) {
         match self {
-            RenderDna::Circular(renderer) => renderer.render(ui),
-            RenderDna::Linear(renderer) => renderer.render(ui),
+            RenderDna::Circular(renderer) => renderer.write().unwrap().render(ui),
+            RenderDna::Linear(renderer) => renderer.write().unwrap().render(ui),
+        }
+    }
+
+    pub fn is_feature_pointy(feature: &Feature) -> bool {
+        matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "CDS" | "GENE"
+        )
+    }
+
+    pub fn feature_color(feature: &Feature) -> Color32 {
+        match feature.kind.to_string().to_ascii_uppercase().as_str() {
+            "CDS" => Color32::RED,
+            "GENE" => Color32::BLUE,
+            _ => Color32::GRAY,
         }
     }
 
@@ -91,10 +115,8 @@ impl RenderDna {
 }
 
 impl Widget for RenderDna {
-    fn ui(mut self, ui: &mut Ui) -> Response {
+    fn ui(self, ui: &mut Ui) -> Response {
         self.render(ui);
-        let response = ui.allocate_response(self.area().size(), Sense::click());
-        response
-        // Response::new(self.area().clone())
+        ui.allocate_response(self.area().size(), Sense::click())
     }
 }
