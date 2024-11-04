@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use crate::{dna_sequence::DNAsequence, main_area_dna::MainAreaDna};
 use eframe::egui;
@@ -17,7 +17,7 @@ impl MainArea {
         }
     }
 
-    pub fn new_dna(dna: Arc<Mutex<DNAsequence>>) -> Self {
+    pub fn new_dna(dna: Arc<RwLock<DNAsequence>>) -> Self {
         MainArea::Dna(MainAreaDna::new(dna))
     }
 }

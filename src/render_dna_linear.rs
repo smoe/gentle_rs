@@ -1,7 +1,7 @@
-use eframe::egui::{self, PointerState};
+use eframe::egui::{self, PointerState, Rect};
 
 use crate::dna_sequence::DNAsequence;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
 struct FeaturePosition {
@@ -12,14 +12,16 @@ struct FeaturePosition {
 
 #[derive(Debug)]
 pub struct RenderDnaLinear {
-    _dna: Arc<Mutex<DNAsequence>>,
+    _area: Rect,
+    _dna: Arc<RwLock<DNAsequence>>,
     _features: Vec<FeaturePosition>,
     selected_feature_number: Option<usize>,
 }
 
 impl RenderDnaLinear {
-    pub fn new(dna: Arc<Mutex<DNAsequence>>) -> Self {
+    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         Self {
+            _area: Rect::NOTHING,
             _dna: dna,
             _features: vec![],
             selected_feature_number: None,

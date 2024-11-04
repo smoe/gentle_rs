@@ -5,13 +5,13 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use eframe::egui;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 #[derive(Default)]
 pub struct GENtleApp {
     main_area: Option<MainArea>,
     left_panel: LeftPanel,
-    dna_sequence: Vec<Arc<Mutex<DNAsequence>>>,
+    dna_sequence: Vec<Arc<RwLock<DNAsequence>>>,
 }
 
 impl GENtleApp {
@@ -35,14 +35,14 @@ impl GENtleApp {
         ret
     }
 
-    fn load_demo_data() -> Vec<Arc<Mutex<DNAsequence>>> {
+    fn load_demo_data() -> Vec<Arc<RwLock<DNAsequence>>> {
         vec![
             Self::load_dna_from_genbank_file("test_files/pGEX-3X.gb").unwrap(),
             Self::load_dna_from_fasta_file("test_files/pGEX_3X.fa").unwrap(),
         ]
     }
 
-    pub fn dna_sequence(&self) -> &Vec<Arc<Mutex<DNAsequence>>> {
+    pub fn dna_sequence(&self) -> &Vec<Arc<RwLock<DNAsequence>>> {
         &self.dna_sequence
     }
 
@@ -54,18 +54,18 @@ impl GENtleApp {
         self.main_area = main_area;
     }
 
-    fn load_dna_from_genbank_file(filename: &str) -> Result<Arc<Mutex<DNAsequence>>> {
+    fn load_dna_from_genbank_file(filename: &str) -> Result<Arc<RwLock<DNAsequence>>> {
         let dna = dna_sequence::DNAsequence::from_genbank_file(filename)?
             .pop()
             .ok_or_else(|| anyhow!("Could not read genbank file {filename}"))?;
-        Ok(Arc::new(Mutex::new(dna)))
+        Ok(Arc::new(RwLock::new(dna)))
     }
 
-    fn load_dna_from_fasta_file(filename: &str) -> Result<Arc<Mutex<DNAsequence>>> {
+    fn load_dna_from_fasta_file(filename: &str) -> Result<Arc<RwLock<DNAsequence>>> {
         let dna = dna_sequence::DNAsequence::from_fasta_file(filename)?
             .pop()
             .ok_or_else(|| anyhow!("Could not read fasta file {filename}"))?;
-        Ok(Arc::new(Mutex::new(dna)))
+        Ok(Arc::new(RwLock::new(dna)))
     }
 }
 

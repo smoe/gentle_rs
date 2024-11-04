@@ -17,7 +17,7 @@ impl LeftPanel {
                         ui.vertical(|ui| {
                             for (i, dna) in app.dna_sequence().clone().iter().enumerate() {
                                 let name = dna
-                                    .lock()
+                                    .read()
                                     .expect("DNA lock poisoned")
                                     .name()
                                     .as_ref()

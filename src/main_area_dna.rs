@@ -1,36 +1,33 @@
 use crate::{
     dna_sequence::DNAsequence,
     icons::{ICON_CIRCULAR_LINEAR, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
-    render_dna_circular::RenderDnaCircular,
-    render_dna_linear::RenderDnaLinear,
+    render_dna::RenderDnaEnum,
 };
 use eframe::egui::{self, Frame, PointerState, Sense, Vec2};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
 #[derive(Debug)]
 pub struct MainAreaDna {
-    dna: Arc<Mutex<DNAsequence>>,
-    map_circular: Option<RenderDnaCircular>,
-    map_linear: Option<RenderDnaLinear>,
+    dna: Arc<RwLock<DNAsequence>>,
+    map_dna: RenderDnaEnum,
     show_sequence: bool,
     show_map: bool,
 }
 
 impl MainAreaDna {
-    pub fn new(dna: Arc<Mutex<DNAsequence>>) -> Self {
+    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
         Self {
-            dna,
-            map_circular: None,
-            map_linear: None,
+            dna: dna.clone(),
+            map_dna: RenderDnaEnum::new(dna),
             show_sequence: true,
             show_map: true,
         }
     }
 
-    pub fn dna(&self) -> &Arc<Mutex<DNAsequence>> {
+    pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
         &self.dna
     }
 
@@ -73,7 +70,7 @@ impl MainAreaDna {
                     .rounding(5.0),
             );
             if ui.add(button).clicked() {
-                let mut dna = self.dna.lock().expect("DNA lock poisoned");
+                let mut dna = self.dna.write().expect("DNA lock poisoned");
                 let is_circular = dna.is_circular();
                 dna.set_circular(!is_circular);
             }
@@ -91,23 +88,17 @@ impl MainAreaDna {
     }
 
     pub fn render_sequence(&mut self, ui: &mut egui::Ui) {
-        ui.label(self.dna.lock().expect("DNA lock poisoned").to_string());
+        ui.label(self.dna.read().expect("DNA lock poisoned").to_string());
     }
 
     fn get_selected_feature_id(&self) -> Option<usize> {
-        if let Some(ref map) = self.map_circular {
-            return map.selected_feature_number();
-        }
-        if let Some(ref map) = self.map_linear {
-            return map.selected_feature_number();
-        }
-        None
+        self.map_dna.get_selected_feature_id()
     }
 
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         ui.heading(
             self.dna
-                .lock()
+                .read()
                 .expect("DNA lock poisoned")
                 .name()
                 .as_ref()
@@ -118,7 +109,7 @@ impl MainAreaDna {
         let selected_id = self.get_selected_feature_id();
         let typed_features = self
             .dna
-            .lock()
+            .read()
             .expect("DNA lock poisoned")
             .features()
             .iter()
@@ -141,24 +132,19 @@ impl MainAreaDna {
                 for id in ids {
                     let name = match &self
                         .dna
-                        .lock()
+                        .read()
                         .expect("DNA lock poisoned")
                         .features()
                         .get(*id)
                     {
-                        Some(feature) => RenderDnaCircular::feature_name(feature),
+                        Some(feature) => RenderDnaEnum::feature_name(feature),
                         None => continue,
                     };
                     let selected = selected_id == Some(*id);
                     ui.horizontal(|ui| {
                         let button = egui::Button::new(name).selected(selected);
                         if ui.add(button).clicked() {
-                            // println!("Selected feature #{id}");
-                            if let Some(map) = self.map_circular.as_mut() {
-                                map.select_feature(Some(*id));
-                            } else if let Some(map) = self.map_linear.as_mut() {
-                                map.select_feature(Some(*id));
-                            }
+                            self.map_dna.select_feature(Some(*id));
                         }
                     });
                 }
@@ -168,7 +154,7 @@ impl MainAreaDna {
 
     fn get_sequence_description(&self) -> String {
         self.dna
-            .lock()
+            .read()
             .expect("DNA lock poisoned")
             .description()
             .join("\n")
@@ -182,14 +168,14 @@ impl MainAreaDna {
                 Some(id) => {
                     let feature = self
                         .dna
-                        .lock()
+                        .read()
                         .expect("DNA lock poisoned")
                         .features()
                         .get(id)
                         .unwrap()
                         .to_owned(); // Temporary copy
 
-                    let name = RenderDnaCircular::feature_name(&feature);
+                    let name = RenderDnaEnum::feature_name(&feature);
                     ui.heading(name);
                     let desc = &match feature.location.find_bounds() {
                         Ok((from, to)) => format!("{from}..{to}"),
@@ -206,27 +192,14 @@ impl MainAreaDna {
     }
 
     fn is_circular(&self) -> bool {
-        self.dna.lock().expect("DNA lock poisoned").is_circular()
+        self.dna.read().expect("DNA lock poisoned").is_circular()
     }
 
     pub fn render_dna_map(&mut self, ui: &mut egui::Ui) {
-        if self.is_circular() {
-            self.map_linear = None;
-            if self.map_circular.is_none() {
-                self.map_circular = Some(RenderDnaCircular::new(self.dna.clone()));
-            }
-            if let Some(renderer) = &mut self.map_circular {
-                renderer.render(ui);
-            }
-        } else {
-            self.map_circular = None;
-            if self.map_linear.is_none() {
-                self.map_linear = Some(RenderDnaLinear::new(self.dna.clone()));
-            }
-            if let Some(renderer) = &mut self.map_linear {
-                renderer.render(ui);
-            }
+        if self.is_circular() != self.map_dna.is_circular() {
+            self.map_dna = RenderDnaEnum::new(self.dna.clone());
         }
+        self.map_dna.render(ui);
     }
 
     pub fn render_middle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
@@ -247,11 +220,8 @@ impl MainAreaDna {
 
         if ui.response().interact(Sense::click()).clicked() {
             let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-            if let Some(dna_map) = &mut self.map_circular {
-                dna_map.on_click(pointer_state);
-            } else if let Some(dna_map) = &mut self.map_linear {
-                dna_map.on_click(pointer_state);
-            }
+            println!("{pointer_state:?}");
+            self.map_dna.on_click(pointer_state);
         }
     }
 }

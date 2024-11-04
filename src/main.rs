@@ -11,6 +11,7 @@ pub mod left_panel;
 pub mod main_area;
 pub mod main_area_dna;
 pub mod protease;
+pub mod render_dna;
 pub mod render_dna_circular;
 pub mod render_dna_linear;
 pub mod restriction_enzyme;
