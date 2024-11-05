@@ -15,7 +15,7 @@ pub struct RestrictionEnzyme {
 
 #[derive(Clone, Debug)]
 pub struct RestrictionEnzymeSite {
-    pub offset: usize,
+    pub offset: isize,
     pub enzyme: RestrictionEnzyme,
     pub forward_strand: bool,
 }
@@ -60,11 +60,11 @@ impl RestrictionEnzyme {
             };
             let s = forward.get(range); // TODO circular
             if let Some(s) = s {
-                let s = std::str::from_utf8(s).unwrap();
+                let s = std::str::from_utf8(s).unwrap().to_uppercase(); // TODO do this once?
                 if s == self.sequence {
                     // TODO IUPAC
                     ret.push(RestrictionEnzymeSite {
-                        offset: start,
+                        offset: start as isize,
                         enzyme: self.to_owned(),
                         forward_strand: true,
                     });

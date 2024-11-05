@@ -2,6 +2,7 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     left_panel::LeftPanel,
     main_area::MainArea,
+    ENZYMES,
 };
 use anyhow::{anyhow, Result};
 use eframe::egui;
@@ -36,10 +37,19 @@ impl GENtleApp {
     }
 
     fn load_demo_data() -> Vec<Arc<RwLock<DNAsequence>>> {
-        vec![
+        // Load two demo sequences
+        let ret = vec![
             Self::load_dna_from_genbank_file("test_files/pGEX-3X.gb").unwrap(),
             Self::load_dna_from_fasta_file("test_files/pGEX_3X.fa").unwrap(),
-        ]
+        ];
+
+        // Set up restriction enzyme sites for first one
+        ENZYMES
+            .restriction_enzymes()
+            .clone_into(ret[0].write().unwrap().re_mut());
+        ret[0].write().unwrap().update_re_sites();
+
+        ret
     }
 
     pub fn dna_sequence(&self) -> &Vec<Arc<RwLock<DNAsequence>>> {

@@ -121,6 +121,7 @@ impl RenderDnaCircular {
         self.draw_backbone(painter);
         self.draw_main_label(painter);
         self.draw_bp(painter);
+        self.draw_re(painter);
         self.layout_features(); // TODO cache and invalidate on update
         self.draw_features(painter);
     }
@@ -348,6 +349,44 @@ impl RenderDnaCircular {
             font_label,
             Color32::BLACK,
         );
+    }
+
+    /// Draws restriction enzyme sites
+    fn draw_re(&self, painter: &egui::Painter) {
+        let font_tick = FontId {
+            size: 9.0,
+            family: FontFamily::Monospace,
+        };
+
+        for re_site in self
+            .dna
+            .read()
+            .unwrap()
+            .re_sites()
+            .iter()
+            .filter(|site| site.forward_strand)
+        {
+            let pos = re_site.offset + re_site.enzyme.cut;
+            let pos = pos as i64;
+
+            let p1 = self.pos2xy(pos, self.radius);
+            let p2 = self.pos2xy(pos, self.radius * 1.18);
+            let p3 = self.pos2xy(pos, self.radius * 1.2);
+            painter.line_segment([p1, p2], BLACK_1.to_owned());
+
+            let align = if pos > self.sequence_length / 2 {
+                Align2::RIGHT_CENTER
+            } else {
+                Align2::LEFT_CENTER
+            };
+            painter.text(
+                p3,
+                align,
+                re_site.enzyme.name.to_owned(),
+                font_tick.to_owned(),
+                Color32::BLACK,
+            );
+        }
     }
 
     fn draw_bp(&self, painter: &egui::Painter) {

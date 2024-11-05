@@ -3,8 +3,8 @@ use anyhow::{anyhow, Result};
 
 #[derive(Clone, Debug, Default)]
 pub struct Enzymes {
-    restriction_enzymes: Vec<RestrictionEnzyme>,
-    proteases: Vec<Protease>,
+    restriction_enzymes: Vec<RestrictionEnzyme>, // TODO Arc<RwLock<>>
+    proteases: Vec<Protease>,                    // TODO Arc<RwLock<>>
     max_re_length: usize,
     has_nonpalindromic_restriction_enzymes: bool,
 }

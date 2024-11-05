@@ -34,6 +34,9 @@ impl DNAoverhang {
 pub struct DNAsequence {
     seq: Seq,
     overhang: DNAoverhang,
+    re: Vec<RestrictionEnzyme>,
+    re_sites: Vec<RestrictionEnzymeSite>,
+    max_re_sites: Option<usize>,
 }
 
 impl DNAsequence {
@@ -80,6 +83,9 @@ impl DNAsequence {
         Self {
             seq,
             overhang: DNAoverhang::default(),
+            re: vec![],
+            re_sites: vec![],
+            max_re_sites: Some(3), // TODO default?
         }
     }
 
@@ -119,7 +125,33 @@ impl DNAsequence {
         Self {
             seq,
             overhang: DNAoverhang::default(),
+            re: vec![],
+            re_sites: vec![],
+            max_re_sites: Some(3), // TODO default?
         }
+    }
+
+    pub fn set_max_re_sites(&mut self, max_re_sites: Option<usize>) {
+        self.max_re_sites = max_re_sites;
+    }
+    pub fn re(&self) -> &Vec<RestrictionEnzyme> {
+        &self.re
+    }
+
+    pub fn re_mut(&mut self) -> &mut Vec<RestrictionEnzyme> {
+        &mut self.re
+    }
+
+    pub fn re_sites(&self) -> &Vec<RestrictionEnzymeSite> {
+        &self.re_sites
+    }
+
+    pub fn update_re_sites(&mut self) {
+        self.re_sites = self
+            .re
+            .iter()
+            .flat_map(|re| re.get_sites(self, self.max_re_sites.to_owned()))
+            .collect();
     }
 
     pub fn features(&self) -> &Vec<Feature> {

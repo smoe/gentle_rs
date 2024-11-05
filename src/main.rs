@@ -1,3 +1,4 @@
+use enzymes::Enzymes;
 use facility::Facility;
 use lazy_static::lazy_static;
 use translations::Translations;
@@ -24,6 +25,9 @@ lazy_static! {
 
     // Interface translations
     pub static ref TRANSLATIONS: Translations = Translations::new();
+
+    // Restriction enzymes and proteases
+    pub static ref ENZYMES: Enzymes = Enzymes::new().unwrap();
 }
 
 fn main() {
