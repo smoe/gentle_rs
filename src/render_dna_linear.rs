@@ -1,6 +1,6 @@
 use eframe::egui::{self, PointerState, Rect};
 
-use crate::dna_sequence::DNAsequence;
+use crate::{dna_sequence::DNAsequence, main_area_dna::DnaDisplay};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]
@@ -13,15 +13,17 @@ struct FeaturePosition {
 #[derive(Debug, Clone)]
 pub struct RenderDnaLinear {
     area: Rect,
+    display: Arc<RwLock<DnaDisplay>>,
     _dna: Arc<RwLock<DNAsequence>>,
     _features: Vec<FeaturePosition>,
     selected_feature_number: Option<usize>,
 }
 
 impl RenderDnaLinear {
-    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
+    pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         Self {
             area: Rect::NOTHING,
+            display,
             _dna: dna,
             _features: vec![],
             selected_feature_number: None,
@@ -34,7 +36,11 @@ impl RenderDnaLinear {
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.area = ui.available_rect_before_wrap();
-        ui.heading("Linear DNA");
+        if self.display.read().unwrap().show_re() {
+            ui.heading("Linear DNA (RE)");
+        } else {
+            ui.heading("Linear DNA");
+        }
     }
 
     pub fn on_click(&mut self, pointer_state: PointerState) {

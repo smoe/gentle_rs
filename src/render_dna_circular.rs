@@ -1,4 +1,4 @@
-use crate::{dna_sequence::DNAsequence, render_dna::RenderDna};
+use crate::{dna_sequence::DNAsequence, main_area_dna::DnaDisplay, render_dna::RenderDna};
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
 };
@@ -57,6 +57,7 @@ impl FeaturePosition {
 #[derive(Debug, Clone)]
 pub struct RenderDnaCircular {
     dna: Arc<RwLock<DNAsequence>>,
+    display: Arc<RwLock<DnaDisplay>>,
     sequence_length: i64,
     area: Rect,
     center: Pos2,
@@ -67,10 +68,11 @@ pub struct RenderDnaCircular {
 }
 
 impl RenderDnaCircular {
-    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
+    pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         Self {
             dna,
             sequence_length: 0,
+            display,
             area: Rect::NOTHING,
             center: Pos2::ZERO,
             radius: 0.0,
@@ -139,7 +141,9 @@ impl RenderDnaCircular {
         self.draw_backbone(painter);
         self.draw_main_label(painter);
         self.draw_bp(painter);
-        self.draw_re(painter);
+        if self.display.read().unwrap().show_re() {
+            self.draw_re(painter);
+        }
         self.draw_features(painter);
     }
 

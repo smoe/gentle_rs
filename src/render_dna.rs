@@ -1,5 +1,5 @@
 use crate::{
-    dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
+    dna_sequence::DNAsequence, main_area_dna::DnaDisplay, render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
 };
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
@@ -16,11 +16,13 @@ pub enum RenderDna {
 }
 
 impl RenderDna {
-    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
+    pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         let is_circular = dna.read().unwrap().is_circular();
         match is_circular {
-            true => RenderDna::Circular(Arc::new(RwLock::new(RenderDnaCircular::new(dna)))),
-            false => RenderDna::Linear(Arc::new(RwLock::new(RenderDnaLinear::new(dna)))),
+            true => {
+                RenderDna::Circular(Arc::new(RwLock::new(RenderDnaCircular::new(dna, display))))
+            }
+            false => RenderDna::Linear(Arc::new(RwLock::new(RenderDnaLinear::new(dna, display)))),
         }
     }
 

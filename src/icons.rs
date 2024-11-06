@@ -12,4 +12,6 @@ lazy_static! {
         egui::Image::new(egui::include_image!("../icons/show_sequence.png"));
     pub static ref ICON_SHOW_MAP: egui::Image<'static> =
         egui::Image::new(egui::include_image!("../icons/show_map.png"));
+    pub static ref ICON_RESTRICTION_ENZYMES: egui::Image<'static> =
+        egui::Image::new(egui::include_image!("../icons/restriction_enzymes.png"));
 }

@@ -1,6 +1,6 @@
 use crate::{
     dna_sequence::DNAsequence,
-    icons::{ICON_CIRCULAR_LINEAR, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
+    icons::{ICON_CIRCULAR_LINEAR, ICON_RESTRICTION_ENZYMES, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
     render_dna::RenderDna,
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
@@ -10,18 +10,42 @@ use std::{
 };
 
 #[derive(Debug)]
+pub struct DnaDisplay {
+    show_re: bool,
+}
+
+impl DnaDisplay {
+    pub fn show_re(&self) -> bool {
+        self.show_re
+    }
+
+    pub fn set_re(&mut self, show_re: bool) {
+        self.show_re = show_re;
+    }
+}
+
+impl Default for DnaDisplay {
+    fn default() -> Self {
+        Self { show_re: true }
+    }
+}
+
+#[derive(Debug)]
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
+    dna_display: Arc<RwLock<DnaDisplay>>,
     map_dna: RenderDna,
-    show_sequence: bool,
-    show_map: bool,
+    show_sequence: bool, // TODO move to DnaDisplay
+    show_map: bool,      // TODO move to DnaDisplay
 }
 
 impl MainAreaDna {
     pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
         Self {
             dna: dna.clone(),
-            map_dna: RenderDna::new(dna),
+            dna_display: dna_display.clone(),
+            map_dna: RenderDna::new(dna, dna_display),
             show_sequence: true,
             show_map: true,
         }
@@ -85,6 +109,15 @@ impl MainAreaDna {
             let button = egui::ImageButton::new(ICON_SHOW_MAP.clone().rounding(5.0));
             if ui.add(button).clicked() {
                 self.show_map = !self.show_map
+            };
+
+            let button = egui::ImageButton::new(ICON_RESTRICTION_ENZYMES.clone().rounding(5.0));
+            if ui.add(button).clicked() {
+                let show_re = self.dna_display.read().unwrap().show_re();
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_re(!show_re);
             };
         });
     }
@@ -199,7 +232,7 @@ impl MainAreaDna {
 
     pub fn update_dna_map(&mut self) {
         if self.is_circular() != self.map_dna.is_circular() {
-            self.map_dna = RenderDna::new(self.dna.clone());
+            self.map_dna = RenderDna::new(self.dna.clone(), self.dna_display.clone());
         }
     }
 
