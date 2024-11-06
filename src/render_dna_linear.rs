@@ -1,6 +1,6 @@
 use eframe::egui::{self, PointerState, Rect};
 
-use crate::{dna_sequence::DNAsequence, main_area_dna::DnaDisplay};
+use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone)]

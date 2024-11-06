@@ -1,7 +1,9 @@
 use crate::{
+    dna_display::DnaDisplay,
     dna_sequence::DNAsequence,
     icons::{ICON_CIRCULAR_LINEAR, ICON_RESTRICTION_ENZYMES, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
     render_dna::RenderDna,
+    render_sequence::RenderSequence,
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use std::{
@@ -10,31 +12,11 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct DnaDisplay {
-    show_re: bool,
-}
-
-impl DnaDisplay {
-    pub fn show_re(&self) -> bool {
-        self.show_re
-    }
-
-    pub fn set_re(&mut self, show_re: bool) {
-        self.show_re = show_re;
-    }
-}
-
-impl Default for DnaDisplay {
-    fn default() -> Self {
-        Self { show_re: true }
-    }
-}
-
-#[derive(Debug)]
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
     dna_display: Arc<RwLock<DnaDisplay>>,
     map_dna: RenderDna,
+    map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
     show_map: bool,      // TODO move to DnaDisplay
 }
@@ -45,7 +27,8 @@ impl MainAreaDna {
         Self {
             dna: dna.clone(),
             dna_display: dna_display.clone(),
-            map_dna: RenderDna::new(dna, dna_display),
+            map_dna: RenderDna::new(dna.clone(), dna_display.clone()),
+            map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: true,
             show_map: true,
         }
@@ -65,7 +48,9 @@ impl MainAreaDna {
                 let full_height = ui.available_rect_before_wrap().height();
                 egui::TopBottomPanel::bottom("dna_sequence")
                     .resizable(true)
+                    .default_height(full_height / 2.0)
                     .max_height(full_height / 2.0)
+                    .min_height(full_height / 4.0)
                     .show(ctx, |ui| {
                         self.render_sequence(ui);
                     });
@@ -77,7 +62,6 @@ impl MainAreaDna {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     self.update_dna_map();
                     ui.add(self.map_dna.to_owned());
-                    // self.render_dna_map(ui);
                 });
             }
         } else {
@@ -123,7 +107,7 @@ impl MainAreaDna {
     }
 
     pub fn render_sequence(&mut self, ui: &mut egui::Ui) {
-        ui.label(self.dna.read().expect("DNA lock poisoned").to_string());
+        self.map_sequence.render(ui);
     }
 
     fn get_selected_feature_id(&self) -> Option<usize> {

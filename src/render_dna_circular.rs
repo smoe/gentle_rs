@@ -1,4 +1,4 @@
-use crate::{dna_sequence::DNAsequence, main_area_dna::DnaDisplay, render_dna::RenderDna};
+use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna::RenderDna};
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
 };

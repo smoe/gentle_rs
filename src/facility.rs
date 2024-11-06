@@ -19,6 +19,7 @@ pub struct DNAmarkerPart {
 pub struct Facility {
     pub amino_acids: AminoAcids,
     pub dna_iupac: [u8; 256],
+    pub dna_iupac_complement: [char; 256],
     pub dna_markers: HashMap<String, Vec<DNAmarkerPart>>,
 }
 
@@ -33,6 +34,7 @@ impl Facility {
         Self {
             amino_acids: AminoAcids::load(),
             dna_iupac: Self::get_dna(),
+            dna_iupac_complement: Self::get_dna_complement(),
             dna_markers: Self::get_dna_markers(),
         }
     }
@@ -56,6 +58,21 @@ impl Facility {
         dna['V' as usize] = DNA_A | DNA_C | DNA_G;
         dna['N' as usize] = DNA_A | DNA_C | DNA_G | DNA_T;
         dna
+    }
+
+    fn get_dna_complement() -> [char; 256] {
+        let mut dna: [char; 256] = [' '; 256];
+        dna['A' as usize] = 'T';
+        dna['C' as usize] = 'G';
+        dna['G' as usize] = 'C';
+        dna['T' as usize] = 'A';
+        dna['U' as usize] = 'A';
+        // TODO IUPAC bases too?
+        dna
+    }
+
+    pub fn complement(&self, base: char) -> char {
+        self.dna_iupac_complement[base as usize]
     }
 
     fn get_dna_markers() -> HashMap<String, Vec<DNAmarkerPart>> {
@@ -96,5 +113,15 @@ mod tests {
 
         assert!(FACILITY.dna_iupac['V' as usize] & FACILITY.dna_iupac['G' as usize] > 0);
         assert!(FACILITY.dna_iupac['H' as usize] & FACILITY.dna_iupac['G' as usize] == 0);
+    }
+
+    #[test]
+    fn test_complement() {
+        assert_eq!(FACILITY.complement('A'), 'T');
+        assert_eq!(FACILITY.complement('C'), 'G');
+        assert_eq!(FACILITY.complement('G'), 'C');
+        assert_eq!(FACILITY.complement('T'), 'A');
+        assert_eq!(FACILITY.complement('U'), 'A');
+        assert_eq!(FACILITY.complement('X'), ' ');
     }
 }

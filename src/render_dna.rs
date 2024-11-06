@@ -1,5 +1,5 @@
 use crate::{
-    dna_sequence::DNAsequence, main_area_dna::DnaDisplay, render_dna_circular::RenderDnaCircular,
+    dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
 };
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};

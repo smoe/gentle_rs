@@ -5,6 +5,7 @@ use translations::Translations;
 
 pub mod amino_acids;
 pub mod app;
+pub mod dna_display;
 pub mod dna_sequence;
 pub mod enzymes;
 pub mod facility;
@@ -16,7 +17,9 @@ pub mod protease;
 pub mod render_dna;
 pub mod render_dna_circular;
 pub mod render_dna_linear;
+pub mod render_sequence;
 pub mod restriction_enzyme;
+pub mod sequence_rows;
 pub mod translations;
 
 lazy_static! {
@@ -36,8 +39,8 @@ fn main() {
         // resizable: true,
         // initial_window_size: Some(egui::Vec2 { x: 300.0, y: 300.0 }),
         // min_window_size: Some(egui::Vec2 { x: 300.0, y: 300.0 }),
-        // icon_data: Some(eframe::IconData {
-        //     rgba: ICON.to_vec(),
+        // icon_data: Some(IconData {
+        //     rgba: include_bytes!("../icons/GENtle.png").to_vec(),
         //     width: 32,
         //     height: 32,
         // }),
