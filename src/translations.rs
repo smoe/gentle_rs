@@ -41,9 +41,12 @@ impl Translations {
         self.language = language.to_string();
     }
 
-    pub fn get(&self, key: &str) -> Option<&str> {
+    pub fn get(&self, key: &str) -> String {
         let key = format!("{}:{}", self.language, key);
-        self.values.get(&key).map(|s| s.as_str())
+        self.values
+            .get(&key)
+            .map(|s| s.to_string())
+            .expect("Translation {key} not found")
     }
 
     fn to_vec(record: &csv::StringRecord) -> Vec<String> {
@@ -64,7 +67,7 @@ mod tests {
     #[test]
     fn test_default() {
         let translations = Translations::default();
-        assert_eq!(translations.get("m_export_txt"), Some("Export to file"));
+        assert_eq!(translations.get("m_export_txt"), "Export to file");
     }
 
     #[test]
@@ -73,7 +76,7 @@ mod tests {
         translations.set_language("de");
         assert_eq!(
             translations.get("m_export_txt"),
-            Some("In eine Datei exportieren")
+            "In eine Datei exportieren"
         );
     }
 }

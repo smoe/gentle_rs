@@ -2,10 +2,10 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     left_panel::LeftPanel,
     main_area::MainArea,
-    ENZYMES,
+    ENZYMES, TRANSLATIONS,
 };
 use anyhow::{anyhow, Result};
-use eframe::egui;
+use eframe::egui::{self, menu, Ui};
 use std::sync::{Arc, RwLock};
 
 #[derive(Default)]
@@ -26,30 +26,17 @@ impl GENtleApp {
         let mut ret = Self {
             main_area: None,
             left_panel: Default::default(),
-            dna_sequence: Self::load_demo_data(), // For testing
+            dna_sequence: vec![],
         };
+
+        // Load two demo sequences
+        ret.load_from_file(&cc.egui_ctx, "test_files/pGEX-3X.gb");
+        ret.load_from_file(&cc.egui_ctx, "test_files/pGEX_3X.fa");
 
         // Select first DNA sequence, if any
         if let Some(dna) = ret.dna_sequence.first() {
             ret.main_area = Some(MainArea::new_dna(dna.clone()));
         }
-        ret
-    }
-
-    fn load_demo_data() -> Vec<Arc<RwLock<DNAsequence>>> {
-        // Load two demo sequences
-        let ret = vec![
-            Self::load_dna_from_genbank_file("test_files/pGEX-3X.gb").unwrap(),
-            Self::load_dna_from_fasta_file("test_files/pGEX_3X.fa").unwrap(),
-        ];
-
-        // Set up restriction enzyme sites for first one
-        ENZYMES
-            .restriction_enzymes()
-            .clone_into(ret[0].write().unwrap().re_mut());
-        ret[0].write().unwrap().set_max_re_sites(Some(2));
-        ret[0].write().unwrap().update_re_sites();
-
         ret
     }
 
@@ -78,10 +65,56 @@ impl GENtleApp {
             .ok_or_else(|| anyhow!("Could not read fasta file {filename}"))?;
         Ok(Arc::new(RwLock::new(dna)))
     }
+
+    fn add_dna(&mut self, _ctx: &egui::Context, dna_lock: Arc<RwLock<DNAsequence>>) {
+        let mut dna = dna_lock.write().unwrap();
+        ENZYMES.restriction_enzymes().clone_into(dna.re_mut());
+        dna.set_max_re_sites(Some(2));
+        dna.update_re_sites();
+        drop(dna);
+
+        // Trying to open a window for each DNA sequence
+        // let name = match dna.read().unwrap().name() {
+        //     Some(name) => name.to_string(),
+        //     None => "Unnamed".to_string(),
+        // };
+        // egui::Window::new(name).show(ctx, |ui| {
+        // MainArea::new_dna(dna.clone())
+        // ui.label("Hello World!");
+        // });
+
+        self.dna_sequence.push(dna_lock.clone());
+        self.main_area = Some(MainArea::new_dna(dna_lock));
+    }
+
+    fn load_from_file(&mut self, ctx: &egui::Context, path: &str) {
+        if let Ok(dna) = Self::load_dna_from_genbank_file(path) {
+            self.add_dna(ctx, dna);
+        } else if let Ok(dna) = Self::load_dna_from_fasta_file(path) {
+            self.add_dna(ctx, dna);
+        }
+    }
+
+    pub fn render_menu_bar(&mut self, ctx: &egui::Context, ui: &mut Ui) {
+        menu::bar(ui, |ui| {
+            ui.menu_button(TRANSLATIONS.get("m_file"), |ui| {
+                if ui.button(TRANSLATIONS.get("m_open")).clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        if let Some(path) = Some(path.display().to_string()) {
+                            self.load_from_file(ctx, &path);
+                        }
+                    }
+                }
+            });
+        });
+    }
 }
 
 impl eframe::App for GENtleApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::TopBottomPanel::top("top").show(ctx, |ui| {
+            self.render_menu_bar(ctx, ui);
+        });
         egui::SidePanel::left("left_panel")
             .resizable(true)
             .default_width(200.0)

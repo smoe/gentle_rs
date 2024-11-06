@@ -27,6 +27,7 @@ eframe = { version = "*", features = [
 ] }
 egui_extras = { version = "*", features = ["all_loaders"] }
 image = { version = "*", features = ["jpeg", "png"] }
+rfd = "*"
 
 [profile.release]
 opt-level = 3

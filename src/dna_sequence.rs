@@ -94,9 +94,8 @@ impl DNAsequence {
         let name = record.id().to_string();
         let mut ret = Self::from_u8(seq);
         ret.seq.name = Some(name);
-        match record.desc() {
-            Some(desc) => ret.seq.comments.push(desc.to_string()),
-            None => todo!(),
+        if let Some(desc) = record.desc() {
+            ret.seq.comments.push(desc.to_string())
         }
         ret
     }

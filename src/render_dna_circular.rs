@@ -201,18 +201,18 @@ impl RenderDnaCircular {
             .features()
             .to_owned();
         for (feature_number, feature) in features.iter().enumerate() {
-            let fp_opt = match feature.location {
+            let fp_opt = match &feature.location {
                 gb_io::seq::Location::Range(from, to) => {
-                    self.layout_feature_from_range(feature, from, to)
+                    self.layout_feature_from_range(feature, *from, *to)
                 }
-                gb_io::seq::Location::Between(_, _) => todo!(),
-                gb_io::seq::Location::Complement(_) => todo!(),
-                gb_io::seq::Location::Join(_) => todo!(),
-                gb_io::seq::Location::Order(_) => todo!(),
-                gb_io::seq::Location::Bond(_) => todo!(),
-                gb_io::seq::Location::OneOf(_) => todo!(),
-                gb_io::seq::Location::External(_, _) => todo!(),
-                gb_io::seq::Location::Gap(_) => todo!(),
+                gb_io::seq::Location::External(_, _) => None, // TODO
+                gb_io::seq::Location::Between(_, _) => None,  // TODO
+                gb_io::seq::Location::Complement(_) => None,  // TODO
+                gb_io::seq::Location::Join(_) => None,        // TODO
+                gb_io::seq::Location::Order(_) => None,       // TODO
+                gb_io::seq::Location::Bond(_) => None,        // TODO
+                gb_io::seq::Location::OneOf(_) => None,       // TODO
+                gb_io::seq::Location::Gap(_) => None,         // TODO
             };
             if let Some(mut fp) = fp_opt {
                 fp.feature_number = feature_number;
