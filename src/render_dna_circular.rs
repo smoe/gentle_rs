@@ -4,13 +4,23 @@ use eframe::egui::{
 };
 use gb_io::seq::Feature;
 use lazy_static::lazy_static;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 lazy_static! {
     pub static ref BLACK_1: Stroke = Stroke {
         width: 1.0,
         color: Color32::BLACK,
     };
+    pub static ref GRAY_1: Stroke = Stroke {
+        width: 1.0,
+        color: Color32::GRAY,
+    };
+    pub static ref RED_2: Color32 = Color32::DARK_RED;
+    pub static ref BLUE_2: Color32 = Color32::DARK_BLUE;
+    pub static ref GREEN_2: Color32 = Color32::DARK_GREEN;
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +63,7 @@ pub struct RenderDnaCircular {
     radius: f32,
     features: Vec<FeaturePosition>,
     selected_feature_number: Option<usize>,
+    re_pos_cuts2names: HashMap<(isize, isize), Vec<String>>,
 }
 
 impl RenderDnaCircular {
@@ -65,6 +76,7 @@ impl RenderDnaCircular {
             radius: 0.0,
             features: vec![],
             selected_feature_number: None,
+            re_pos_cuts2names: HashMap::new(),
         }
     }
 
@@ -117,12 +129,17 @@ impl RenderDnaCircular {
         self.center = self.area.center();
         self.sequence_length = self.dna.read().expect("DNA lock poisoned").len() as i64;
 
+        // TODO cache and invalidate on update
+        if true {
+            self.layout_re();
+            self.layout_features();
+        }
+
         let painter = ui.painter();
         self.draw_backbone(painter);
         self.draw_main_label(painter);
         self.draw_bp(painter);
         self.draw_re(painter);
-        self.layout_features(); // TODO cache and invalidate on update
         self.draw_features(painter);
     }
 
@@ -352,40 +369,79 @@ impl RenderDnaCircular {
     }
 
     /// Draws restriction enzyme sites
+    fn layout_re(&mut self) {
+        let mut name2cut_count = HashMap::new();
+        self.re_pos_cuts2names = HashMap::new();
+
+        let sites = self.dna.read().unwrap().re_sites().to_owned();
+        for re_site in sites.iter().filter(|site| site.forward_strand) {
+            name2cut_count
+                .entry(&re_site.enzyme.name)
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
+        }
+        for re_site in sites.iter().filter(|site| site.forward_strand) {
+            let pos = re_site.offset + re_site.enzyme.cut;
+            let cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
+            let key = (pos, *cuts);
+            self.re_pos_cuts2names
+                .entry(key)
+                .or_default()
+                .push(re_site.enzyme.name.to_owned());
+        }
+    }
+
     fn draw_re(&self, painter: &egui::Painter) {
         let font_tick = FontId {
             size: 9.0,
-            family: FontFamily::Monospace,
+            family: FontFamily::Proportional,
         };
 
-        for re_site in self
-            .dna
-            .read()
-            .unwrap()
-            .re_sites()
-            .iter()
-            .filter(|site| site.forward_strand)
-        {
-            let pos = re_site.offset + re_site.enzyme.cut;
-            let pos = pos as i64;
+        let mut re_positions: Vec<(isize, isize)> =
+            self.re_pos_cuts2names.keys().copied().collect();
+        re_positions.sort();
+        let mut last_rect = Rect::NOTHING;
+        for pos_cuts in re_positions {
+            let pos = pos_cuts.0 as i64;
+            let label = self.re_pos_cuts2names.get(&pos_cuts).unwrap().join(", ");
+            let label = if pos < self.sequence_length / 2 {
+                format!("{pos} {label}")
+            } else {
+                format!("{label} {pos}")
+            };
+            let cuts = pos_cuts.1;
+            let font_color = match cuts {
+                1 => RED_2.to_owned(),
+                2 => BLUE_2.to_owned(),
+                3 => GREEN_2.to_owned(),
+                _ => Color32::BLACK,
+            };
 
             let p1 = self.pos2xy(pos, self.radius);
-            let p2 = self.pos2xy(pos, self.radius * 1.18);
-            let p3 = self.pos2xy(pos, self.radius * 1.2);
-            painter.line_segment([p1, p2], BLACK_1.to_owned());
+            let p2 = self.pos2xy(pos, self.radius * 1.15);
+            let mut p3 = self.pos2xy(pos, self.radius * 1.25);
+            p3.y = p2.y;
+            if pos < self.sequence_length / 2 {
+                while p3.y < last_rect.bottom() + 3.0 {
+                    p3.y += 1.0;
+                }
+            } else {
+                while p3.y > last_rect.top() - 3.0 {
+                    p3.y -= 1.0;
+                }
+                p3.y = p3.y.max(0.0);
+            }
+            let mut p4 = self.pos2xy(pos, self.radius * 1.28);
+            p4.y = p3.y;
+            painter.line_segment([p1, p2], GRAY_1.to_owned());
+            painter.line_segment([p2, p3], GRAY_1.to_owned());
 
             let align = if pos > self.sequence_length / 2 {
                 Align2::RIGHT_CENTER
             } else {
                 Align2::LEFT_CENTER
             };
-            painter.text(
-                p3,
-                align,
-                re_site.enzyme.name.to_owned(),
-                font_tick.to_owned(),
-                Color32::BLACK,
-            );
+            last_rect = painter.text(p4, align, label, font_tick.to_owned(), font_color);
         }
     }
 

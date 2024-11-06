@@ -47,6 +47,7 @@ impl GENtleApp {
         ENZYMES
             .restriction_enzymes()
             .clone_into(ret[0].write().unwrap().re_mut());
+        ret[0].write().unwrap().set_max_re_sites(Some(2));
         ret[0].write().unwrap().update_re_sites();
 
         ret
