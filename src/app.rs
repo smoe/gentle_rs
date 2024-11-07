@@ -79,13 +79,7 @@ impl GENtleApp {
 
     fn show_window(&self, ctx: &egui::Context, id: ViewportId, window: Arc<RwLock<Window>>) {
         let windows_to_close = self.windows_to_close.clone();
-        let window_number = self
-            .windows
-            .keys()
-            .enumerate()
-            .find(|(_num, viewport_id)| **viewport_id == id)
-            .unwrap()
-            .0;
+        let window_number = self.get_window_number_from_id(id);
         let window_pos = Pos2 {
             x: window_number as f32 * 200.0,
             y: window_number as f32 * 200.0,
@@ -95,6 +89,7 @@ impl GENtleApp {
             id,
             egui::ViewportBuilder::default()
                 .with_title(window_title)
+                // .with_maximized(true),
                 .with_position(window_pos),
             move |ctx, class| {
                 assert!(
@@ -111,6 +106,17 @@ impl GENtleApp {
                 }
             },
         );
+    }
+
+    fn get_window_number_from_id(&self, id: ViewportId) -> usize {
+        let window_number = self
+            .windows
+            .keys()
+            .enumerate()
+            .find(|(_num, viewport_id)| **viewport_id == id)
+            .unwrap()
+            .0;
+        window_number
     }
 }
 
