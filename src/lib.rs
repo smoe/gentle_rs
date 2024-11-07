@@ -10,8 +10,6 @@ pub mod dna_sequence;
 pub mod enzymes;
 pub mod facility;
 pub mod icons;
-pub mod left_panel;
-pub mod main_area;
 pub mod main_area_dna;
 pub mod protease;
 pub mod render_dna;
@@ -21,6 +19,8 @@ pub mod render_sequence;
 pub mod restriction_enzyme;
 pub mod sequence_rows;
 pub mod translations;
+pub mod window;
+pub mod window_dna;
 
 lazy_static! {
     // IUPAC codes etc.
@@ -31,26 +31,4 @@ lazy_static! {
 
     // Restriction enzymes and proteases
     pub static ref ENZYMES: Enzymes = Enzymes::new().unwrap();
-}
-
-fn main() {
-    let native_options = eframe::NativeOptions {
-        persist_window: true,
-        // resizable: true,
-        // initial_window_size: Some(egui::Vec2 { x: 300.0, y: 300.0 }),
-        // min_window_size: Some(egui::Vec2 { x: 300.0, y: 300.0 }),
-        // icon_data: Some(IconData {
-        //     rgba: include_bytes!("../icons/GENtle.png").to_vec(),
-        //     width: 32,
-        //     height: 32,
-        // }),
-        ..Default::default()
-    };
-
-    eframe::run_native(
-        "GENtle",
-        native_options,
-        Box::new(|cc| Ok(Box::new(app::GENtleApp::new(cc)))),
-    )
-    .unwrap();
 }

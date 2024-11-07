@@ -11,7 +11,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
     dna_display: Arc<RwLock<DnaDisplay>>,
@@ -22,7 +22,8 @@ pub struct MainAreaDna {
 }
 
 impl MainAreaDna {
-    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
+    pub fn new(dna: DNAsequence) -> Self {
+        let dna = Arc::new(RwLock::new(dna));
         let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
         Self {
             dna: dna.clone(),
@@ -112,6 +113,14 @@ impl MainAreaDna {
 
     fn get_selected_feature_id(&self) -> Option<usize> {
         self.map_dna.get_selected_feature_id()
+    }
+
+    pub fn sequence_name(&self) -> Option<String> {
+        self.dna
+            .read()
+            .expect("DNA lock poisoned")
+            .name()
+            .to_owned()
     }
 
     pub fn render_features(&mut self, ui: &mut egui::Ui) {

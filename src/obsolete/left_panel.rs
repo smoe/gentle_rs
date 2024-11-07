@@ -1,4 +1,4 @@
-use crate::{app::GENtleApp, main_area::MainArea};
+use crate::{main_area::MainArea, window_dna::WindowDna};
 use eframe::egui::{self, CollapsingHeader};
 use std::sync::Arc;
 
@@ -6,7 +6,7 @@ use std::sync::Arc;
 pub struct LeftPanel {}
 
 impl LeftPanel {
-    pub fn render(&mut self, app: &mut GENtleApp, ui: &mut egui::Ui) {
+    pub fn render(&mut self, window: &mut WindowDna, ui: &mut egui::Ui) {
         egui::ScrollArea::both().show(ui, |ui| {
             ui.heading("Project");
             // egui::Separator::default().horizontal();
@@ -15,7 +15,7 @@ impl LeftPanel {
                     .default_open(true)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            for (i, dna) in app.dna_sequence().clone().iter().enumerate() {
+                            for (i, dna) in window.dna_sequence().clone().iter().enumerate() {
                                 let name = dna
                                     .read()
                                     .expect("DNA lock poisoned")
@@ -23,13 +23,10 @@ impl LeftPanel {
                                     .as_ref()
                                     .unwrap_or(&format!("DNA #{i}"))
                                     .to_string();
-                                let selected = match &app.main_area() {
-                                    Some(MainArea::Dna(ma)) => Arc::ptr_eq(dna, ma.dna()),
-                                    _ => false,
-                                };
+                                let selected = true;
                                 let button = egui::Button::new(name).selected(selected);
                                 if ui.add(button).clicked() {
-                                    app.set_main_area(Some(MainArea::new_dna(dna.clone())));
+                                    window.set_main_area(Some(MainArea::new_dna(dna.clone())));
                                 }
                             }
                         });

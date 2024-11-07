@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use crate::{dna_sequence::DNAsequence, main_area_dna::MainAreaDna};
 use eframe::egui;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum MainArea {
     Dna(MainAreaDna),
 }

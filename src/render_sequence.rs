@@ -6,7 +6,7 @@ use crate::{
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Painter, Pos2, Rect, Sense, Vec2};
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RenderSequence {
     area: Rect,
     display: Arc<RwLock<DnaDisplay>>,

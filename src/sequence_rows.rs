@@ -4,14 +4,14 @@ use crate::{
 use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Vec2};
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RowBlank {
     line_height: f32,
 }
 
 impl RowBlank {
     pub fn new() -> Self {
-        Self { line_height: 0.0 }
+        Self::default()
     }
 
     fn blocks(&self) -> usize {
@@ -19,7 +19,7 @@ impl RowBlank {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RowDna {
     dna: Arc<RwLock<DNAsequence>>,
     blocks: usize,
@@ -130,7 +130,7 @@ impl RowDna {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SequenceRow {
     Separator(RowBlank),
     Dna(RowDna),
