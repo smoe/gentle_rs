@@ -48,7 +48,7 @@ impl GENtleApp {
     fn new_dna_window(&mut self, mut dna: DNAsequence) {
         ENZYMES.restriction_enzymes().clone_into(dna.re_mut());
         dna.set_max_re_sites(Some(2));
-        dna.update_re_sites();
+        dna.update_computed_features();
 
         self.new_windows.push(Window::new_dna(dna));
     }

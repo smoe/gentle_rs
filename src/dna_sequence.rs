@@ -1,10 +1,12 @@
 use crate::{
+    open_reading_frame::OpenReadingFrame,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
     FACILITY,
 };
 use anyhow::Result;
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
+use rayon::prelude::*;
 use std::{fmt, fs::File};
 
 type DNAstring = Vec<u8>;
@@ -37,6 +39,7 @@ pub struct DNAsequence {
     re: Vec<RestrictionEnzyme>,
     re_sites: Vec<RestrictionEnzymeSite>,
     max_re_sites: Option<usize>,
+    open_reading_frames: Vec<OpenReadingFrame>,
 }
 
 impl DNAsequence {
@@ -90,6 +93,7 @@ impl DNAsequence {
             re: vec![],
             re_sites: vec![],
             max_re_sites: Some(3), // TODO default?
+            open_reading_frames: vec![],
         }
     }
 
@@ -131,12 +135,14 @@ impl DNAsequence {
             re: vec![],
             re_sites: vec![],
             max_re_sites: Some(3), // TODO default?
+            open_reading_frames: vec![],
         }
     }
 
     pub fn set_max_re_sites(&mut self, max_re_sites: Option<usize>) {
         self.max_re_sites = max_re_sites;
     }
+
     pub fn re(&self) -> &Vec<RestrictionEnzyme> {
         &self.re
     }
@@ -149,12 +155,23 @@ impl DNAsequence {
         &self.re_sites
     }
 
-    pub fn update_re_sites(&mut self) {
+    fn update_re_sites(&mut self) {
         self.re_sites = self
             .re
-            .iter()
+            .par_iter()
             .flat_map(|re| re.get_sites(self, self.max_re_sites.to_owned()))
             .collect();
+    }
+
+    fn update_orfs(&mut self) {
+        self.open_reading_frames = OpenReadingFrame::find_orfs(self.forward(), self.is_circular());
+    }
+
+    pub fn update_computed_features(&mut self) {
+        self.update_re_sites();
+        self.update_orfs();
+        // TODO amino acids
+        // TODO protease sites
     }
 
     pub fn features(&self) -> &Vec<Feature> {

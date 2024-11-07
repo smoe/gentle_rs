@@ -11,6 +11,7 @@ pub mod enzymes;
 pub mod facility;
 pub mod icons;
 pub mod main_area_dna;
+pub mod open_reading_frame;
 pub mod protease;
 pub mod render_dna;
 pub mod render_dna_circular;

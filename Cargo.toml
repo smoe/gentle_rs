@@ -19,6 +19,7 @@ itertools = "*"
 # gb-io = "*" # Until nom-7 is merged and published
 gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7" }
 svg = "*"
+rayon = "*"
 anyhow = "*"
 eframe = { version = "*", features = [
 	"accesskit",

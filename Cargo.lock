@@ -1654,6 +1654,7 @@ dependencies = [
  "image",
  "itertools 0.13.0",
  "lazy_static",
+ "rayon",
  "rfd",
  "serde",
  "serde_json",
