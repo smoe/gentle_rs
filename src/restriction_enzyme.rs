@@ -79,3 +79,49 @@ impl RestrictionEnzyme {
         ret
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dna_sequence::DNAsequence;
+
+    #[test]
+    fn test_restriction_enzyme() {
+        let mut re = RestrictionEnzyme {
+            name: "EcoRI".to_string(),
+            sequence: "GAATTC".to_string(),
+            note: None,
+            cut: 1,
+            overlap: 1,
+            is_palindromic: false,
+        };
+        re.check_palimdromic();
+        assert!(re.is_palindromic());
+        let seq = DNAsequence::from_sequence("GAATTC").unwrap();
+        let sites = re.get_sites(&seq, None);
+        assert_eq!(sites.len(), 1);
+        assert_eq!(sites[0].offset, 0);
+        assert!(sites[0].forward_strand);
+    }
+
+    #[test]
+    fn test_restriction_enzyme_sites() {
+        let mut re = RestrictionEnzyme {
+            name: "EcoRI".to_string(),
+            sequence: "GAATTC".to_string(),
+            note: None,
+            cut: 1,
+            overlap: 1,
+            is_palindromic: false,
+        };
+        re.check_palimdromic();
+        assert!(re.is_palindromic());
+        let seq = DNAsequence::from_sequence("GAATTCGAATTC").unwrap();
+        let sites = re.get_sites(&seq, None);
+        assert_eq!(sites.len(), 2);
+        assert_eq!(sites[0].offset, 0);
+        assert!(sites[0].forward_strand);
+        assert_eq!(sites[1].offset, 6);
+        assert!(sites[1].forward_strand);
+    }
+}
