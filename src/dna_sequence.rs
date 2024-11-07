@@ -40,6 +40,10 @@ pub struct DNAsequence {
 }
 
 impl DNAsequence {
+    pub fn from_sequence(sequence: &str) -> Result<DNAsequence> {
+        Ok(DNAsequence::from_u8(sequence.as_bytes()))
+    }
+
     pub fn from_fasta_file(filename: &str) -> Result<Vec<DNAsequence>> {
         let file = File::open(filename)?;
         Ok(fasta::Reader::new(file)

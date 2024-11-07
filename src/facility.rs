@@ -70,6 +70,10 @@ impl Facility {
         ret
     }
 
+    pub fn get_dna_marker(&self, name: &str) -> Option<&Vec<DNAmarkerPart>> {
+        self.dna_markers.get(name)
+    }
+
     fn initialize_dna_iupac() -> [u8; 256] {
         let mut dna: [u8; 256] = [0; 256];
         dna['A' as usize] = DNA_A;
@@ -132,6 +136,8 @@ mod tests {
     use super::*;
     use crate::FACILITY;
 
+    // NOTE: amino_acids is tested in amino_acids.rs
+
     #[test]
     fn test_from_json_file() {
         let marker = FACILITY.dna_markers.get("GeneRuler Mix").unwrap();
@@ -177,5 +183,12 @@ mod tests {
             FACILITY.split_iupac(DNA_A | DNA_C | DNA_G | DNA_T),
             vec!['A', 'C', 'G', 'T']
         );
+    }
+
+    #[test]
+    fn test_get_dna_marker() {
+        let marker = FACILITY.get_dna_marker("GeneRuler Mix").unwrap();
+        assert_eq!(marker[2].length, 8000.0);
+        assert_eq!(marker[2].strength, Some(13));
     }
 }

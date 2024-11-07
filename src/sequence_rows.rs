@@ -78,6 +78,7 @@ impl RowDna {
         let block_width = area.width() - self.number_offset;
         let batches_per_line =
             (block_width / (self.char_width * (self.batch_bases + 1) as f32)) as usize;
+        let batches_per_line = batches_per_line.max(1);
         self.bases_per_line = batches_per_line * self.batch_bases;
         self.blocks = (self.seq_len() + self.bases_per_line - 1) / self.bases_per_line;
     }
@@ -213,5 +214,43 @@ impl SequenceRow {
                 todo!();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_row_dna() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        let dna = Arc::new(RwLock::new(DNAsequence::from_sequence("ACGT").unwrap()));
+        let row = RowDna::new(dna);
+        let mut row = SequenceRow::Dna(row);
+        row.compute_line_height(&Vec2::new(10.0, 10.0));
+        row.layout(
+            &dna_display,
+            0,
+            0.0,
+            0.0,
+            &Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 100.0)),
+        );
+        match row {
+            SequenceRow::Dna(inner) => {
+                assert_eq!(inner.blocks, 1);
+                assert_eq!(inner.bases_per_line, 40);
+                assert_eq!(inner.sequence_position_length(), 1);
+                assert_eq!(inner.seq_len(), 4);
+            }
+            _ => {
+                panic!("Expected Dna row");
+            }
+        }
+    }
+
+    #[test]
+    fn test_row_blank() {
+        let row = RowBlank::default();
+        assert_eq!(row.blocks(), 0);
     }
 }
