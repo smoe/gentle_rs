@@ -33,13 +33,44 @@ impl Facility {
     pub fn new() -> Self {
         Self {
             amino_acids: AminoAcids::load(),
-            dna_iupac: Self::get_dna(),
-            dna_iupac_complement: Self::get_dna_complement(),
-            dna_markers: Self::get_dna_markers(),
+            dna_iupac: Self::initialize_dna_iupac(),
+            dna_iupac_complement: Self::initialize_dna_iupac_complement(),
+            dna_markers: Self::initialize_dna_markers(),
         }
     }
 
-    fn get_dna() -> [u8; 256] {
+    #[inline(always)]
+    pub fn complement(&self, base: char) -> char {
+        self.dna_iupac_complement[base as usize]
+    }
+
+    #[inline(always)]
+    pub fn base2iupac(&self, base: char) -> u8 {
+        self.dna_iupac
+            .get(base.to_ascii_uppercase() as usize)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    #[inline(always)]
+    pub fn split_iupac(&self, iupac_code: u8) -> Vec<char> {
+        let mut ret = Vec::with_capacity(4);
+        if iupac_code & DNA_A != 0 {
+            ret.push('A');
+        }
+        if iupac_code & DNA_C != 0 {
+            ret.push('C');
+        }
+        if iupac_code & DNA_G != 0 {
+            ret.push('G');
+        }
+        if iupac_code & DNA_T != 0 {
+            ret.push('T');
+        }
+        ret
+    }
+
+    fn initialize_dna_iupac() -> [u8; 256] {
         let mut dna: [u8; 256] = [0; 256];
         dna['A' as usize] = DNA_A;
         dna['C' as usize] = DNA_C;
@@ -60,7 +91,7 @@ impl Facility {
         dna
     }
 
-    fn get_dna_complement() -> [char; 256] {
+    fn initialize_dna_iupac_complement() -> [char; 256] {
         let mut dna: [char; 256] = [' '; 256];
         dna['A' as usize] = 'T';
         dna['C' as usize] = 'G';
@@ -71,11 +102,7 @@ impl Facility {
         dna
     }
 
-    pub fn complement(&self, base: char) -> char {
-        self.dna_iupac_complement[base as usize]
-    }
-
-    fn get_dna_markers() -> HashMap<String, Vec<DNAmarkerPart>> {
+    fn initialize_dna_markers() -> HashMap<String, Vec<DNAmarkerPart>> {
         let mut ret = HashMap::new();
         let data = include_str!("../assets/dna_markers.json");
         let res: serde_json::Value = serde_json::from_str(data).expect("Invalid JSON");
@@ -102,7 +129,7 @@ impl Facility {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
     use crate::FACILITY;
 
     #[test]
@@ -123,5 +150,32 @@ mod tests {
         assert_eq!(FACILITY.complement('T'), 'A');
         assert_eq!(FACILITY.complement('U'), 'A');
         assert_eq!(FACILITY.complement('X'), ' ');
+    }
+
+    #[test]
+    fn test_base2iupac() {
+        assert_eq!(FACILITY.base2iupac('A'), DNA_A);
+        assert_eq!(FACILITY.base2iupac('C'), DNA_C);
+        assert_eq!(FACILITY.base2iupac('G'), DNA_G);
+        assert_eq!(FACILITY.base2iupac('T'), DNA_T);
+        assert_eq!(FACILITY.base2iupac('U'), DNA_T);
+        assert_eq!(FACILITY.base2iupac('X'), 0);
+    }
+
+    #[test]
+    fn test_split_iupac() {
+        assert_eq!(FACILITY.split_iupac(DNA_A), vec!['A']);
+        assert_eq!(FACILITY.split_iupac(DNA_C), vec!['C']);
+        assert_eq!(FACILITY.split_iupac(DNA_G), vec!['G']);
+        assert_eq!(FACILITY.split_iupac(DNA_T), vec!['T']);
+        assert_eq!(FACILITY.split_iupac(DNA_A | DNA_C), vec!['A', 'C']);
+        assert_eq!(
+            FACILITY.split_iupac(DNA_A | DNA_C | DNA_G),
+            vec!['A', 'C', 'G']
+        );
+        assert_eq!(
+            FACILITY.split_iupac(DNA_A | DNA_C | DNA_G | DNA_T),
+            vec!['A', 'C', 'G', 'T']
+        );
     }
 }

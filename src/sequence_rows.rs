@@ -10,10 +10,12 @@ pub struct RowBlank {
 }
 
 impl RowBlank {
+    #[inline(always)]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[inline(always)]
     fn blocks(&self) -> usize {
         0
     }
@@ -51,17 +53,20 @@ impl RowDna {
         }
     }
 
+    #[inline(always)]
     pub fn reverse_complement(mut self) -> Self {
         self.show_reverse_complement = true;
         self.show_position = false;
         self
     }
 
+    #[inline(always)]
     fn sequence_position_length(&self) -> usize {
         // TODO more elegant way to get the length of the sequence
         format!("{}", self.seq_len()).len()
     }
 
+    #[inline(always)]
     fn seq_len(&self) -> usize {
         self.dna.read().unwrap().len()
     }
@@ -125,6 +130,7 @@ impl RowDna {
         }
     }
 
+    #[inline(always)]
     fn blocks(&self) -> usize {
         self.blocks
     }
@@ -156,6 +162,7 @@ impl SequenceRow {
         }
     }
 
+    #[inline(always)]
     pub fn line_height(&self) -> f32 {
         match self {
             Self::Separator(ref row) => row.line_height,
@@ -164,6 +171,7 @@ impl SequenceRow {
         }
     }
 
+    #[inline(always)]
     pub fn blocks(&self) -> usize {
         match self {
             Self::Separator(ref row) => row.blocks(),

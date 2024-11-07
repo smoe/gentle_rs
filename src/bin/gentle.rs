@@ -12,7 +12,3 @@ fn main() {
         Box::new(|_cc| Ok(Box::new(app::GENtleApp::new()))),
     );
 }
-
-/*
-Mac M1*: CFLAGS="-march=armv8-a" cargo run --release
-*/
