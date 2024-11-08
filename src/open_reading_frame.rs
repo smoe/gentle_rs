@@ -97,7 +97,6 @@ impl OpenReadingFrame {
                         stop_codon_position -= seq_len;
                     }
 
-                    // TODO: String construction/check is probably slow
                     let codon = [
                         Self::get_nucleotide(sequence, stop_codon_position, complement),
                         Self::get_nucleotide(sequence, stop_codon_position + direction, complement),
