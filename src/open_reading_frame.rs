@@ -51,7 +51,7 @@ impl OpenReadingFrame {
     fn add_orfs(sequence: &[u8], is_circular: bool, offset: i32) -> Vec<OpenReadingFrame> {
         let mut ret = vec![];
         let seq_len = sequence.len() as i32;
-        let (dir, b, complement) = if offset > 0 {
+        let (direction, inisial_start_position, complement) = if offset > 0 {
             (1, offset - 1, false)
         } else {
             let mut b = 0;
@@ -63,54 +63,60 @@ impl OpenReadingFrame {
             (-1, b, true)
         };
 
-        let max_aa = (seq_len + 2) / 3; // Max ORF length, in AA => ~ 1/3 of the sequence length
+        // Max ORF length, in AA => ~ 1/3 of the sequence length
+        let max_amino_acids = (seq_len + 2) / 3;
 
-        let mut a = b;
-        while a + dir * 3 > 0 && (a + dir * 3) < seq_len {
-            let codon = format!(
-                "{}{}{}",
-                Self::get_nucleotide(sequence, a, complement),
-                Self::get_nucleotide(sequence, a + dir, complement),
-                Self::get_nucleotide(sequence, a + dir * 2, complement)
-            );
+        let mut start_codon_position = inisial_start_position;
+        while start_codon_position + direction * 3 > 0
+            && (start_codon_position + direction * 3) < seq_len
+        {
+            let codon = [
+                Self::get_nucleotide(sequence, start_codon_position, complement),
+                Self::get_nucleotide(sequence, start_codon_position + direction, complement),
+                Self::get_nucleotide(sequence, start_codon_position + direction * 2, complement),
+            ];
 
-            if codon == "ATG" {
-                // let mut cnt = (seq_len + 2) / 3; // Max ORF length, in AA => ~ 1/3 of the sequence length
-                let mut aa = 0;
-                let mut b = a;
+            if codon == ['A', 'T', 'G'] {
+                let mut amino_acids = 0;
+                let mut stop_codon_position = start_codon_position;
 
-                while aa <= max_aa {
-                    // cnt -= 1;
-                    aa += 1;
+                while amino_acids <= max_amino_acids {
+                    amino_acids += 1;
 
                     // Handle wrapping
-                    if b < 0 {
+                    if stop_codon_position < 0 {
                         if !is_circular {
                             break;
                         }
-                        b = seq_len - b;
+                        stop_codon_position = seq_len - stop_codon_position;
                     }
-                    if b >= seq_len {
+                    if stop_codon_position >= seq_len {
                         if !is_circular {
                             break;
                         }
-                        b -= seq_len;
+                        stop_codon_position -= seq_len;
                     }
 
-                    let codon = format!(
-                        "{}{}{}",
-                        Self::get_nucleotide(sequence, b, complement),
-                        Self::get_nucleotide(sequence, b + dir, complement),
-                        Self::get_nucleotide(sequence, b + dir * 2, complement)
-                    );
-                    // println!("{b}: {codon}");
+                    // TODO: String construction/check is probably slow
+                    let codon = [
+                        Self::get_nucleotide(sequence, stop_codon_position, complement),
+                        Self::get_nucleotide(sequence, stop_codon_position + direction, complement),
+                        Self::get_nucleotide(
+                            sequence,
+                            stop_codon_position + direction * 2,
+                            complement,
+                        ),
+                    ];
 
-                    if codon == "TAA" || codon == "TAG" || codon == "TGA" {
-                        if aa >= MIN_ORF_LENGTH {
-                            let from = a;
-                            let to = b + dir * 2;
+                    if codon == ['T', 'A', 'A']
+                        || codon == ['T', 'A', 'G']
+                        || codon == ['T', 'G', 'A']
+                    {
+                        if amino_acids >= MIN_ORF_LENGTH {
+                            let from = start_codon_position;
+                            let to = stop_codon_position + direction * 2;
 
-                            if from < to || dir == 1 {
+                            if from < to || direction == 1 {
                                 ret.push(OpenReadingFrame::new(from, to, offset));
                             } else {
                                 ret.push(OpenReadingFrame::new(to, from, offset));
@@ -118,11 +124,10 @@ impl OpenReadingFrame {
                         }
                         break;
                     }
-                    b += dir * 3;
+                    stop_codon_position += direction * 3;
                 }
             }
-
-            a += dir * 3;
+            start_codon_position += direction * 3;
         }
         ret
     }
@@ -133,10 +138,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_find_orfs_linear_forward() {
+    fn test_find_orfs_linear_forward_taa() {
         let mut sequence = "AAATG".to_string();
         sequence += &"AAA".repeat(105); // Filler
         sequence += "TAAGG";
+        let orfs = OpenReadingFrame::find_orfs(sequence.as_bytes(), false);
+        assert_eq!(orfs, vec![OpenReadingFrame::new(2, 322, 3)]);
+    }
+
+    #[test]
+    fn test_find_orfs_linear_forward_tag() {
+        let mut sequence = "AAATG".to_string();
+        sequence += &"AAA".repeat(105); // Filler
+        sequence += "TAGGG";
+        let orfs = OpenReadingFrame::find_orfs(sequence.as_bytes(), false);
+        assert_eq!(orfs, vec![OpenReadingFrame::new(2, 322, 3)]);
+    }
+
+    #[test]
+    fn test_find_orfs_linear_forward_tga() {
+        let mut sequence = "AAATG".to_string();
+        sequence += &"AAA".repeat(105); // Filler
+        sequence += "TGAGG";
         let orfs = OpenReadingFrame::find_orfs(sequence.as_bytes(), false);
         assert_eq!(orfs, vec![OpenReadingFrame::new(2, 322, 3)]);
     }
