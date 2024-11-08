@@ -264,6 +264,11 @@ impl MainAreaDna {
 
             let response = ui.add(self.map_dna.to_owned());
 
+            if response.hovered() {
+                let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
+                self.map_dna.on_hover(pointer_state);
+            }
+
             if response.clicked() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_click(pointer_state);

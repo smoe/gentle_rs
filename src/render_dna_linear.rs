@@ -77,6 +77,12 @@ impl RenderDnaLinear {
         }
     }
 
+    pub fn on_hover(&mut self, pointer_state: PointerState) {
+        if let Some(_pos) = pointer_state.latest_pos() {
+            println!("Clicking on linear DNA sequence not implemented yet");
+        }
+    }
+
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(_pos) = pointer_state.latest_pos() {
             println!("Clicking on linear DNA sequence not implemented yet");

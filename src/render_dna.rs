@@ -47,6 +47,13 @@ impl RenderDna {
         }
     }
 
+    pub fn on_hover(&self, pointer_state: PointerState) {
+        match self {
+            RenderDna::Circular(renderer) => renderer.write().unwrap().on_hover(pointer_state),
+            RenderDna::Linear(renderer) => renderer.write().unwrap().on_hover(pointer_state),
+        }
+    }
+
     pub fn on_double_click(&self, pointer_state: PointerState) {
         match self {
             RenderDna::Circular(renderer) => {

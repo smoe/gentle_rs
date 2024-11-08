@@ -77,6 +77,7 @@ pub struct RenderDnaCircular {
     radius: f32,
     features: Vec<FeaturePosition>,
     selected_feature_number: Option<usize>,
+    hovered_feature_number: Option<usize>,
     re_pos_cuts2names: HashMap<(isize, isize), Vec<String>>,
 }
 
@@ -91,6 +92,7 @@ impl RenderDnaCircular {
             radius: 0.0,
             features: vec![],
             selected_feature_number: None,
+            hovered_feature_number: None,
             re_pos_cuts2names: HashMap::new(),
         }
     }
@@ -102,6 +104,12 @@ impl RenderDnaCircular {
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+        }
+    }
+
+    pub fn on_hover(&mut self, pointer_state: PointerState) {
+        if let Some(pos) = pointer_state.latest_pos() {
+            self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
         }
     }
 
@@ -187,6 +195,37 @@ impl RenderDnaCircular {
         self.draw_open_reading_frames(painter);
         self.draw_restriction_enzyme_sites(painter);
         self.draw_features(painter);
+        self.draw_hovered_feature(painter);
+    }
+
+    fn draw_hovered_feature(&self, painter: &egui::Painter) {
+        if let Some(feature_id) = self.hovered_feature_number {
+            if let Some(fp) = self.features.get(feature_id) {
+                let feature = self
+                    .dna
+                    .read()
+                    .unwrap()
+                    .features()
+                    .get(fp.feature_number - 1)
+                    .cloned();
+                if let Some(feature) = feature {
+                    if let gb_io::seq::Location::Range(from, to) = &feature.location {
+                        let text = format!("{}: {}-{}", &fp.label, from.0, to.0);
+                        let font = FontId {
+                            size: 12.0,
+                            family: FontFamily::Monospace,
+                        };
+                        painter.text(
+                            self.area.left_bottom(),
+                            Align2::LEFT_BOTTOM,
+                            text,
+                            font.to_owned(),
+                            Color32::DARK_GRAY,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     fn get_angle_distance(&self, pos: Pos2) -> (f32, f32) {
