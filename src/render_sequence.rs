@@ -21,13 +21,13 @@ impl RenderSequence {
         display: Arc<RwLock<DnaDisplay>>,
     ) -> Self {
         let mut rows = Vec::new();
-        rows.push(SequenceRow::Dna(RowDna::new(dna.clone())));
+        rows.push(SequenceRow::Dna(RowDna::new(dna.clone(), display.clone())));
         // if display.read().unwrap().show_re() {
         //     rows.push(SequenceRow::RestrictionEnzymes);
         // }
         if display.read().unwrap().show_reverse_complement() {
             rows.push(SequenceRow::Dna(
-                RowDna::new(dna.clone()).reverse_complement(),
+                RowDna::new(dna.clone(), display.clone()).reverse_complement(),
             ));
         }
         if display.read().unwrap().aa_frame() != AminoAcidFrame::None {

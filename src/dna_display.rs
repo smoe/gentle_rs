@@ -1,4 +1,53 @@
 #[derive(Debug, Clone, PartialEq)]
+pub struct Selection {
+    from: usize,
+    to: usize,
+    sequence_length: usize,
+}
+
+impl Selection {
+    pub fn new(from: usize, to: usize, sequence_length: usize) -> Self {
+        if to > sequence_length {
+            Self {
+                from: to % sequence_length,
+                to: from,
+                sequence_length,
+            }
+        } else {
+            Self {
+                from,
+                to,
+                sequence_length,
+            }
+        }
+    }
+
+    pub fn from(&self) -> usize {
+        self.from
+    }
+
+    pub fn to(&self) -> usize {
+        self.to
+    }
+
+    pub fn parts(&self) -> Vec<(usize, usize)> {
+        if self.from < self.to {
+            vec![(self.from, self.to)]
+        } else {
+            vec![(self.to, self.sequence_length), (0, self.from)]
+        }
+    }
+
+    pub fn contains(&self, position: usize) -> bool {
+        if self.from < self.to {
+            position >= self.from && position < self.to
+        } else {
+            position >= self.from || position < self.to
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AminoAcidLetters {
     Single,
     Three,
@@ -52,6 +101,7 @@ pub struct DnaDisplay {
     update_layout: UpdateLayoutParts,
     aa_letters: AminoAcidLetters,
     aa_frame: AminoAcidFrame,
+    selection: Option<Selection>,
 }
 
 impl DnaDisplay {
@@ -126,6 +176,18 @@ impl DnaDisplay {
     pub fn set_aa_frame(&mut self, aa_frame: AminoAcidFrame) {
         self.aa_frame = aa_frame;
     }
+
+    pub fn selection(&self) -> Option<Selection> {
+        self.selection.clone()
+    }
+
+    pub fn select(&mut self, selection: Selection) {
+        self.selection = Some(selection);
+    }
+
+    pub fn deselect(&mut self) {
+        self.selection = None;
+    }
 }
 
 impl Default for DnaDisplay {
@@ -140,6 +202,7 @@ impl Default for DnaDisplay {
             update_layout: UpdateLayoutParts::default(),
             aa_letters: AminoAcidLetters::Single,
             aa_frame: AminoAcidFrame::None,
+            selection: None,
         }
     }
 }

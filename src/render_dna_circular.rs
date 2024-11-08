@@ -1,5 +1,7 @@
 use crate::{
-    dna_display::DnaDisplay, dna_sequence::DNAsequence, gc_contents::GcRegion,
+    dna_display::{DnaDisplay, Selection},
+    dna_sequence::DNAsequence,
+    gc_contents::GcRegion,
     render_dna::RenderDna,
 };
 use eframe::egui::{
@@ -114,9 +116,16 @@ impl RenderDnaCircular {
     }
 
     pub fn on_double_click(&mut self, pointer_state: PointerState) {
+        self.display.write().unwrap().deselect();
         if let Some(pos) = pointer_state.latest_pos() {
             if let Some(feature) = self.get_clicked_feature(pos) {
-                println!("Double-clicked {:?}", feature);
+                // println!("Double-clicked {:?}", feature);
+                let selection = Selection::new(
+                    feature.from as usize,
+                    feature.to as usize,
+                    self.sequence_length as usize,
+                );
+                self.display.write().unwrap().select(selection);
             }
         }
     }
@@ -187,6 +196,7 @@ impl RenderDnaCircular {
         }
 
         let painter = ui.painter();
+        self.draw_selection(painter);
         self.draw_backbone(painter);
         self.draw_gc_contents(painter);
         self.draw_methylation_sites(painter);
@@ -196,6 +206,48 @@ impl RenderDnaCircular {
         self.draw_restriction_enzyme_sites(painter);
         self.draw_features(painter);
         self.draw_hovered_feature(painter);
+    }
+
+    fn draw_circle_section(&self, start: u64, end: u64, color: Color32, painter: &egui::Painter) {
+        let center = self.area.center();
+        let radius = self.radius;
+
+        // Generate points to create the filled section
+        let num_points = 500; // More points = smoother curve
+        let points: Vec<Pos2> = (0..=num_points)
+            .map(|i| {
+                let pos = start + (end - start) * i / num_points;
+                self.pos2xy(pos as i64, radius)
+                // let t = i as f32 / num_points as f32;
+                // let angle = start_angle + t * (end_angle - start_angle);
+                // let x = center.x + radius * angle.cos();
+                // let y = center.y + radius * angle.sin();
+                // Pos2::new(x, y)
+            })
+            .collect();
+
+        // Create a vector of points including the center to form a filled shape
+        let mut filled_points = vec![center];
+        filled_points.extend(points);
+
+        // Draw the filled section
+        let fill_color = color.to_owned();
+        let stroke = Stroke::new(2.0, color);
+
+        let shape = Shape::convex_polygon(filled_points, fill_color, stroke);
+
+        painter.add(shape);
+    }
+
+    fn draw_selection(&self, painter: &egui::Painter) {
+        let selection = match self.display.read().unwrap().selection() {
+            Some(selection) => selection,
+            None => return,
+        };
+        let parts = selection.parts();
+        for part in parts {
+            self.draw_circle_section(part.0 as u64, part.1 as u64, Color32::LIGHT_GRAY, painter);
+        }
     }
 
     fn draw_hovered_feature(&self, painter: &egui::Painter) {

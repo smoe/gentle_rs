@@ -1,7 +1,7 @@
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, render_sequence::RenderSequence, FACILITY,
 };
-use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Vec2};
+use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, Vec2};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone, Debug, Default)]
@@ -24,6 +24,7 @@ impl RowBlank {
 #[derive(Clone, Debug)]
 pub struct RowDna {
     dna: Arc<RwLock<DNAsequence>>,
+    display: Arc<RwLock<DnaDisplay>>,
     blocks: usize,
     number_offset: f32,
     line_height: f32,
@@ -37,9 +38,10 @@ pub struct RowDna {
 }
 
 impl RowDna {
-    pub fn new(dna: Arc<RwLock<DNAsequence>>) -> Self {
+    pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         Self {
             dna,
+            display,
             blocks: 0,
             line_height: 0.0,
             char_width: 0.0,
@@ -98,6 +100,7 @@ impl RowDna {
                 Color32::BLACK,
             );
         }
+        let selection = self.display.read().unwrap().selection();
         let seq_end = (seq_offset + self.bases_per_line).min(self.seq_len());
         if let Some(seq) = self.dna.read().unwrap().forward().get(seq_offset..seq_end) {
             let y = rect.top() + self.block_offset;
@@ -110,6 +113,30 @@ impl RowDna {
                 } else {
                     base
                 };
+
+                // Show selection, if any, in primary sequence only
+                if !self.show_reverse_complement {
+                    if let Some(selection) = &selection {
+                        let position = seq_offset + offset;
+                        if selection.contains(position) {
+                            painter.rect(
+                                Rect::from_min_size(
+                                    Pos2 {
+                                        x: x - self.char_width,
+                                        y,
+                                    },
+                                    Vec2 {
+                                        x: self.char_width,
+                                        y: self.line_height,
+                                    },
+                                ),
+                                0.0,
+                                Color32::LIGHT_GRAY,
+                                Stroke::NONE,
+                            );
+                        }
+                    }
+                }
 
                 painter.text(
                     Pos2 { x, y },
@@ -225,7 +252,7 @@ mod tests {
     fn test_row_dna() {
         let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
         let dna = Arc::new(RwLock::new(DNAsequence::from_sequence("ACGT").unwrap()));
-        let row = RowDna::new(dna);
+        let row = RowDna::new(dna, dna_display.clone());
         let mut row = SequenceRow::Dna(row);
         row.compute_line_height(&Vec2::new(10.0, 10.0));
         row.layout(
