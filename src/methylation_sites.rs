@@ -1,8 +1,34 @@
-#[derive(Clone, Debug, Default)]
-pub enum MethylationMode {
-    #[default]
-    DCM,
-    DAM,
+#[derive(Clone, Debug)]
+pub struct MethylationMode {
+    dcm: bool,
+    dam: bool,
+}
+
+impl MethylationMode {
+    pub fn dcm(&self) -> bool {
+        self.dcm
+    }
+
+    pub fn set_dcm(&mut self, dcm: bool) {
+        self.dcm = dcm;
+    }
+
+    pub fn dam(&self) -> bool {
+        self.dam
+    }
+
+    pub fn set_dam(&mut self, dam: bool) {
+        self.dam = dam;
+    }
+}
+
+impl Default for MethylationMode {
+    fn default() -> Self {
+        Self {
+            dcm: true,
+            dam: true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -15,29 +41,29 @@ impl MethylationSites {
     pub fn new_from_sequence(sequence: &[u8], mode: MethylationMode) -> Self {
         let mut ret = Self::default();
         for pos in 0..sequence.len() {
-            match mode {
-                MethylationMode::DAM => {
-                    let bases = [
-                        Self::get_nucleotide(sequence, pos),
-                        Self::get_nucleotide(sequence, pos + 1),
-                        Self::get_nucleotide(sequence, pos + 2),
-                        Self::get_nucleotide(sequence, pos + 3),
-                    ];
-                    if bases == ['G', 'A', 'T', 'C'] {
-                        ret.sites.push(pos + 1);
-                    }
+            if mode.dam() {
+                let bases = [
+                    Self::get_nucleotide(sequence, pos),
+                    Self::get_nucleotide(sequence, pos + 1),
+                    Self::get_nucleotide(sequence, pos + 2),
+                    Self::get_nucleotide(sequence, pos + 3),
+                ];
+                if bases == ['G', 'A', 'T', 'C'] {
+                    ret.sites.push(pos + 1);
+                    continue; // No need to check DCM, site is already added
                 }
-                MethylationMode::DCM => {
-                    let bases = [
-                        Self::get_nucleotide(sequence, pos),
-                        Self::get_nucleotide(sequence, pos + 1),
-                        Self::get_nucleotide(sequence, pos + 2), // W=A|T
-                        Self::get_nucleotide(sequence, pos + 3),
-                        Self::get_nucleotide(sequence, pos + 4),
-                    ];
-                    if bases == ['C', 'C', 'A', 'G', 'G'] || bases == ['C', 'C', 'T', 'G', 'G'] {
-                        ret.sites.push(pos + 1);
-                    }
+            }
+
+            if mode.dcm() {
+                let bases = [
+                    Self::get_nucleotide(sequence, pos),
+                    Self::get_nucleotide(sequence, pos + 1),
+                    Self::get_nucleotide(sequence, pos + 2), // W=A|T
+                    Self::get_nucleotide(sequence, pos + 3),
+                    Self::get_nucleotide(sequence, pos + 4),
+                ];
+                if bases == ['C', 'C', 'A', 'G', 'G'] || bases == ['C', 'C', 'T', 'G', 'G'] {
+                    ret.sites.push(pos + 1);
                 }
             }
         }
