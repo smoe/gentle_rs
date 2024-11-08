@@ -124,17 +124,45 @@ impl RenderDnaCircular {
         self.selected_feature_number = feature_number;
     }
 
+    fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut ret = false;
+
+        // Recompute layout if area has changed
+        let new_area = ui.available_rect_before_wrap();
+        if self.area != new_area {
+            ret = true;
+            self.area = new_area;
+        }
+
+        // Recompute layout if update flag is set
+        ret = ret
+            || self
+                .display
+                .read()
+                .unwrap()
+                .update_layout()
+                .update_map_dna();
+
+        ret
+    }
+
+    fn layout_was_updated(&self) {
+        self.display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .map_dna_updated();
+    }
+
     pub fn render(&mut self, ui: &mut egui::Ui) {
-        self.features.clear();
-        self.area = ui.available_rect_before_wrap();
         self.radius = self.area.width().min(self.area.height()) * 0.4;
         self.center = self.area.center();
         self.sequence_length = self.dna.read().expect("DNA lock poisoned").len() as i64;
 
-        // TODO cache and invalidate on update
-        if true {
+        if self.layout_needs_recomputing(ui) {
             self.layout_re();
             self.layout_features();
+            self.layout_was_updated();
         }
 
         let painter = ui.painter();

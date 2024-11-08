@@ -34,8 +34,42 @@ impl RenderDnaLinear {
         &self.area
     }
 
+    fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut ret = false;
+
+        // Recompute layout if area has changed
+        let new_area = ui.available_rect_before_wrap();
+        if self.area != new_area {
+            ret = true;
+            self.area = new_area;
+        }
+
+        // Recompute layout if update flag is set
+        ret = ret
+            || self
+                .display
+                .read()
+                .unwrap()
+                .update_layout()
+                .update_map_dna();
+
+        ret
+    }
+
+    fn layout_was_updated(&self) {
+        self.display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .map_dna_updated();
+    }
+
     pub fn render(&mut self, ui: &mut egui::Ui) {
-        self.area = ui.available_rect_before_wrap();
+        if self.layout_needs_recomputing(ui) {
+            // TODO layout recompute
+            self.layout_was_updated();
+        }
+
         if self.display.read().unwrap().show_re() {
             ui.heading("Linear DNA (RE)");
         } else {

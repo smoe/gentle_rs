@@ -124,6 +124,7 @@ impl OpenReadingFrame {
         ret
     }
 
+    #[inline(always)]
     fn get_codon(
         sequence: &[u8],
         start_codon_position: i32,

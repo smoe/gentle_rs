@@ -47,6 +47,36 @@ impl RenderSequence {
         &self.area
     }
 
+    fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut ret = false;
+
+        // Recompute layout if area has changed
+        let new_area = ui.available_rect_before_wrap();
+        if self.area != new_area {
+            ret = true;
+            self.area = new_area;
+        }
+
+        // Recompute layout if update flag is set
+        ret = ret
+            || self
+                .display
+                .read()
+                .unwrap()
+                .update_layout()
+                .update_map_sequence();
+
+        ret
+    }
+
+    fn layout_was_updated(&self) {
+        self.display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .map_sequence_updated();
+    }
+
     pub fn font() -> FontId {
         FontId {
             size: 12.0,
@@ -88,10 +118,11 @@ impl RenderSequence {
     }
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
-        if true {
-            // TODO only recompute layout if necessary
+        if self.layout_needs_recomputing(ui) {
             self.layout(ui);
+            self.layout_was_updated();
         }
+
         egui::ScrollArea::vertical().show_rows(
             ui,
             self.block_height,
