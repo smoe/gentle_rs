@@ -70,8 +70,19 @@ impl Facility {
         ret
     }
 
+    #[inline(always)]
     pub fn get_dna_marker(&self, name: &str) -> Option<&Vec<DNAmarkerPart>> {
         self.dna_markers.get(name)
+    }
+
+    #[inline(always)]
+    pub fn is_start_codon(&self, codon: &[char; 3]) -> bool {
+        *codon == ['A', 'T', 'G']
+    }
+
+    #[inline(always)]
+    pub fn is_stop_codon(&self, codon: &[char; 3]) -> bool {
+        *codon == ['T', 'A', 'A'] || *codon == ['T', 'A', 'G'] || *codon == ['T', 'G', 'A']
     }
 
     fn initialize_dna_iupac() -> [u8; 256] {

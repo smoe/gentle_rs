@@ -15,14 +15,17 @@ impl OpenReadingFrame {
         OpenReadingFrame { from, to, offset }
     }
 
+    #[inline(always)]
     pub fn from(&self) -> i32 {
         self.from
     }
 
+    #[inline(always)]
     pub fn to(&self) -> i32 {
         self.to
     }
 
+    #[inline(always)]
     pub fn offset(&self) -> i32 {
         self.offset
     }
@@ -34,6 +37,7 @@ impl OpenReadingFrame {
             .collect()
     }
 
+    #[inline(always)]
     fn get_nucleotide(sequence: &[u8], pos: i32, complement: bool) -> char {
         match sequence.get(pos as usize) {
             Some(c) => {
@@ -70,13 +74,14 @@ impl OpenReadingFrame {
         while start_codon_position + direction * 3 > 0
             && (start_codon_position + direction * 3) < seq_len
         {
+            // Check for START codon
             let codon = [
                 Self::get_nucleotide(sequence, start_codon_position, complement),
                 Self::get_nucleotide(sequence, start_codon_position + direction, complement),
                 Self::get_nucleotide(sequence, start_codon_position + direction * 2, complement),
             ];
 
-            if codon == ['A', 'T', 'G'] {
+            if FACILITY.is_start_codon(&codon) {
                 let mut amino_acids = 0;
                 let mut stop_codon_position = start_codon_position;
 
@@ -97,6 +102,7 @@ impl OpenReadingFrame {
                         stop_codon_position -= seq_len;
                     }
 
+                    // Check for STOP codons
                     let codon = [
                         Self::get_nucleotide(sequence, stop_codon_position, complement),
                         Self::get_nucleotide(sequence, stop_codon_position + direction, complement),
@@ -107,10 +113,7 @@ impl OpenReadingFrame {
                         ),
                     ];
 
-                    if codon == ['T', 'A', 'A']
-                        || codon == ['T', 'A', 'G']
-                        || codon == ['T', 'G', 'A']
-                    {
+                    if FACILITY.is_stop_codon(&codon) {
                         if amino_acids >= MIN_ORF_LENGTH {
                             let from = start_codon_position;
                             let to = stop_codon_position + direction * 2;
@@ -123,9 +126,12 @@ impl OpenReadingFrame {
                         }
                         break;
                     }
+                    // Try next codon for STOP
                     stop_codon_position += direction * 3;
                 }
             }
+
+            // Try next codon for START
             start_codon_position += direction * 3;
         }
         ret
