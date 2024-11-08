@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MethylationMode {
     dcm: bool,
     dam: bool,
@@ -84,5 +84,22 @@ impl MethylationSites {
     #[inline(always)]
     pub fn last_mode(&self) -> MethylationMode {
         self.last_mode.to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_methylation_sites() {
+        let sequence = b"CCAGGATCCAGG";
+        let mode = MethylationMode {
+            dcm: true,
+            dam: true,
+        };
+        let sites = MethylationSites::new_from_sequence(sequence, mode.to_owned());
+        assert_eq!(sites.sites(), &[1, 5, 8]);
+        assert_eq!(sites.last_mode(), mode);
     }
 }
