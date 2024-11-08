@@ -75,12 +75,7 @@ impl OpenReadingFrame {
             && (start_codon_position + direction * 3) < seq_len
         {
             // Check for START codon
-            let codon = [
-                Self::get_nucleotide(sequence, start_codon_position, complement),
-                Self::get_nucleotide(sequence, start_codon_position + direction, complement),
-                Self::get_nucleotide(sequence, start_codon_position + direction * 2, complement),
-            ];
-
+            let codon = Self::get_codon(sequence, start_codon_position, complement, direction);
             if FACILITY.is_start_codon(&codon) {
                 let mut amino_acids = 0;
                 let mut stop_codon_position = start_codon_position;
@@ -103,16 +98,8 @@ impl OpenReadingFrame {
                     }
 
                     // Check for STOP codons
-                    let codon = [
-                        Self::get_nucleotide(sequence, stop_codon_position, complement),
-                        Self::get_nucleotide(sequence, stop_codon_position + direction, complement),
-                        Self::get_nucleotide(
-                            sequence,
-                            stop_codon_position + direction * 2,
-                            complement,
-                        ),
-                    ];
-
+                    let codon =
+                        Self::get_codon(sequence, stop_codon_position, complement, direction);
                     if FACILITY.is_stop_codon(&codon) {
                         if amino_acids >= MIN_ORF_LENGTH {
                             let from = start_codon_position;
@@ -136,11 +123,26 @@ impl OpenReadingFrame {
         }
         ret
     }
+
+    fn get_codon(
+        sequence: &[u8],
+        start_codon_position: i32,
+        complement: bool,
+        direction: i32,
+    ) -> [char; 3] {
+        [
+            Self::get_nucleotide(sequence, start_codon_position, complement),
+            Self::get_nucleotide(sequence, start_codon_position + direction, complement),
+            Self::get_nucleotide(sequence, start_codon_position + direction * 2, complement),
+        ]
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // TODO test for circular where the stop codon is on, or next to, the 0 point
 
     #[test]
     fn test_find_orfs_linear_forward_taa() {
