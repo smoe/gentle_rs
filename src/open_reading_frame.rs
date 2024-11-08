@@ -35,13 +35,7 @@ impl OpenReadingFrame {
     }
 
     fn get_nucleotide(sequence: &[u8], pos: i32, complement: bool) -> char {
-        let pos = if pos < 0 {
-            pos + (sequence.len() as i32)
-        } else {
-            pos
-        };
-        let pos = (pos as usize) % sequence.len();
-        match sequence.get(pos) {
+        match sequence.get(pos as usize) {
             Some(c) => {
                 let c = *c as char;
                 if complement {
