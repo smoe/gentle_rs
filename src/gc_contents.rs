@@ -57,7 +57,8 @@ impl GcContents {
     fn calculate_gc(sequence: &[u8]) -> f32 {
         let gc = sequence
             .iter()
-            .filter(|&&c| c == b'G' || c == b'C' || c == b'g' || c == b'c')
+            .map(|c| c.to_ascii_uppercase())
+            .filter(|&c| c == b'G' || c == b'C')
             .count() as f32;
         gc / sequence.len() as f32
     }

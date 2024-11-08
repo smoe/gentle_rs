@@ -71,7 +71,10 @@ impl MethylationSites {
 
     #[inline(always)]
     fn get_nucleotide(sequence: &[u8], pos: usize) -> char {
-        sequence.get(pos).map_or('N', |c| *c as char)
+        sequence
+            .get(pos)
+            .map_or('N', |c| *c as char)
+            .to_ascii_uppercase()
     }
 
     #[inline(always)]

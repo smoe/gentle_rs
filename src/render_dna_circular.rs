@@ -171,6 +171,7 @@ impl RenderDnaCircular {
         let painter = ui.painter();
         self.draw_backbone(painter);
         self.draw_gc_contents(painter);
+        self.draw_methylation_sites(painter);
         self.draw_main_label(painter);
         self.draw_bp(painter);
         if self.display.read().unwrap().show_re() {
@@ -188,7 +189,21 @@ impl RenderDnaCircular {
         (angle, distance)
     }
 
-    fn draw_gc_contents(&mut self, painter: &egui::Painter) {
+    fn draw_methylation_sites(&self, painter: &egui::Painter) {
+        if !self.display.read().unwrap().show_methylation_sites() {
+            return;
+        }
+        let radius_lower = self.radius * 0.97;
+        let stroke = Stroke::new(1.0, Color32::DARK_RED);
+        let methylation_sites = self.dna.read().unwrap().methylation_sites().to_owned();
+        for site in methylation_sites.sites() {
+            let point1 = self.pos2xy(*site as i64, self.radius);
+            let point2 = self.pos2xy(*site as i64, radius_lower);
+            painter.line_segment([point1, point2], stroke.to_owned());
+        }
+    }
+
+    fn draw_gc_contents(&self, painter: &egui::Painter) {
         if !self.display.read().unwrap().show_gc() {
             return;
         }
