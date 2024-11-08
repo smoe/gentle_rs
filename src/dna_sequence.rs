@@ -42,6 +42,7 @@ pub struct DNAsequence {
     max_restriction_enzyme_sites: Option<usize>,
     open_reading_frames: Vec<OpenReadingFrame>,
     methylation_sites: MethylationSites,
+    methylation_mode: MethylationMode,
 }
 
 impl DNAsequence {
@@ -97,6 +98,7 @@ impl DNAsequence {
             max_restriction_enzyme_sites: Some(3), // TODO default?
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
+            methylation_mode: MethylationMode::default(),
         }
     }
 
@@ -140,6 +142,7 @@ impl DNAsequence {
             max_restriction_enzyme_sites: Some(3), // TODO default?
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
+            methylation_mode: MethylationMode::default(), // TODO default?
         }
     }
 
@@ -163,6 +166,14 @@ impl DNAsequence {
         &self.methylation_sites
     }
 
+    pub fn methylation_mode(&self) -> MethylationMode {
+        self.methylation_mode.to_owned()
+    }
+
+    pub fn set_methylation_mode(&mut self, mode: MethylationMode) {
+        self.methylation_mode = mode;
+    }
+
     fn update_restriction_enyzme_sites(&mut self) {
         self.restriction_enzyme_sites = self
             .restriction_enzymes
@@ -176,7 +187,7 @@ impl DNAsequence {
     }
 
     fn update_methylation_sites(&mut self) {
-        let mode = MethylationMode::default(); // TODO FIXME as a option somewhere
+        let mode = self.methylation_mode.to_owned();
         self.methylation_sites = MethylationSites::new_from_sequence(self.forward(), mode);
     }
 

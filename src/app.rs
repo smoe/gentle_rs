@@ -5,6 +5,7 @@ use std::{
 
 use crate::{
     dna_sequence::{self, DNAsequence},
+    methylation_sites::MethylationMode,
     window::Window,
     ENZYMES, TRANSLATIONS,
 };
@@ -50,6 +51,7 @@ impl GENtleApp {
             .restriction_enzymes()
             .clone_into(dna.restriction_enzymes_mut());
         dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.set_methylation_mode(MethylationMode::both()); // TESTING FIXME
         dna.update_computed_features();
 
         self.new_windows.push(Window::new_dna(dna));

@@ -1,10 +1,18 @@
 [package]
 name = "gentle"
 authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
+description = "GENtle"
+keywords = ["plasmid", "vector", "primer", "biology", "pcr"]
+categories = ["science", "science::bioinformatics"]
+repository = "https://github.com/magnusmanske/gentle_rs/"
+readme = "README.md"
 version = "0.1.0"
 edition = "2021"
+default-run = "gentle"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "gentle"
+path = "src/bin/gentle.rs"
 
 [lib]
 name = "gentle"
@@ -31,8 +39,13 @@ eframe = { version = "*", features = [
 	"persistence",
 ] }
 egui_extras = { version = "*", features = ["all_loaders"] }
+egui-file-dialog = "*" #  For file dialogs.
+copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }
 rfd = "*"
+
+#[build-dependencies]
+#winresource = "*" # For Windows app icon
 
 [profile.release]
 opt-level = 3

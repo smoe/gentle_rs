@@ -1,10 +1,17 @@
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MethylationMode {
     dcm: bool,
     dam: bool,
 }
 
 impl MethylationMode {
+    pub fn both() -> Self {
+        Self {
+            dcm: true,
+            dam: true,
+        }
+    }
+
     pub fn dcm(&self) -> bool {
         self.dcm
     }
@@ -19,15 +26,6 @@ impl MethylationMode {
 
     pub fn set_dam(&mut self, dam: bool) {
         self.dam = dam;
-    }
-}
-
-impl Default for MethylationMode {
-    fn default() -> Self {
-        Self {
-            dcm: true,
-            dam: true,
-        }
     }
 }
 
