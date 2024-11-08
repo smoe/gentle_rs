@@ -9,6 +9,7 @@ pub mod dna_display;
 pub mod dna_sequence;
 pub mod enzymes;
 pub mod facility;
+pub mod gc_contents;
 pub mod icons;
 pub mod main_area_dna;
 pub mod methylation_sites;

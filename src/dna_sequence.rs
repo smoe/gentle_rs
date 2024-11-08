@@ -1,4 +1,5 @@
 use crate::{
+    gc_contents::GcContents,
     methylation_sites::{MethylationMode, MethylationSites},
     open_reading_frame::OpenReadingFrame,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
@@ -43,6 +44,7 @@ pub struct DNAsequence {
     open_reading_frames: Vec<OpenReadingFrame>,
     methylation_sites: MethylationSites,
     methylation_mode: MethylationMode,
+    gc_content: GcContents,
 }
 
 impl DNAsequence {
@@ -99,6 +101,7 @@ impl DNAsequence {
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(),
+            gc_content: GcContents::default(),
         }
     }
 
@@ -143,6 +146,7 @@ impl DNAsequence {
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
             methylation_mode: MethylationMode::default(), // TODO default?
+            gc_content: GcContents::default(),
         }
     }
 
@@ -174,6 +178,10 @@ impl DNAsequence {
         self.methylation_mode = mode;
     }
 
+    pub fn gc_content(&self) -> &GcContents {
+        &self.gc_content
+    }
+
     fn update_restriction_enyzme_sites(&mut self) {
         self.restriction_enzyme_sites = self
             .restriction_enzymes
@@ -191,10 +199,15 @@ impl DNAsequence {
         self.methylation_sites = MethylationSites::new_from_sequence(self.forward(), mode);
     }
 
+    fn update_gc_content(&mut self) {
+        self.gc_content = GcContents::new_from_sequence(self.forward());
+    }
+
     pub fn update_computed_features(&mut self) {
         self.update_restriction_enyzme_sites();
         self.update_open_reading_frames();
         self.update_methylation_sites();
+        self.update_gc_content();
         // TODO amino acids
         // TODO protease sites
     }

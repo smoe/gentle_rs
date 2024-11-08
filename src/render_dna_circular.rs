@@ -1,4 +1,7 @@
-use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna::RenderDna};
+use crate::{
+    dna_display::DnaDisplay, dna_sequence::DNAsequence, gc_contents::GcRegion,
+    render_dna::RenderDna,
+};
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
 };
@@ -167,6 +170,7 @@ impl RenderDnaCircular {
 
         let painter = ui.painter();
         self.draw_backbone(painter);
+        self.draw_gc_contents(painter);
         self.draw_main_label(painter);
         self.draw_bp(painter);
         if self.display.read().unwrap().show_re() {
@@ -182,6 +186,36 @@ impl RenderDnaCircular {
         let angle = Self::normalize_angle(angle);
         let distance = (diff_x.powi(2) + diff_y.powi(2)).sqrt();
         (angle, distance)
+    }
+
+    fn draw_gc_contents(&mut self, painter: &egui::Painter) {
+        if !self.display.read().unwrap().show_gc() {
+            return;
+        }
+        let radius = self.radius * 2.0 / 3.0;
+        let mut last_point = self.pos2xy(0, radius);
+        let gc_content = self.dna.read().unwrap().gc_content().to_owned();
+        for gc_region in gc_content.regions() {
+            last_point = self.draw_gc_arc(gc_region, radius, painter, last_point);
+        }
+    }
+
+    fn draw_gc_arc(
+        &self,
+        gc_region: &GcRegion,
+        radius: f32,
+        painter: &egui::Painter,
+        last_point: Pos2,
+    ) -> Pos2 {
+        let point = self.pos2xy(gc_region.to() as i64, radius);
+        let color = Color32::from_rgb(
+            255 - (gc_region.gc() * 255.0) as u8,
+            (gc_region.gc() * 255.0) as u8,
+            0,
+        );
+        let stroke = Stroke::new(10.0, color);
+        painter.line_segment([last_point, point], stroke);
+        point
     }
 
     fn draw_backbone(&mut self, painter: &egui::Painter) {
