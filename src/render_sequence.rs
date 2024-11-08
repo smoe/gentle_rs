@@ -25,7 +25,7 @@ impl RenderSequence {
         // if display.read().unwrap().show_re() {
         //     rows.push(SequenceRow::RestrictionEnzymes);
         // }
-        if display.read().unwrap().show_rc() {
+        if display.read().unwrap().show_reverse_complement() {
             rows.push(SequenceRow::Dna(
                 RowDna::new(dna.clone()).reverse_complement(),
             ));

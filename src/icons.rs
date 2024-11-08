@@ -14,4 +14,10 @@ lazy_static! {
         egui::Image::new(egui::include_image!("../icons/show_map.png"));
     pub static ref ICON_RESTRICTION_ENZYMES: egui::Image<'static> =
         egui::Image::new(egui::include_image!("../icons/restriction_enzymes.png"));
+    pub static ref ICON_OPEN_READING_FRAMES: egui::Image<'static> =
+        egui::Image::new(egui::include_image!("../icons/display_orfs.png"));
+    pub static ref ICON_FEATURES: egui::Image<'static> =
+        egui::Image::new(egui::include_image!("../icons/display_features.png"));
+    pub static ref ICON_GC_CONTENT: egui::Image<'static> =
+        egui::Image::new(egui::include_image!("../icons/gc_content.png"));
 }

@@ -70,7 +70,7 @@ impl RenderDnaLinear {
             self.layout_was_updated();
         }
 
-        if self.display.read().unwrap().show_re() {
+        if self.display.read().unwrap().show_restriction_enzyme_sites() {
             ui.heading("Linear DNA (RE)");
         } else {
             ui.heading("Linear DNA");

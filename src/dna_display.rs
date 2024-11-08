@@ -46,6 +46,7 @@ pub struct DnaDisplay {
     show_restriction_enzymes: bool,
     show_reverse_complement: bool,
     show_open_reading_frames: bool,
+    show_features: bool,
     show_gc_contents: bool,
     show_methylation_sites: bool,
     update_layout: UpdateLayoutParts,
@@ -54,44 +55,52 @@ pub struct DnaDisplay {
 }
 
 impl DnaDisplay {
-    pub fn show_re(&self) -> bool {
+    pub fn show_restriction_enzyme_sites(&self) -> bool {
         self.show_restriction_enzymes
     }
 
-    pub fn set_re(&mut self, show_re: bool) {
-        self.show_restriction_enzymes = show_re;
+    pub fn toggle_show_restriction_enzyme_sites(&mut self) {
+        self.show_restriction_enzymes = !self.show_restriction_enzymes;
     }
 
-    pub fn show_rc(&self) -> bool {
+    pub fn toggle_show_features(&mut self) {
+        self.show_features = !self.show_features;
+    }
+
+    pub fn show_features(&self) -> bool {
+        self.show_features
+    }
+
+    pub fn show_reverse_complement(&self) -> bool {
         self.show_reverse_complement
     }
 
-    pub fn set_rc(&mut self, show_rc: bool) {
-        self.show_reverse_complement = show_rc;
+    pub fn toggle_reverse_complement(&mut self) {
+        self.show_reverse_complement = !self.show_reverse_complement;
     }
 
-    pub fn show_orf(&self) -> bool {
+    pub fn show_open_reading_frames(&self) -> bool {
         self.show_open_reading_frames
     }
 
-    pub fn set_orf(&mut self, show_orf: bool) {
-        self.show_open_reading_frames = show_orf;
+    pub fn toggle_show_open_reading_frames(&mut self) {
+        self.show_open_reading_frames = !self.show_open_reading_frames;
     }
 
-    pub fn show_gc(&self) -> bool {
+    pub fn show_gc_contents(&self) -> bool {
         self.show_gc_contents
     }
 
-    pub fn set_gc(&mut self, show_gc: bool) {
-        self.show_gc_contents = show_gc;
+    pub fn toggle_show_gc_contents(&mut self) {
+        self.show_gc_contents = !self.show_gc_contents;
     }
 
     pub fn show_methylation_sites(&self) -> bool {
         self.show_methylation_sites
     }
 
-    pub fn set_methylation_sites(&mut self, show_methylation_sites: bool) {
-        self.show_methylation_sites = show_methylation_sites;
+    pub fn toggle_show_methylation_sites(&mut self) {
+        self.show_methylation_sites = !self.show_methylation_sites;
     }
 
     pub fn update_layout(&self) -> &UpdateLayoutParts {
@@ -125,6 +134,7 @@ impl Default for DnaDisplay {
             show_restriction_enzymes: true,
             show_reverse_complement: true,
             show_open_reading_frames: true,
+            show_features: true,
             show_gc_contents: true,
             show_methylation_sites: true,
             update_layout: UpdateLayoutParts::default(),

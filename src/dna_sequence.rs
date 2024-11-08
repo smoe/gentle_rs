@@ -150,6 +150,10 @@ impl DNAsequence {
         }
     }
 
+    pub fn open_reading_frames(&self) -> &Vec<OpenReadingFrame> {
+        &self.open_reading_frames
+    }
+
     pub fn set_max_restriction_enzyme_sites(&mut self, max_re_sites: Option<usize>) {
         self.max_restriction_enzyme_sites = max_re_sites;
     }

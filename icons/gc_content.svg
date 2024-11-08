@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Linear gradient definition -->
+  <defs>
+    <linearGradient id="gcGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#22c55e"/> <!-- Green -->
+      <stop offset="50%" style="stop-color:#eab308"/> <!-- Yellow -->
+      <stop offset="100%" style="stop-color:#ef4444"/> <!-- Red -->
+    </linearGradient>
+  </defs>
+
+  <!-- Background rectangle with gradient -->
+  <rect x="3" y="3"
+        width="18" height="18"
+        rx="3"
+        fill="white"
+        stroke="#666666"
+        stroke-width="1"/>
+
+  <!-- Color bar -->
+  <rect x="4" y="14"
+        width="16" height="3"
+        fill="url(#gcGradient)"
+        rx="1"/>
+
+  <!-- GC text -->
+  <text x="5" y="11"
+        font-family="monospace"
+        font-size="8"
+        font-weight="bold"
+        fill="#333333">GC</text>
+
+  <!-- Percentage symbol -->
+  <text x="15" y="9"
+        font-family="monospace"
+        font-size="5"
+        fill="#666666">%</text>
+</svg>

@@ -7,12 +7,12 @@ const MIN_ORF_LENGTH: i32 = 100;
 pub struct OpenReadingFrame {
     from: i32,
     to: i32,
-    offset: i32,
+    frame: i32,
 }
 
 impl OpenReadingFrame {
-    pub fn new(from: i32, to: i32, offset: i32) -> Self {
-        OpenReadingFrame { from, to, offset }
+    pub fn new(from: i32, to: i32, frame: i32) -> Self {
+        OpenReadingFrame { from, to, frame }
     }
 
     #[inline(always)]
@@ -26,8 +26,13 @@ impl OpenReadingFrame {
     }
 
     #[inline(always)]
-    pub fn offset(&self) -> i32 {
-        self.offset
+    pub fn frame(&self) -> i32 {
+        self.frame
+    }
+
+    #[inline(always)]
+    pub fn is_reverse(&self) -> bool {
+        self.frame < 0
     }
 
     pub fn find_orfs(sequence: &[u8], is_circular: bool) -> Vec<OpenReadingFrame> {
@@ -41,7 +46,7 @@ impl OpenReadingFrame {
     fn get_nucleotide(sequence: &[u8], pos: i32, complement: bool) -> char {
         match sequence.get(pos as usize) {
             Some(c) => {
-                let c = *c as char;
+                let c = (*c as char).to_ascii_uppercase();
                 if complement {
                     FACILITY.complement(c)
                 } else {

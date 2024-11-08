@@ -1,8 +1,5 @@
 use crate::{
-    dna_display::DnaDisplay,
-    dna_sequence::DNAsequence,
-    icons::{ICON_CIRCULAR_LINEAR, ICON_RESTRICTION_ENZYMES, ICON_SHOW_MAP, ICON_SHOW_SEQUENCE},
-    render_dna::RenderDna,
+    dna_display::DnaDisplay, dna_sequence::DNAsequence, icons::*, render_dna::RenderDna,
     render_sequence::RenderSequence,
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
@@ -96,13 +93,36 @@ impl MainAreaDna {
                 self.show_map = !self.show_map
             };
 
-            let button = egui::ImageButton::new(ICON_RESTRICTION_ENZYMES.clone().rounding(5.0));
+            let button = egui::ImageButton::new(ICON_FEATURES.clone().rounding(5.0));
             if ui.add(button).clicked() {
-                let show_re = self.dna_display.read().unwrap().show_re();
                 self.dna_display
                     .write()
                     .expect("DNA display lock poisoned")
-                    .set_re(!show_re);
+                    .toggle_show_features();
+            };
+
+            let button = egui::ImageButton::new(ICON_RESTRICTION_ENZYMES.clone().rounding(5.0));
+            if ui.add(button).clicked() {
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .toggle_show_restriction_enzyme_sites();
+            };
+
+            let button = egui::ImageButton::new(ICON_GC_CONTENT.clone().rounding(5.0));
+            if ui.add(button).clicked() {
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .toggle_show_gc_contents();
+            };
+
+            let button = egui::ImageButton::new(ICON_OPEN_READING_FRAMES.clone().rounding(5.0));
+            if ui.add(button).clicked() {
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .toggle_show_open_reading_frames();
             };
         });
     }

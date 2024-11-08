@@ -24,6 +24,16 @@ lazy_static! {
     pub static ref RED_2: Color32 = Color32::DARK_RED;
     pub static ref BLUE_2: Color32 = Color32::DARK_BLUE;
     pub static ref GREEN_2: Color32 = Color32::DARK_GREEN;
+    static ref ORF_COLORS: HashMap<i32, Color32> = {
+        let mut m = HashMap::new();
+        m.insert(-1, Color32::LIGHT_RED);
+        m.insert(-2, Color32::LIGHT_GREEN);
+        m.insert(-3, Color32::LIGHT_BLUE);
+        m.insert(1, Color32::DARK_RED);
+        m.insert(2, Color32::DARK_GREEN);
+        m.insert(3, Color32::DARK_BLUE);
+        m
+    };
 }
 
 #[derive(Debug, Clone)]
@@ -158,7 +168,7 @@ impl RenderDnaCircular {
     }
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
-        self.radius = self.area.width().min(self.area.height()) * 0.4;
+        self.radius = self.area.width().min(self.area.height()) * 0.35;
         self.center = self.area.center();
         self.sequence_length = self.dna.read().expect("DNA lock poisoned").len() as i64;
 
@@ -174,9 +184,8 @@ impl RenderDnaCircular {
         self.draw_methylation_sites(painter);
         self.draw_main_label(painter);
         self.draw_bp(painter);
-        if self.display.read().unwrap().show_re() {
-            self.draw_re(painter);
-        }
+        self.draw_open_reading_frames(painter);
+        self.draw_restriction_enzyme_sites(painter);
         self.draw_features(painter);
     }
 
@@ -187,6 +196,98 @@ impl RenderDnaCircular {
         let angle = Self::normalize_angle(angle);
         let distance = (diff_x.powi(2) + diff_y.powi(2)).sqrt();
         (angle, distance)
+    }
+
+    fn draw_pointed_arc(
+        &self,
+        from: i32,
+        to: i32,
+        radius: f32,
+        is_reverse: bool,
+        stroke: Stroke,
+        painter: &egui::Painter,
+    ) {
+        // start <= end
+        let start = from.min(to);
+        let end = from.max(to);
+        if is_reverse {
+            let step = -10;
+            let mut pos = end;
+            let mut last_pos = pos;
+
+            // Draw starting point
+            let r0 = radius / 75.0;
+            let point = self.pos2xy(pos as i64, radius);
+            painter.circle_filled(point, r0, stroke.color.to_owned());
+
+            // Draw arc
+            while pos > start {
+                let point1 = self.pos2xy(last_pos as i64, radius);
+                let point2 = self.pos2xy(pos as i64, radius);
+                painter.line_segment([point1, point2], stroke.to_owned());
+                last_pos = pos;
+                pos += step;
+            }
+
+            // Draw arrow
+            last_pos = start + step * 2;
+            let point1 = self.pos2xy(last_pos as i64, radius * 0.98);
+            let point2 = self.pos2xy(start as i64, radius);
+            painter.line_segment([point1, point2], stroke.to_owned());
+            let point1 = self.pos2xy(last_pos as i64, radius * 1.02);
+            let point2 = self.pos2xy(start as i64, radius);
+            painter.line_segment([point1, point2], stroke.to_owned());
+        } else {
+            let step = 10;
+            let mut pos = start;
+            let mut last_pos = pos;
+
+            // Draw starting point
+            let r0 = radius / 75.0;
+            let point = self.pos2xy(pos as i64, radius);
+            painter.circle_filled(point, r0, stroke.color.to_owned());
+
+            // Draw arc
+            while pos < end {
+                let point1 = self.pos2xy(last_pos as i64, radius);
+                let point2 = self.pos2xy(pos as i64, radius);
+                painter.line_segment([point1, point2], stroke.to_owned());
+                last_pos = pos;
+                pos += step;
+            }
+
+            // Draw arrow
+            last_pos = end - step * 2;
+            let point1 = self.pos2xy(last_pos as i64, radius * 0.98);
+            let point2 = self.pos2xy(end as i64, radius);
+            painter.line_segment([point1, point2], stroke.to_owned());
+            let point1 = self.pos2xy(last_pos as i64, radius * 1.02);
+            let point2 = self.pos2xy(end as i64, radius);
+            painter.line_segment([point1, point2], stroke.to_owned());
+        };
+    }
+
+    fn draw_open_reading_frames(&self, painter: &egui::Painter) {
+        if !self.display.read().unwrap().show_open_reading_frames() {
+            return;
+        }
+        let orfs = self.dna.read().unwrap().open_reading_frames().to_owned();
+        for orf in orfs {
+            let color = match ORF_COLORS.get(&orf.frame()) {
+                Some(color) => color.to_owned(),
+                None => continue,
+            };
+            let radius = self.radius * 1.1 + self.radius * 0.05 * (orf.frame() as f32);
+            let stroke = Stroke::new(1.0, color);
+            self.draw_pointed_arc(
+                orf.from(),
+                orf.to(),
+                radius,
+                orf.is_reverse(),
+                stroke,
+                painter,
+            );
+        }
     }
 
     fn draw_methylation_sites(&self, painter: &egui::Painter) {
@@ -204,7 +305,7 @@ impl RenderDnaCircular {
     }
 
     fn draw_gc_contents(&self, painter: &egui::Painter) {
-        if !self.display.read().unwrap().show_gc() {
+        if !self.display.read().unwrap().show_gc_contents() {
             return;
         }
         let radius = self.radius * 2.0 / 3.0;
@@ -346,6 +447,14 @@ impl RenderDnaCircular {
     }
 
     fn draw_features(&mut self, painter: &egui::Painter) {
+        if !self
+            .display
+            .read()
+            .expect("Display lock poisoned")
+            .show_features()
+        {
+            return;
+        }
         for feature in &self.features {
             self.draw_feature_from_range(painter, feature);
         }
@@ -477,7 +586,10 @@ impl RenderDnaCircular {
         }
     }
 
-    fn draw_re(&self, painter: &egui::Painter) {
+    fn draw_restriction_enzyme_sites(&self, painter: &egui::Painter) {
+        if !self.display.read().unwrap().show_restriction_enzyme_sites() {
+            return;
+        }
         let font_tick = FontId {
             size: 9.0,
             family: FontFamily::Proportional,
