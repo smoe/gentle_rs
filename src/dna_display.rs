@@ -47,6 +47,7 @@ pub struct DnaDisplay {
     show_reverse_complement: bool,
     show_open_reading_frames: bool,
     show_gc_contents: bool,
+    show_methylation_sites: bool,
     update_layout: UpdateLayoutParts,
     aa_letters: AminoAcidLetters,
     aa_frame: AminoAcidFrame,
@@ -85,6 +86,14 @@ impl DnaDisplay {
         self.show_gc_contents = show_gc;
     }
 
+    pub fn show_methylation_sites(&self) -> bool {
+        self.show_methylation_sites
+    }
+
+    pub fn set_methylation_sites(&mut self, show_methylation_sites: bool) {
+        self.show_methylation_sites = show_methylation_sites;
+    }
+
     pub fn update_layout(&self) -> &UpdateLayoutParts {
         &self.update_layout
     }
@@ -117,6 +126,7 @@ impl Default for DnaDisplay {
             show_reverse_complement: true,
             show_open_reading_frames: true,
             show_gc_contents: true,
+            show_methylation_sites: true,
             update_layout: UpdateLayoutParts::default(),
             aa_letters: AminoAcidLetters::Single,
             aa_frame: AminoAcidFrame::None,

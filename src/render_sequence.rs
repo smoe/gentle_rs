@@ -135,7 +135,6 @@ impl RenderSequence {
                     };
                     let (response, painter) = ui.allocate_painter(size, Sense::hover());
                     let rect = response.rect;
-                    // painter.rect_stroke(rect.shrink(1.0), Rounding::ZERO, BLACK_1.to_owned());
                     for (row_num, row) in self.rows.iter_mut().enumerate() {
                         row.render(row_num, block_num, &painter, &rect);
                     }

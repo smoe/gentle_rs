@@ -1,4 +1,5 @@
 use crate::{
+    methylation_sites::{MethylationMode, MethylationSites},
     open_reading_frame::OpenReadingFrame,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
     FACILITY,
@@ -36,10 +37,11 @@ impl DNAoverhang {
 pub struct DNAsequence {
     seq: Seq,
     overhang: DNAoverhang,
-    re: Vec<RestrictionEnzyme>,
-    re_sites: Vec<RestrictionEnzymeSite>,
-    max_re_sites: Option<usize>,
+    restriction_enzymes: Vec<RestrictionEnzyme>,
+    restriction_enzyme_sites: Vec<RestrictionEnzymeSite>,
+    max_restriction_enzyme_sites: Option<usize>,
     open_reading_frames: Vec<OpenReadingFrame>,
+    methylation_sites: MethylationSites,
 }
 
 impl DNAsequence {
@@ -63,7 +65,7 @@ impl DNAsequence {
             .collect())
     }
 
-    pub fn restriction_enzyme_sites(
+    pub fn calculate_restriction_enzyme_sites(
         &self,
         restriction_enzymes: &[RestrictionEnzyme],
         max: Option<usize>,
@@ -90,10 +92,11 @@ impl DNAsequence {
         Self {
             seq,
             overhang: DNAoverhang::default(),
-            re: vec![],
-            re_sites: vec![],
-            max_re_sites: Some(3), // TODO default?
+            restriction_enzymes: vec![],
+            restriction_enzyme_sites: vec![],
+            max_restriction_enzyme_sites: Some(3), // TODO default?
             open_reading_frames: vec![],
+            methylation_sites: MethylationSites::default(),
         }
     }
 
@@ -132,44 +135,55 @@ impl DNAsequence {
         Self {
             seq,
             overhang: DNAoverhang::default(),
-            re: vec![],
-            re_sites: vec![],
-            max_re_sites: Some(3), // TODO default?
+            restriction_enzymes: vec![],
+            restriction_enzyme_sites: vec![],
+            max_restriction_enzyme_sites: Some(3), // TODO default?
             open_reading_frames: vec![],
+            methylation_sites: MethylationSites::default(),
         }
     }
 
-    pub fn set_max_re_sites(&mut self, max_re_sites: Option<usize>) {
-        self.max_re_sites = max_re_sites;
+    pub fn set_max_restriction_enzyme_sites(&mut self, max_re_sites: Option<usize>) {
+        self.max_restriction_enzyme_sites = max_re_sites;
     }
 
-    pub fn re(&self) -> &Vec<RestrictionEnzyme> {
-        &self.re
+    pub fn restriction_enzymes(&self) -> &Vec<RestrictionEnzyme> {
+        &self.restriction_enzymes
     }
 
-    pub fn re_mut(&mut self) -> &mut Vec<RestrictionEnzyme> {
-        &mut self.re
+    pub fn restriction_enzymes_mut(&mut self) -> &mut Vec<RestrictionEnzyme> {
+        &mut self.restriction_enzymes
     }
 
-    pub fn re_sites(&self) -> &Vec<RestrictionEnzymeSite> {
-        &self.re_sites
+    pub fn restriction_enzyme_sites(&self) -> &Vec<RestrictionEnzymeSite> {
+        &self.restriction_enzyme_sites
     }
 
-    fn update_re_sites(&mut self) {
-        self.re_sites = self
-            .re
+    pub fn methylation_sites(&self) -> &MethylationSites {
+        &self.methylation_sites
+    }
+
+    fn update_restriction_enyzme_sites(&mut self) {
+        self.restriction_enzyme_sites = self
+            .restriction_enzymes
             .par_iter()
-            .flat_map(|re| re.get_sites(self, self.max_re_sites.to_owned()))
+            .flat_map(|re| re.get_sites(self, self.max_restriction_enzyme_sites.to_owned()))
             .collect();
     }
 
-    fn update_orfs(&mut self) {
+    fn update_open_reading_frames(&mut self) {
         self.open_reading_frames = OpenReadingFrame::find_orfs(self.forward(), self.is_circular());
     }
 
+    fn update_methylation_sites(&mut self) {
+        let mode = MethylationMode::default(); // TODO FIXME as a option somewhere
+        self.methylation_sites = MethylationSites::new_from_sequence(self.forward(), mode);
+    }
+
     pub fn update_computed_features(&mut self) {
-        self.update_re_sites();
-        self.update_orfs();
+        self.update_restriction_enyzme_sites();
+        self.update_open_reading_frames();
+        self.update_methylation_sites();
         // TODO amino acids
         // TODO protease sites
     }
@@ -245,8 +259,8 @@ mod tests {
         assert_eq!(seq.name().clone().unwrap(), "U13852.1");
 
         let enzymes = Enzymes::new().unwrap();
-        let all = seq.restriction_enzyme_sites(enzymes.restriction_enzymes(), None);
-        let max3 = seq.restriction_enzyme_sites(enzymes.restriction_enzymes(), Some(3));
+        let all = seq.calculate_restriction_enzyme_sites(enzymes.restriction_enzymes(), None);
+        let max3 = seq.calculate_restriction_enzyme_sites(enzymes.restriction_enzymes(), Some(3));
         assert!(all.len() > max3.len());
     }
 

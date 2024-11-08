@@ -405,7 +405,12 @@ impl RenderDnaCircular {
         let mut name2cut_count = HashMap::new();
         self.re_pos_cuts2names = HashMap::new();
 
-        let sites = self.dna.read().unwrap().re_sites().to_owned();
+        let sites = self
+            .dna
+            .read()
+            .unwrap()
+            .restriction_enzyme_sites()
+            .to_owned();
         for re_site in sites.iter().filter(|site| site.forward_strand) {
             name2cut_count
                 .entry(&re_site.enzyme.name)
