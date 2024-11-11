@@ -9,9 +9,50 @@ use anyhow::Result;
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
 use rayon::prelude::*;
-use std::{fmt, fs::File};
+use std::{collections::HashMap, fmt, fs::File};
 
 type DNAstring = Vec<u8>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct RestrictionEnzymeGroup {
+    pos: isize,
+    cut_size: isize,
+    number_of_cuts: usize,
+}
+
+impl RestrictionEnzymeGroup {
+    pub fn new(pos: isize, cut_size: isize, number_of_cuts: usize) -> Self {
+        Self {
+            pos,
+            cut_size,
+            number_of_cuts,
+        }
+    }
+
+    pub fn number_of_cuts(&self) -> usize {
+        self.number_of_cuts
+    }
+
+    pub fn cut_size(&self) -> isize {
+        self.cut_size
+    }
+
+    pub fn pos(&self) -> isize {
+        self.pos
+    }
+}
+
+impl PartialOrd for RestrictionEnzymeGroup {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RestrictionEnzymeGroup {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.pos.cmp(&other.pos)
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct DNAoverhang {
@@ -40,6 +81,7 @@ pub struct DNAsequence {
     overhang: DNAoverhang,
     restriction_enzymes: Vec<RestrictionEnzyme>,
     restriction_enzyme_sites: Vec<RestrictionEnzymeSite>,
+    restriction_enzyme_groups: HashMap<RestrictionEnzymeGroup, Vec<String>>,
     max_restriction_enzyme_sites: Option<usize>,
     open_reading_frames: Vec<OpenReadingFrame>,
     methylation_sites: MethylationSites,
@@ -97,6 +139,7 @@ impl DNAsequence {
             overhang: DNAoverhang::default(),
             restriction_enzymes: vec![],
             restriction_enzyme_sites: vec![],
+            restriction_enzyme_groups: HashMap::new(),
             max_restriction_enzyme_sites: Some(3), // TODO default?
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
@@ -142,6 +185,7 @@ impl DNAsequence {
             overhang: DNAoverhang::default(),
             restriction_enzymes: vec![],
             restriction_enzyme_sites: vec![],
+            restriction_enzyme_groups: HashMap::new(),
             max_restriction_enzyme_sites: Some(3), // TODO default?
             open_reading_frames: vec![],
             methylation_sites: MethylationSites::default(),
@@ -209,6 +253,7 @@ impl DNAsequence {
 
     pub fn update_computed_features(&mut self) {
         self.update_restriction_enyzme_sites();
+        self.update_restriction_enzyme_groups();
         self.update_open_reading_frames();
         self.update_methylation_sites();
         self.update_gc_content();
@@ -260,6 +305,41 @@ impl DNAsequence {
                 }
             })
             .collect()
+    }
+
+    pub fn restriction_enzyme_groups(&self) -> &HashMap<RestrictionEnzymeGroup, Vec<String>> {
+        &self.restriction_enzyme_groups
+    }
+
+    /// Draws restriction enzyme sites
+    fn update_restriction_enzyme_groups(&mut self) {
+        let mut name2cut_count = HashMap::new();
+        self.restriction_enzyme_groups = HashMap::new();
+
+        for re_site in self
+            .restriction_enzyme_sites
+            .iter()
+            .filter(|site| site.forward_strand)
+        {
+            name2cut_count
+                .entry(&re_site.enzyme.name)
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
+        }
+        for re_site in self
+            .restriction_enzyme_sites
+            .iter()
+            .filter(|site| site.forward_strand)
+        {
+            let pos = re_site.offset + re_site.enzyme.cut;
+            let cut_size = re_site.enzyme.cut;
+            let number_of_cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
+            let key = RestrictionEnzymeGroup::new(pos, cut_size, *number_of_cuts);
+            self.restriction_enzyme_groups
+                .entry(key)
+                .or_default()
+                .push(re_site.enzyme.name.to_owned());
+        }
     }
 }
 

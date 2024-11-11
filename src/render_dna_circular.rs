@@ -1,6 +1,6 @@
 use crate::{
     dna_display::{DnaDisplay, Selection},
-    dna_sequence::DNAsequence,
+    dna_sequence::{DNAsequence, RestrictionEnzymeGroup},
     gc_contents::GcRegion,
     render_dna::RenderDna,
 };
@@ -80,7 +80,6 @@ pub struct RenderDnaCircular {
     features: Vec<FeaturePosition>,
     selected_feature_number: Option<usize>,
     hovered_feature_number: Option<usize>,
-    re_pos_cuts2names: HashMap<(isize, isize), Vec<String>>,
 }
 
 impl RenderDnaCircular {
@@ -95,7 +94,6 @@ impl RenderDnaCircular {
             features: vec![],
             selected_feature_number: None,
             hovered_feature_number: None,
-            re_pos_cuts2names: HashMap::new(),
         }
     }
 
@@ -190,7 +188,6 @@ impl RenderDnaCircular {
         self.sequence_length = self.dna.read().expect("DNA lock poisoned").len() as i64;
 
         if self.layout_needs_recomputing(ui) {
-            self.layout_re();
             self.layout_features();
             self.layout_was_updated();
         }
@@ -649,34 +646,6 @@ impl RenderDnaCircular {
         );
     }
 
-    /// Draws restriction enzyme sites
-    fn layout_re(&mut self) {
-        let mut name2cut_count = HashMap::new();
-        self.re_pos_cuts2names = HashMap::new();
-
-        let sites = self
-            .dna
-            .read()
-            .unwrap()
-            .restriction_enzyme_sites()
-            .to_owned();
-        for re_site in sites.iter().filter(|site| site.forward_strand) {
-            name2cut_count
-                .entry(&re_site.enzyme.name)
-                .and_modify(|c| *c += 1)
-                .or_insert(1);
-        }
-        for re_site in sites.iter().filter(|site| site.forward_strand) {
-            let pos = re_site.offset + re_site.enzyme.cut;
-            let cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
-            let key = (pos, *cuts);
-            self.re_pos_cuts2names
-                .entry(key)
-                .or_default()
-                .push(re_site.enzyme.name.to_owned());
-        }
-    }
-
     fn draw_restriction_enzyme_sites(&self, painter: &egui::Painter) {
         if !self.display.read().unwrap().show_restriction_enzyme_sites() {
             return;
@@ -686,19 +655,32 @@ impl RenderDnaCircular {
             family: FontFamily::Proportional,
         };
 
-        let mut re_positions: Vec<(isize, isize)> =
-            self.re_pos_cuts2names.keys().copied().collect();
+        let mut re_positions: Vec<RestrictionEnzymeGroup> = self
+            .dna
+            .read()
+            .unwrap()
+            .restriction_enzyme_groups()
+            .keys()
+            .cloned()
+            .collect();
         re_positions.sort();
         let mut last_rect = Rect::NOTHING;
         for pos_cuts in re_positions {
-            let pos = pos_cuts.0 as i64;
-            let label = self.re_pos_cuts2names.get(&pos_cuts).unwrap().join(", ");
+            let pos = pos_cuts.pos() as i64;
+            let label = self
+                .dna
+                .read()
+                .unwrap()
+                .restriction_enzyme_groups()
+                .get(&pos_cuts)
+                .unwrap()
+                .join(", ");
             let label = if pos < self.sequence_length / 2 {
                 format!("{pos} {label}")
             } else {
                 format!("{label} {pos}")
             };
-            let cuts = pos_cuts.1;
+            let cuts = pos_cuts.number_of_cuts();
             let font_color = match cuts {
                 1 => RED_2.to_owned(),
                 2 => BLUE_2.to_owned(),
