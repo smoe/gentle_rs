@@ -2,6 +2,9 @@ use crate::{
     dna_display::{AminoAcidFrame, DnaDisplay},
     dna_sequence::DNAsequence,
     sequence_rows::*,
+    sequence_rows_blank::RowBlank,
+    sequence_rows_dna::RowDna,
+    sequence_rows_restriction_enzymes::RowRestrictionEnzymes,
 };
 use eframe::egui::{self, Align2, Color32, FontFamily, FontId, Painter, Pos2, Rect, Sense, Vec2};
 use std::sync::{Arc, RwLock};
@@ -22,9 +25,12 @@ impl RenderSequence {
     ) -> Self {
         let mut rows = Vec::new();
         rows.push(SequenceRow::Dna(RowDna::new(dna.clone(), display.clone())));
-        // if display.read().unwrap().show_re() {
-        //     rows.push(SequenceRow::RestrictionEnzymes);
-        // }
+        if display.read().unwrap().show_restriction_enzyme_sites() {
+            rows.push(SequenceRow::RestrictionEnzymes(RowRestrictionEnzymes::new(
+                dna.clone(),
+                display.clone(),
+            )));
+        }
         if display.read().unwrap().show_reverse_complement() {
             rows.push(SequenceRow::Dna(
                 RowDna::new(dna.clone(), display.clone()).reverse_complement(),

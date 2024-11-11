@@ -2,7 +2,7 @@ use crate::{
     gc_contents::GcContents,
     methylation_sites::{MethylationMode, MethylationSites},
     open_reading_frame::OpenReadingFrame,
-    restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeSite},
+    restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey, RestrictionEnzymeSite},
     FACILITY,
 };
 use anyhow::Result;
@@ -12,47 +12,6 @@ use rayon::prelude::*;
 use std::{collections::HashMap, fmt, fs::File};
 
 type DNAstring = Vec<u8>;
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct RestrictionEnzymeGroup {
-    pos: isize,
-    cut_size: isize,
-    number_of_cuts: usize,
-}
-
-impl RestrictionEnzymeGroup {
-    pub fn new(pos: isize, cut_size: isize, number_of_cuts: usize) -> Self {
-        Self {
-            pos,
-            cut_size,
-            number_of_cuts,
-        }
-    }
-
-    pub fn number_of_cuts(&self) -> usize {
-        self.number_of_cuts
-    }
-
-    pub fn cut_size(&self) -> isize {
-        self.cut_size
-    }
-
-    pub fn pos(&self) -> isize {
-        self.pos
-    }
-}
-
-impl PartialOrd for RestrictionEnzymeGroup {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RestrictionEnzymeGroup {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.pos.cmp(&other.pos)
-    }
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct DNAoverhang {
@@ -81,7 +40,7 @@ pub struct DNAsequence {
     overhang: DNAoverhang,
     restriction_enzymes: Vec<RestrictionEnzyme>,
     restriction_enzyme_sites: Vec<RestrictionEnzymeSite>,
-    restriction_enzyme_groups: HashMap<RestrictionEnzymeGroup, Vec<String>>,
+    restriction_enzyme_groups: HashMap<RestrictionEnzymeKey, Vec<String>>,
     max_restriction_enzyme_sites: Option<usize>,
     open_reading_frames: Vec<OpenReadingFrame>,
     methylation_sites: MethylationSites,
@@ -307,7 +266,7 @@ impl DNAsequence {
             .collect()
     }
 
-    pub fn restriction_enzyme_groups(&self) -> &HashMap<RestrictionEnzymeGroup, Vec<String>> {
+    pub fn restriction_enzyme_groups(&self) -> &HashMap<RestrictionEnzymeKey, Vec<String>> {
         &self.restriction_enzyme_groups
     }
 
@@ -334,7 +293,9 @@ impl DNAsequence {
             let pos = re_site.offset + re_site.enzyme.cut;
             let cut_size = re_site.enzyme.cut;
             let number_of_cuts = name2cut_count.get(&re_site.enzyme.name).unwrap();
-            let key = RestrictionEnzymeGroup::new(pos, cut_size, *number_of_cuts);
+            let from = re_site.offset;
+            let to = from + re_site.enzyme.sequence.len() as isize;
+            let key = RestrictionEnzymeKey::new(pos, cut_size, *number_of_cuts, from, to);
             self.restriction_enzyme_groups
                 .entry(key)
                 .or_default()

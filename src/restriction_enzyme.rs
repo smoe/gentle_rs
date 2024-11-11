@@ -2,6 +2,59 @@ use serde::{Deserialize, Serialize};
 
 use crate::dna_sequence::DNAsequence;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct RestrictionEnzymeKey {
+    pos: isize,
+    cut_size: isize,
+    number_of_cuts: usize,
+    from: isize,
+    to: isize,
+}
+
+impl RestrictionEnzymeKey {
+    pub fn new(pos: isize, cut_size: isize, number_of_cuts: usize, from: isize, to: isize) -> Self {
+        Self {
+            pos,
+            cut_size,
+            number_of_cuts,
+            from,
+            to,
+        }
+    }
+
+    pub fn number_of_cuts(&self) -> usize {
+        self.number_of_cuts
+    }
+
+    pub fn cut_size(&self) -> isize {
+        self.cut_size
+    }
+
+    pub fn pos(&self) -> isize {
+        self.pos
+    }
+
+    pub fn from(&self) -> isize {
+        self.from
+    }
+
+    pub fn to(&self) -> isize {
+        self.to
+    }
+}
+
+impl PartialOrd for RestrictionEnzymeKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RestrictionEnzymeKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.pos.cmp(&other.pos)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RestrictionEnzyme {
     pub name: String,

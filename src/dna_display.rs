@@ -1,3 +1,5 @@
+use eframe::egui::Color32;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Selection {
     from: usize,
@@ -187,6 +189,15 @@ impl DnaDisplay {
 
     pub fn deselect(&mut self) {
         self.selection = None;
+    }
+
+    pub fn restriction_enzyme_group_color(cuts: usize) -> Color32 {
+        match cuts {
+            1 => Color32::DARK_RED,
+            2 => Color32::DARK_BLUE,
+            3 => Color32::DARK_GREEN,
+            _ => Color32::BLACK,
+        }
     }
 }
 

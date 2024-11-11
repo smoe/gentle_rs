@@ -1,8 +1,9 @@
 use crate::{
     dna_display::{DnaDisplay, Selection},
-    dna_sequence::{DNAsequence, RestrictionEnzymeGroup},
+    dna_sequence::DNAsequence,
     gc_contents::GcRegion,
     render_dna::RenderDna,
+    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
@@ -23,9 +24,6 @@ lazy_static! {
         width: 1.0,
         color: Color32::GRAY,
     };
-    pub static ref RED_2: Color32 = Color32::DARK_RED;
-    pub static ref BLUE_2: Color32 = Color32::DARK_BLUE;
-    pub static ref GREEN_2: Color32 = Color32::DARK_GREEN;
     static ref ORF_COLORS: HashMap<i32, Color32> = {
         let mut m = HashMap::new();
         m.insert(-1, Color32::LIGHT_RED);
@@ -69,6 +67,12 @@ impl FeaturePosition {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct RestrictionEnzymePosition {
+    area: Rect,
+    key: RestrictionEnzymeKey,
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderDnaCircular {
     dna: Arc<RwLock<DNAsequence>>,
@@ -78,8 +82,10 @@ pub struct RenderDnaCircular {
     center: Pos2,
     radius: f32,
     features: Vec<FeaturePosition>,
+    restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
     hovered_feature_number: Option<usize>,
+    hover_enzyme: Option<RestrictionEnzymePosition>,
 }
 
 impl RenderDnaCircular {
@@ -92,8 +98,10 @@ impl RenderDnaCircular {
             center: Pos2::ZERO,
             radius: 0.0,
             features: vec![],
+            restriction_enzyme_sites: vec![],
             selected_feature_number: None,
             hovered_feature_number: None,
+            hover_enzyme: None,
         }
     }
 
@@ -110,6 +118,7 @@ impl RenderDnaCircular {
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            self.hover_enzyme = self.get_re_site_for_positon(pos);
         }
     }
 
@@ -124,8 +133,23 @@ impl RenderDnaCircular {
                     self.sequence_length as usize,
                 );
                 self.display.write().unwrap().select(selection);
+            } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
+                println!("Double-clicked {re_pos:?}");
+                let selection = Selection::new(
+                    re_pos.key.from() as usize,
+                    re_pos.key.to() as usize,
+                    self.sequence_length as usize,
+                );
+                self.display.write().unwrap().select(selection);
             }
         }
+    }
+
+    fn get_re_site_for_positon(&self, pos: Pos2) -> Option<RestrictionEnzymePosition> {
+        self.restriction_enzyme_sites
+            .iter()
+            .find(|rep| rep.area.contains(pos))
+            .cloned()
     }
 
     fn get_clicked_feature(&self, pos: Pos2) -> Option<&FeaturePosition> {
@@ -646,7 +670,8 @@ impl RenderDnaCircular {
         );
     }
 
-    fn draw_restriction_enzyme_sites(&self, painter: &egui::Painter) {
+    fn draw_restriction_enzyme_sites(&mut self, painter: &egui::Painter) {
+        self.restriction_enzyme_sites.clear();
         if !self.display.read().unwrap().show_restriction_enzyme_sites() {
             return;
         }
@@ -655,7 +680,7 @@ impl RenderDnaCircular {
             family: FontFamily::Proportional,
         };
 
-        let mut re_positions: Vec<RestrictionEnzymeGroup> = self
+        let mut re_positions: Vec<RestrictionEnzymeKey> = self
             .dna
             .read()
             .unwrap()
@@ -665,14 +690,14 @@ impl RenderDnaCircular {
             .collect();
         re_positions.sort();
         let mut last_rect = Rect::NOTHING;
-        for pos_cuts in re_positions {
-            let pos = pos_cuts.pos() as i64;
+        for restriction_enzyme_key in re_positions {
+            let pos = restriction_enzyme_key.pos() as i64;
             let label = self
                 .dna
                 .read()
                 .unwrap()
                 .restriction_enzyme_groups()
-                .get(&pos_cuts)
+                .get(&restriction_enzyme_key)
                 .unwrap()
                 .join(", ");
             let label = if pos < self.sequence_length / 2 {
@@ -680,13 +705,8 @@ impl RenderDnaCircular {
             } else {
                 format!("{label} {pos}")
             };
-            let cuts = pos_cuts.number_of_cuts();
-            let font_color = match cuts {
-                1 => RED_2.to_owned(),
-                2 => BLUE_2.to_owned(),
-                3 => GREEN_2.to_owned(),
-                _ => Color32::BLACK,
-            };
+            let cuts = restriction_enzyme_key.number_of_cuts();
+            let font_color = DnaDisplay::restriction_enzyme_group_color(cuts);
 
             let p1 = self.pos2xy(pos, self.radius);
             let p2 = self.pos2xy(pos, self.radius * 1.15);
@@ -712,7 +732,17 @@ impl RenderDnaCircular {
             } else {
                 Align2::LEFT_CENTER
             };
+            if let Some(he) = &self.hover_enzyme {
+                if he.key == restriction_enzyme_key {
+                    painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
+                }
+            }
             last_rect = painter.text(p4, align, label, font_tick.to_owned(), font_color);
+            self.restriction_enzyme_sites
+                .push(RestrictionEnzymePosition {
+                    area: last_rect.to_owned(),
+                    key: restriction_enzyme_key.to_owned(),
+                });
         }
     }
 
