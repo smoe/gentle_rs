@@ -94,7 +94,7 @@ impl RowDna {
             let y = rect.top() + self.block_offset;
             let mut x = pos.x + self.char_width * 2.0;
             seq.iter().enumerate().for_each(|(offset, base)| {
-                let mut base = *base as char;
+                let mut base = *base;
                 base.make_ascii_uppercase();
                 let base = if self.show_reverse_complement {
                     FACILITY.complement(base)

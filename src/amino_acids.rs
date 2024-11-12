@@ -124,23 +124,23 @@ impl AminoAcids {
     /// Translates a codon base to an index for the codon table.
     /// THESE INDICES ARE SPECIFIC FOR THE CODON TABLES AND NOT thE SAME AS IN `FACILITY`!
     /// #[inline(always)]
-    fn acgt(c: char) -> usize {
+    fn acgt(c: u8) -> usize {
         match c.to_ascii_uppercase() {
-            'A' => 2,
-            'C' => 1,
-            'G' => 3,
-            'T' => 0,
-            'U' => 0,
+            b'A' => 2,
+            b'C' => 1,
+            b'G' => 3,
+            b'T' => 0,
+            b'U' => 0,
             _ => 250, // Out-of-range
         }
     }
 
     #[inline(always)]
-    fn base2bases(base: char) -> Vec<char> {
+    fn base2bases(base: u8) -> Vec<u8> {
         FACILITY.split_iupac(FACILITY.base2iupac(base))
     }
 
-    pub fn codon2aa(&self, codon: [char; 3], translation_table: Option<usize>) -> char {
+    pub fn codon2aa(&self, codon: [u8; 3], translation_table: Option<usize>) -> char {
         let translation_table = translation_table.unwrap_or(DEFAULT_TRANSLATION_TABLE);
         let tt = match self.codon_tables.get(&translation_table) {
             Some(tt) => tt,
@@ -194,15 +194,15 @@ mod tests {
         let aas = &FACILITY.amino_acids;
 
         // Using standard table
-        assert_eq!(aas.codon2aa(['G', 'G', 'T'], None), 'G');
-        assert_eq!(aas.codon2aa(['A', 'C', 'C'], None), 'T');
+        assert_eq!(aas.codon2aa([b'G', b'G', b'T'], None), 'G');
+        assert_eq!(aas.codon2aa([b'A', b'C', b'C'], None), 'T');
 
         // Difference from standard table
-        assert_eq!(aas.codon2aa(['T', 'A', 'A'], None), STOP_CODON);
-        assert_eq!(aas.codon2aa(['T', 'A', 'A'], Some(6)), 'Q');
+        assert_eq!(aas.codon2aa([b'T', b'A', b'A'], None), STOP_CODON);
+        assert_eq!(aas.codon2aa([b'T', b'A', b'A'], Some(6)), 'Q');
 
         // SIUPAC codon
-        assert_eq!(aas.codon2aa(['G', 'C', 'N'], None), 'A');
-        assert_eq!(aas.codon2aa(['G', 'A', 'N'], None), UNKNOWN_CODON);
+        assert_eq!(aas.codon2aa([b'G', b'C', b'N'], None), 'A');
+        assert_eq!(aas.codon2aa([b'G', b'A', b'N'], None), UNKNOWN_CODON);
     }
 }

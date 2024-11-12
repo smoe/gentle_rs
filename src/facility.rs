@@ -19,7 +19,7 @@ pub struct DNAmarkerPart {
 pub struct Facility {
     pub amino_acids: AminoAcids,
     pub dna_iupac: [u8; 256],
-    pub dna_iupac_complement: [char; 256],
+    pub dna_iupac_complement: [u8; 256],
     pub dna_markers: HashMap<String, Vec<DNAmarkerPart>>,
 }
 
@@ -40,12 +40,12 @@ impl Facility {
     }
 
     #[inline(always)]
-    pub fn complement(&self, base: char) -> char {
+    pub fn complement(&self, base: u8) -> u8 {
         self.dna_iupac_complement[base as usize]
     }
 
     #[inline(always)]
-    pub fn base2iupac(&self, base: char) -> u8 {
+    pub fn base2iupac(&self, base: u8) -> u8 {
         self.dna_iupac
             .get(base.to_ascii_uppercase() as usize)
             .copied()
@@ -53,19 +53,19 @@ impl Facility {
     }
 
     #[inline(always)]
-    pub fn split_iupac(&self, iupac_code: u8) -> Vec<char> {
+    pub fn split_iupac(&self, iupac_code: u8) -> Vec<u8> {
         let mut ret = Vec::with_capacity(4);
         if iupac_code & DNA_A != 0 {
-            ret.push('A');
+            ret.push(b'A');
         }
         if iupac_code & DNA_C != 0 {
-            ret.push('C');
+            ret.push(b'C');
         }
         if iupac_code & DNA_G != 0 {
-            ret.push('G');
+            ret.push(b'G');
         }
         if iupac_code & DNA_T != 0 {
-            ret.push('T');
+            ret.push(b'T');
         }
         ret
     }
@@ -76,13 +76,13 @@ impl Facility {
     }
 
     #[inline(always)]
-    pub fn is_start_codon(&self, codon: &[char; 3]) -> bool {
-        *codon == ['A', 'T', 'G']
+    pub fn is_start_codon(&self, codon: &[u8; 3]) -> bool {
+        *codon == [b'A', b'T', b'G']
     }
 
     #[inline(always)]
-    pub fn is_stop_codon(&self, codon: &[char; 3]) -> bool {
-        *codon == ['T', 'A', 'A'] || *codon == ['T', 'A', 'G'] || *codon == ['T', 'G', 'A']
+    pub fn is_stop_codon(&self, codon: &[u8; 3]) -> bool {
+        *codon == [b'T', b'A', b'A'] || *codon == [b'T', b'A', b'G'] || *codon == [b'T', b'G', b'A']
     }
 
     fn initialize_dna_iupac() -> [u8; 256] {
@@ -106,13 +106,13 @@ impl Facility {
         dna
     }
 
-    fn initialize_dna_iupac_complement() -> [char; 256] {
-        let mut dna: [char; 256] = [' '; 256];
-        dna['A' as usize] = 'T';
-        dna['C' as usize] = 'G';
-        dna['G' as usize] = 'C';
-        dna['T' as usize] = 'A';
-        dna['U' as usize] = 'A';
+    fn initialize_dna_iupac_complement() -> [u8; 256] {
+        let mut dna: [u8; 256] = [b' '; 256];
+        dna['A' as usize] = b'T';
+        dna['C' as usize] = b'G';
+        dna['G' as usize] = b'C';
+        dna['T' as usize] = b'A';
+        dna['U' as usize] = b'A';
         // TODO IUPAC bases too?
         dna
     }
@@ -161,38 +161,38 @@ mod tests {
 
     #[test]
     fn test_complement() {
-        assert_eq!(FACILITY.complement('A'), 'T');
-        assert_eq!(FACILITY.complement('C'), 'G');
-        assert_eq!(FACILITY.complement('G'), 'C');
-        assert_eq!(FACILITY.complement('T'), 'A');
-        assert_eq!(FACILITY.complement('U'), 'A');
-        assert_eq!(FACILITY.complement('X'), ' ');
+        assert_eq!(FACILITY.complement(b'A'), b'T');
+        assert_eq!(FACILITY.complement(b'C'), b'G');
+        assert_eq!(FACILITY.complement(b'G'), b'C');
+        assert_eq!(FACILITY.complement(b'T'), b'A');
+        assert_eq!(FACILITY.complement(b'U'), b'A');
+        assert_eq!(FACILITY.complement(b'X'), b' ');
     }
 
     #[test]
     fn test_base2iupac() {
-        assert_eq!(FACILITY.base2iupac('A'), DNA_A);
-        assert_eq!(FACILITY.base2iupac('C'), DNA_C);
-        assert_eq!(FACILITY.base2iupac('G'), DNA_G);
-        assert_eq!(FACILITY.base2iupac('T'), DNA_T);
-        assert_eq!(FACILITY.base2iupac('U'), DNA_T);
-        assert_eq!(FACILITY.base2iupac('X'), 0);
+        assert_eq!(FACILITY.base2iupac(b'A'), DNA_A);
+        assert_eq!(FACILITY.base2iupac(b'C'), DNA_C);
+        assert_eq!(FACILITY.base2iupac(b'G'), DNA_G);
+        assert_eq!(FACILITY.base2iupac(b'T'), DNA_T);
+        assert_eq!(FACILITY.base2iupac(b'U'), DNA_T);
+        assert_eq!(FACILITY.base2iupac(b'X'), 0);
     }
 
     #[test]
     fn test_split_iupac() {
-        assert_eq!(FACILITY.split_iupac(DNA_A), vec!['A']);
-        assert_eq!(FACILITY.split_iupac(DNA_C), vec!['C']);
-        assert_eq!(FACILITY.split_iupac(DNA_G), vec!['G']);
-        assert_eq!(FACILITY.split_iupac(DNA_T), vec!['T']);
-        assert_eq!(FACILITY.split_iupac(DNA_A | DNA_C), vec!['A', 'C']);
+        assert_eq!(FACILITY.split_iupac(DNA_A), vec![b'A']);
+        assert_eq!(FACILITY.split_iupac(DNA_C), vec![b'C']);
+        assert_eq!(FACILITY.split_iupac(DNA_G), vec![b'G']);
+        assert_eq!(FACILITY.split_iupac(DNA_T), vec![b'T']);
+        assert_eq!(FACILITY.split_iupac(DNA_A | DNA_C), vec![b'A', b'C']);
         assert_eq!(
             FACILITY.split_iupac(DNA_A | DNA_C | DNA_G),
-            vec!['A', 'C', 'G']
+            vec![b'A', b'C', b'G']
         );
         assert_eq!(
             FACILITY.split_iupac(DNA_A | DNA_C | DNA_G | DNA_T),
-            vec!['A', 'C', 'G', 'T']
+            vec![b'A', b'C', b'G', b'T']
         );
     }
 

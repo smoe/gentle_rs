@@ -43,17 +43,17 @@ impl OpenReadingFrame {
     }
 
     #[inline(always)]
-    fn get_nucleotide(sequence: &[u8], pos: i32, complement: bool) -> char {
+    fn get_nucleotide(sequence: &[u8], pos: i32, complement: bool) -> u8 {
         match sequence.get(pos as usize) {
             Some(c) => {
-                let c = (*c as char).to_ascii_uppercase();
+                let c = (*c).to_ascii_uppercase();
                 if complement {
                     FACILITY.complement(c)
                 } else {
                     c
                 }
             }
-            None => 'N',
+            None => b'N',
         }
     }
 
@@ -135,7 +135,7 @@ impl OpenReadingFrame {
         start_codon_position: i32,
         complement: bool,
         direction: i32,
-    ) -> [char; 3] {
+    ) -> [u8; 3] {
         [
             Self::get_nucleotide(sequence, start_codon_position, complement),
             Self::get_nucleotide(sequence, start_codon_position + direction, complement),
