@@ -101,6 +101,18 @@ impl IupacCode {
         }
         ret
     }
+
+    #[inline(always)]
+    pub fn letter_complement(letter: u8) -> u8 {
+        match letter.to_ascii_uppercase() {
+            b'A' => b'T',
+            b'C' => b'G',
+            b'G' => b'C',
+            b'T' => b'A',
+            b'U' => b'A',
+            _ => b' ',
+        }
+    }
 }
 
 #[cfg(test)]
@@ -135,5 +147,16 @@ mod tests {
             IupacCode::new(DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G | DNA_BITMASK_T).to_vec(),
             vec![b'A', b'C', b'G', b'T']
         );
+    }
+
+    #[test]
+    fn test_complement() {
+        assert_eq!(IupacCode::letter_complement(b'A'), b'T');
+        assert_eq!(IupacCode::letter_complement(b'C'), b'G');
+        assert_eq!(IupacCode::letter_complement(b'G'), b'C');
+        assert_eq!(IupacCode::letter_complement(b'T'), b'A');
+        assert_eq!(IupacCode::letter_complement(b'U'), b'A');
+        assert_eq!(IupacCode::letter_complement(b'X'), b' ');
+        assert_eq!(IupacCode::letter_complement(b'a'), b'T');
     }
 }

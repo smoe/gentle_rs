@@ -1,5 +1,6 @@
 use crate::{
-    dna_display::DnaDisplay, dna_sequence::DNAsequence, render_sequence::RenderSequence, FACILITY,
+    dna_display::DnaDisplay, dna_sequence::DNAsequence, iupac_code::IupacCode,
+    render_sequence::RenderSequence,
 };
 use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, Vec2};
 use std::sync::{Arc, RwLock};
@@ -94,12 +95,10 @@ impl RowDna {
             let y = rect.top() + self.block_offset;
             let mut x = pos.x + self.char_width * 2.0;
             seq.iter().enumerate().for_each(|(offset, base)| {
-                let mut base = *base;
-                base.make_ascii_uppercase();
                 let base = if self.show_reverse_complement {
-                    FACILITY.complement(base)
+                    IupacCode::letter_complement(*base)
                 } else {
-                    base
+                    base.to_ascii_uppercase()
                 } as char;
 
                 // Show selection, if any, in primary sequence only

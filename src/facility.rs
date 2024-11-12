@@ -13,8 +13,6 @@ pub struct DNAmarkerPart {
 #[derive(Clone, Debug)]
 pub struct Facility {
     pub amino_acids: AminoAcids,
-    // pub dna_iupac: [u8; 256],
-    pub dna_iupac_complement: [u8; 256],
     pub dna_markers: HashMap<String, Vec<DNAmarkerPart>>,
 }
 
@@ -28,14 +26,8 @@ impl Facility {
     pub fn new() -> Self {
         Self {
             amino_acids: AminoAcids::load(),
-            dna_iupac_complement: Self::initialize_dna_iupac_complement(),
             dna_markers: Self::initialize_dna_markers(),
         }
-    }
-
-    #[inline(always)]
-    pub fn complement(&self, base: u8) -> u8 {
-        self.dna_iupac_complement[base as usize]
     }
 
     #[inline(always)]
@@ -51,17 +43,6 @@ impl Facility {
     #[inline(always)]
     pub fn is_stop_codon(&self, codon: &[u8; 3]) -> bool {
         *codon == [b'T', b'A', b'A'] || *codon == [b'T', b'A', b'G'] || *codon == [b'T', b'G', b'A']
-    }
-
-    fn initialize_dna_iupac_complement() -> [u8; 256] {
-        let mut dna: [u8; 256] = [b' '; 256];
-        dna['A' as usize] = b'T';
-        dna['C' as usize] = b'G';
-        dna['G' as usize] = b'C';
-        dna['T' as usize] = b'A';
-        dna['U' as usize] = b'A';
-        // TODO IUPAC bases too?
-        dna
     }
 
     fn initialize_dna_markers() -> HashMap<String, Vec<DNAmarkerPart>> {
@@ -108,16 +89,6 @@ mod tests {
         assert!(IupacCode::from_letter(b'H')
             .subset(IupacCode::from_letter(b'G'))
             .is_empty());
-    }
-
-    #[test]
-    fn test_complement() {
-        assert_eq!(FACILITY.complement(b'A'), b'T');
-        assert_eq!(FACILITY.complement(b'C'), b'G');
-        assert_eq!(FACILITY.complement(b'G'), b'C');
-        assert_eq!(FACILITY.complement(b'T'), b'A');
-        assert_eq!(FACILITY.complement(b'U'), b'A');
-        assert_eq!(FACILITY.complement(b'X'), b' ');
     }
 
     #[test]

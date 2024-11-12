@@ -1,4 +1,4 @@
-use crate::FACILITY;
+use crate::{iupac_code::IupacCode, FACILITY};
 use rayon::prelude::*;
 
 const MIN_ORF_LENGTH: i32 = 100;
@@ -46,11 +46,10 @@ impl OpenReadingFrame {
     fn get_nucleotide(sequence: &[u8], pos: i32, complement: bool) -> u8 {
         match sequence.get(pos as usize) {
             Some(c) => {
-                let c = (*c).to_ascii_uppercase();
                 if complement {
-                    FACILITY.complement(c)
+                    IupacCode::letter_complement(*c)
                 } else {
-                    c
+                    c.to_ascii_uppercase()
                 }
             }
             None => b'N',
