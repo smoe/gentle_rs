@@ -7,12 +7,10 @@ pub struct Translations {
 }
 
 impl Translations {
-    pub fn new() -> Self {
-        let text = include_str!("../assets/translations.csv");
-
+    fn from_text(csv_text: &str) -> Self {
         let mut rdr = ReaderBuilder::new()
             .has_headers(true) // Specify if the CSV has headers
-            .from_reader(text.as_bytes());
+            .from_reader(csv_text.as_bytes());
 
         let headers = rdr
             .headers()
@@ -56,7 +54,8 @@ impl Translations {
 
 impl Default for Translations {
     fn default() -> Self {
-        Self::new()
+        let text = include_str!("../assets/translations.csv");
+        Self::from_text(text)
     }
 }
 

@@ -394,7 +394,7 @@ mod tests {
         let seq = seq.first().unwrap();
         assert_eq!(seq.name().clone().unwrap(), "U13852.1");
 
-        let enzymes = Enzymes::new().unwrap();
+        let enzymes = Enzymes::default();
         let all = seq.calculate_restriction_enzyme_sites(enzymes.restriction_enzymes(), None);
         let max3 = seq.calculate_restriction_enzyme_sites(enzymes.restriction_enzymes(), Some(3));
         assert!(all.len() > max3.len());

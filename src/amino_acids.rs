@@ -46,33 +46,13 @@ pub struct AminoAcid {
     pub species_codons: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AminoAcids {
     pub aas: HashMap<char, AminoAcid>,
     pub codon_tables: HashMap<usize, CodonTable>,
 }
 
 impl AminoAcids {
-    pub fn load() -> Self {
-        let mut ret = Self::default();
-        let data = include_str!("../assets/amino_acids.json");
-        let res: serde_json::Value = serde_json::from_str(data).expect("Can not parse JSON");
-        let arr = res.as_array().expect("JSON is not an array");
-        for row in arr {
-            let aa: AminoAcid = match serde_json::from_str(&row.to_string()) {
-                Ok(aa) => aa,
-                Err(e) => {
-                    eprintln!("Bad restriction enzyme: {}: {e}", row);
-                    continue;
-                }
-            };
-            ret.aas.insert(aa.aa, aa);
-        }
-        ret.codon_tables = Self::get_codon_tables();
-        ret.load_codon_catalog();
-        ret
-    }
-
     #[inline(always)]
     pub fn is_start_codon(codon: &[u8; 3]) -> bool {
         *codon == [b'A', b'T', b'G']
@@ -179,15 +159,39 @@ impl AminoAcids {
     }
 }
 
+impl Default for AminoAcids {
+    fn default() -> Self {
+        let mut aas: HashMap<char, AminoAcid> = HashMap::new();
+        let data = include_str!("../assets/amino_acids.json");
+        let res: serde_json::Value = serde_json::from_str(data).expect("Can not parse JSON");
+        let arr = res.as_array().expect("JSON is not an array");
+        for row in arr {
+            let aa: AminoAcid = match serde_json::from_str(&row.to_string()) {
+                Ok(aa) => aa,
+                Err(e) => {
+                    eprintln!("Bad restriction enzyme: {}: {e}", row);
+                    continue;
+                }
+            };
+            aas.insert(aa.aa, aa);
+        }
+        let mut ret = Self {
+            aas,
+            codon_tables: Self::get_codon_tables(),
+        };
+        ret.load_codon_catalog();
+        ret
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::FACILITY;
-
     use super::*;
+    use crate::AMINO_ACIDS;
 
     #[test]
     fn test_from_json_file() {
-        let aas = AminoAcids::load();
+        let aas = AminoAcids::default();
         assert_eq!(aas.get('C').unwrap().atoms.S, 1);
         assert_eq!(
             aas.get('F')
@@ -201,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_translation_tables() {
-        let aas = &FACILITY.amino_acids;
+        let aas = &AMINO_ACIDS;
 
         // Using standard table
         assert_eq!(aas.codon2aa([b'G', b'G', b'T'], None), 'G');

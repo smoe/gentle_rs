@@ -1,5 +1,6 @@
+use amino_acids::AminoAcids;
+use dna_marker::DNAMarkers;
 use enzymes::Enzymes;
-use facility::Facility;
 use lazy_static::lazy_static;
 use translations::Translations;
 
@@ -9,7 +10,6 @@ pub mod dna_display;
 pub mod dna_marker;
 pub mod dna_sequence;
 pub mod enzymes;
-pub mod facility;
 pub mod gc_contents;
 pub mod icons;
 pub mod iupac_code;
@@ -31,12 +31,15 @@ pub mod window;
 pub mod window_dna;
 
 lazy_static! {
-    // IUPAC codes etc.
-    pub static ref FACILITY: Facility = Facility::new();
-
     // Interface translations
-    pub static ref TRANSLATIONS: Translations = Translations::new();
+    pub static ref TRANSLATIONS: Translations = Translations::default();
 
     // Restriction enzymes and proteases
-    pub static ref ENZYMES: Enzymes = Enzymes::new().unwrap();
+    pub static ref ENZYMES: Enzymes = Enzymes::default();
+
+    // Amino acids
+    pub static ref AMINO_ACIDS : AminoAcids = AminoAcids::default();
+
+    // DNA markers
+    pub static ref DNA_MARKERS: DNAMarkers = DNAMarkers::default();
 }

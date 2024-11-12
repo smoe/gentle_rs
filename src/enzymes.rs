@@ -1,19 +1,23 @@
 use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
 use anyhow::{anyhow, Result};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Enzymes {
-    restriction_enzymes: Vec<RestrictionEnzyme>, // TODO Arc<RwLock<>>
-    proteases: Vec<Protease>,                    // TODO Arc<RwLock<>>
+    restriction_enzymes: Vec<RestrictionEnzyme>,
+    proteases: Vec<Protease>,
     max_re_length: usize,
     has_nonpalindromic_restriction_enzymes: bool,
 }
 
 impl Enzymes {
-    pub fn new() -> Result<Self> {
-        let mut ret = Self::default();
-        let data = include_str!("../assets/enzymes.json");
-        let res: serde_json::Value = serde_json::from_str(data)?;
+    fn new(json_text: &str) -> Result<Self> {
+        let mut ret = Self {
+            restriction_enzymes: vec![],
+            proteases: vec![],
+            max_re_length: 0,
+            has_nonpalindromic_restriction_enzymes: false,
+        };
+        let res: serde_json::Value = serde_json::from_str(json_text)?;
         let arr = res
             .as_array()
             .ok_or(anyhow!("Enzymes file is not a JSON array"))?;
@@ -65,13 +69,20 @@ impl Enzymes {
     }
 }
 
+impl Default for Enzymes {
+    fn default() -> Self {
+        let json_text = include_str!("../assets/enzymes.json");
+        Enzymes::new(json_text).unwrap()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_from_json_file() {
-        let enzymes = Enzymes::new().unwrap();
+        let enzymes = Enzymes::default();
         assert!(enzymes
             .restriction_enzymes
             .iter()
