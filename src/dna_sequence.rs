@@ -9,7 +9,12 @@ use anyhow::Result;
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
 use rayon::prelude::*;
-use std::{collections::HashMap, fmt, fs::File};
+use std::{
+    collections::HashMap,
+    fmt,
+    fs::File,
+    ops::{Range, RangeInclusive},
+};
 
 type DNAstring = Vec<u8>;
 
@@ -80,10 +85,73 @@ impl DNAsequence {
             .collect()
     }
 
-    pub fn forward(&self) -> &Vec<u8> {
+    #[inline(always)]
+    pub fn get_base_safe(&self, i: usize) -> Option<u8> {
+        let i = if self.is_circular() {
+            i % self.len()
+        } else {
+            i
+        };
+        self.forward().get(i).copied()
+    }
+
+    #[inline(always)]
+    pub fn get_base_or_n(&self, i: usize) -> u8 {
+        let i = if self.is_circular() {
+            i % self.len()
+        } else {
+            i
+        };
+        self.forward().get(i).unwrap_or(&b'N').to_owned()
+    }
+
+    pub fn get_inclusive_range_safe(&self, range: RangeInclusive<usize>) -> Option<Vec<u8>> {
+        let start = *range.start();
+        let end = *range.end() + 1;
+        self.get_range_safe(start..end)
+    }
+
+    pub fn get_range_safe(&self, range: Range<usize>) -> Option<Vec<u8>> {
+        let Range { start, end } = range;
+        if start >= end {
+            return None;
+        }
+        let start = if self.is_circular() {
+            start % self.len()
+        } else {
+            start
+        };
+        let end = if self.is_circular() {
+            (end - 1) % self.len()
+        } else {
+            end - 1
+        };
+        if start >= self.len() || end >= self.len() {
+            return None;
+        }
+        if start > end {
+            if self.is_circular() {
+                Some(
+                    self.forward()[start..]
+                        .iter()
+                        .chain(self.forward()[..=end].iter())
+                        .copied()
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        } else {
+            Some(self.forward()[start..=end].to_vec())
+        }
+    }
+
+    #[inline(always)]
+    fn forward(&self) -> &Vec<u8> {
         &self.seq.seq
     }
 
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.forward().len()
     }
@@ -339,5 +407,88 @@ mod tests {
         let dna = dna.first().unwrap();
         assert_eq!(dna.name().clone().unwrap(), "XXU13852");
         assert_eq!(dna.features().len(), 12);
+    }
+
+    #[test]
+    fn test_get_base_safe() {
+        let mut dna = DNAsequence::from("ATGC".to_string());
+
+        // linear
+        dna.set_circular(false);
+        assert_eq!(dna.get_base_safe(0), Some(b'A'));
+        assert_eq!(dna.get_base_safe(1), Some(b'T'));
+        assert_eq!(dna.get_base_safe(2), Some(b'G'));
+        assert_eq!(dna.get_base_safe(3), Some(b'C'));
+        assert_eq!(dna.get_base_safe(4), None);
+
+        // circular
+        dna.set_circular(true);
+        assert_eq!(dna.get_base_safe(4), Some(b'A'));
+    }
+
+    #[test]
+    fn test_get_base_or_n() {
+        let mut dna = DNAsequence::from("ATGC".to_string());
+
+        // linear
+        dna.set_circular(false);
+        assert_eq!(dna.get_base_or_n(0), b'A');
+        assert_eq!(dna.get_base_or_n(1), b'T');
+        assert_eq!(dna.get_base_or_n(2), b'G');
+        assert_eq!(dna.get_base_or_n(3), b'C');
+        assert_eq!(dna.get_base_or_n(4), b'N');
+
+        // circular
+        dna.set_circular(true);
+        assert_eq!(dna.get_base_or_n(4), b'A');
+    }
+
+    #[test]
+    fn test_get_range_safe() {
+        let mut dna = DNAsequence::from("ATGC".to_string());
+
+        // linear
+        dna.set_circular(false);
+        assert_eq!(dna.get_range_safe(0..4), Some("ATGC".as_bytes().to_vec()));
+        assert_eq!(dna.get_range_safe(0..5), None);
+
+        // circular
+        dna.set_circular(true);
+        assert_eq!(dna.get_range_safe(0..4), Some("ATGC".as_bytes().to_vec()));
+        assert_eq!(dna.get_range_safe(4..8), Some("ATGC".as_bytes().to_vec()));
+        assert_eq!(dna.get_range_safe(0..5), Some("A".as_bytes().to_vec())); // Converts to 0..1
+        assert_eq!(dna.get_range_safe(1..5), Some("TGCA".as_bytes().to_vec())); // Wraps around 0 point
+    }
+
+    #[test]
+    fn test_get_inclsive_range_safe() {
+        let mut dna = DNAsequence::from("ATGC".to_string());
+
+        // linear
+        dna.set_circular(false);
+        assert_eq!(
+            dna.get_inclusive_range_safe(0..=3),
+            Some("ATGC".as_bytes().to_vec())
+        );
+        assert_eq!(dna.get_inclusive_range_safe(0..=4), None);
+
+        // circular
+        dna.set_circular(true);
+        assert_eq!(
+            dna.get_inclusive_range_safe(0..=3),
+            Some("ATGC".as_bytes().to_vec())
+        );
+        assert_eq!(
+            dna.get_inclusive_range_safe(4..=7),
+            Some("ATGC".as_bytes().to_vec())
+        );
+        assert_eq!(
+            dna.get_inclusive_range_safe(0..=4),
+            Some("A".as_bytes().to_vec())
+        ); // Converts to 0..1
+        assert_eq!(
+            dna.get_inclusive_range_safe(1..=4),
+            Some("TGCA".as_bytes().to_vec())
+        ); // Wraps around 0 point
     }
 }

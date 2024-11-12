@@ -100,20 +100,19 @@ impl RestrictionEnzyme {
         // TODO reverse-complement if required
         let mut ret = vec![];
         let recognition_len = self.sequence.len();
-        let forward = seq.forward();
         let seq_len = if seq.is_circular() {
-            forward.len()
+            seq.len()
         } else {
-            forward.len() - recognition_len + 1
+            seq.len() - recognition_len + 1
         };
         for start in 0..seq_len {
             let range = std::ops::Range {
                 start,
                 end: start + recognition_len,
             };
-            let s = forward.get(range); // TODO circular
+            let s = seq.get_range_safe(range); // Safe for circular
             if let Some(s) = s {
-                let s = std::str::from_utf8(s).unwrap().to_uppercase(); // TODO do this once?
+                let s = std::str::from_utf8(&s).unwrap().to_uppercase(); // TODO do this once?
                 if s == self.sequence {
                     // TODO IUPAC
                     ret.push(RestrictionEnzymeSite {

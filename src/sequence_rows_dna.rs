@@ -85,7 +85,12 @@ impl RowDna {
         }
         let selection = self.display.read().unwrap().selection();
         let seq_end = (seq_offset + self.bases_per_line).min(self.seq_len());
-        if let Some(seq) = self.dna.read().unwrap().forward().get(seq_offset..=seq_end) {
+        if let Some(seq) = self
+            .dna
+            .read()
+            .unwrap()
+            .get_inclusive_range_safe(seq_offset..=seq_end)
+        {
             let y = rect.top() + self.block_offset;
             let mut x = pos.x + self.char_width * 2.0;
             seq.iter().enumerate().for_each(|(offset, base)| {
