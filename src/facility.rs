@@ -4,11 +4,6 @@ use crate::amino_acids::AminoAcids;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-const DNA_BITMASK_A: u8 = 1;
-const DNA_BITMASK_C: u8 = 2;
-const DNA_BITMASK_G: u8 = 4;
-const DNA_BITMASK_T: u8 = 8;
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DNAmarkerPart {
     pub length: f64,
@@ -18,7 +13,7 @@ pub struct DNAmarkerPart {
 #[derive(Clone, Debug)]
 pub struct Facility {
     pub amino_acids: AminoAcids,
-    pub dna_iupac: [u8; 256],
+    // pub dna_iupac: [u8; 256],
     pub dna_iupac_complement: [u8; 256],
     pub dna_markers: HashMap<String, Vec<DNAmarkerPart>>,
 }
@@ -33,7 +28,6 @@ impl Facility {
     pub fn new() -> Self {
         Self {
             amino_acids: AminoAcids::load(),
-            dna_iupac: Self::initialize_dna_iupac(),
             dna_iupac_complement: Self::initialize_dna_iupac_complement(),
             dna_markers: Self::initialize_dna_markers(),
         }
@@ -42,32 +36,6 @@ impl Facility {
     #[inline(always)]
     pub fn complement(&self, base: u8) -> u8 {
         self.dna_iupac_complement[base as usize]
-    }
-
-    #[inline(always)]
-    pub fn base2iupac(&self, base: u8) -> u8 {
-        self.dna_iupac
-            .get(base.to_ascii_uppercase() as usize)
-            .copied()
-            .unwrap_or(0)
-    }
-
-    #[inline(always)]
-    pub fn split_iupac(&self, iupac_code: u8) -> Vec<u8> {
-        let mut ret = Vec::with_capacity(4);
-        if iupac_code & DNA_BITMASK_A != 0 {
-            ret.push(b'A');
-        }
-        if iupac_code & DNA_BITMASK_C != 0 {
-            ret.push(b'C');
-        }
-        if iupac_code & DNA_BITMASK_G != 0 {
-            ret.push(b'G');
-        }
-        if iupac_code & DNA_BITMASK_T != 0 {
-            ret.push(b'T');
-        }
-        ret
     }
 
     #[inline(always)]
@@ -83,27 +51,6 @@ impl Facility {
     #[inline(always)]
     pub fn is_stop_codon(&self, codon: &[u8; 3]) -> bool {
         *codon == [b'T', b'A', b'A'] || *codon == [b'T', b'A', b'G'] || *codon == [b'T', b'G', b'A']
-    }
-
-    fn initialize_dna_iupac() -> [u8; 256] {
-        let mut dna: [u8; 256] = [0; 256];
-        dna['A' as usize] = DNA_BITMASK_A;
-        dna['C' as usize] = DNA_BITMASK_C;
-        dna['G' as usize] = DNA_BITMASK_G;
-        dna['T' as usize] = DNA_BITMASK_T;
-        dna['U' as usize] = DNA_BITMASK_T;
-        dna['W' as usize] = DNA_BITMASK_A | DNA_BITMASK_T;
-        dna['S' as usize] = DNA_BITMASK_C | DNA_BITMASK_G;
-        dna['M' as usize] = DNA_BITMASK_A | DNA_BITMASK_C;
-        dna['K' as usize] = DNA_BITMASK_G | DNA_BITMASK_T;
-        dna['R' as usize] = DNA_BITMASK_A | DNA_BITMASK_G;
-        dna['Y' as usize] = DNA_BITMASK_C | DNA_BITMASK_T;
-        dna['B' as usize] = DNA_BITMASK_C | DNA_BITMASK_G | DNA_BITMASK_T;
-        dna['D' as usize] = DNA_BITMASK_A | DNA_BITMASK_G | DNA_BITMASK_T;
-        dna['H' as usize] = DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_T;
-        dna['V' as usize] = DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G;
-        dna['N' as usize] = DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G | DNA_BITMASK_T;
-        dna
     }
 
     fn initialize_dna_iupac_complement() -> [u8; 256] {
@@ -144,8 +91,8 @@ impl Facility {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::FACILITY;
+    // use super::*;
+    use crate::{iupac_code::IupacCode, FACILITY};
 
     // NOTE: amino_acids is tested in amino_acids.rs
 
@@ -155,8 +102,12 @@ mod tests {
         assert_eq!(marker[2].length, 8000.0);
         assert_eq!(marker[2].strength, Some(13));
 
-        assert!(FACILITY.dna_iupac['V' as usize] & FACILITY.dna_iupac['G' as usize] > 0);
-        assert!(FACILITY.dna_iupac['H' as usize] & FACILITY.dna_iupac['G' as usize] == 0);
+        assert!(!IupacCode::from_letter(b'V')
+            .subset(IupacCode::from_letter(b'G'))
+            .is_empty());
+        assert!(IupacCode::from_letter(b'H')
+            .subset(IupacCode::from_letter(b'G'))
+            .is_empty());
     }
 
     #[test]
@@ -167,36 +118,6 @@ mod tests {
         assert_eq!(FACILITY.complement(b'T'), b'A');
         assert_eq!(FACILITY.complement(b'U'), b'A');
         assert_eq!(FACILITY.complement(b'X'), b' ');
-    }
-
-    #[test]
-    fn test_base2iupac() {
-        assert_eq!(FACILITY.base2iupac(b'A'), DNA_BITMASK_A);
-        assert_eq!(FACILITY.base2iupac(b'C'), DNA_BITMASK_C);
-        assert_eq!(FACILITY.base2iupac(b'G'), DNA_BITMASK_G);
-        assert_eq!(FACILITY.base2iupac(b'T'), DNA_BITMASK_T);
-        assert_eq!(FACILITY.base2iupac(b'U'), DNA_BITMASK_T);
-        assert_eq!(FACILITY.base2iupac(b'X'), 0);
-    }
-
-    #[test]
-    fn test_split_iupac() {
-        assert_eq!(FACILITY.split_iupac(DNA_BITMASK_A), vec![b'A']);
-        assert_eq!(FACILITY.split_iupac(DNA_BITMASK_C), vec![b'C']);
-        assert_eq!(FACILITY.split_iupac(DNA_BITMASK_G), vec![b'G']);
-        assert_eq!(FACILITY.split_iupac(DNA_BITMASK_T), vec![b'T']);
-        assert_eq!(
-            FACILITY.split_iupac(DNA_BITMASK_A | DNA_BITMASK_C),
-            vec![b'A', b'C']
-        );
-        assert_eq!(
-            FACILITY.split_iupac(DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G),
-            vec![b'A', b'C', b'G']
-        );
-        assert_eq!(
-            FACILITY.split_iupac(DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G | DNA_BITMASK_T),
-            vec![b'A', b'C', b'G', b'T']
-        );
     }
 
     #[test]

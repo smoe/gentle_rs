@@ -1,9 +1,9 @@
 use crate::{
     gc_contents::GcContents,
+    iupac_code::IupacCode,
     methylation_sites::{MethylationMode, MethylationSites},
     open_reading_frame::OpenReadingFrame,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey, RestrictionEnzymeSite},
-    FACILITY,
 };
 use anyhow::Result;
 use bio::io::fasta;
@@ -323,10 +323,9 @@ impl DNAsequence {
     pub fn validate_dna_sequence(v: &[u8]) -> Vec<u8> {
         v.iter()
             .filter(|c| !c.is_ascii_whitespace())
-            .map(|c| c.to_ascii_uppercase())
             .map(|c| {
-                if FACILITY.dna_iupac[c as usize] > 0 {
-                    c
+                if IupacCode::is_valid_letter(*c) {
+                    c.to_ascii_uppercase()
                 } else {
                     b'N'
                 }

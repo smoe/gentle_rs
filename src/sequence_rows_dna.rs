@@ -100,7 +100,7 @@ impl RowDna {
                     FACILITY.complement(base)
                 } else {
                     base
-                };
+                } as char;
 
                 // Show selection, if any, in primary sequence only
                 if !self.show_reverse_complement {

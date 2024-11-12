@@ -11,6 +11,7 @@ pub mod enzymes;
 pub mod facility;
 pub mod gc_contents;
 pub mod icons;
+pub mod iupac_code;
 pub mod main_area_dna;
 pub mod methylation_sites;
 pub mod open_reading_frame;

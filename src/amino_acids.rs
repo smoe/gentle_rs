@@ -3,7 +3,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use crate::FACILITY;
+use crate::iupac_code::IupacCode;
 
 const DEFAULT_TRANSLATION_TABLE: usize = 1;
 pub const UNKNOWN_CODON: char = '?';
@@ -136,8 +136,8 @@ impl AminoAcids {
     }
 
     #[inline(always)]
-    fn base2bases(base: u8) -> Vec<u8> {
-        FACILITY.split_iupac(FACILITY.base2iupac(base))
+    fn base2bases(letter: u8) -> Vec<u8> {
+        IupacCode::from_letter(letter).to_vec()
     }
 
     pub fn codon2aa(&self, codon: [u8; 3], translation_table: Option<usize>) -> char {
