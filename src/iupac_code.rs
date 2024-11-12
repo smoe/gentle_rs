@@ -2,6 +2,16 @@ const DNA_BITMASK_A: u8 = 1;
 const DNA_BITMASK_C: u8 = 2;
 const DNA_BITMASK_G: u8 = 4;
 const DNA_BITMASK_T: u8 = 8;
+const DNA_BITMASK_W: u8 = DNA_BITMASK_A | DNA_BITMASK_T;
+const DNA_BITMASK_S: u8 = DNA_BITMASK_C | DNA_BITMASK_G;
+const DNA_BITMASK_M: u8 = DNA_BITMASK_A | DNA_BITMASK_C;
+const DNA_BITMASK_K: u8 = DNA_BITMASK_G | DNA_BITMASK_T;
+const DNA_BITMASK_R: u8 = DNA_BITMASK_A | DNA_BITMASK_G;
+const DNA_BITMASK_Y: u8 = DNA_BITMASK_C | DNA_BITMASK_T;
+const DNA_BITMASK_B: u8 = DNA_BITMASK_C | DNA_BITMASK_G | DNA_BITMASK_T;
+const DNA_BITMASK_D: u8 = DNA_BITMASK_A | DNA_BITMASK_G | DNA_BITMASK_T;
+const DNA_BITMASK_H: u8 = DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_T;
+const DNA_BITMASK_V: u8 = DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G;
 const DNA_BITMASK_N: u8 = DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G | DNA_BITMASK_T;
 
 /// A bitmasked IUPAC code for DNA bases, eg DNA_BITMASK_A|DNA_BITMASK_C
@@ -33,6 +43,28 @@ impl IupacCode {
             b'V' => Self(DNA_BITMASK_A | DNA_BITMASK_C | DNA_BITMASK_G),
             b'N' => Self(DNA_BITMASK_N),
             _ => Self(0),
+        }
+    }
+
+    #[inline(always)]
+    pub fn to_letter(&self) -> u8 {
+        match self.0 {
+            DNA_BITMASK_A => b'A',
+            DNA_BITMASK_C => b'C',
+            DNA_BITMASK_G => b'G',
+            DNA_BITMASK_T => b'T',
+            DNA_BITMASK_N => b'N',
+            DNA_BITMASK_W => b'W',
+            DNA_BITMASK_S => b'S',
+            DNA_BITMASK_M => b'M',
+            DNA_BITMASK_K => b'K',
+            DNA_BITMASK_R => b'R',
+            DNA_BITMASK_Y => b'Y',
+            DNA_BITMASK_B => b'B',
+            DNA_BITMASK_D => b'D',
+            DNA_BITMASK_H => b'H',
+            DNA_BITMASK_V => b'V',
+            _ => b' ',
         }
     }
 
@@ -132,6 +164,10 @@ mod tests {
         assert_eq!(IupacCode::from_letter(b'G'), IupacCode::new(DNA_BITMASK_G));
         assert_eq!(IupacCode::from_letter(b'T'), IupacCode::new(DNA_BITMASK_T));
         assert_eq!(IupacCode::from_letter(b'U'), IupacCode::new(DNA_BITMASK_T));
+        assert_eq!(
+            IupacCode::from_letter(b'M'),
+            IupacCode::new(DNA_BITMASK_A | DNA_BITMASK_C)
+        );
         assert_eq!(IupacCode::from_letter(b'X'), IupacCode::new(0));
     }
 
@@ -164,5 +200,16 @@ mod tests {
         assert_eq!(IupacCode::letter_complement(b'U'), b'A');
         assert_eq!(IupacCode::letter_complement(b'X'), b' ');
         assert_eq!(IupacCode::letter_complement(b'a'), b'T');
+    }
+
+    #[test]
+    fn test_to_letter() {
+        assert_eq!(IupacCode::from_letter(b'A').to_letter(), b'A');
+        assert_eq!(IupacCode::from_letter(b'C').to_letter(), b'C');
+        assert_eq!(IupacCode::from_letter(b'G').to_letter(), b'G');
+        assert_eq!(IupacCode::from_letter(b'T').to_letter(), b'T');
+        assert_eq!(IupacCode::from_letter(b'U').to_letter(), b'T');
+        assert_eq!(IupacCode::from_letter(b'M').to_letter(), b'M');
+        assert_eq!(IupacCode::from_letter(b'X').to_letter(), b' ');
     }
 }
