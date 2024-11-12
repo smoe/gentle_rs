@@ -1,4 +1,4 @@
-use crate::{iupac_code::IupacCode, FACILITY};
+use crate::{amino_acids::AminoAcids, iupac_code::IupacCode};
 use rayon::prelude::*;
 
 const MIN_ORF_LENGTH: i32 = 100;
@@ -80,7 +80,7 @@ impl OpenReadingFrame {
         {
             // Check for START codon
             let codon = Self::get_codon(sequence, start_codon_position, complement, direction);
-            if FACILITY.is_start_codon(&codon) {
+            if AminoAcids::is_start_codon(&codon) {
                 let mut amino_acids = 0;
                 let mut stop_codon_position = start_codon_position;
 
@@ -104,7 +104,7 @@ impl OpenReadingFrame {
                     // Check for STOP codons
                     let codon =
                         Self::get_codon(sequence, stop_codon_position, complement, direction);
-                    if FACILITY.is_stop_codon(&codon) {
+                    if AminoAcids::is_stop_codon(&codon) {
                         if amino_acids >= MIN_ORF_LENGTH {
                             let from = start_codon_position;
                             let to = stop_codon_position + direction * 2;

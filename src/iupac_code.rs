@@ -121,6 +121,12 @@ mod tests {
 
     #[test]
     fn test_base2iupac() {
+        assert!(!IupacCode::from_letter(b'V')
+            .subset(IupacCode::from_letter(b'G'))
+            .is_empty());
+        assert!(IupacCode::from_letter(b'H')
+            .subset(IupacCode::from_letter(b'G'))
+            .is_empty());
         assert_eq!(IupacCode::from_letter(b'A'), IupacCode::new(DNA_BITMASK_A));
         assert_eq!(IupacCode::from_letter(b'C'), IupacCode::new(DNA_BITMASK_C));
         assert_eq!(IupacCode::from_letter(b'G'), IupacCode::new(DNA_BITMASK_G));

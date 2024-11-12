@@ -6,6 +6,7 @@ use translations::Translations;
 pub mod amino_acids;
 pub mod app;
 pub mod dna_display;
+pub mod dna_marker;
 pub mod dna_sequence;
 pub mod enzymes;
 pub mod facility;

@@ -73,6 +73,16 @@ impl AminoAcids {
         ret
     }
 
+    #[inline(always)]
+    pub fn is_start_codon(codon: &[u8; 3]) -> bool {
+        *codon == [b'A', b'T', b'G']
+    }
+
+    #[inline(always)]
+    pub fn is_stop_codon(codon: &[u8; 3]) -> bool {
+        *codon == [b'T', b'A', b'A'] || *codon == [b'T', b'A', b'G'] || *codon == [b'T', b'G', b'A']
+    }
+
     fn load_codon_catalog(&mut self) {
         let text = include_str!("../assets/codon_catalog.csv");
         let mut rdr = ReaderBuilder::new()
