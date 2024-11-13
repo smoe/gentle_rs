@@ -5,7 +5,7 @@ A Rust implementation of [GENtle](https://github.com/GENtle-persons/gentle-m).
 ```bash
 git clone https://github.com/magnusmanske/gentle_rs/
 cd gentle_rs
-cargo run --release
+cargo run --release --binary gentle
 ```
 Note: Cargo will compile >360 dependencies.
 On non-Intel platforms it may be beneficial to explicitly specify
