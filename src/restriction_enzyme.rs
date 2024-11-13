@@ -85,6 +85,7 @@ impl RestrictionEnzyme {
         self.is_palindromic = self.sequence == self.get_sequence_rc();
     }
 
+    #[inline(always)]
     pub fn is_palindromic(&self) -> bool {
         self.is_palindromic
     }
