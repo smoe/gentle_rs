@@ -14,6 +14,10 @@ default-run = "gentle"
 name = "gentle"
 path = "src/bin/gentle.rs"
 
+[[bin]]
+name = "gentle_cli"
+path = "src/bin/gentle_cli.rs"
+
 [lib]
 name = "gentle"
 
@@ -25,7 +29,9 @@ lazy_static = "^1"
 csv = "^1"
 itertools = "*"
 # gb-io = "*" # Until nom-7 is merged and published
-gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7" }
+gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7", features = [
+	"serde",
+] }
 svg = "*"
 rayon = "*"
 anyhow = "*"
@@ -43,6 +49,11 @@ egui-file-dialog = "*" #  For file dialogs.
 copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }
 rfd = "*"
+
+# For cli
+rustyline = "*"
+mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
+
 
 #[build-dependencies]
 #winresource = "*" # For Windows app icon

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dna_sequence::DNAsequence;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RestrictionEnzymeKey {
     pos: isize,
     cut_size: isize,
@@ -66,7 +66,7 @@ pub struct RestrictionEnzyme {
     is_palindromic: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RestrictionEnzymeSite {
     pub offset: isize,
     pub enzyme: RestrictionEnzyme,

@@ -1,9 +1,10 @@
 use crate::{amino_acids::AminoAcids, iupac_code::IupacCode};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 const MIN_ORF_LENGTH: i32 = 100;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OpenReadingFrame {
     from: i32,
     to: i32,

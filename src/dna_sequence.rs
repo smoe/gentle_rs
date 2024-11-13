@@ -9,6 +9,7 @@ use anyhow::Result;
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fmt,
@@ -18,7 +19,7 @@ use std::{
 
 type DNAstring = Vec<u8>;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DNAoverhang {
     forward_3: DNAstring,
     forward_5: DNAstring,
@@ -39,7 +40,7 @@ impl DNAoverhang {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DNAsequence {
     seq: Seq,
     overhang: DNAoverhang,
