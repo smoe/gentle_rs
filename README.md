@@ -16,10 +16,8 @@ CFLAGS="-march=armv8-a" cargo run --release --binary gentle
 ```
 Note: Currently only loads two test sequences, hardcoded.
 
-# Lua interactive interface
-You can run GENtle as an interactive interface using the [Lua programming language](https://www.lua.org/).
-
-
+# Lua interactive shell
+You can run GENtle as an interactive shell using the [Lua programming language](https://www.lua.org/).
 
 ## Example
 ```
