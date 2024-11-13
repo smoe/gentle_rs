@@ -1,25 +1,40 @@
 use crate::dna_sequence::DNAsequence;
+use crate::ENZYMES;
 use mlua::prelude::*;
 use mlua::{Error, Value};
 use mlua::{IntoLuaMulti, Lua, MultiValue, Result as LuaResult};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct LuaInterface {}
+#[derive(Clone, Debug, Default)]
+pub struct LuaInterface {
+    lua: Lua,
+}
 
 impl LuaInterface {
-    pub fn load_dna(path: &str) -> Result<DNAsequence, Error> {
-        if let Ok(dna) = DNAsequence::from_genbank_file(path) {
+    pub fn new() -> Self {
+        Self { lua: Lua::new() }
+    }
+
+    pub fn lua(&self) -> &Lua {
+        &self.lua
+    }
+
+    pub fn load_dna(path: &str) -> LuaResult<DNAsequence> {
+        let mut dna = if let Ok(dna) = DNAsequence::from_genbank_file(path) {
             Self::first_dna_sequence(dna)
         } else if let Ok(dna) = DNAsequence::from_fasta_file(path) {
             Self::first_dna_sequence(dna)
         } else {
-            Err(Self::err(&format!(
+            return Err(Self::err(&format!(
                 "Could not load DNA from file: {}",
                 path
-            )))
-        }
+            )));
+        }?;
+        // Add default enzymes
+        ENZYMES
+            .restriction_enzymes()
+            .clone_into(dna.restriction_enzymes_mut());
+        Ok(dna)
     }
 
     fn first_dna_sequence(dna: Vec<DNAsequence>) -> Result<DNAsequence, Error> {
@@ -37,25 +52,27 @@ impl LuaInterface {
         println!("Interactive Lua Shell (type 'exit' to quit)");
         println!("Available Rust functions:");
         println!("  - load_dna(filename): Loads a DNA sequence from a file");
+        println!("  - restriction_sites(seq): Returns restriction sites for a DNA sequence");
     }
 
-    fn restriction_sites(
-        mut seq: DNAsequence,
-    ) -> Vec<crate::restriction_enzyme::RestrictionEnzymeSite> {
+    fn restriction_sites(mut seq: DNAsequence, lua: &Lua) -> LuaResult<Value> {
         seq.update_computed_features();
-        seq.restriction_enzyme_sites().to_owned()
+        let v = lua.to_value(seq.restriction_enzyme_sites())?;
+        Ok(v)
     }
 
-    pub fn register_rust_functions(lua: &Lua) -> LuaResult<()> {
-        lua.globals().set(
+    pub fn register_rust_functions(&self) -> LuaResult<()> {
+        self.lua.globals().set(
             "load_dna",
-            lua.create_function(|_, filename: String| Self::load_dna(&filename))?,
+            self.lua
+                .create_function(|_, filename: String| Self::load_dna(&filename))?,
         )?;
 
-        // lua.globals().set(
-        //     "restriction_sites",
-        //     lua.create_function(|_, filename: D| Self::load_dna(&filename))?,
-        // )?;
+        self.lua.globals().set(
+            "restriction_sites",
+            self.lua
+                .create_function(|lua, seq: DNAsequence| Self::restriction_sites(seq, lua))?,
+        )?;
 
         Ok(())
     }
@@ -77,5 +94,14 @@ impl IntoLuaMulti for DNAsequence {
 
         // Return both the table and individual values
         Ok(MultiValue::from_vec(ret))
+    }
+}
+
+impl FromLuaMulti for DNAsequence {
+    fn from_lua_multi(values: MultiValue, _lua: &Lua) -> LuaResult<Self> {
+        let table = values.front().unwrap();
+        let table = json!(table);
+        let ret: DNAsequence = serde_json::from_value(table).unwrap();
+        Ok(ret)
     }
 }
