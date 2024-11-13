@@ -10,6 +10,7 @@ use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use std::{
     collections::HashMap,
     fmt,
@@ -40,12 +41,14 @@ impl DNAoverhang {
     }
 }
 
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DNAsequence {
     seq: Seq,
     overhang: DNAoverhang,
     restriction_enzymes: Vec<RestrictionEnzyme>,
     restriction_enzyme_sites: Vec<RestrictionEnzymeSite>,
+    #[serde_as(as = "Vec<(_, _)>")]
     restriction_enzyme_groups: HashMap<RestrictionEnzymeKey, Vec<String>>,
     max_restriction_enzyme_sites: Option<usize>,
     open_reading_frames: Vec<OpenReadingFrame>,
@@ -73,6 +76,12 @@ impl DNAsequence {
             .into_iter()
             .map(DNAsequence::from_genbank_seq)
             .collect())
+    }
+
+    pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
+        let file = File::create(filename)?;
+        gb_io::writer::write(file, &self.seq)?;
+        Ok(())
     }
 
     pub fn calculate_restriction_enzyme_sites(

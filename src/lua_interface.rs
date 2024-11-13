@@ -1,4 +1,5 @@
 use crate::dna_sequence::DNAsequence;
+use crate::methylation_sites::MethylationMode;
 use crate::ENZYMES;
 use mlua::prelude::*;
 use mlua::{Error, Value};
@@ -34,6 +35,9 @@ impl LuaInterface {
         ENZYMES
             .restriction_enzymes()
             .clone_into(dna.restriction_enzymes_mut());
+        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.set_methylation_mode(MethylationMode::both());
+        dna.update_computed_features();
         Ok(dna)
     }
 
@@ -52,26 +56,30 @@ impl LuaInterface {
         println!("Interactive Lua Shell (type 'exit' to quit)");
         println!("Available Rust functions:");
         println!("  - load_dna(filename): Loads a DNA sequence from a file");
-        println!("  - restriction_sites(seq): Returns restriction sites for a DNA sequence");
+        println!("  - write_gb(filename,seq): Writes a DNA sequence to a GenBank file");
+        println!("A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites");
     }
 
-    fn restriction_sites(mut seq: DNAsequence, lua: &Lua) -> LuaResult<Value> {
-        seq.update_computed_features();
-        let v = lua.to_value(seq.restriction_enzyme_sites())?;
-        Ok(v)
+    fn write_gb(seq: DNAsequence, filename: String) -> LuaResult<bool> {
+        // lua.to_value(seq.restriction_enzyme_sites())
+        seq.write_genbank_file(&filename)
+            .map_err(|e| Self::err(&format!("{}", e)))?;
+        Ok(true)
     }
 
     pub fn register_rust_functions(&self) -> LuaResult<()> {
         self.lua.globals().set(
             "load_dna",
             self.lua
-                .create_function(|_, filename: String| Self::load_dna(&filename))?,
+                .create_function(|_lua, filename: String| Self::load_dna(&filename))?,
         )?;
 
         self.lua.globals().set(
-            "restriction_sites",
+            "write_gb",
             self.lua
-                .create_function(|lua, seq: DNAsequence| Self::restriction_sites(seq, lua))?,
+                .create_function(|_lua, (filename, seq): (String, DNAsequence)| {
+                    Self::write_gb(seq, filename)
+                })?,
         )?;
 
         Ok(())
