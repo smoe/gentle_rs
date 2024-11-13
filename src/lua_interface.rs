@@ -34,7 +34,6 @@ impl LuaInterface {
         ENZYMES
             .restriction_enzymes()
             .clone_into(dna.restriction_enzymes_mut());
-        dna.update_computed_features();
         Ok(dna)
     }
 
@@ -57,6 +56,7 @@ impl LuaInterface {
     }
 
     fn restriction_sites(mut seq: DNAsequence, lua: &Lua) -> LuaResult<Value> {
+        seq.update_computed_features();
         let v = lua.to_value(seq.restriction_enzyme_sites())?;
         Ok(v)
     }
