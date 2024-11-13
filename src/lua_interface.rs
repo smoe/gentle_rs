@@ -39,60 +39,31 @@ impl LuaInterface {
         println!("  - load_dna(filename): Loads a DNA sequence from a file");
     }
 
+    fn restriction_sites(
+        mut seq: DNAsequence,
+    ) -> Vec<crate::restriction_enzyme::RestrictionEnzymeSite> {
+        seq.update_computed_features();
+        seq.restriction_enzyme_sites().to_owned()
+    }
+
     pub fn register_rust_functions(lua: &Lua) -> LuaResult<()> {
-        // Register the multiply function
-        // lua.globals().set(
-        //     "rust_multiply",
-        //     lua.create_function(|_, (a, b): (i64, i64)| Ok(rust_multiply(a, b)))?,
-        // )?;
-
-        // Register the string reverse function
-        // lua.globals().set(
-        //     "rust_reverse",
-        //     lua.create_function(|_, s: String| Ok(rust_reverse_string(s)))?,
-        // )?;
-
         lua.globals().set(
             "load_dna",
             lua.create_function(|_, filename: String| Self::load_dna(&filename))?,
         )?;
 
+        // lua.globals().set(
+        //     "restriction_sites",
+        //     lua.create_function(|_, filename: D| Self::load_dna(&filename))?,
+        // )?;
+
         Ok(())
     }
 
     pub fn format_lua_value(value: &Value) -> String {
-        match value {
-            Value::Nil => "nil".to_string(),
-            Value::Boolean(b) => b.to_string(),
-            Value::Integer(i) => i.to_string(),
-            Value::Number(n) => n.to_string(),
-            Value::String(s) => {
-                if let Ok(str) = s.to_str() {
-                    str.to_string()
-                } else {
-                    "<binary string>".to_string()
-                }
-            }
-            Value::Table(_) => "<table>".to_string(),
-            Value::Function(_) => "<function>".to_string(),
-            Value::Thread(_) => "<thread>".to_string(),
-            Value::UserData(_) => "<userdata>".to_string(),
-            Value::Error(e) => format!("<error: {}>", e),
-            _ => "<unknown>".to_string(),
-        }
+        format!("{}", json!(value))
     }
 }
-
-// impl UserData for LuaInterface {
-//     fn add_fields<F: UserDataFields<Self>>(fields: &mut F) {
-//         fields.add_field_method_get("val", |_, this| Ok(this.value));
-//     }
-
-//     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-//         methods.add_function("new", |_, value: i32| Ok(Self { value }));
-//         methods.add_function("hello", |_, value: String| Ok(format!("Hello, {}!", value)));
-//     }
-// }
 
 impl IntoLuaMulti for DNAsequence {
     fn into_lua_multi(self, lua: &Lua) -> LuaResult<MultiValue> {
