@@ -22,11 +22,17 @@ You can run GENtle as an interactive shell using JavaScript.
 ## Example
 ```
 > cargo run --release --binary gentle_js
-JavaScript
-> pgex = load_dna("test_files/pGEX-3X.gb");
-> results = digest(pgex,"BamHI,EcoRI");
-> console.log(results.length);
+Interactive JavaScript Shell (type 'exit' to quit)
+GENtle> pgex = load_dna("test_files/pGEX-3X.gb");
+GENtle> console.log(pgex.seq.seq.length)
+4952
+GENtle> results = digest(pgex,"BamHI,EcoRI"); // Digest pGex-3X with BamHI and EcoRI
+GENtle> console.log(results.length) // Number of sequences
 2
+GENtle> console.log(results[0].seq.seq.length) // Length of first sequence
+6
+GENtle> console.log(results[1].seq.seq.length) // Length of second sequence
+4938
 ```
 
 # Lua interactive shell
@@ -37,12 +43,12 @@ You can run GENtle as an interactive shell using the [Lua programming language](
 > cargo run --release --binary gentle_lua
 Interactive Lua Shell (type 'exit' to quit)
 (...)
-> pgex = load_dna("test_files/pGEX-3X.gb") -- loads a GenBank sequence and performs some computations on it
-> #pgex.seq.seq -- prints the length of the sequence
+GENtle> pgex = load_dna("test_files/pGEX-3X.gb") -- loads a GenBank sequence and performs some computations on it
+GENtle> #pgex.seq.seq -- prints the length of the sequence
 4952
-> pgex.restriction_enzyme_sites -- shows the precomputed restriction enzyme sites
+GENtle> pgex.restriction_enzyme_sites -- shows the precomputed restriction enzyme sites
 (...)
-> pgex.methylation_sites -- shows the precomputed methylation_sites
+GENtle> pgex.methylation_sites -- shows the precomputed methylation_sites
 (...)
-> write_gb("output.gb",pgex) -- writes the sequence to a new GenBank file
+GENtle> write_gb("output.gb",pgex) -- writes the sequence to a new GenBank file
 ```
