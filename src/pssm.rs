@@ -269,10 +269,6 @@ mod tests {
     fn test_nonexistent_file() {
         let result = PSSM::from_jaspar_file("nonexistent_file.jaspar");
         assert!(result.is_err(), "Expected an error for a nonexistent file");
-
-        if let Err(e) = result {
-            println!("Error returned as expected: {}", e);
-        }
     }
 
     #[test]
