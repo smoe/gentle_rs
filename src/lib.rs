@@ -19,6 +19,7 @@ pub mod main_area_dna;
 pub mod methylation_sites;
 pub mod open_reading_frame;
 pub mod protease;
+pub mod pssm;
 pub mod render_dna;
 pub mod render_dna_circular;
 pub mod render_dna_linear;
