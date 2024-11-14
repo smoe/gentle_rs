@@ -242,30 +242,24 @@ mod tests {
 
     #[test]
     fn test_pssm_sites() -> Result<()> {
-        let pssm_file = "test_files/MA1234.1.jaspar"; // Replace with actual file path
+        let pssm_file = "test_files/MA1234.1.jaspar"; // JASPAR file
         let dna_sequence = "ACTGACGTACTGACGTAGCTAGCTGACGTACGTTCGATTCGA"; // Replace with actual DNA sequence
         let threshold = 0.0; // Set your desired threshold for binding site score
 
         // Handle the result of PSSM::from_file by unwrapping it
         let mut pssm = PSSM::from_pssm_file(pssm_file)?; // Use `?` to propagate errors if any
-        println!("Parsed PSSM:");
-        println!("{pssm}"); // Print the loaded PSSM
+        assert_eq!(pssm.accession, "MA1234.1");
+        assert_eq!(pssm.description, "ACGT");
+        assert_eq!(pssm.matrix[1][1], 4429.0);
 
         pssm.normalize(); // Divide values by column sums
-        println!("Normalized PSSM:");
-        println!("{pssm}"); // Print the loaded PSSM
+        assert_eq!(pssm.matrix[1][1], 1.0);
 
         pssm.prepare_log_odds_to_background(); // Divide values by column sums
-        println!("{pssm}"); // Print the loaded PSSM
+        assert_eq!(pssm.matrix[1][1], 2.0);
 
         let hits = pssm.scan_sequence(dna_sequence, threshold);
-
-        for (position, score) in hits {
-            println!(
-                "Potential binding site at position {}: Score = {}",
-                position, score
-            );
-        }
+        assert_eq!(hits, [(4, 8.0), (12, 8.0), (25, 8.0), (29, 8.0)]);
 
         Ok(())
     }
@@ -289,18 +283,12 @@ mod tests {
 
         //let pssms = PSSM::from_jaspar_file("test_files/jaspar_file.jaspar")?;
         let pssms = PSSM::from_jaspar_file(pssm_file)?;
-
-        for (accession, pssm) in &pssms {
-            println!("\nPSSM Accession: {}", accession);
-            println!("{pssm}");
-        }
+        assert_eq!(pssms.len(), 1);
 
         // Access a specific PSSM by name
-        if let Some(pssm) = pssms.get("MA1234.1") {
-            println!("{pssm}");
-        } else {
-            println!("PSSM with name 'MA1234.1' not found.");
-        }
+        let pssm = pssms.get("MA1234.1").unwrap();
+
+        assert_eq!(pssm.matrix[1][1], 4429.00);
 
         Ok(())
     }
