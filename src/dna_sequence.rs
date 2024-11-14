@@ -41,6 +41,25 @@ impl DNAoverhang {
     }
 }
 
+impl fmt::Display for DNAoverhang {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let left = self.forward_5.len().max(self.reverse_3.len());
+        let line1 = format!(
+            "{: >left$} - ... - {}",
+            String::from_utf8(self.forward_5.to_owned()).unwrap(),
+            String::from_utf8(self.forward_3.to_owned()).unwrap(),
+            left = left
+        );
+        let line2 = format!(
+            "{: >left$} - ... - {}",
+            String::from_utf8(self.reverse_3.to_owned()).unwrap(),
+            String::from_utf8(self.reverse_5.to_owned()).unwrap(),
+            left = left
+        );
+        write!(f, "{}\n{}", line1, line2)
+    }
+}
+
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DNAsequence {
@@ -314,7 +333,7 @@ impl DNAsequence {
         std::str::from_utf8(self.forward()).unwrap().to_string()
     }
 
-    pub fn get_overhang(&self) -> &DNAoverhang {
+    pub fn overhang(&self) -> &DNAoverhang {
         &self.overhang
     }
 
@@ -407,11 +426,10 @@ impl DNAsequence {
         // Add overhangs
         if site.enzyme.overlap > 0 {
             ret.overhang.forward_5 = overhang;
-            ret.overhang.reverse_3 = overhang_rc;
-        } else {
-            // TODO test this
-            ret.overhang.forward_3 = overhang;
             ret.overhang.reverse_5 = overhang_rc;
+        } else {
+            ret.overhang.forward_3 = overhang;
+            ret.overhang.reverse_3 = overhang_rc;
         }
 
         ret
@@ -432,9 +450,11 @@ impl DNAsequence {
 
         let mut seq1 = Self::from_u8(self.forward());
         seq1.seq = self.seq.extract_range(0, left as i64);
+        seq1.overhang = self.overhang.clone();
 
         let mut seq2 = Self::from_u8(self.forward());
         seq2.seq = self.seq.extract_range(right as i64, self.len() as i64);
+        seq2.overhang = self.overhang.clone();
 
         // Add overhangs
         if site.enzyme.overlap > 0 {
@@ -460,6 +480,30 @@ impl DNAsequence {
             self.split_at_restriction_enzyme_site_linear(site)
         }
     }
+
+    pub fn restriction_enzymes_full_digest(&self, enzymes: Vec<RestrictionEnzyme>) -> Vec<Self> {
+        let mut ret = vec![self.to_owned()];
+        for enzyme in &enzymes {
+            loop {
+                let mut found_one = false;
+                let mut new_ret = vec![];
+                for seq in ret.drain(..) {
+                    if let Some(site) = enzyme.get_sites(&seq, None).first() {
+                        let tmp = seq.split_at_restriction_enzyme_site(site);
+                        new_ret.extend(tmp);
+                        found_one = true;
+                    } else {
+                        new_ret.push(seq);
+                    }
+                }
+                ret = new_ret;
+                if !found_one {
+                    break;
+                }
+            }
+        }
+        ret
+    }
 }
 
 impl fmt::Display for DNAsequence {
@@ -477,7 +521,7 @@ impl From<String> for DNAsequence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enzymes::Enzymes;
+    use crate::{app::GENtleApp, enzymes::Enzymes};
 
     #[test]
     fn test_split_at_restriction_enzyme_site_circular() {
@@ -515,8 +559,8 @@ mod tests {
         assert_eq!(new_seq.get_forward_string(), "CGCATG");
         assert_eq!(new_seq.overhang.forward_5, "GATC".as_bytes());
         assert_eq!(new_seq.overhang.forward_3, "".as_bytes());
-        assert_eq!(new_seq.overhang.reverse_5, "".as_bytes());
-        assert_eq!(new_seq.overhang.reverse_3, "CTAG".as_bytes());
+        assert_eq!(new_seq.overhang.reverse_5, "CTAG".as_bytes());
+        assert_eq!(new_seq.overhang.reverse_3, "".as_bytes());
     }
 
     #[test]
@@ -546,6 +590,22 @@ mod tests {
         assert_eq!(seqs[0].overhang.reverse_5, "CTAG".as_bytes());
         assert_eq!(seqs[1].overhang.forward_5, "GATC".as_bytes());
         assert_eq!(seqs[1].overhang.reverse_3, "".as_bytes());
+    }
+
+    #[test]
+    fn test_restriction_enzymes_full_digest() {
+        let seq = GENtleApp::load_from_file("test_files/pGEX-3X.gb").unwrap();
+        let enzymes = Enzymes::default();
+        let res = enzymes.restriction_enzymes_by_name(&["BamHI", "EcoRI"]);
+        assert_eq!(res.len(), 2);
+        let seqs = seq.restriction_enzymes_full_digest(res);
+        assert_eq!(seqs.len(), 2);
+        assert_eq!(seqs[0].len(), 6);
+        assert_eq!(seqs[1].len(), 4938);
+        assert_eq!(seqs[0].overhang.forward_5, "gatc".as_bytes());
+        assert_eq!(seqs[0].overhang.reverse_5, "TTAA".as_bytes());
+        assert_eq!(seqs[1].overhang.forward_5, "aatt".as_bytes());
+        assert_eq!(seqs[1].overhang.reverse_5, "CTAG".as_bytes());
     }
 
     #[test]

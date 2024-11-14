@@ -1,3 +1,4 @@
+use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::methylation_sites::MethylationMode;
 use crate::ENZYMES;
@@ -21,17 +22,10 @@ impl LuaInterface {
     }
 
     pub fn load_dna(path: &str) -> LuaResult<DNAsequence> {
-        let mut dna = if let Ok(dna) = DNAsequence::from_genbank_file(path) {
-            Self::first_dna_sequence(dna)
-        } else if let Ok(dna) = DNAsequence::from_fasta_file(path) {
-            Self::first_dna_sequence(dna)
-        } else {
-            return Err(Self::err(&format!(
-                "Could not load DNA from file: {}",
-                path
-            )));
-        }?;
-        // Add default enzymes
+        let mut dna =
+            GENtleApp::load_from_file(path).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
+
+        // Add default enzymes and stuff
         ENZYMES
             .restriction_enzymes()
             .clone_into(dna.restriction_enzymes_mut());
@@ -39,13 +33,6 @@ impl LuaInterface {
         dna.set_methylation_mode(MethylationMode::both());
         dna.update_computed_features();
         Ok(dna)
-    }
-
-    fn first_dna_sequence(dna: Vec<DNAsequence>) -> Result<DNAsequence, Error> {
-        Ok(dna
-            .first()
-            .ok_or_else(|| Self::err("No sequence in file"))?
-            .to_owned())
     }
 
     fn err(s: &str) -> Error {

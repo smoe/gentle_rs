@@ -26,8 +26,8 @@ impl GENtleApp {
         let mut ret = Self::default();
 
         // Load test sequences
-        ret.load_from_file("test_files/pGEX-3X.gb");
-        ret.load_from_file("test_files/pGEX_3X.fa");
+        ret.open_new_window_from_file("test_files/pGEX-3X.gb");
+        ret.open_new_window_from_file("test_files/pGEX_3X.fa");
 
         ret
     }
@@ -57,10 +57,18 @@ impl GENtleApp {
         self.new_windows.push(Window::new_dna(dna));
     }
 
-    fn load_from_file(&mut self, path: &str) {
+    pub fn load_from_file(path: &str) -> Result<DNAsequence> {
         if let Ok(dna) = Self::load_dna_from_genbank_file(path) {
-            self.new_dna_window(dna);
+            Ok(dna)
         } else if let Ok(dna) = Self::load_dna_from_fasta_file(path) {
+            Ok(dna)
+        } else {
+            Err(anyhow!("Could not load file"))
+        }
+    }
+
+    fn open_new_window_from_file(&mut self, path: &str) {
+        if let Ok(dna) = Self::load_from_file(path) {
             self.new_dna_window(dna);
         } else {
             // TODO error, could not load file
@@ -73,7 +81,7 @@ impl GENtleApp {
                 if ui.button(TRANSLATIONS.get("m_open")).clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         if let Some(path) = Some(path.display().to_string()) {
-                            self.load_from_file(&path);
+                            self.open_new_window_from_file(&path);
                         }
                     }
                 }
