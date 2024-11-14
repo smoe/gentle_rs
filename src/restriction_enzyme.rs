@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-
 use crate::dna_sequence::DNAsequence;
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RestrictionEnzymeKey {
     pos: isize,
     cut_size: isize,
@@ -55,6 +55,13 @@ impl Ord for RestrictionEnzymeKey {
     }
 }
 
+impl fmt::Display for RestrictionEnzymeKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let j = serde_json::to_string(&self).unwrap();
+        write!(f, "{}", j)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RestrictionEnzyme {
     pub name: String,
@@ -66,7 +73,7 @@ pub struct RestrictionEnzyme {
     is_palindromic: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RestrictionEnzymeSite {
     pub offset: isize,
     pub enzyme: RestrictionEnzyme,
@@ -78,6 +85,7 @@ impl RestrictionEnzyme {
         self.is_palindromic = self.sequence == self.get_sequence_rc();
     }
 
+    #[inline(always)]
     pub fn is_palindromic(&self) -> bool {
         self.is_palindromic
     }

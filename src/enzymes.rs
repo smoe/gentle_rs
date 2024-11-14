@@ -67,6 +67,14 @@ impl Enzymes {
     pub fn proteases(&self) -> &Vec<Protease> {
         &self.proteases
     }
+
+    pub fn restriction_enzymes_by_name(&self, names: &[&str]) -> Vec<RestrictionEnzyme> {
+        self.restriction_enzymes
+            .iter()
+            .filter(|re| names.contains(&re.name.as_str()))
+            .cloned()
+            .collect()
+    }
 }
 
 impl Default for Enzymes {

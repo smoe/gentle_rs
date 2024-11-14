@@ -9,6 +9,8 @@ use anyhow::Result;
 use bio::io::fasta;
 use gb_io::seq::{Feature, Seq, Topology};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use std::{
     collections::HashMap,
     fmt,
@@ -18,12 +20,12 @@ use std::{
 
 type DNAstring = Vec<u8>;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DNAoverhang {
-    forward_3: DNAstring,
-    forward_5: DNAstring,
-    reverse_3: DNAstring,
-    reverse_5: DNAstring,
+    pub forward_3: DNAstring,
+    pub forward_5: DNAstring,
+    pub reverse_3: DNAstring,
+    pub reverse_5: DNAstring,
 }
 
 impl DNAoverhang {
@@ -39,12 +41,33 @@ impl DNAoverhang {
     }
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Display for DNAoverhang {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let left = self.forward_5.len().max(self.reverse_3.len());
+        let line1 = format!(
+            "{: >left$} - ... - {}",
+            String::from_utf8(self.forward_5.to_owned()).unwrap(),
+            String::from_utf8(self.forward_3.to_owned()).unwrap(),
+            left = left
+        );
+        let line2 = format!(
+            "{: >left$} - ... - {}",
+            String::from_utf8(self.reverse_3.to_owned()).unwrap(),
+            String::from_utf8(self.reverse_5.to_owned()).unwrap(),
+            left = left
+        );
+        write!(f, "{}\n{}", line1, line2)
+    }
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DNAsequence {
     seq: Seq,
     overhang: DNAoverhang,
     restriction_enzymes: Vec<RestrictionEnzyme>,
     restriction_enzyme_sites: Vec<RestrictionEnzymeSite>,
+    #[serde_as(as = "Vec<(_, _)>")]
     restriction_enzyme_groups: HashMap<RestrictionEnzymeKey, Vec<String>>,
     max_restriction_enzyme_sites: Option<usize>,
     open_reading_frames: Vec<OpenReadingFrame>,
@@ -72,6 +95,12 @@ impl DNAsequence {
             .into_iter()
             .map(DNAsequence::from_genbank_seq)
             .collect())
+    }
+
+    pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
+        let file = File::create(filename)?;
+        gb_io::writer::write(file, &self.seq)?;
+        Ok(())
     }
 
     pub fn calculate_restriction_enzyme_sites(
@@ -105,13 +134,13 @@ impl DNAsequence {
         self.forward().get(i).unwrap_or(&b'N').to_owned()
     }
 
-    pub fn get_inclusive_range_safe(&self, range: RangeInclusive<usize>) -> Option<Vec<u8>> {
+    pub fn get_inclusive_range_safe(&self, range: RangeInclusive<usize>) -> Option<DNAstring> {
         let start = *range.start();
         let end = *range.end() + 1;
         self.get_range_safe(start..end)
     }
 
-    pub fn get_range_safe(&self, range: Range<usize>) -> Option<Vec<u8>> {
+    pub fn get_range_safe(&self, range: Range<usize>) -> Option<DNAstring> {
         let Range { start, end } = range;
         if start >= end {
             return None;
@@ -304,7 +333,7 @@ impl DNAsequence {
         std::str::from_utf8(self.forward()).unwrap().to_string()
     }
 
-    pub fn get_overhang(&self) -> &DNAoverhang {
+    pub fn overhang(&self) -> &DNAoverhang {
         &self.overhang
     }
 
@@ -369,6 +398,112 @@ impl DNAsequence {
                 .push(re_site.enzyme.name.to_owned());
         }
     }
+
+    fn split_at_restriction_enzyme_site_circular(&self, site: &RestrictionEnzymeSite) -> Self {
+        let pos1 = site.offset;
+        let pos2 = site.offset + site.enzyme.overlap;
+        let pos2 = pos2 % self.len() as isize;
+        let right = pos1.max(pos2) + 1;
+
+        // Rotate so that position 0 is now the sequence after the cut
+        let seq = self.seq.set_origin(right as i64);
+
+        // Cut off the overhanging part of the sequence, and keep it around
+        let new_size = self.len() as i64 - site.enzyme.overlap.abs() as i64;
+        let overhang = seq.seq[new_size as usize..self.len()].to_owned();
+        let overhang_rc: Vec<u8> = overhang
+            .iter()
+            .map(|c| IupacCode::letter_complement(*c))
+            .collect();
+        let mut seq = seq.extract_range(0, new_size);
+
+        // Sequence is now linear
+        seq.topology = Topology::Linear;
+
+        let mut ret = Self::from_u8(self.forward());
+        ret.seq = seq;
+
+        // Add overhangs
+        if site.enzyme.overlap > 0 {
+            ret.overhang.forward_5 = overhang;
+            ret.overhang.reverse_5 = overhang_rc;
+        } else {
+            ret.overhang.forward_3 = overhang;
+            ret.overhang.reverse_3 = overhang_rc;
+        }
+
+        ret
+    }
+
+    fn split_at_restriction_enzyme_site_linear(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
+        let pos1 = site.offset + 1;
+        let pos2 = site.offset + site.enzyme.overlap;
+        let pos2 = pos2 % self.len() as isize;
+        let left = pos1;
+        let right = pos1.max(pos2) + 1;
+
+        let overhang = self.seq.seq[pos1 as usize..(pos2 + 1) as usize].to_owned();
+        let overhang_rc: Vec<u8> = overhang
+            .iter()
+            .map(|c| IupacCode::letter_complement(*c))
+            .collect();
+
+        let mut seq1 = Self::from_u8(self.forward());
+        seq1.seq = self.seq.extract_range(0, left as i64);
+        seq1.overhang = self.overhang.clone();
+
+        let mut seq2 = Self::from_u8(self.forward());
+        seq2.seq = self.seq.extract_range(right as i64, self.len() as i64);
+        seq2.overhang = self.overhang.clone();
+
+        // Add overhangs
+        if site.enzyme.overlap > 0 {
+            seq1.overhang.forward_3 = vec![];
+            seq1.overhang.reverse_5 = overhang_rc;
+            seq2.overhang.forward_5 = overhang;
+            seq2.overhang.reverse_3 = vec![];
+        } else {
+            // TODO test this
+            seq1.overhang.forward_3 = overhang;
+            seq1.overhang.reverse_5 = vec![];
+            seq2.overhang.forward_5 = vec![];
+            seq2.overhang.reverse_3 = overhang_rc;
+        }
+
+        vec![seq1, seq2]
+    }
+
+    pub fn split_at_restriction_enzyme_site(&self, site: &RestrictionEnzymeSite) -> Vec<Self> {
+        if self.is_circular() {
+            vec![self.split_at_restriction_enzyme_site_circular(site)]
+        } else {
+            self.split_at_restriction_enzyme_site_linear(site)
+        }
+    }
+
+    pub fn restriction_enzymes_full_digest(&self, enzymes: Vec<RestrictionEnzyme>) -> Vec<Self> {
+        let mut ret = vec![self.to_owned()];
+        for enzyme in &enzymes {
+            loop {
+                let mut found_one = false;
+                let mut new_ret = vec![];
+                for seq in ret.drain(..) {
+                    if let Some(site) = enzyme.get_sites(&seq, None).first() {
+                        let tmp = seq.split_at_restriction_enzyme_site(site);
+                        new_ret.extend(tmp);
+                        found_one = true;
+                    } else {
+                        new_ret.push(seq);
+                    }
+                }
+                ret = new_ret;
+                if !found_one {
+                    break;
+                }
+            }
+        }
+        ret
+    }
 }
 
 impl fmt::Display for DNAsequence {
@@ -386,7 +521,92 @@ impl From<String> for DNAsequence {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enzymes::Enzymes;
+    use crate::{app::GENtleApp, enzymes::Enzymes};
+
+    #[test]
+    fn test_split_at_restriction_enzyme_site_circular() {
+        // Create circular test sequence
+        let mut orig_seq = DNAsequence::from_sequence("ATGGATCCGC").unwrap();
+        orig_seq.seq.topology = Topology::Circular;
+
+        // Load BamHI enzyme
+        let bam_hi = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|e| e.name == "BamHI")
+            .unwrap()
+            .to_owned();
+
+        /*
+        ATGGATCCGC => rotate
+        CGCATGGATC => remove overlap
+        CGCATG
+
+        ATG|GATC CGC
+        TAC CTAG|GCG
+
+        GATC CGCATG
+             GCGTAC CTAG
+        */
+
+        // Get restriction site
+        let sites = bam_hi.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+        let site = sites.first().unwrap();
+
+        // Create new sequence from cut
+        let new_seq = orig_seq.split_at_restriction_enzyme_site_circular(site);
+        assert_eq!(new_seq.get_forward_string(), "CGCATG");
+        assert_eq!(new_seq.overhang.forward_5, "GATC".as_bytes());
+        assert_eq!(new_seq.overhang.forward_3, "".as_bytes());
+        assert_eq!(new_seq.overhang.reverse_5, "CTAG".as_bytes());
+        assert_eq!(new_seq.overhang.reverse_3, "".as_bytes());
+    }
+
+    #[test]
+    fn test_split_at_restriction_enzyme_site_linear() {
+        // Create circular test sequence
+        let mut orig_seq = DNAsequence::from_sequence("ATGGATCCGC").unwrap();
+        orig_seq.seq.topology = Topology::Linear;
+
+        // Load BamHI enzyme
+        let bam_hi = Enzymes::default()
+            .restriction_enzymes()
+            .iter()
+            .find(|e| e.name == "BamHI")
+            .unwrap()
+            .to_owned();
+
+        // Get restriction site
+        let sites = bam_hi.get_sites(&orig_seq, None);
+        assert_eq!(sites.len(), 1);
+        let site = sites.first().unwrap();
+
+        // Create new sequence from cut
+        let seqs = orig_seq.split_at_restriction_enzyme_site_linear(site);
+        assert_eq!(seqs[0].get_forward_string(), "ATG");
+        assert_eq!(seqs[1].get_forward_string(), "CGC");
+        assert_eq!(seqs[0].overhang.forward_3, "".as_bytes());
+        assert_eq!(seqs[0].overhang.reverse_5, "CTAG".as_bytes());
+        assert_eq!(seqs[1].overhang.forward_5, "GATC".as_bytes());
+        assert_eq!(seqs[1].overhang.reverse_3, "".as_bytes());
+    }
+
+    #[test]
+    fn test_restriction_enzymes_full_digest() {
+        let seq = GENtleApp::load_from_file("test_files/pGEX-3X.gb").unwrap();
+        let enzymes = Enzymes::default();
+        let res = enzymes.restriction_enzymes_by_name(&["BamHI", "EcoRI"]);
+        assert_eq!(res.len(), 2);
+        let seqs = seq.restriction_enzymes_full_digest(res);
+        assert_eq!(seqs.len(), 2);
+        assert_eq!(seqs[0].len(), 6);
+        assert_eq!(seqs[1].len(), 4938);
+        assert_eq!(seqs[0].overhang.forward_5, "gatc".as_bytes());
+        assert_eq!(seqs[0].overhang.reverse_5, "TTAA".as_bytes());
+        assert_eq!(seqs[1].overhang.forward_5, "aatt".as_bytes());
+        assert_eq!(seqs[1].overhang.reverse_5, "CTAG".as_bytes());
+    }
 
     #[test]
     fn test_pgex_3x_fasta() {

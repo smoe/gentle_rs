@@ -1,4 +1,6 @@
-#[derive(Clone, Debug, Default, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MethylationMode {
     dcm: bool,
     dam: bool,
@@ -29,7 +31,7 @@ impl MethylationMode {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MethylationSites {
     sites: Vec<usize>,
     last_mode: MethylationMode,

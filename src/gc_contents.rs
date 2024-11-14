@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 const MAX_SECTION_SIZE: usize = 100;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GcRegion {
     from: usize,
     to: usize,
@@ -24,7 +26,7 @@ impl GcRegion {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GcContents {
     regions: Vec<GcRegion>,
 }

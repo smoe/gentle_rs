@@ -13,6 +13,8 @@ pub mod enzymes;
 pub mod gc_contents;
 pub mod icons;
 pub mod iupac_code;
+pub mod js_interface;
+pub mod lua_interface;
 pub mod main_area_dna;
 pub mod methylation_sites;
 pub mod open_reading_frame;

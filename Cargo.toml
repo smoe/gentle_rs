@@ -14,18 +14,29 @@ default-run = "gentle"
 name = "gentle"
 path = "src/bin/gentle.rs"
 
+[[bin]]
+name = "gentle_lua"
+path = "src/bin/gentle_lua.rs"
+
+[[bin]]
+name = "gentle_js"
+path = "src/bin/gentle_js.rs"
+
 [lib]
 name = "gentle"
 
 [dependencies]
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
+serde_with = "*"
 bio = "^1"
 lazy_static = "^1"
 csv = "^1"
 itertools = "*"
 # gb-io = "*" # Until nom-7 is merged and published
-gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7" }
+gb-io = { git = "https://github.com/dlesl/gb-io", branch = "nom-7", features = [
+	"serde",
+] }
 svg = "*"
 rayon = "*"
 anyhow = "*"
@@ -43,6 +54,11 @@ egui-file-dialog = "*" #  For file dialogs.
 copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }
 rfd = "*"
+
+# For cli
+rustyline = "*"
+mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
+deno_core = "*"
 
 #[build-dependencies]
 #winresource = "*" # For Windows app icon
