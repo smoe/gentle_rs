@@ -16,6 +16,19 @@ CFLAGS="-march=armv8-a" cargo run --release --binary gentle
 ```
 Note: Currently only loads two test sequences, hardcoded.
 
+# JavaScript interactive shell
+You can run GENtle as an interactive shell using JavaScript.
+
+## Example
+```
+> cargo run --release --binary gentle_js
+JavaScript
+> pgex = load_dna("test_files/pGEX-3X.gb");
+> results = digest(pgex,"BamHI,EcoRI");
+> console.log(results.length);
+2
+```
+
 # Lua interactive shell
 You can run GENtle as an interactive shell using the [Lua programming language](https://www.lua.org/).
 

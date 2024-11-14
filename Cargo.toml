@@ -15,8 +15,12 @@ name = "gentle"
 path = "src/bin/gentle.rs"
 
 [[bin]]
-name = "gentle_cli"
-path = "src/bin/gentle_cli.rs"
+name = "gentle_lua"
+path = "src/bin/gentle_lua.rs"
+
+[[bin]]
+name = "gentle_js"
+path = "src/bin/gentle_js.rs"
 
 [lib]
 name = "gentle"
@@ -54,7 +58,7 @@ rfd = "*"
 # For cli
 rustyline = "*"
 mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
-
+deno_core = "*"
 
 #[build-dependencies]
 #winresource = "*" # For Windows app icon

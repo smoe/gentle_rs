@@ -57,7 +57,7 @@ impl LuaInterface {
     // fn restriction_enzyme_digest(seq: DNAsequence, enzymes: String) -> LuaResult<Vec<DNAsequence>> {
     //     let enzymes = enzymes.split(',').map(|s| s.trim()).collect::<Vec<_>>();
     //     Ok(vec![])
-    }
+    // }
 
     pub fn register_rust_functions(&self) -> LuaResult<()> {
         self.lua.globals().set(
