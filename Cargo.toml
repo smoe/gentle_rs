@@ -54,6 +54,8 @@ egui-file-dialog = "*" #  For file dialogs.
 copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }
 rfd = "*"
+reqwest = { version = "*", features = ["blocking", "json"] }
+tempfile = "*"
 
 # For cli
 rustyline = "*"

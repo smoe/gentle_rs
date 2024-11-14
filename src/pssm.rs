@@ -2,26 +2,42 @@ use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use std::num::ParseFloatError;
 
+#[derive(Debug, Clone, Default)]
 pub struct PSSM {
-    pub accession: String,
-    pub description: String,
-    pub matrix: Vec<[f64; 4]>,
+    accession: String,
+    description: String,
+    matrix: Vec<Vec<f64>>,
+    is_normalized: bool,
+    log_odds_prepared: bool,
 }
 
 impl PSSM {
-    pub fn new(accession: String, description: String, matrix: Vec<[f64; 4]>) -> Self {
+    pub fn new(accession: String, description: String, matrix: Vec<Vec<f64>>) -> Self {
         PSSM {
             accession,
             description,
             matrix,
+            ..Default::default()
         }
+    }
+
+    pub fn accession(&self) -> &str {
+        &self.accession
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
     }
 
     // Method to normalize the PSSM by its colsums
     pub fn normalize(&mut self) {
+        if self.is_normalized {
+            return;
+        }
+        self.is_normalized = true;
         let mut column_sums = [0.0; 4];
 
         // Calculate the sum of each column
@@ -43,6 +59,10 @@ impl PSSM {
 
     // Put Log Odds against background of 0.25
     pub fn prepare_log_odds_to_background(&mut self) {
+        if self.log_odds_prepared {
+            return;
+        }
+        self.log_odds_prepared = true;
         for row in &mut self.matrix {
             for value in row.iter_mut() {
                 if *value != 0.0 {
@@ -86,7 +106,26 @@ impl PSSM {
             accession,
             description,
             matrix,
+            ..Default::default()
         })
+    }
+
+    pub fn from_elixir_api(id: &str) -> Result<HashMap<String, PSSM>> {
+        let url = format!("https://jaspar.elixir.no/api/v1/matrix/{id}/?format=jaspar");
+        let text = reqwest::blocking::get(url)?.text()?;
+        let mut file = tempfile::tempfile()?;
+        file.write_all(text.as_bytes())?;
+        file.seek(SeekFrom::Start(0))?;
+
+        let reader = io::BufReader::new(file);
+        let mut pssms = HashMap::new();
+        let mut lines = reader.lines();
+
+        while let Some(line) = lines.next() {
+            Self::parse_jaspar_line(line, &mut lines, &mut pssms)?;
+        }
+
+        Ok(pssms)
     }
 
     // Function to parse the JASPAR file and return a HashMap of PSSMs
@@ -137,7 +176,7 @@ impl PSSM {
 
     fn parse_pssm_line(
         line: std::result::Result<String, io::Error>,
-        matrix: &mut Vec<[f64; 4]>,
+        matrix: &mut Vec<Vec<f64>>,
         line_num: usize,
     ) -> Result<()> {
         let line = line?;
@@ -149,12 +188,7 @@ impl PSSM {
             .collect();
         match scores {
             Ok(parsed_scores) if parsed_scores.len() == 4 => {
-                matrix.push([
-                    parsed_scores[0],
-                    parsed_scores[1],
-                    parsed_scores[2],
-                    parsed_scores[3],
-                ]);
+                matrix.push(parsed_scores);
             }
             Ok(_) => {
                 eprintln!(
@@ -200,11 +234,8 @@ impl PSSM {
                     .collect();
 
                 match row {
-                    Ok(parsed_row) if parsed_row.len() == 4 => {
-                        matrix.push([parsed_row[0], parsed_row[1], parsed_row[2], parsed_row[3]]);
-                    }
-                    Ok(_) => {
-                        return Err(anyhow!("Invalid PSSM format: expected 4 numeric columns"));
+                    Ok(parsed_row) => {
+                        matrix.push(parsed_row);
                     }
                     Err(e) => {
                         return Err(anyhow!(e));
@@ -226,11 +257,12 @@ impl fmt::Display for PSSM {
         writeln!(f, "PSSM Description: {}", self.description)?;
         let labels = ["A", "C", "G", "T"];
         for (i, row) in self.matrix.iter().enumerate() {
-            writeln!(
-                f,
-                "{}  [{:>6.2} {:>6.2} {:>6.2} {:>6.2}]",
-                labels[i], row[0], row[1], row[2], row[3]
-            )?;
+            let display_row = row
+                .iter()
+                .map(|v| format!("{:>6.2}", v))
+                .collect::<Vec<String>>()
+                .join(" ");
+            writeln!(f, "{}  [{display_row}]", labels[i])?;
         }
         Ok(())
     }
@@ -252,10 +284,12 @@ mod tests {
         assert_eq!(pssm.description, "ACGT");
         assert_eq!(pssm.matrix[1][1], 4429.0);
 
-        pssm.normalize(); // Divide values by column sums
+        // Divide values by column sums
+        pssm.normalize();
         assert_eq!(pssm.matrix[1][1], 1.0);
 
-        pssm.prepare_log_odds_to_background(); // Divide values by column sums
+        // Divide values by column sums
+        pssm.prepare_log_odds_to_background();
         assert_eq!(pssm.matrix[1][1], 2.0);
         assert_eq!(pssm.matrix[0][1], f64::NEG_INFINITY);
 
@@ -272,19 +306,25 @@ mod tests {
     }
 
     #[test]
+    fn test_elixir_api() {
+        let pssms = PSSM::from_elixir_api("MA0265.1").unwrap();
+        assert_eq!(pssms.len(), 1);
+        let pssm = pssms.get("MA0265.1").unwrap();
+        assert_eq!(pssm.accession, "MA0265.1");
+        assert_eq!(pssm.description, "ABF1");
+        assert_eq!(pssm.matrix[1][5], 24.0);
+    }
+
+    #[test]
     fn test_jaspar_parsing() -> Result<()> {
         let pssm_file = "test_files/MA1234.1.jaspar"; // Replace with actual file path
-
-        //let dna_sequence = "ACTGACGTACTGACGTAGCTAGCTGACGTACGTTCGATTCGA"; // Replace with actual DNA sequence
-        //let threshold = 0.0; // Set your desired threshold for binding site score
-
-        //let pssms = PSSM::from_jaspar_file("test_files/jaspar_file.jaspar")?;
         let pssms = PSSM::from_jaspar_file(pssm_file)?;
         assert_eq!(pssms.len(), 1);
 
         // Access a specific PSSM by name
         let pssm = pssms.get("MA1234.1").unwrap();
 
+        // Check indivudual value
         assert_eq!(pssm.matrix[1][1], 4429.00);
 
         Ok(())
