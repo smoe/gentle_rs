@@ -21,7 +21,7 @@ You can run GENtle as an interactive shell using the [Lua programming language](
 
 ## Example
 ```
-> cargo run --release --binary gentle_cli
+> cargo run --release --binary gentle_lua
 Interactive Lua Shell (type 'exit' to quit)
 (...)
 > pgex = load_dna("test_files/pGEX-3X.gb") -- loads a GenBank sequence and performs some computations on it

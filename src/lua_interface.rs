@@ -54,6 +54,11 @@ impl LuaInterface {
         Ok(true)
     }
 
+    // fn restriction_enzyme_digest(seq: DNAsequence, enzymes: String) -> LuaResult<Vec<DNAsequence>> {
+    //     let enzymes = enzymes.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+    //     Ok(vec![])
+    }
+
     pub fn register_rust_functions(&self) -> LuaResult<()> {
         self.lua.globals().set(
             "load_dna",
@@ -68,6 +73,14 @@ impl LuaInterface {
                     Self::write_gb(seq, filename)
                 })?,
         )?;
+
+        // self.lua.globals().set(
+        //     "digest",
+        //     self.lua
+        //         .create_function(|_lua, (enzymes, seq): (String, DNAsequence)| {
+        //             Self::restriction_enzyme_digest(seq, enzymes)
+        //         })?,
+        // )?;
 
         Ok(())
     }
