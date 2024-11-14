@@ -48,7 +48,7 @@ impl PSSM {
                 if *value != 0.0 {
                     *value = f64::log2(*value) + 2.0; // log2(1/4) == -2
                 } else {
-                    *value = -99999.99999; // substitute for -infinity
+                    *value = f64::NEG_INFINITY;
                 }
             }
         }
@@ -257,6 +257,7 @@ mod tests {
 
         pssm.prepare_log_odds_to_background(); // Divide values by column sums
         assert_eq!(pssm.matrix[1][1], 2.0);
+        assert_eq!(pssm.matrix[0][1], f64::NEG_INFINITY);
 
         let hits = pssm.scan_sequence(dna_sequence, threshold);
         assert_eq!(hits, [(4, 8.0), (12, 8.0), (25, 8.0), (29, 8.0)]);
