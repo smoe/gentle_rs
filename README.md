@@ -5,14 +5,14 @@ A Rust implementation of [GENtle](https://github.com/GENtle-persons/gentle-m).
 ```bash
 git clone https://github.com/magnusmanske/gentle_rs/
 cd gentle_rs
-cargo run --release --binary gentle
+cargo run --release --bin gentle
 ```
 Note: Cargo will compile >360 dependencies.
 On non-Intel platforms it may be beneficial to explicitly specify
 your build architecture to avoid an error in some packages.
 E.g., for the MacBook M1 with conda, run
 ```[bash]
-CFLAGS="-march=armv8-a" cargo run --release --binary gentle
+CFLAGS="-march=armv8-a" cargo run --release --bin gentle
 ```
 Note: Currently only loads two test sequences, hardcoded.
 
@@ -21,7 +21,7 @@ You can run GENtle as an interactive shell using JavaScript.
 
 ## Example
 ```
-> cargo run --release --binary gentle_js
+> cargo run --release --bin gentle_js
 Interactive JavaScript Shell (type 'exit' to quit)
 GENtle> pgex = load_dna("test_files/pGEX-3X.gb");
 GENtle> console.log(pgex.seq.seq.length)
@@ -40,7 +40,7 @@ You can run GENtle as an interactive shell using the [Lua programming language](
 
 ## Example
 ```
-> cargo run --release --binary gentle_lua
+> cargo run --release --bin gentle_lua
 Interactive Lua Shell (type 'exit' to quit)
 (...)
 GENtle> pgex = load_dna("test_files/pGEX-3X.gb") -- loads a GenBank sequence and performs some computations on it
