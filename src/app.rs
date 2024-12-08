@@ -26,8 +26,9 @@ impl GENtleApp {
         let mut ret = Self::default();
 
         // Load test sequences
-        ret.open_new_window_from_file("test_files/pGEX-3X.gb");
-        ret.open_new_window_from_file("test_files/pGEX_3X.fa");
+        ret.open_new_window_from_file("test_files/pGEX-3X.gb");   // GenBank entry of complete circular genome
+        ret.open_new_window_from_file("test_files/pGEX_3X.fa");   // Sequence only
+        ret.open_new_window_from_file("test_files/tp73.ncbi.gb"); // GenBank entry of complex human gene (linear, fragment of genome)
 
         ret
     }
@@ -35,7 +36,7 @@ impl GENtleApp {
     fn load_dna_from_genbank_file(filename: &str) -> Result<DNAsequence> {
         let dna = dna_sequence::DNAsequence::from_genbank_file(filename)?
             .pop()
-            .ok_or_else(|| anyhow!("Could not read genbank file {filename}"))?;
+            .ok_or_else(|| anyhow!("Could not read GenBank file {filename}"))?;
         Ok(dna)
     }
 
