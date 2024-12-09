@@ -30,11 +30,10 @@ sips -z 256 256   icon.png --out MyIcon.iconset/icon_128x128@2x.png
 sips -z 256 256   icon.png --out MyIcon.iconset/icon_256x256.png
 sips -z 512 512   icon.png --out MyIcon.iconset/icon_256x256@2x.png
 sips -z 512 512   icon.png --out MyIcon.iconset/icon_512x512.png
-cp icon.png MyIcon.iconset/icon_512x512@2x.png
 
 iconutil -c icns MyIcon.iconset
 # check manually
-open MyIcon.iconset
+open MyIcon.icns
 # if satisfied
 mv MyIcon.icns icon.icns
 rm -r MyIcon.iconset
