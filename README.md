@@ -1,25 +1,14 @@
+# GENtle
+
 A Rust implementation of [GENtle](https://github.com/GENtle-persons/gentle-m).
 
-# Install
-- [Install Rust](https://www.rust-lang.org/tools/install)
-```bash
-git clone https://github.com/magnusmanske/gentle_rs/
-cd gentle_rs
-cargo run --release --bin gentle
-```
-Note: Cargo will compile >360 dependencies.
-On non-Intel platforms it may be beneficial to explicitly specify
-your build architecture to avoid an error in some packages.
-E.g., for the MacBook M1 with conda, run
-```[bash]
-CFLAGS="-march=armv8-a" cargo run --release --bin gentle
-```
-Note: Currently only loads two test sequences, hardcoded.
+One of the upcoming features of that new implmentation shall be an extension
+of the graphical user interface with a shell.
 
-# JavaScript interactive shell
+## JavaScript interactive shell
 You can run GENtle as an interactive shell using JavaScript.
 
-## Example
+### Example
 ```
 > cargo run --release --bin gentle_js
 Interactive JavaScript Shell (type 'exit' to quit)
@@ -35,10 +24,10 @@ GENtle> console.log(results[1].seq.seq.length) // Length of second sequence
 4938
 ```
 
-# Lua interactive shell
+## Lua interactive shell
 You can run GENtle as an interactive shell using the [Lua programming language](https://www.lua.org/).
 
-## Example
+### Example
 ```
 > cargo run --release --bin gentle_lua
 Interactive Lua Shell (type 'exit' to quit)
@@ -52,3 +41,37 @@ GENtle> pgex.methylation_sites -- shows the precomputed methylation_sites
 (...)
 GENtle> write_gb("output.gb",pgex) -- writes the sequence to a new GenBank file
 ```
+
+## Install
+
+- [Install Rust](https://www.rust-lang.org/tools/install)
+```bash
+git clone https://github.com/magnusmanske/gentle_rs/
+cd gentle_rs
+cargo run --release --bin gentle
+```
+Note: Cargo will compile >360 dependencies.
+On non-Intel platforms it may be beneficial to explicitly specify
+your build architecture to avoid an error in some packages.
+E.g., for the MacBook M1 with conda, run
+```[bash]
+CFLAGS="-march=armv8-a" cargo run --release --bin gentle
+```
+Note: Currently only loads two test sequences, hardcoded.
+
+### Bundling GENtle for MacOS
+
+To present all files to the operating system, including the application's icon,
+that are required for GENtle to run, all application data needs to be "bundled"
+as follows:
+
+```[bash]
+cargo install cargo-bundle
+CFLAGS="-march=armv8-a" cargo bundle --release
+```
+To install the .app just copy it to an "Application" folder:
+```[bash]
+cp -r target/release/bundle/osx/gentle.app ~/Applications/
+```
+
+
