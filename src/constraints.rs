@@ -323,7 +323,7 @@ mod tests {
     "min_temp": 3,
     "max_temp": 7
 }
-"#;        
+"#;
         // Parse JSON into a PrimerPairConstraint struct
         let pair_constraint: PrimerPairConstraint = serde_json::from_str(primer_pair_constraint_json)?;
         // Print parsed constraints for verification
