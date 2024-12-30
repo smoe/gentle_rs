@@ -11,6 +11,7 @@ codon_tables.json::
 commonvectors.db::
 dna_markers.json::
 enzymes.json::
+jaspar_2022.json: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 ncoils.matrix::
 translations.csv::
 
