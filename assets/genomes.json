@@ -1,0 +1,23 @@
+{
+  "Human GRCh38 Ensembl 113": {
+    "ncbi_taxonomy_id": 9606,
+    "description": "Human GRCh38 Ensembl 113",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/homo_sapiens/Homo_sapiens.GRCh38.113.gtf.gz",
+    "cache_dir": "/tmp"
+  },
+  "Saccharomyces cerevisiae S288c Ensembl 113": {
+    "description": "Saccharomyces cerevisiae S288c Ensembl 113",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.113.gtf.gz"
+  },
+  "Genome1": {
+    "description": "Self-downloaded 1",
+    "sequence_local": "/local/path/to/genome.fasta.gz",
+    "annotations_local": "/local/path/to/annotations.gff.gz"
+  },
+  "LocalProject": {
+    "description": "Local project - with pending annotation",
+    "sequence_local": "/usr/local/data/project/genome.fa.gz"
+  }
+}
