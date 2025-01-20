@@ -3,19 +3,18 @@
 This folder contains a series of accessory files that are meant to be available
 at the application's start or run time. These have mostly been carried over from the C++ version of GENtle.
 
-amino_acids.json::
+amino_acids.json:: Describes properties of amino acids (one and three letter abbreviation, molecular weight, [isoelectric point](https://en.wikipedia.org/wiki/Isoelectric_point) and various scores like [Kyte-Doolittle](https://en.wikipedia.org/wiki/Hydrophobicity_scales), [Chou-Fasman](https://en.wikipedia.org/wiki/Chou%E2%80%93Fasman_method), [Hopp-Woods](https://en.wikipedia.org/wiki/Hopp%E2%80%93Woods_scale) ) 
 blank.mysql::
 blank.sqlite3::
-codon_catalog.csv::
-codon_tables.json::
-commonvectors.db::
-dna_ladders.json::
-enzymes.json::
+codon_catalog.csv:: Tabular representation of nucleotide representations that should be selected by default for a given amino acid. A later development of that table should represent the codon frequencies for each species, as in https://www.creative-biostructure.com/codon-usage-frequency-table.htm .
+codon_tables.json:: A codon translation table.
+commonvectors.db:: Sqlite3 representation of the most common vectors.
+dna_ladders.json:: Collection of DNA ladders, i.e. fragments of DNA of well-defined length and relative abundance that are accompanying gels to identify the molecular weight of DNA sequences.
+enzymes.json:: List of DNA restriction enzymes (endonucleases) and proteases
 genomes.json::
 helper_genomes.json::
 jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 ncoils.matrix::
-translations.csv::
 
 Data notes:
 
