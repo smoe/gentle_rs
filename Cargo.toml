@@ -64,6 +64,7 @@ rfd = "*"
 reqwest = { version = "*", features = ["blocking", "json"] }
 tempfile = "*"
 winres = "0.1"
+flate2 = "1.0"
 
 # For cli
 rustyline = "*"
