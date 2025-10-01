@@ -2081,6 +2081,7 @@ dependencies = [
  "eframe",
  "egui-file-dialog",
  "egui_extras",
+ "flate2",
  "gb-io",
  "image",
  "itertools 0.13.0",

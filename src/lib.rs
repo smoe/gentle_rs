@@ -11,6 +11,7 @@ pub mod dna_marker;
 pub mod dna_sequence;
 pub mod enzymes;
 pub mod gc_contents;
+pub mod genomes;
 pub mod icons;
 pub mod iupac_code;
 pub mod js_interface;
