@@ -5,6 +5,10 @@ A Rust implementation of [GENtle](https://github.com/GENtle-persons/gentle-m).
 One of the upcoming features of that new implmentation shall be an extension
 of the graphical user interface with a shell.
 
+## Desktop Application
+![GENtle screenshot](assets/gentle_screenshot.png)
+An interactive interface for desktop is under development.
+
 ## JavaScript interactive shell
 You can run GENtle as an interactive shell using JavaScript.
 
@@ -73,5 +77,3 @@ To install the .app just copy it to an "Application" folder:
 ```[bash]
 cp -r target/release/bundle/osx/gentle.app ~/Applications/
 ```
-
-
