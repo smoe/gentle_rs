@@ -4,6 +4,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use std::num::ParseFloatError;
+use serde_json::Value;
 
 #[derive(Debug, Clone, Default)]
 pub struct PSSM {
@@ -65,7 +66,7 @@ impl PSSM {
         self.log_odds_prepared = true;
         for row in &mut self.matrix {
             for value in row.iter_mut() {
-                if *value != 0.0 {
+                if (*value) != 0.0 {
                     *value = f64::log2(*value) + 2.0; // log2(1/4) == -2
                 } else {
                     *value = f64::NEG_INFINITY;
@@ -137,6 +138,43 @@ impl PSSM {
 
         while let Some(line) = lines.next() {
             Self::parse_jaspar_line(line, &mut lines, &mut pssms)?;
+        }
+
+        Ok(pssms)
+    }
+
+    pub fn from_json_file(filename: &str) -> Result<HashMap<String, PSSM>> {
+        let file = File::open(filename)?;
+        let reader = io::BufReader::new(file);
+        let json: Value = serde_json::from_reader(reader)?;
+
+        let mut pssms = HashMap::new();
+
+        if let Some(entries) = json.as_array() {
+            for entry in entries {
+                let accession = entry["matrix_id"].as_str().ok_or(anyhow!("Missing matrix_id"))?.to_string();
+                let description = entry["name"].as_str().unwrap_or("").to_string();
+                let mut matrix = vec![vec![]; 4];
+
+                for (base, counts) in entry["pfm"].as_object().ok_or(anyhow!("Invalid pfm format"))? {
+                    let row = match base.as_str() {
+                        "A" => &mut matrix[0],
+                        "C" => &mut matrix[1],
+                        "G" => &mut matrix[2],
+                        "T" => &mut matrix[3],
+                        _ => return Err(anyhow!("Invalid base: {}", base)),
+                    };
+
+                    for count in counts.as_array().ok_or(anyhow!("Invalid counts format"))? {
+                        let count_value = count.as_f64().or_else(|| count.as_str().and_then(|s| s.parse::<f64>().ok()))
+                            .ok_or(anyhow!("Invalid count value: {:?}", count))?;
+                        row.push(count_value);
+                    }
+                }
+
+                let pssm = PSSM::new(accession.clone(), description, matrix);
+                pssms.insert(accession, pssm);
+            }
         }
 
         Ok(pssms)
@@ -326,6 +364,31 @@ mod tests {
 
         // Check indivudual value
         assert_eq!(pssm.matrix[1][1], 4429.00);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_json_parsing() -> Result<()> {
+        let json_file = "assets/jaspar_2022.json"; // Replace with actual file path
+        let pssms = PSSM::from_json_file(json_file)?;
+        
+        assert_eq!(pssms.len(), 1956); // Equals `grep -c "^>" data/JASPAR_2022.txt`
+
+        // Access a specific PSSM by name
+        let pssm = pssms.get("MA0004.1").unwrap();
+
+        // Check individual value
+        assert_eq!(pssm.matrix[1][1], 0.0);
+        assert_eq!(pssm.matrix[2][3], 20.0);
+
+        let pssm = pssms.get("MA0006.1").unwrap();
+        assert_eq!(pssm.matrix[0][0], 3.0);
+        assert_eq!(pssm.matrix[1][1], 0.0);
+        assert_eq!(pssm.matrix[0][2], 0.0);
+        assert_eq!(pssm.matrix[3][0], 11.0);
+        assert_eq!(pssm.matrix[1][2], 23.0);
+        assert_eq!(pssm.matrix[2][5], 24.0);
 
         Ok(())
     }

@@ -11,6 +11,7 @@ at the application's start or run time. These have mostly been carried over from
 - commonvectors.db: Sqlite3 representation of the most common vectors.
 - dna_markers.json: Collection of DNA ladders, i.e. fragments of DNA of well-defined length and relative abundance that are accompanying gels to identify the molecular weight of DNA sequences.
 - enzymes.json: List of DNA restriction enzymes (endonucleases) and proteases
+- jaspar_2022.json: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 - ncoils.matrix: File needed for the execution of the ncoils program, mostly obsolete since alpha Fold.
 - translations.csv: Translations of strings used in the user interface.
 
