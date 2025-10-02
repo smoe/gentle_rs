@@ -1,9 +1,12 @@
 # GENtle
 
-A Rust implementation of [GENtle](https://github.com/GENtle-persons/gentle-m).
-
-One of the upcoming features of that new implmentation shall be an extension
-of the graphical user interface with a shell.
+A modern re-implementation of [GENtle](https://github.com/GENtle-persons/gentle-m)
+ * in Rust,
+ * with an agentic interface
+ * and cloning-steps represented as a directed graph for perfect
+   - provenance,
+   - documentation and 
+   - replication.
 
 ## Documentation
 
@@ -14,6 +17,8 @@ of the graphical user interface with a shell.
 - Testing strategy: [`docs/testing.md`](docs/testing.md)
 
 ## GUI toolbar buttons
+
+![GENtle Sequence Display](assets/gentle_screenshot.png)
 
 In each DNA window, the top toolbar contains icon buttons that control the map
 and sequence views. Hovering a button in the app shows a tooltip with the same
