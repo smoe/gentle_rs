@@ -1,10 +1,10 @@
+use flate2::read::GzDecoder;
+use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{self, Write, BufReader, BufRead}; // Hinzugefügt: BufRead
-use reqwest::blocking::get;
+use std::io::{self, BufRead, BufReader, Write}; // Hinzugefügt: BufRead
 use std::path::Path;
-use flate2::read::GzDecoder;
 
 /// Management of locally available (typically public) genome data
 
@@ -113,9 +113,9 @@ struct Protein {
 struct GenomeContainer {
     genomes: HashMap<String, HashMap<String, String>>, // Genome -> Chromosome -> Sequence
     genomes_metadata: HashMap<String, GenomeDataLocal>, // Genome -> GenomeDataLocal
-    genes: HashMap<String, Gene>, // Gene ID -> Gene
-    transcripts: HashMap<String, Transcript>, // Transcript ID -> Transcript
-    proteins: HashMap<String, Protein>, // Protein ID -> Protein
+    genes: HashMap<String, Gene>,                      // Gene ID -> Gene
+    transcripts: HashMap<String, Transcript>,          // Transcript ID -> Transcript
+    proteins: HashMap<String, Protein>,                // Protein ID -> Protein
 }
 
 #[allow(dead_code)]
@@ -135,14 +135,23 @@ impl GenomeContainer {
         let mut genomes_metadata: HashMap<String, GenomeDataLocal> = serde_json::from_str(&data)?;
 
         for metadata in genomes_metadata.values_mut() {
-            let sequence_exists = metadata.sequence_local.as_ref().map_or(false, |path| Path::new(path).exists());
-            let annotations_exists = metadata.annotations_local.as_ref().map_or(false, |path| Path::new(path).exists());
+            let sequence_exists = metadata
+                .sequence_local
+                .as_ref()
+                .map_or(false, |path| Path::new(path).exists());
+            let annotations_exists = metadata
+                .annotations_local
+                .as_ref()
+                .map_or(false, |path| Path::new(path).exists());
 
             if sequence_exists && annotations_exists {
                 metadata.downloaded = true;
                 metadata.found_locally = true;
             } else if sequence_exists || annotations_exists {
-                return Err(Box::new(io::Error::new(io::ErrorKind::Other, "Only one of the files exists locally")));
+                return Err(Box::new(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Only one of the files exists locally",
+                )));
             }
         }
 
@@ -153,16 +162,28 @@ impl GenomeContainer {
         Ok(container)
     }
 
-    fn add_genome(&mut self, genome_name: String, genomes_metadata: GenomeDataLocal) -> Result<(), String> {
-        if self.genomes.contains_key(&genome_name) || self.genomes_metadata.contains_key(&genome_name) {
+    fn add_genome(
+        &mut self,
+        genome_name: String,
+        genomes_metadata: GenomeDataLocal,
+    ) -> Result<(), String> {
+        if self.genomes.contains_key(&genome_name)
+            || self.genomes_metadata.contains_key(&genome_name)
+        {
             return Err(format!("Genome '{}' already exists", genome_name));
         }
-        self.genomes_metadata.insert(genome_name.clone(), genomes_metadata);
+        self.genomes_metadata
+            .insert(genome_name.clone(), genomes_metadata);
         self.genomes.insert(genome_name, HashMap::new());
         Ok(())
     }
 
-    fn add_chromosome(&mut self, genome_name: &str, chromosome_name: String, sequence: String) -> Result<(), String> {
+    fn add_chromosome(
+        &mut self,
+        genome_name: &str,
+        chromosome_name: String,
+        sequence: String,
+    ) -> Result<(), String> {
         if let Some(chromosomes) = self.genomes.get_mut(genome_name) {
             chromosomes.insert(chromosome_name, sequence);
             Ok(())
@@ -172,19 +193,28 @@ impl GenomeContainer {
     }
 
     fn get_sequence(&self, genome_name: &str, chromosome_name: &str) -> Result<&String, String> {
-        self.genomes.get(genome_name)
+        self.genomes
+            .get(genome_name)
             .ok_or_else(|| format!("Genome '{}' not found", genome_name))?
             .get(chromosome_name)
-            .ok_or_else(|| format!("Chromosome '{}' not found in genome '{}'", chromosome_name, genome_name))
+            .ok_or_else(|| {
+                format!(
+                    "Chromosome '{}' not found in genome '{}'",
+                    chromosome_name, genome_name
+                )
+            })
     }
 
     fn get_genomes_metadata(&self, genome_name: &str) -> Result<&GenomeDataLocal, String> {
-        self.genomes_metadata.get(genome_name)
+        self.genomes_metadata
+            .get(genome_name)
             .ok_or_else(|| format!("Genome '{}' not found", genome_name))
     }
 
     fn download_genome_files(&mut self, genome_name: &str) -> Result<(), String> {
-        let metadata = self.genomes_metadata.get_mut(genome_name)
+        let metadata = self
+            .genomes_metadata
+            .get_mut(genome_name)
             .ok_or_else(|| format!("Genome '{}' not found", genome_name))?;
 
         if metadata.found_locally {
@@ -204,13 +234,16 @@ impl GenomeContainer {
                 .ok_or("Invalid sequence URL")?
                 .to_str()
                 .ok_or("Invalid sequence URL")?;
-            let local_path = metadata.sequence_local.get_or_insert_with(|| format!("/tmp/{}", file_name));
+            let local_path = metadata
+                .sequence_local
+                .get_or_insert_with(|| format!("/tmp/{}", file_name));
             if Path::new(local_path).exists() {
                 sequence_exists = true;
             } else {
                 let response = get(sequence_url).map_err(|e| e.to_string())?;
                 let mut file = File::create(local_path).map_err(|e| e.to_string())?;
-                file.write_all(&response.bytes().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                file.write_all(&response.bytes().map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
             }
         }
 
@@ -220,13 +253,16 @@ impl GenomeContainer {
                 .ok_or("Invalid annotations URL")?
                 .to_str()
                 .ok_or("Invalid annotations URL")?;
-            let local_path = metadata.annotations_local.get_or_insert_with(|| format!("/tmp/{}", file_name));
+            let local_path = metadata
+                .annotations_local
+                .get_or_insert_with(|| format!("/tmp/{}", file_name));
             if Path::new(local_path).exists() {
                 annotations_exists = true;
             } else if !sequence_exists {
                 let response = get(annotations_url).map_err(|e| e.to_string())?;
                 let mut file = File::create(local_path).map_err(|e| e.to_string())?;
-                file.write_all(&response.bytes().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                file.write_all(&response.bytes().map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
             }
         }
 
@@ -241,10 +277,15 @@ impl GenomeContainer {
     }
 
     fn load_fasta_sequences(&mut self, genome_name: &str) -> Result<(), String> {
-        let metadata = self.genomes_metadata.get(genome_name)
+        let metadata = self
+            .genomes_metadata
+            .get(genome_name)
             .ok_or_else(|| format!("Genome '{}' not found", genome_name))?;
 
-        let sequence_path = metadata.sequence_local.as_ref().ok_or("Local sequence path not set")?;
+        let sequence_path = metadata
+            .sequence_local
+            .as_ref()
+            .ok_or("Local sequence path not set")?;
         let file = File::open(sequence_path).map_err(|e| e.to_string())?;
         let reader = BufReader::new(GzDecoder::new(file));
 
@@ -255,7 +296,11 @@ impl GenomeContainer {
             let line = line.map_err(|e| e.to_string())?;
             if line.starts_with('>') {
                 if !current_chromosome.is_empty() {
-                    self.add_chromosome(genome_name, current_chromosome.clone(), current_sequence.clone())?;
+                    self.add_chromosome(
+                        genome_name,
+                        current_chromosome.clone(),
+                        current_sequence.clone(),
+                    )?;
                 }
                 current_chromosome = line[1..].split_whitespace().next().unwrap().to_string();
                 current_sequence.clear();
@@ -272,10 +317,15 @@ impl GenomeContainer {
     }
 
     fn load_gff_annotations(&mut self, genome_name: &str) -> Result<(), String> {
-        let metadata = self.genomes_metadata.get(genome_name)
+        let metadata = self
+            .genomes_metadata
+            .get(genome_name)
             .ok_or_else(|| format!("Genome '{}' not found", genome_name))?;
 
-        let annotations_path = metadata.annotations_local.as_ref().ok_or("Local annotations path not set")?;
+        let annotations_path = metadata
+            .annotations_local
+            .as_ref()
+            .ok_or("Local annotations path not set")?;
         let file = File::open(annotations_path).map_err(|e| e.to_string())?;
         let reader = BufReader::new(GzDecoder::new(file));
 
@@ -287,13 +337,19 @@ impl GenomeContainer {
 
             let fields: Vec<&str> = line.split('\t').collect();
             if fields.len() != 9 {
-                return Err("Invalid GFF format - not experiencing the 9 tab-separated columns".to_string());
+                return Err(
+                    "Invalid GFF format - not experiencing the 9 tab-separated columns".to_string(),
+                );
             }
 
             let chromosome = fields[0].to_string();
             let feature_type = fields[2].to_string();
-            let start: usize = fields[3].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
-            let end: usize = fields[4].parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+            let start: usize = fields[3]
+                .parse()
+                .map_err(|e: std::num::ParseIntError| e.to_string())?;
+            let end: usize = fields[4]
+                .parse()
+                .map_err(|e: std::num::ParseIntError| e.to_string())?;
             let attributes = fields[8].to_string();
 
             let mut gene_id = None;
@@ -306,7 +362,7 @@ impl GenomeContainer {
             let mut transcript_biotype = None;
 
             for attribute in attributes.split(';') {
-                let parts: Vec<&str> = attribute.trim().split_whitespace().collect();
+                let parts: Vec<&str> = attribute.split_whitespace().collect();
                 if parts.len() == 2 {
                     match parts[0] {
                         "gene_id" => gene_id = Some(parts[1].replace("\"", "")),
@@ -316,7 +372,9 @@ impl GenomeContainer {
                         "protein_id" => protein_id = Some(parts[1].replace("\"", "")),
                         "gene_name" => gene_name = Some(parts[1].replace("\"", "")),
                         "gene_biotype" => gene_biotype = Some(parts[1].replace("\"", "")),
-                        "transcript_biotype" => transcript_biotype = Some(parts[1].replace("\"", "")),
+                        "transcript_biotype" => {
+                            transcript_biotype = Some(parts[1].replace("\"", ""))
+                        }
                         _ => {}
                     }
                 }
@@ -349,41 +407,52 @@ impl GenomeContainer {
             match feature_type.as_str() {
                 "gene" => {
                     if let Some(gene_id) = gene_id {
-                        self.genes.insert(gene_id.clone(), Gene {
-                            gene_id,
-                            gene_name,
-                            chromosome: chromosome.clone(),
-                            start,
-                            end,
-                            gene_biotype: gene_biotype_enum,
-                            transcripts: Vec::new(),
-                            exons: Vec::new(),
-                        });
+                        self.genes.insert(
+                            gene_id.clone(),
+                            Gene {
+                                gene_id,
+                                gene_name,
+                                chromosome: chromosome.clone(),
+                                start,
+                                end,
+                                gene_biotype: gene_biotype_enum,
+                                transcripts: Vec::new(),
+                                exons: Vec::new(),
+                            },
+                        );
                     }
                 }
                 "transcript" => {
-                    if let (Some(gene_id), Some(transcript_id)) = (gene_id.clone(), transcript_id.clone()) {
+                    if let (Some(gene_id), Some(transcript_id)) =
+                        (gene_id.clone(), transcript_id.clone())
+                    {
                         let transcript = Transcript {
                             transcript_id: transcript_id.clone(),
                             exons: Vec::new(),
                             protein_id: protein_id.clone(),
                             transcript_biotype: transcript_biotype_enum,
                         };
-                        self.transcripts.insert(transcript_id.clone(), transcript.clone());
+                        self.transcripts
+                            .insert(transcript_id.clone(), transcript.clone());
                         if let Some(gene) = self.genes.get_mut(&gene_id) {
                             gene.transcripts.push(transcript);
                             if let Some(protein_id) = protein_id {
-                                self.proteins.insert(protein_id.clone(), Protein {
-                                    protein_id,
-                                    gene_id: gene_id.clone(),
-                                    transcript_id: transcript_id.clone(),
-                                });
+                                self.proteins.insert(
+                                    protein_id.clone(),
+                                    Protein {
+                                        protein_id,
+                                        gene_id: gene_id.clone(),
+                                        transcript_id: transcript_id.clone(),
+                                    },
+                                );
                             }
                         }
                     }
                 }
                 "exon" => {
-                    if let (Some(gene_id), Some(transcript_id)) = (gene_id.clone(), transcript_id.clone()) {
+                    if let (Some(gene_id), Some(transcript_id)) =
+                        (gene_id.clone(), transcript_id.clone())
+                    {
                         if let Some(gene) = self.genes.get_mut(&gene_id) {
                             let exon = Exon {
                                 start,
@@ -423,16 +492,46 @@ mod tests {
         let config_path = "assets/genomes.json";
         let mut container = GenomeContainer::from_json_file(config_path)?;
 
-        container.add_chromosome("Human GRCh38 Ensembl 113", "1".to_string(), "ATCG".to_string())?;
-        container.add_chromosome("Human GRCh38 Ensembl 113", "2".to_string(), "GCTA".to_string())?;
-        container.add_chromosome("Human GRCh38 Ensembl 113", "X".to_string(), "CGTA".to_string())?;
-        container.add_chromosome("Human GRCh38 Ensembl 113", "Y".to_string(), "TACG".to_string())?;
+        container.add_chromosome(
+            "Human GRCh38 Ensembl 113",
+            "1".to_string(),
+            "ATCG".to_string(),
+        )?;
+        container.add_chromosome(
+            "Human GRCh38 Ensembl 113",
+            "2".to_string(),
+            "GCTA".to_string(),
+        )?;
+        container.add_chromosome(
+            "Human GRCh38 Ensembl 113",
+            "X".to_string(),
+            "CGTA".to_string(),
+        )?;
+        container.add_chromosome(
+            "Human GRCh38 Ensembl 113",
+            "Y".to_string(),
+            "TACG".to_string(),
+        )?;
 
-        assert_eq!(container.get_sequence("Human GRCh38 Ensembl 113", "1")?, "ATCG");
-        assert_eq!(container.get_sequence("Human GRCh38 Ensembl 113", "2")?, "GCTA");
-        assert_eq!(container.get_sequence("Human GRCh38 Ensembl 113", "X")?, "CGTA");
-        assert_eq!(container.get_sequence("Human GRCh38 Ensembl 113", "Y")?, "TACG");
-        assert!(container.get_genomes_metadata("Human GRCh38 Ensembl 113").is_ok());
+        assert_eq!(
+            container.get_sequence("Human GRCh38 Ensembl 113", "1")?,
+            "ATCG"
+        );
+        assert_eq!(
+            container.get_sequence("Human GRCh38 Ensembl 113", "2")?,
+            "GCTA"
+        );
+        assert_eq!(
+            container.get_sequence("Human GRCh38 Ensembl 113", "X")?,
+            "CGTA"
+        );
+        assert_eq!(
+            container.get_sequence("Human GRCh38 Ensembl 113", "Y")?,
+            "TACG"
+        );
+        assert!(container
+            .get_genomes_metadata("Human GRCh38 Ensembl 113")
+            .is_ok());
 
         Ok(())
     }
@@ -440,7 +539,8 @@ mod tests {
     #[test]
     fn test_add_chromosome_to_nonexistent_genome() {
         let mut container = GenomeContainer::new();
-        let result = container.add_chromosome("Nonexistent Genome", "1".to_string(), "ATCG".to_string());
+        let result =
+            container.add_chromosome("Nonexistent Genome", "1".to_string(), "ATCG".to_string());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Genome 'Nonexistent Genome' not found");
     }
@@ -452,7 +552,9 @@ mod tests {
             description: Some("Test Genome".to_string()),
             ..Default::default()
         };
-        container.add_genome("Test Genome".to_string(), genome_metadata.clone()).unwrap();
+        container
+            .add_genome("Test Genome".to_string(), genome_metadata.clone())
+            .unwrap();
         let result = container.add_genome("Test Genome".to_string(), genome_metadata);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Genome 'Test Genome' already exists");
@@ -464,7 +566,8 @@ mod tests {
         let mut container = GenomeContainer::from_json_file(config_path)?;
 
         container.download_genome_files("Saccharomyces cerevisiae S288c Ensembl 113")?;
-        let metadata = container.get_genomes_metadata("Saccharomyces cerevisiae S288c Ensembl 113")?;
+        let metadata =
+            container.get_genomes_metadata("Saccharomyces cerevisiae S288c Ensembl 113")?;
         assert!(metadata.downloaded);
 
         Ok(())
@@ -503,12 +606,15 @@ mod tests {
         container.download_genome_files("Saccharomyces cerevisiae S288c Ensembl 113")?;
         container.load_gff_annotations("Saccharomyces cerevisiae S288c Ensembl 113")?;
 
-        let gene = container.genes.get("YDR387C").ok_or("Gene 'YDR387C' not found")?;
+        let gene = container
+            .genes
+            .get("YDR387C")
+            .ok_or("Gene 'YDR387C' not found")?;
         assert_eq!(gene.gene_name.as_deref(), Some("CIN10"));
         assert_eq!(gene.start, 1248154);
         assert_eq!(gene.end, 1249821);
 
-        assert!(gene.exons.len() > 0);
+        assert!(!gene.exons.is_empty());
 
         let exon_with_end_equal_to_gene_end = gene.exons.iter().any(|exon| exon.end == gene.end);
         assert!(exon_with_end_equal_to_gene_end);
@@ -516,5 +622,3 @@ mod tests {
         Ok(())
     }
 }
-
-
