@@ -1,6 +1,8 @@
 use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
 use anyhow::{anyhow, Result};
 
+#[allow(dead_code)]
+
 #[derive(Clone, Debug)]
 pub struct Enzymes {
     restriction_enzymes: Vec<RestrictionEnzyme>,

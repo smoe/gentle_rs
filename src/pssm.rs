@@ -6,6 +6,8 @@ use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use std::num::ParseFloatError;
 use serde_json::Value;
 
+// Should consider falling back on https://docs.rs/bio/latest/src/bio/pattern_matching/pssm/mod.rs.html
+
 #[derive(Debug, Clone, Default)]
 pub struct PSSM {
     accession: String,

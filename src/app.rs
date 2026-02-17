@@ -64,7 +64,7 @@ impl GENtleApp {
         } else if let Ok(dna) = Self::load_dna_from_fasta_file(path) {
             Ok(dna)
         } else {
-            Err(anyhow!("Could not load file"))
+            Err(anyhow!("Could not load file '{path}'"))
         }
     }
 
