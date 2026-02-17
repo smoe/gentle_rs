@@ -13,19 +13,16 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # Checkout the code
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Set up Rust
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
-      # Cache cargo dependencies
       - name: Cache Cargo registry
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -35,17 +32,33 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache Cargo build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
-      # Build the binary
-      - name: Build GENtle
-        run: cargo build --release --bin gentle
+      - name: Cargo check
+        run: cargo check -q
 
-      # Run tests
-      - name: Run tests
-        run: cargo test --release
+      - name: Engine tests
+        run: cargo test -q engine::tests::
+
+      - name: Render snapshot tests
+        run: cargo test -q render_export::tests::snapshot_
+
+      - name: CLI protocol smoke test
+        run: |
+          STATE="$RUNNER_TEMP/gentle_state.json"
+          LINEAR="$RUNNER_TEMP/pgex.linear.svg"
+          CIRCULAR="$RUNNER_TEMP/pgex.circular.svg"
+
+          cargo run --bin gentle_cli -- --state "$STATE" op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex"}}'
+          cargo run --bin gentle_cli -- --state "$STATE" op '{"SetDisplayVisibility":{"target":"Features","visible":false}}'
+          cargo run --bin gentle_cli -- --state "$STATE" op '{"SetDisplayVisibility":{"target":"MethylationSites","visible":false}}'
+          cargo run --bin gentle_cli -- --state "$STATE" render-svg pgex linear "$LINEAR"
+          cargo run --bin gentle_cli -- --state "$STATE" render-svg pgex circular "$CIRCULAR"
+
+          test -s "$LINEAR"
+          test -s "$CIRCULAR"

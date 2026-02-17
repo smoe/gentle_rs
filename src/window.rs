@@ -1,5 +1,6 @@
-use crate::{dna_sequence::DNAsequence, window_dna::WindowDna};
+use crate::{dna_sequence::DNAsequence, engine::GentleEngine, window_dna::WindowDna};
 use eframe::egui;
+use std::sync::{Arc, RwLock};
 
 #[derive(Clone, Debug)]
 pub enum Window {
@@ -7,8 +8,8 @@ pub enum Window {
 }
 
 impl Window {
-    pub fn new_dna(dna: DNAsequence) -> Self {
-        Self::Dna(WindowDna::new(dna))
+    pub fn new_dna(dna: DNAsequence, seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
+        Self::Dna(WindowDna::new(dna, seq_id, engine))
     }
 
     pub fn update(&mut self, ctx: &egui::Context) {

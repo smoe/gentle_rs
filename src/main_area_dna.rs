@@ -1,6 +1,7 @@
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, icons::*, render_dna::RenderDna,
     render_sequence::RenderSequence,
+    engine::{DisplayTarget, Engine, GentleEngine, Operation},
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use std::{
@@ -12,6 +13,8 @@ use std::{
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
     dna_display: Arc<RwLock<DnaDisplay>>,
+    engine: Option<Arc<RwLock<GentleEngine>>>,
+    seq_id: Option<String>,
     map_dna: RenderDna,
     map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
@@ -19,17 +22,25 @@ pub struct MainAreaDna {
 }
 
 impl MainAreaDna {
-    pub fn new(dna: DNAsequence) -> Self {
+    pub fn new(
+        dna: DNAsequence,
+        seq_id: Option<String>,
+        engine: Option<Arc<RwLock<GentleEngine>>>,
+    ) -> Self {
         let dna = Arc::new(RwLock::new(dna));
         let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
-        Self {
+        let mut ret = Self {
             dna: dna.clone(),
             dna_display: dna_display.clone(),
+            engine,
+            seq_id,
             map_dna: RenderDna::new(dna.clone(), dna_display.clone()),
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: true,
             show_map: true,
-        }
+        };
+        ret.sync_from_engine_display();
+        ret
     }
 
     pub fn dna(&self) -> &Arc<RwLock<DNAsequence>> {
@@ -37,6 +48,7 @@ impl MainAreaDna {
     }
 
     pub fn render(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        self.sync_from_engine_display();
         egui::TopBottomPanel::top("dna_top_buttons").show(ctx, |ui| {
             self.render_top_panel(ui);
         });
@@ -77,54 +89,189 @@ impl MainAreaDna {
                     .fit_to_fraction(Vec2::new(2.0, 2.0))
                     .rounding(5.0),
             );
-            if ui.add(button).clicked() {
-                let mut dna = self.dna.write().expect("DNA lock poisoned");
-                let is_circular = dna.is_circular();
-                dna.set_circular(!is_circular);
+            let response = ui
+                .add(button)
+                .on_hover_text("Toggle DNA map topology: circular <-> linear");
+            if response.clicked() {
+                if let (Some(engine), Some(seq_id)) = (&self.engine, &self.seq_id) {
+                    let new_circular = !self.dna.read().expect("DNA lock poisoned").is_circular();
+                    let op = Operation::SetTopology {
+                        seq_id: seq_id.clone(),
+                        circular: new_circular,
+                    };
+                    if engine.write().expect("Engine lock poisoned").apply(op).is_ok() {
+                        if let Some(updated) = engine
+                            .read()
+                            .expect("Engine lock poisoned")
+                            .state()
+                            .sequences
+                            .get(seq_id)
+                            .cloned()
+                        {
+                            *self.dna.write().expect("DNA lock poisoned") = updated;
+                        }
+                    }
+                } else {
+                    let mut dna = self.dna.write().expect("DNA lock poisoned");
+                    let is_circular = dna.is_circular();
+                    dna.set_circular(!is_circular);
+                }
             }
 
-            let button = egui::ImageButton::new(ICON_SHOW_SEQUENCE.clone().rounding(5.0));
-            if ui.add(button).clicked() {
-                self.show_sequence = !self.show_sequence
+            let button =
+                egui::ImageButton::new(ICON_SHOW_SEQUENCE.clone().rounding(5.0)).selected(self.show_sequence);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide the sequence text panel");
+            if response.clicked() {
+                self.show_sequence = !self.show_sequence;
+                self.set_display_visibility(DisplayTarget::SequencePanel, self.show_sequence);
             };
 
-            let button = egui::ImageButton::new(ICON_SHOW_MAP.clone().rounding(5.0));
-            if ui.add(button).clicked() {
-                self.show_map = !self.show_map
+            let button =
+                egui::ImageButton::new(ICON_SHOW_MAP.clone().rounding(5.0)).selected(self.show_map);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide the DNA map panel");
+            if response.clicked() {
+                self.show_map = !self.show_map;
+                self.set_display_visibility(DisplayTarget::MapPanel, self.show_map);
             };
 
-            let button = egui::ImageButton::new(ICON_FEATURES.clone().rounding(5.0));
-            if ui.add(button).clicked() {
+            let features_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_features();
+            let button =
+                egui::ImageButton::new(ICON_FEATURES.clone().rounding(5.0)).selected(features_active);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide annotated sequence features");
+            if response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_features()
+                };
                 self.dna_display
                     .write()
                     .expect("DNA display lock poisoned")
-                    .toggle_show_features();
+                    .set_show_features(visible);
+                self.set_display_visibility(DisplayTarget::Features, visible);
             };
 
-            let button = egui::ImageButton::new(ICON_RESTRICTION_ENZYMES.clone().rounding(5.0));
-            if ui.add(button).clicked() {
+            let re_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_restriction_enzyme_sites();
+            let button = egui::ImageButton::new(ICON_RESTRICTION_ENZYMES.clone().rounding(5.0))
+                .selected(re_active);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide restriction enzyme cut sites");
+            if response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_restriction_enzyme_sites()
+                };
                 self.dna_display
                     .write()
                     .expect("DNA display lock poisoned")
-                    .toggle_show_restriction_enzyme_sites();
+                    .set_show_restriction_enzyme_sites(visible);
+                self.set_display_visibility(DisplayTarget::RestrictionEnzymes, visible);
             };
 
-            let button = egui::ImageButton::new(ICON_GC_CONTENT.clone().rounding(5.0));
-            if ui.add(button).clicked() {
+            let gc_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_gc_contents();
+            let button =
+                egui::ImageButton::new(ICON_GC_CONTENT.clone().rounding(5.0)).selected(gc_active);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide GC-content visualization");
+            if response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_gc_contents()
+                };
                 self.dna_display
                     .write()
                     .expect("DNA display lock poisoned")
-                    .toggle_show_gc_contents();
+                    .set_show_gc_contents(visible);
+                self.set_display_visibility(DisplayTarget::GcContents, visible);
             };
 
-            let button = egui::ImageButton::new(ICON_OPEN_READING_FRAMES.clone().rounding(5.0));
-            if ui.add(button).clicked() {
+            let orf_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_open_reading_frames();
+            let button = egui::ImageButton::new(ICON_OPEN_READING_FRAMES.clone().rounding(5.0))
+                .selected(orf_active);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide predicted open reading frames (ORFs)");
+            if response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_open_reading_frames()
+                };
                 self.dna_display
                     .write()
                     .expect("DNA display lock poisoned")
-                    .toggle_show_open_reading_frames();
+                    .set_show_open_reading_frames(visible);
+                self.set_display_visibility(DisplayTarget::OpenReadingFrames, visible);
+            };
+
+            let methylation_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_methylation_sites();
+            let button = egui::ImageButton::new(ICON_METHYLATION_SITES.clone().rounding(5.0))
+                .selected(methylation_active);
+            let response = ui
+                .add(button)
+                .on_hover_text("Show or hide methylation-site markers");
+            if response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_methylation_sites()
+                };
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_show_methylation_sites(visible);
+                self.set_display_visibility(DisplayTarget::MethylationSites, visible);
             };
         });
+    }
+
+    fn set_display_visibility(&self, target: DisplayTarget, visible: bool) {
+        if let Some(engine) = &self.engine {
+            let _ = engine
+                .write()
+                .expect("Engine lock poisoned")
+                .apply(Operation::SetDisplayVisibility { target, visible });
+        }
+    }
+
+    fn sync_from_engine_display(&mut self) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let settings = engine.read().expect("Engine lock poisoned").state().display.clone();
+        self.show_sequence = settings.show_sequence_panel;
+        self.show_map = settings.show_map_panel;
+        let mut display = self.dna_display.write().expect("DNA display lock poisoned");
+        display.set_show_features(settings.show_features);
+        display.set_show_restriction_enzyme_sites(settings.show_restriction_enzymes);
+        display.set_show_gc_contents(settings.show_gc_contents);
+        display.set_show_open_reading_frames(settings.show_open_reading_frames);
+        display.set_show_methylation_sites(settings.show_methylation_sites);
     }
 
     pub fn render_sequence(&mut self, ui: &mut egui::Ui) {

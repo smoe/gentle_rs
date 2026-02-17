@@ -5,9 +5,38 @@ A Rust implementation of [GENtle](https://github.com/GENtle-persons/gentle-m).
 One of the upcoming features of that new implmentation shall be an extension
 of the graphical user interface with a shell.
 
-## Desktop Application
-![GENtle screenshot](assets/gentle_screenshot.png)
-An interactive interface for desktop is under development.
+## Documentation
+
+- GUI manual: [`docs/gui.md`](docs/gui.md)
+- CLI manual: [`docs/cli.md`](docs/cli.md)
+- Architecture guide: [`docs/architecture.md`](docs/architecture.md)
+- Engine protocol draft: [`docs/protocol.md`](docs/protocol.md)
+- Testing strategy: [`docs/testing.md`](docs/testing.md)
+
+## GUI toolbar buttons
+
+In each DNA window, the top toolbar contains icon buttons that control the map
+and sequence views. Hovering a button in the app shows a tooltip with the same
+description.
+
+From left to right:
+
+1. Circular/Linear map toggle
+   - Switches DNA topology visualization between circular and linear map mode.
+2. Show/Hide sequence panel
+   - Toggles the sequence text panel.
+3. Show/Hide map panel
+   - Toggles the graphical DNA map panel.
+4. Show/Hide annotated features
+   - Toggles feature rendering (e.g., genes/CDS and other annotations).
+5. Show/Hide restriction enzyme sites
+   - Toggles displayed restriction cut-site markers and labels.
+6. Show/Hide GC content
+   - Toggles GC-content visualization on the map.
+7. Show/Hide open reading frames (ORFs)
+   - Toggles predicted ORF overlays.
+8. Show/Hide methylation sites
+   - Toggles methylation-site markers on the map.
 
 ## JavaScript interactive shell
 You can run GENtle as an interactive shell using JavaScript.

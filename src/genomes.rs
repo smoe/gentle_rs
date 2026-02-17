@@ -74,6 +74,7 @@ impl Default for TranscriptBiotype {
 }
 
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 struct Exon {
     start: usize,
     end: usize,
@@ -82,6 +83,7 @@ struct Exon {
 }
 
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 struct Transcript {
     transcript_id: String,
     exons: Vec<Exon>,
@@ -90,6 +92,7 @@ struct Transcript {
 }
 
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 struct Gene {
     gene_id: String,
     gene_name: Option<String>,
@@ -102,6 +105,7 @@ struct Gene {
 }
 
 #[derive(Debug, Default, Clone)]
+#[allow(dead_code)]
 struct Protein {
     protein_id: String,
     gene_id: String,
@@ -622,3 +626,4 @@ mod tests {
         Ok(())
     }
 }
+

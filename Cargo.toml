@@ -29,6 +29,10 @@ path = "src/bin/gentle_lua.rs"
 name = "gentle_js"
 path = "src/bin/gentle_js.rs"
 
+[[bin]]
+name = "gentle_cli"
+path = "src/bin/gentle_cli.rs"
+
 [lib]
 name = "gentle"
 

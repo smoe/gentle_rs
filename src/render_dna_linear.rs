@@ -21,6 +21,7 @@ const LABEL_CHAR_WIDTH: f32 = 6.5;
 const ORF_HEIGHT: f32 = 6.0;
 const GC_STRIP_HEIGHT: f32 = 6.0;
 const METHYLATION_TICK: f32 = 10.0;
+const RE_LABEL_BASE_OFFSET: f32 = 76.0;
 
 #[derive(Debug, Clone)]
 struct FeaturePosition {
@@ -194,10 +195,20 @@ impl RenderDnaLinear {
             x1: f32,
             x2: f32,
             label: String,
-            label_width: f32,
             color: Color32,
             is_pointy: bool,
             is_reverse: bool,
+        }
+        impl Seed {
+            fn span(&self) -> usize {
+                self.to.saturating_sub(self.from).saturating_add(1)
+            }
+        }
+
+        #[derive(Clone)]
+        struct PositionedSeed {
+            seed: Seed,
+            feature_lane: usize,
         }
 
         let mut seeds: Vec<Seed> = Vec::new();
@@ -225,7 +236,6 @@ impl RenderDnaLinear {
             let end_bp = to.saturating_add(1).min(self.sequence_length);
             let x2 = self.bp_to_x(end_bp).max(x1 + 1.0).min(self.area.right());
             let label = RenderDna::feature_name(feature);
-            let label_width = Self::estimate_label_width(&label).min(self.area.width());
 
             seeds.push(Seed {
                 feature_number,
@@ -234,27 +244,42 @@ impl RenderDnaLinear {
                 x1,
                 x2,
                 label,
-                label_width,
                 color: RenderDna::feature_color(feature),
                 is_pointy: RenderDna::is_feature_pointy(feature),
                 is_reverse: Self::feature_is_reverse(feature),
             });
         }
 
-        seeds.sort_by(|a, b| a.x1.total_cmp(&b.x1));
-
         let mut feature_lanes_top: Vec<f32> = vec![];
         let mut feature_lanes_bottom: Vec<f32> = vec![];
-        let mut label_lanes_top: Vec<f32> = vec![];
-        let mut label_lanes_bottom: Vec<f32> = vec![];
+        let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
+        let mut lane_order = seeds.clone();
+        lane_order.sort_by(|a, b| {
+            b.span()
+                .cmp(&a.span())
+                .then_with(|| a.x1.total_cmp(&b.x1))
+                .then_with(|| a.feature_number.cmp(&b.feature_number))
+        });
 
-        for seed in seeds {
+        for seed in lane_order {
             let feature_lane = if seed.is_reverse {
                 Self::allocate_lane(&mut feature_lanes_bottom, seed.x1, seed.x2, 3.0)
             } else {
                 Self::allocate_lane(&mut feature_lanes_top, seed.x1, seed.x2, 3.0)
             };
+            lane_seed.push(PositionedSeed { seed, feature_lane });
+        }
 
+        lane_seed.sort_by(|a, b| {
+            a.seed
+                .x1
+                .total_cmp(&b.seed.x1)
+                .then_with(|| a.seed.feature_number.cmp(&b.seed.feature_number))
+        });
+
+        for item in lane_seed {
+            let seed = item.seed;
+            let feature_lane = item.feature_lane;
             let center_y = if seed.is_reverse {
                 self.baseline_y() + BASELINE_MARGIN + FEATURE_GAP * feature_lane as f32
             } else {
@@ -265,17 +290,10 @@ impl RenderDnaLinear {
                 Pos2::new(seed.x2, center_y + FEATURE_HEIGHT / 2.0),
             );
 
-            let label_left = seed.x1;
-            let label_right = seed.x1 + seed.label_width;
-            let label_lane = if seed.is_reverse {
-                Self::allocate_lane(&mut label_lanes_bottom, label_left, label_right, 4.0)
-            } else {
-                Self::allocate_lane(&mut label_lanes_top, label_left, label_right, 4.0)
-            };
             let label_pos = if seed.is_reverse {
-                Pos2::new(seed.x1, rect.bottom() + 2.0 + LABEL_ROW_HEIGHT * label_lane as f32)
+                Pos2::new(seed.x1, rect.bottom() + 2.0)
             } else {
-                Pos2::new(seed.x1, rect.top() - 2.0 - LABEL_ROW_HEIGHT * label_lane as f32)
+                Pos2::new(seed.x1, rect.top() - 2.0)
             };
 
             self.features.push(FeaturePosition {
@@ -478,6 +496,22 @@ impl RenderDnaLinear {
             color,
             Stroke::NONE,
         ));
+
+        let label = format!("ORF {}", orf.frame());
+        let label_width = Self::estimate_label_width(&label);
+        if (x2 - x1) >= label_width + 6.0 {
+            let label_pos = Pos2::new((x1 + x2) / 2.0, y);
+            painter.text(
+                label_pos,
+                Align2::CENTER_CENTER,
+                label,
+                FontId {
+                    size: 8.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::BLACK,
+            );
+        }
     }
 
     fn draw_open_reading_frames(&self, painter: &egui::Painter) {
@@ -674,9 +708,9 @@ impl RenderDnaLinear {
             };
 
             let label_y = if place_top {
-                y - 16.0 - LABEL_ROW_HEIGHT * label_lane as f32
+                y - RE_LABEL_BASE_OFFSET - LABEL_ROW_HEIGHT * label_lane as f32
             } else {
-                y + 16.0 + LABEL_ROW_HEIGHT * label_lane as f32
+                y + RE_LABEL_BASE_OFFSET + LABEL_ROW_HEIGHT * label_lane as f32
             };
             let align = if place_top {
                 Align2::CENTER_BOTTOM

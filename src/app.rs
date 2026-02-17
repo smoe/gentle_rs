@@ -5,20 +5,33 @@ use std::{
 
 use crate::{
     dna_sequence::{self, DNAsequence},
-    methylation_sites::MethylationMode,
+    engine::{Engine, GentleEngine, Operation},
     window::Window,
-    ENZYMES, TRANSLATIONS,
+    TRANSLATIONS,
 };
 use anyhow::{anyhow, Result};
 use eframe::egui::{self, menu, Pos2, Ui, ViewportId};
 
-#[derive(Default)]
 pub struct GENtleApp {
+    engine: Arc<RwLock<GentleEngine>>,
     new_windows: Vec<Window>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
     viewport_id_counter: usize,
     update_has_run_before: bool,
+}
+
+impl Default for GENtleApp {
+    fn default() -> Self {
+        Self {
+            engine: Arc::new(RwLock::new(GentleEngine::new())),
+            new_windows: vec![],
+            windows: HashMap::new(),
+            windows_to_close: Arc::new(RwLock::new(vec![])),
+            viewport_id_counter: 0,
+            update_has_run_before: false,
+        }
+    }
 }
 
 impl GENtleApp {
@@ -47,15 +60,9 @@ impl GENtleApp {
         Ok(dna)
     }
 
-    fn new_dna_window(&mut self, mut dna: DNAsequence) {
-        ENZYMES
-            .restriction_enzymes()
-            .clone_into(dna.restriction_enzymes_mut());
-        dna.set_max_restriction_enzyme_sites(Some(2));
-        dna.set_methylation_mode(MethylationMode::both()); // TESTING FIXME
-        dna.update_computed_features();
-
-        self.new_windows.push(Window::new_dna(dna));
+    fn new_dna_window(&mut self, seq_id: String, dna: DNAsequence) {
+        self.new_windows
+            .push(Window::new_dna(dna, seq_id, self.engine.clone()));
     }
 
     pub fn load_from_file(path: &str) -> Result<DNAsequence> {
@@ -69,10 +76,33 @@ impl GENtleApp {
     }
 
     fn open_new_window_from_file(&mut self, path: &str) {
-        if let Ok(dna) = Self::load_from_file(path) {
-            self.new_dna_window(dna);
+        let op = Operation::LoadFile {
+            path: path.to_string(),
+            as_id: None,
+        };
+        let load_result = {
+            let mut engine = self.engine.write().unwrap();
+            engine.apply(op)
+        };
+        if let Ok(result) = load_result {
+            if let Some(seq_id) = result.created_seq_ids.first() {
+                let seq_id = seq_id.to_string();
+                let dna = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .get(&seq_id)
+                    .cloned();
+                if let Some(dna) = dna {
+                    self.new_dna_window(seq_id, dna);
+                    return;
+                }
+            }
+            // TODO warning: load op ran but no created sequence
         } else {
-            // TODO error, could not load file
+            // TODO error, could not load file through engine
         }
     }
 
