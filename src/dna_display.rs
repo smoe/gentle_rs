@@ -107,16 +107,36 @@ pub struct DnaDisplay {
 }
 
 impl DnaDisplay {
+    fn mark_layout_dirty(&mut self) {
+        self.update_layout.update_all();
+    }
+
     pub fn show_restriction_enzyme_sites(&self) -> bool {
         self.show_restriction_enzymes
     }
 
     pub fn toggle_show_restriction_enzyme_sites(&mut self) {
         self.show_restriction_enzymes = !self.show_restriction_enzymes;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_restriction_enzyme_sites(&mut self, value: bool) {
+        if self.show_restriction_enzymes != value {
+            self.show_restriction_enzymes = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn toggle_show_features(&mut self) {
         self.show_features = !self.show_features;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_features(&mut self, value: bool) {
+        if self.show_features != value {
+            self.show_features = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn show_features(&self) -> bool {
@@ -129,6 +149,14 @@ impl DnaDisplay {
 
     pub fn toggle_reverse_complement(&mut self) {
         self.show_reverse_complement = !self.show_reverse_complement;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_reverse_complement(&mut self, value: bool) {
+        if self.show_reverse_complement != value {
+            self.show_reverse_complement = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn show_open_reading_frames(&self) -> bool {
@@ -137,6 +165,14 @@ impl DnaDisplay {
 
     pub fn toggle_show_open_reading_frames(&mut self) {
         self.show_open_reading_frames = !self.show_open_reading_frames;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_open_reading_frames(&mut self, value: bool) {
+        if self.show_open_reading_frames != value {
+            self.show_open_reading_frames = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn show_gc_contents(&self) -> bool {
@@ -145,6 +181,14 @@ impl DnaDisplay {
 
     pub fn toggle_show_gc_contents(&mut self) {
         self.show_gc_contents = !self.show_gc_contents;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_gc_contents(&mut self, value: bool) {
+        if self.show_gc_contents != value {
+            self.show_gc_contents = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn show_methylation_sites(&self) -> bool {
@@ -153,6 +197,14 @@ impl DnaDisplay {
 
     pub fn toggle_show_methylation_sites(&mut self) {
         self.show_methylation_sites = !self.show_methylation_sites;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_methylation_sites(&mut self, value: bool) {
+        if self.show_methylation_sites != value {
+            self.show_methylation_sites = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn update_layout(&self) -> &UpdateLayoutParts {
@@ -209,7 +261,7 @@ impl Default for DnaDisplay {
             show_open_reading_frames: true,
             show_features: true,
             show_gc_contents: true,
-            show_methylation_sites: true,
+            show_methylation_sites: false,
             update_layout: UpdateLayoutParts::default(),
             aa_letters: AminoAcidLetters::Single,
             aa_frame: AminoAcidFrame::None,

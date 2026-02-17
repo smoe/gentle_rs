@@ -574,12 +574,17 @@ impl RenderDnaCircular {
             band: Self::feature_band(feature),
             label: RenderDna::feature_name(feature),
         };
+        let span = (end.0 - start.0).unsigned_abs() as f32 + 1.0;
+        let seq_len = self.sequence_length.max(1) as f32;
+        let length_fraction = (span / seq_len).clamp(0.0, 1.0);
+        let proximity_scale = (1.0 - 0.55 * length_fraction).clamp(0.45, 1.0);
         if Self::feature_band(feature) == 0.0 {
             ret.inner = self.radius - self.feature_thickness() / 2.0;
             ret.outer = self.radius + self.feature_thickness() / 2.0;
         } else {
-            ret.inner = self.radius + Self::feature_band(feature) * self.feature_thickness();
-            ret.outer = self.radius + 2.0 * Self::feature_band(feature) * self.feature_thickness();
+            ret.band = Self::feature_band(feature) * proximity_scale;
+            ret.inner = self.radius + ret.band * self.feature_thickness();
+            ret.outer = self.radius + 2.0 * ret.band * self.feature_thickness();
         }
         if ret.inner > ret.outer {
             std::mem::swap(&mut ret.inner, &mut ret.outer);

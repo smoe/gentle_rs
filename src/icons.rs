@@ -20,4 +20,6 @@ lazy_static! {
         egui::Image::new(egui::include_image!("../icons/display_features.png"));
     pub static ref ICON_GC_CONTENT: egui::Image<'static> =
         egui::Image::new(egui::include_image!("../icons/gc_content.png"));
+    pub static ref ICON_METHYLATION_SITES: egui::Image<'static> =
+        egui::Image::new(egui::include_image!("../icons/accessories-calculator.png"));
 }
