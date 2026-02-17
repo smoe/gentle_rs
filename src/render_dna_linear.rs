@@ -1,32 +1,72 @@
-use eframe::egui::{self, PointerState, Rect};
-
-use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
+use crate::{
+    dna_display::{DnaDisplay, Selection},
+    dna_sequence::DNAsequence,
+    open_reading_frame::OpenReadingFrame,
+    render_dna::RenderDna,
+    render_dna::RestrictionEnzymePosition,
+};
+use eframe::egui::{
+    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, Vec2,
+};
+use gb_io::seq::{Feature, Location};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+const BASELINE_STROKE: f32 = 2.0;
+const FEATURE_HEIGHT: f32 = 12.0;
+const FEATURE_GAP: f32 = 18.0;
+const BASELINE_MARGIN: f32 = 30.0;
+const LABEL_ROW_HEIGHT: f32 = 12.0;
+const LABEL_CHAR_WIDTH: f32 = 6.5;
+const ORF_HEIGHT: f32 = 6.0;
+const GC_STRIP_HEIGHT: f32 = 6.0;
+const METHYLATION_TICK: f32 = 10.0;
 
 #[derive(Debug, Clone)]
 struct FeaturePosition {
-    _feature_number: usize,
-    _from: i64,
-    _to: i64,
+    feature_number: usize,
+    from: usize,
+    to: usize,
+    label: String,
+    color: Color32,
+    is_pointy: bool,
+    is_reverse: bool,
+    rect: Rect,
+    label_pos: Pos2,
+}
+
+impl FeaturePosition {
+    fn contains(&self, pos: Pos2) -> bool {
+        self.rect.contains(pos)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct RenderDnaLinear {
-    area: Rect,
+    dna: Arc<RwLock<DNAsequence>>,
     display: Arc<RwLock<DnaDisplay>>,
-    _dna: Arc<RwLock<DNAsequence>>,
-    _features: Vec<FeaturePosition>,
+    sequence_length: usize,
+    area: Rect,
+    features: Vec<FeaturePosition>,
+    restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
+    hovered_feature_number: Option<usize>,
+    hover_enzyme: Option<RestrictionEnzymePosition>,
 }
 
 impl RenderDnaLinear {
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
+        let sequence_length = dna.read().expect("DNA lock poisoned").len();
         Self {
-            area: Rect::NOTHING,
+            dna,
             display,
-            _dna: dna,
-            _features: vec![],
+            sequence_length,
+            area: Rect::NOTHING,
+            features: vec![],
+            restriction_enzyme_sites: vec![],
             selected_feature_number: None,
+            hovered_feature_number: None,
+            hover_enzyme: None,
         }
     }
 
@@ -35,71 +75,655 @@ impl RenderDnaLinear {
     }
 
     fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut ret = false;
+        let mut needs_update = false;
 
-        // Recompute layout if area has changed
         let new_area = ui.available_rect_before_wrap();
         if self.area != new_area {
-            ret = true;
+            needs_update = true;
             self.area = new_area;
         }
 
-        // Recompute layout if update flag is set
-        ret = ret
+        needs_update
             || self
                 .display
                 .read()
-                .unwrap()
+                .expect("DNA display lock poisoned")
                 .update_layout()
-                .update_map_dna();
-
-        ret
+                .update_map_dna()
     }
 
     fn layout_was_updated(&self) {
         self.display
             .write()
-            .unwrap()
+            .expect("DNA display lock poisoned")
             .update_layout_mut()
             .map_dna_updated();
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
-        if self.layout_needs_recomputing(ui) {
-            // TODO layout recompute
-            self.layout_was_updated();
-        }
+    fn baseline_y(&self) -> f32 {
+        self.area.center().y
+    }
 
-        if self.display.read().unwrap().show_restriction_enzyme_sites() {
-            ui.heading("Linear DNA (RE)");
+    fn bp_to_x(&self, bp: usize) -> f32 {
+        if self.sequence_length == 0 {
+            return self.area.left();
+        }
+        let frac = bp as f32 / self.sequence_length as f32;
+        self.area.left() + frac * self.area.width()
+    }
+
+    fn x_to_bp(&self, x: f32) -> usize {
+        if self.sequence_length == 0 {
+            return 0;
+        }
+        let frac = ((x - self.area.left()) / self.area.width()).clamp(0.0, 1.0);
+        let bp = (frac * self.sequence_length as f32).floor() as usize;
+        bp.min(self.sequence_length.saturating_sub(1))
+    }
+
+    fn normalize_pos(&self, pos: isize) -> usize {
+        if self.sequence_length == 0 {
+            return 0;
+        }
+        let len = self.sequence_length as isize;
+        (((pos % len) + len) % len) as usize
+    }
+
+    fn draw_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() != "SOURCE"
+    }
+
+    fn estimate_label_width(label: &str) -> f32 {
+        let chars = label.chars().count().max(1) as f32;
+        chars * LABEL_CHAR_WIDTH
+    }
+
+    fn allocate_lane(lane_ends: &mut Vec<f32>, start: f32, end: f32, padding: f32) -> usize {
+        for (i, lane_end) in lane_ends.iter_mut().enumerate() {
+            if start >= *lane_end + padding {
+                *lane_end = end;
+                return i;
+            }
+        }
+        lane_ends.push(end);
+        lane_ends.len() - 1
+    }
+
+    fn collect_location_strands(location: &Location, reverse: bool, strands: &mut Vec<bool>) {
+        match location {
+            Location::Range(_, _) | Location::Between(_, _) => strands.push(reverse),
+            Location::Complement(inner) => Self::collect_location_strands(inner, !reverse, strands),
+            Location::Join(parts)
+            | Location::Order(parts)
+            | Location::Bond(parts)
+            | Location::OneOf(parts) => {
+                for part in parts {
+                    Self::collect_location_strands(part, reverse, strands);
+                }
+            }
+            Location::External(_, maybe_loc) => {
+                if let Some(loc) = maybe_loc {
+                    Self::collect_location_strands(loc, reverse, strands);
+                }
+            }
+            Location::Gap(_) => {}
+        }
+    }
+
+    fn feature_is_reverse(feature: &Feature) -> bool {
+        let mut strands = Vec::new();
+        Self::collect_location_strands(&feature.location, false, &mut strands);
+        if strands.is_empty() {
+            false
         } else {
-            ui.heading("Linear DNA");
+            strands.iter().filter(|is_reverse| **is_reverse).count() > strands.len() / 2
         }
     }
 
-    pub fn on_hover(&mut self, pointer_state: PointerState) {
-        if let Some(_pos) = pointer_state.latest_pos() {
-            println!("Clicking on linear DNA sequence not implemented yet");
+    fn layout_features(&mut self) {
+        self.features.clear();
+        if self.sequence_length == 0 {
+            return;
+        }
+
+        #[derive(Clone)]
+        struct Seed {
+            feature_number: usize,
+            from: usize,
+            to: usize,
+            x1: f32,
+            x2: f32,
+            label: String,
+            label_width: f32,
+            color: Color32,
+            is_pointy: bool,
+            is_reverse: bool,
+        }
+
+        let mut seeds: Vec<Seed> = Vec::new();
+        let features = self.dna.read().expect("DNA lock poisoned").features().to_owned();
+        for (feature_number, feature) in features.iter().enumerate() {
+            if !Self::draw_feature(feature) {
+                continue;
+            }
+
+            let (raw_from, raw_to) = match feature.location.find_bounds() {
+                Ok(bounds) => bounds,
+                Err(_) => continue,
+            };
+            if raw_from < 0 || raw_to < 0 {
+                continue;
+            }
+
+            let mut from = self.normalize_pos(raw_from as isize);
+            let mut to = self.normalize_pos(raw_to as isize);
+            if to < from {
+                std::mem::swap(&mut to, &mut from);
+            }
+
+            let x1 = self.bp_to_x(from).max(self.area.left());
+            let end_bp = to.saturating_add(1).min(self.sequence_length);
+            let x2 = self.bp_to_x(end_bp).max(x1 + 1.0).min(self.area.right());
+            let label = RenderDna::feature_name(feature);
+            let label_width = Self::estimate_label_width(&label).min(self.area.width());
+
+            seeds.push(Seed {
+                feature_number,
+                from,
+                to,
+                x1,
+                x2,
+                label,
+                label_width,
+                color: RenderDna::feature_color(feature),
+                is_pointy: RenderDna::is_feature_pointy(feature),
+                is_reverse: Self::feature_is_reverse(feature),
+            });
+        }
+
+        seeds.sort_by(|a, b| a.x1.total_cmp(&b.x1));
+
+        let mut feature_lanes_top: Vec<f32> = vec![];
+        let mut feature_lanes_bottom: Vec<f32> = vec![];
+        let mut label_lanes_top: Vec<f32> = vec![];
+        let mut label_lanes_bottom: Vec<f32> = vec![];
+
+        for seed in seeds {
+            let feature_lane = if seed.is_reverse {
+                Self::allocate_lane(&mut feature_lanes_bottom, seed.x1, seed.x2, 3.0)
+            } else {
+                Self::allocate_lane(&mut feature_lanes_top, seed.x1, seed.x2, 3.0)
+            };
+
+            let center_y = if seed.is_reverse {
+                self.baseline_y() + BASELINE_MARGIN + FEATURE_GAP * feature_lane as f32
+            } else {
+                self.baseline_y() - BASELINE_MARGIN - FEATURE_GAP * feature_lane as f32
+            };
+            let rect = Rect::from_min_max(
+                Pos2::new(seed.x1, center_y - FEATURE_HEIGHT / 2.0),
+                Pos2::new(seed.x2, center_y + FEATURE_HEIGHT / 2.0),
+            );
+
+            let label_left = seed.x1;
+            let label_right = seed.x1 + seed.label_width;
+            let label_lane = if seed.is_reverse {
+                Self::allocate_lane(&mut label_lanes_bottom, label_left, label_right, 4.0)
+            } else {
+                Self::allocate_lane(&mut label_lanes_top, label_left, label_right, 4.0)
+            };
+            let label_pos = if seed.is_reverse {
+                Pos2::new(seed.x1, rect.bottom() + 2.0 + LABEL_ROW_HEIGHT * label_lane as f32)
+            } else {
+                Pos2::new(seed.x1, rect.top() - 2.0 - LABEL_ROW_HEIGHT * label_lane as f32)
+            };
+
+            self.features.push(FeaturePosition {
+                feature_number: seed.feature_number,
+                from: seed.from,
+                to: seed.to,
+                label: seed.label,
+                color: seed.color,
+                is_pointy: seed.is_pointy,
+                is_reverse: seed.is_reverse,
+                rect,
+                label_pos,
+            });
         }
     }
 
-    pub fn on_click(&mut self, pointer_state: PointerState) {
-        if let Some(_pos) = pointer_state.latest_pos() {
-            println!("Clicking on linear DNA sequence not implemented yet");
-        }
+    fn get_re_site_for_positon(&self, pos: Pos2) -> Option<RestrictionEnzymePosition> {
+        self.restriction_enzyme_sites
+            .iter()
+            .find(|site| site.area.contains(pos))
+            .cloned()
     }
 
-    pub fn on_double_click(&mut self, pointer_state: PointerState) {
-        if let Some(_pos) = pointer_state.latest_pos() {
-            println!("Double-clicking on linear DNA sequence not implemented yet");
-        }
+    fn get_clicked_feature(&self, pos: Pos2) -> Option<&FeaturePosition> {
+        self.features.iter().find(|feature| feature.contains(pos))
     }
 
     pub fn selected_feature_number(&self) -> Option<usize> {
-        self.selected_feature_number.to_owned()
+        self.selected_feature_number
     }
 
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
         self.selected_feature_number = feature_number;
+    }
+
+    pub fn coordinate_to_basepair(&self, x: f32) -> Result<i64, String> {
+        if !self.area.contains(Pos2::new(x, self.baseline_y())) {
+            return Err("Coordinate is outside the DNA visualization area.".to_string());
+        }
+        Ok(self.x_to_bp(x) as i64)
+    }
+
+    pub fn on_hover(&mut self, pointer_state: PointerState) {
+        if let Some(pos) = pointer_state.latest_pos() {
+            self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            self.hover_enzyme = self.get_re_site_for_positon(pos);
+        }
+    }
+
+    pub fn on_click(&mut self, pointer_state: PointerState) {
+        if let Some(pos) = pointer_state.latest_pos() {
+            self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+        }
+    }
+
+    pub fn on_double_click(&mut self, pointer_state: PointerState) {
+        self.display
+            .write()
+            .expect("DNA display lock poisoned")
+            .deselect();
+
+        if let Some(pos) = pointer_state.latest_pos() {
+            if let Some(feature) = self.get_clicked_feature(pos) {
+                let selection = Selection::new(feature.from, feature.to, self.sequence_length);
+                self.display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .select(selection);
+            } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
+                let selection = Selection::new(
+                    re_pos.key().from() as usize,
+                    re_pos.key().to() as usize,
+                    self.sequence_length,
+                );
+                self.display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .select(selection);
+            }
+        }
+    }
+
+    fn draw_backbone(&self, painter: &egui::Painter) {
+        let y = self.baseline_y();
+        painter.line_segment(
+            [Pos2::new(self.area.left(), y), Pos2::new(self.area.right(), y)],
+            Stroke::new(BASELINE_STROKE, Color32::BLACK),
+        );
+    }
+
+    fn draw_bp_ticks(&self, painter: &egui::Painter) {
+        if self.sequence_length == 0 {
+            return;
+        }
+        let y = self.baseline_y();
+        let mut tick: usize = 1;
+        while tick * 10 < self.sequence_length {
+            tick *= 10;
+        }
+        let font = FontId {
+            size: 9.0,
+            family: FontFamily::Monospace,
+        };
+
+        let mut pos = tick;
+        while pos < self.sequence_length {
+            let x = self.bp_to_x(pos);
+            painter.line_segment(
+                [Pos2::new(x, y - 4.0), Pos2::new(x, y + 4.0)],
+                Stroke::new(1.0, Color32::DARK_GRAY),
+            );
+            painter.text(
+                Pos2::new(x, y + 7.0),
+                Align2::CENTER_TOP,
+                pos.to_string(),
+                font.clone(),
+                Color32::DARK_GRAY,
+            );
+            pos += tick;
+        }
+    }
+
+    fn draw_name_and_length(&self, painter: &egui::Painter) {
+        let name = self
+            .dna
+            .read()
+            .expect("DNA lock poisoned")
+            .name()
+            .clone()
+            .unwrap_or_else(|| "<no name>".to_string());
+        painter.text(
+            Pos2::new(self.area.left() + 6.0, self.area.top() + 6.0),
+            Align2::LEFT_TOP,
+            name,
+            FontId {
+                size: 13.0,
+                family: FontFamily::Proportional,
+            },
+            Color32::BLACK,
+        );
+        painter.text(
+            Pos2::new(self.area.right() - 6.0, self.area.top() + 6.0),
+            Align2::RIGHT_TOP,
+            format!("{} bp", self.sequence_length),
+            FontId {
+                size: 11.0,
+                family: FontFamily::Monospace,
+            },
+            Color32::DARK_GRAY,
+        );
+    }
+
+    fn orf_colors() -> HashMap<i32, Color32> {
+        let mut colors = HashMap::new();
+        colors.insert(-1, Color32::LIGHT_RED);
+        colors.insert(-2, Color32::LIGHT_GREEN);
+        colors.insert(-3, Color32::LIGHT_BLUE);
+        colors.insert(1, Color32::DARK_RED);
+        colors.insert(2, Color32::DARK_GREEN);
+        colors.insert(3, Color32::DARK_BLUE);
+        colors
+    }
+
+    fn draw_orf(&self, painter: &egui::Painter, orf: &OpenReadingFrame, color: Color32) {
+        let from = self.normalize_pos(orf.from() as isize);
+        let to = self.normalize_pos(orf.to() as isize);
+        let start = from.min(to);
+        let end = from.max(to);
+        if start == end {
+            return;
+        }
+
+        let x1 = self.bp_to_x(start);
+        let x2 = self.bp_to_x(end).max(x1 + 1.0);
+        let frame_abs = orf.frame().unsigned_abs() as f32;
+        let y = if orf.is_reverse() {
+            self.baseline_y() + 10.0 + frame_abs * 7.0
+        } else {
+            self.baseline_y() - 10.0 - frame_abs * 7.0
+        };
+
+        let rect = Rect::from_min_max(
+            Pos2::new(x1, y - ORF_HEIGHT / 2.0),
+            Pos2::new(x2, y + ORF_HEIGHT / 2.0),
+        );
+        painter.rect_filled(rect, 1.0, color);
+
+        let tip = if orf.is_reverse() {
+            Pos2::new(x1 - 5.0, y)
+        } else {
+            Pos2::new(x2 + 5.0, y)
+        };
+        let base_x = if orf.is_reverse() { x1 } else { x2 };
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                Pos2::new(base_x, y - ORF_HEIGHT / 2.0),
+                tip,
+                Pos2::new(base_x, y + ORF_HEIGHT / 2.0),
+            ],
+            color,
+            Stroke::NONE,
+        ));
+    }
+
+    fn draw_open_reading_frames(&self, painter: &egui::Painter) {
+        if !self
+            .display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_open_reading_frames()
+        {
+            return;
+        }
+        let colors = Self::orf_colors();
+        let orfs = self
+            .dna
+            .read()
+            .expect("DNA lock poisoned")
+            .open_reading_frames()
+            .clone();
+        for orf in &orfs {
+            if let Some(color) = colors.get(&orf.frame()) {
+                self.draw_orf(painter, orf, *color);
+            }
+        }
+    }
+
+    fn draw_gc_contents(&self, painter: &egui::Painter) {
+        if !self
+            .display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_gc_contents()
+        {
+            return;
+        }
+        let y1 = self.baseline_y() - 4.0;
+        let y2 = y1 + GC_STRIP_HEIGHT;
+        let gc_contents = self.dna.read().expect("DNA lock poisoned").gc_content().clone();
+        for region in gc_contents.regions() {
+            let x1 = self.bp_to_x(region.from());
+            let x2 = self.bp_to_x(region.to()).max(x1 + 1.0);
+            let color = Color32::from_rgb(
+                255 - (region.gc() * 255.0) as u8,
+                (region.gc() * 255.0) as u8,
+                0,
+            );
+            painter.rect_filled(
+                Rect::from_min_max(Pos2::new(x1, y1), Pos2::new(x2, y2)),
+                0.0,
+                color,
+            );
+        }
+    }
+
+    fn draw_methylation_sites(&self, painter: &egui::Painter) {
+        if !self
+            .display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_methylation_sites()
+        {
+            return;
+        }
+        let y = self.baseline_y();
+        let sites = self
+            .dna
+            .read()
+            .expect("DNA lock poisoned")
+            .methylation_sites()
+            .clone();
+        for site in sites.sites() {
+            let x = self.bp_to_x(*site);
+            painter.line_segment(
+                [Pos2::new(x, y - METHYLATION_TICK), Pos2::new(x, y - 1.0)],
+                Stroke::new(1.0, Color32::DARK_RED),
+            );
+        }
+    }
+
+    fn draw_features(&self, painter: &egui::Painter) {
+        if !self
+            .display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_features()
+        {
+            return;
+        }
+
+        for feature in &self.features {
+            let selected = self.selected_feature_number == Some(feature.feature_number);
+            let hovered = self.hovered_feature_number == Some(feature.feature_number);
+
+            painter.rect_filled(feature.rect, 1.5, feature.color);
+
+            if feature.is_pointy {
+                let tip_x = if feature.is_reverse {
+                    feature.rect.left()
+                } else {
+                    feature.rect.right()
+                };
+                let y = feature.rect.center().y;
+                let h = feature.rect.height() / 2.0;
+                let tip = if feature.is_reverse {
+                    Pos2::new(tip_x - 6.0, y)
+                } else {
+                    Pos2::new(tip_x + 6.0, y)
+                };
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        Pos2::new(tip_x, y - h),
+                        tip,
+                        Pos2::new(tip_x, y + h),
+                    ],
+                    feature.color,
+                    Stroke::NONE,
+                ));
+            }
+
+            if selected || hovered {
+                let stroke = if selected {
+                    Stroke::new(2.0, Color32::YELLOW)
+                } else {
+                    Stroke::new(1.5, Color32::WHITE)
+                };
+                painter.rect_stroke(feature.rect.expand(1.0), 2.0, stroke);
+            }
+
+            let align = if feature.label_pos.y < self.baseline_y() {
+                Align2::LEFT_BOTTOM
+            } else {
+                Align2::LEFT_TOP
+            };
+            painter.text(
+                feature.label_pos,
+                align,
+                &feature.label,
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::BLACK,
+            );
+        }
+    }
+
+    fn draw_restriction_enzyme_sites(&mut self, painter: &egui::Painter) {
+        self.restriction_enzyme_sites.clear();
+
+        if !self
+            .display
+            .read()
+            .expect("DNA display lock poisoned")
+            .show_restriction_enzyme_sites()
+        {
+            return;
+        }
+
+        let groups = self
+            .dna
+            .read()
+            .expect("DNA lock poisoned")
+            .restriction_enzyme_groups()
+            .clone();
+
+        let mut keys: Vec<_> = groups.keys().cloned().collect();
+        keys.sort();
+        let mut top_label_lanes: Vec<f32> = vec![];
+        let mut bottom_label_lanes: Vec<f32> = vec![];
+
+        for (idx, key) in keys.iter().enumerate() {
+            let names = match groups.get(key) {
+                Some(names) => names,
+                None => continue,
+            };
+
+            let x = self.bp_to_x(self.normalize_pos(key.pos()));
+            let y = self.baseline_y();
+            let color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
+
+            painter.line_segment(
+                [Pos2::new(x, y - 8.0), Pos2::new(x, y + 8.0)],
+                Stroke::new(1.0, color),
+            );
+
+            let label = names.join(",");
+            let label_width = Self::estimate_label_width(&label);
+            let label_left = x - label_width / 2.0;
+            let label_right = x + label_width / 2.0;
+            let place_top = idx % 2 == 0;
+            let label_lane = if place_top {
+                Self::allocate_lane(&mut top_label_lanes, label_left, label_right, 6.0)
+            } else {
+                Self::allocate_lane(&mut bottom_label_lanes, label_left, label_right, 6.0)
+            };
+
+            let label_y = if place_top {
+                y - 16.0 - LABEL_ROW_HEIGHT * label_lane as f32
+            } else {
+                y + 16.0 + LABEL_ROW_HEIGHT * label_lane as f32
+            };
+            let align = if place_top {
+                Align2::CENTER_BOTTOM
+            } else {
+                Align2::CENTER_TOP
+            };
+
+            if let Some(hovered) = &self.hover_enzyme {
+                if hovered.key == *key {
+                    painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
+                }
+            }
+            let text_rect = painter.text(
+                Pos2::new(x, label_y),
+                align,
+                label,
+                FontId {
+                    size: 9.0,
+                    family: FontFamily::Monospace,
+                },
+                color,
+            );
+
+            let tick_rect = Rect::from_center_size(Pos2::new(x, y), Vec2::new(6.0, 18.0));
+            let area = text_rect.expand(2.0).union(tick_rect);
+            self.restriction_enzyme_sites.push(RestrictionEnzymePosition {
+                area,
+                key: key.clone(),
+            });
+        }
+    }
+
+    pub fn render(&mut self, ui: &mut egui::Ui) {
+        self.sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+
+        if self.layout_needs_recomputing(ui) {
+            self.layout_features();
+            self.layout_was_updated();
+        }
+
+        self.draw_name_and_length(ui.painter());
+        self.draw_gc_contents(ui.painter());
+        self.draw_methylation_sites(ui.painter());
+        self.draw_backbone(ui.painter());
+        self.draw_bp_ticks(ui.painter());
+        self.draw_open_reading_frames(ui.painter());
+        self.draw_features(ui.painter());
+        self.draw_restriction_enzyme_sites(ui.painter());
     }
 }
