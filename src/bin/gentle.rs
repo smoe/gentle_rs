@@ -4,7 +4,7 @@ use gentle::app;
 fn load_icon(path: &str) -> egui::IconData {
   let (icon_rgba, icon_width, icon_height) = {
       let image = image::open(path)
-          .expect("Failed to open icon path")
+          .expect(&("Failed to open icon path at '".to_owned()+path+"'"))
           .into_rgba8();
       let (width, height) = image.dimensions();
       let rgba = image.into_raw();
