@@ -3,6 +3,7 @@ use crate::{
     dna_sequence::DNAsequence,
     gc_contents::GcRegion,
     render_dna::RenderDna,
+    render_dna::RestrictionEnzymePosition,
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
@@ -15,6 +16,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+
+// Defines static stroke styles (BLACK_1, GRAY_1) and a color map (ORF_COLORS) for Open Reading Frames (ORFs).
 lazy_static! {
     pub static ref BLACK_1: Stroke = Stroke {
         width: 1.0,
@@ -36,16 +39,24 @@ lazy_static! {
     };
 }
 
+/// Represents the position and attributes of a feature (e.g., gene, CDS) on the circular DNA.
 #[derive(Debug, Clone)]
 struct FeaturePosition {
     feature_number: usize,
+    // FIXME: Clarify if the first position is 0 or 1
     from: i64,
+    // FIXME: Clarify if the first position is 0 or 1
     to: i64,
+    /// Representation as segment - start (degree: 0-360)
     angle_start: f32,
+    /// Representation as segment - end (degree: 0-360)
     angle_stop: f32,
+    /// Minimal distance to center of circular feature
     inner: f32,
+    /// Maximal distance to center of circular feature
     outer: f32,
     to_90: i64,
+    /// Directed features shall end with an arrow-like indication of the direction.
     is_pointy: bool,
     color: Color32,
     band: f32,
@@ -53,6 +64,7 @@ struct FeaturePosition {
 }
 
 impl FeaturePosition {
+    /// Checks if a given angle and distance fall within the bounds of the feature.
     fn contains_angle_distance(&self, angle: f32, distance: f32) -> bool {
         if self.inner > distance || self.outer < distance {
             return false;
@@ -67,12 +79,9 @@ impl FeaturePosition {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct RestrictionEnzymePosition {
-    area: Rect,
-    key: RestrictionEnzymeKey,
-}
 
+
+/// Manages the rendering of circular DNA, including features, enzyme sites, and user interactions.
 #[derive(Debug, Clone)]
 pub struct RenderDnaCircular {
     dna: Arc<RwLock<DNAsequence>>,
@@ -89,6 +98,7 @@ pub struct RenderDnaCircular {
 }
 
 impl RenderDnaCircular {
+    /// Initializes a new RenderDnaCircular instance.
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         Self {
             dna,
@@ -109,19 +119,29 @@ impl RenderDnaCircular {
         &self.area
     }
 
+    /// Handles click events to select features.
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
         }
+        else {
+            println!("I RenderDnaCircular::on_click: Could not select any feature.");
+        }
     }
 
+
+    /// Handles hover events to highlight features and enzyme sites.
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
             self.hover_enzyme = self.get_re_site_for_positon(pos);
         }
+        else {
+            println!("I RenderDnaCircular::on_hover: Could not select any feature.");
+        }
     }
 
+    /// Handles double-click events to select features or enzyme sites.
     pub fn on_double_click(&mut self, pointer_state: PointerState) {
         self.display.write().unwrap().deselect();
         if let Some(pos) = pointer_state.latest_pos() {
@@ -136,15 +156,18 @@ impl RenderDnaCircular {
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
                 println!("Double-clicked {re_pos:?}");
                 let selection = Selection::new(
-                    re_pos.key.from() as usize,
-                    re_pos.key.to() as usize,
+                    re_pos.key().from() as usize,
+                    re_pos.key().to() as usize,
                     self.sequence_length as usize,
                 );
                 self.display.write().unwrap().select(selection);
+            } else {
+                println!("I RenderDnaCircular::on_double_click: Could not select any feature or RestrictionEnzyme.");
             }
         }
     }
 
+    /// Finds the restriction enzyme site at a given position.
     fn get_re_site_for_positon(&self, pos: Pos2) -> Option<RestrictionEnzymePosition> {
         self.restriction_enzyme_sites
             .iter()
@@ -152,6 +175,7 @@ impl RenderDnaCircular {
             .cloned()
     }
 
+    /// Finds the feature at a given position.
     fn get_clicked_feature(&self, pos: Pos2) -> Option<&FeaturePosition> {
         let (angle, distance) = self.get_angle_distance(pos);
         let angle = Self::normalize_angle(angle - 90.0);
@@ -206,6 +230,7 @@ impl RenderDnaCircular {
             .map_dna_updated();
     }
 
+    /// Renders the circular DNA visualization
     pub fn render(&mut self, ui: &mut egui::Ui) {
         self.radius = self.area.width().min(self.area.height()) * 0.35;
         self.center = self.area.center();
@@ -229,6 +254,7 @@ impl RenderDnaCircular {
         self.draw_hovered_feature(painter);
     }
 
+    /// Draws a filled circular section
     fn draw_circle_section(&self, start: u64, end: u64, color: Color32, painter: &egui::Painter) {
         let center = self.area.center();
         let radius = self.radius;
@@ -260,6 +286,7 @@ impl RenderDnaCircular {
         painter.add(shape);
     }
 
+    /// Draws the selected region on the circular DNA
     fn draw_selection(&self, painter: &egui::Painter) {
         let selection = match self.display.read().unwrap().selection() {
             Some(selection) => selection,
@@ -271,6 +298,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Displays information about the hovered feature 
     fn draw_hovered_feature(&self, painter: &egui::Painter) {
         if let Some(feature_id) = self.hovered_feature_number {
             if let Some(fp) = self.features.get(feature_id) {
@@ -301,6 +329,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Converts a position to an angle and geometric distance (Pythagoras) from the center.
     fn get_angle_distance(&self, pos: Pos2) -> (f32, f32) {
         let diff_x = pos.x - self.center.x;
         let diff_y = pos.y - self.center.y;
@@ -310,6 +339,7 @@ impl RenderDnaCircular {
         (angle, distance)
     }
 
+    /// Draws an arc with an arrow indicating direction
     fn draw_pointed_arc(
         &self,
         from: i32,
@@ -379,6 +409,7 @@ impl RenderDnaCircular {
         };
     }
 
+    /// Draws Open Reading Frames (ORFs) on the circular DNA
     fn draw_open_reading_frames(&self, painter: &egui::Painter) {
         if !self.display.read().unwrap().show_open_reading_frames() {
             return;
@@ -402,6 +433,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Draws methylation sites on the circular DNA
     fn draw_methylation_sites(&self, painter: &egui::Painter) {
         if !self.display.read().unwrap().show_methylation_sites() {
             return;
@@ -416,6 +448,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Draws GC content regions on the circular DNA.
     fn draw_gc_contents(&self, painter: &egui::Painter) {
         if !self.display.read().unwrap().show_gc_contents() {
             return;
@@ -428,6 +461,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Draws a GC content arc segment
     fn draw_gc_arc(
         &self,
         gc_region: &GcRegion,
@@ -446,6 +480,7 @@ impl RenderDnaCircular {
         point
     }
 
+    /// Draws the backbone of the circular DNA with tick marks
     fn draw_backbone(&mut self, painter: &egui::Painter) {
         painter.circle_stroke(self.center.to_owned(), self.radius, BLACK_1.to_owned());
         let mut tick: i64 = 1;
@@ -482,6 +517,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Lays out features on the circular DNA
     fn layout_features(&mut self) {
         self.features.clear();
         let features = self
@@ -572,6 +608,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Draws a feature from a given range
     fn draw_feature_from_range(&self, painter: &egui::Painter, ret: &FeaturePosition) {
         let mut feature_points: Vec<Pos2> = vec![];
         feature_points.push(self.pos2xy(ret.from, ret.outer));
@@ -627,6 +664,7 @@ impl RenderDnaCircular {
         painter.text(point, align, text, font_feature, ret.color);
     }
 
+    /// Generates points for drawing an arc
     fn generate_arc(&self, radius: f32, angle_start: f32, angle_stop: f32) -> Vec<Pos2> {
         if angle_start == 0.0 && angle_stop == 360.0 {
             return vec![];
@@ -643,6 +681,7 @@ impl RenderDnaCircular {
         points
     }
 
+    /// Draws the main label (name) of the DNA sequence
     fn draw_main_label(&self, painter: &egui::Painter) {
         let font_label = FontId {
             size: 20.0,
@@ -670,6 +709,7 @@ impl RenderDnaCircular {
         );
     }
 
+    /// Draws restriction enzyme sites on the circular DNA.
     fn draw_restriction_enzyme_sites(&mut self, painter: &egui::Painter) {
         self.restriction_enzyme_sites.clear();
         if !self.display.read().unwrap().show_restriction_enzyme_sites() {
@@ -746,6 +786,7 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Displays the length of the DNA sequence in base pairs (bp).
     fn draw_bp(&self, painter: &egui::Painter) {
         let font_label = FontId {
             size: 12.0,
@@ -760,6 +801,7 @@ impl RenderDnaCircular {
         );
     }
 
+    /// Determines the band (position) of a feature
     fn feature_band(feature: &Feature) -> f32 {
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
             "CDS" => 1.0,
@@ -768,11 +810,14 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Determines if a feature should be drawn, true for all features that are not of kind
+    /// "SOURCE"
     fn draw_feature(feature: &Feature) -> bool {
         let feature_kind = feature.kind.to_string().to_ascii_uppercase();
         feature_kind != "SOURCE"
     }
 
+    /// Determines if a feature should be drawn
     fn normalize_angle(angle: f32) -> f32 {
         if angle < 0.0 {
             angle + 360.0
@@ -783,10 +828,12 @@ impl RenderDnaCircular {
         }
     }
 
+    /// Converts a position to an angle
     fn angle(&self, pos: i64) -> f32 {
         Self::normalize_angle(360.0 * (pos as f32) / (self.sequence_length as f32) - 90.0)
     }
 
+    /// Converts a position to Cartesian coordinates.
     fn pos2xy(&self, pos: i64, radius: f32) -> Pos2 {
         let angle = self.angle(pos);
         let t = angle * std::f32::consts::PI / 180.0;

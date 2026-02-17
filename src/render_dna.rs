@@ -1,6 +1,7 @@
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
+    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
 use gb_io::seq::Feature;
@@ -8,6 +9,21 @@ use std::{
     fmt::Debug,
     sync::{Arc, RwLock},
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RestrictionEnzymePosition {
+    pub area: Rect,
+    pub key: RestrictionEnzymeKey,
+}
+
+impl RestrictionEnzymePosition {
+    pub fn key(&self) -> &RestrictionEnzymeKey {
+        &self.key
+    }
+    pub fn area(&self) -> Rect {
+        self.area
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum RenderDna {
