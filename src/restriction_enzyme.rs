@@ -111,6 +111,9 @@ impl RestrictionEnzyme {
         let seq_len = if seq.is_circular() {
             seq.len()
         } else {
+            if seq.len() < recognition_len {
+                return ret;
+            }
             seq.len() - recognition_len + 1
         };
         for start in 0..seq_len {
