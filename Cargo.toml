@@ -14,7 +14,7 @@ build = "build.rs"
 [package.metadata.bundle]
 identifier = "com.example.gentle"
 icon = ["assets/icon.icns"]  # Path to your .icns file
-resources = ["assets/"]      # Additional resources if needed
+resources = ["assets/", "Credits.rtf"]      # Additional resources if needed
 
 
 [[bin]]
@@ -77,6 +77,7 @@ deno_core = "*"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = "0.2.2"
+objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSResponder"] }
 
 #[build-dependencies]
 #winresource = "*" # For Windows app icon

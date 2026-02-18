@@ -11,7 +11,6 @@ use crate::{
     engine::{DisplayTarget, Engine, GentleEngine, Operation, ProjectState},
     enzymes,
     icons::APP_ICON,
-    lineage_export::export_lineage_svg,
     resource_sync, tf_motifs,
     window::Window,
     TRANSLATIONS,
@@ -240,11 +239,14 @@ impl GENtleApp {
             .save_file()
         {
             let path = path.display().to_string();
-            let svg = {
-                let engine = self.engine.read().unwrap();
-                export_lineage_svg(engine.state())
-            };
-            let _ = std::fs::write(path, svg);
+            let result = self
+                .engine
+                .write()
+                .unwrap()
+                .apply(Operation::RenderLineageSvg { path: path.clone() });
+            if let Err(e) = result {
+                eprintln!("Could not export lineage SVG to '{}': {}", path, e.message);
+            }
         }
     }
 
@@ -419,7 +421,7 @@ impl GENtleApp {
             });
             ui.menu_button("Help", |ui| {
                 if ui.button("About GENtle").clicked() {
-                    self.show_about_dialog = true;
+                    self.show_about_dialog = !about::show_native_about_panel();
                     ui.close_menu();
                 }
             });
