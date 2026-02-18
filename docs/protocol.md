@@ -31,7 +31,11 @@ Goal:
 ```json
 {
   "sequences": {"seq_id": "DNAsequence object"},
-  "metadata": {"any": "json"}
+  "metadata": {"any": "json"},
+  "display": {"ui_visibility_and_tfbs_filter_state": "..."},
+  "lineage": {"nodes": {}, "edges": []},
+  "parameters": {"max_fragments_per_container": 80000},
+  "container_state": {"containers": {}, "seq_to_latest_container": {}}
 }
 ```
 
@@ -39,8 +43,8 @@ Semantic interpretation:
 
 - In GUI terms, a project window represents a wet-lab container context.
 - A container may map to multiple candidate sequences/fragments.
-- Current v1 state stores candidates primarily as sequence ids; explicit
-  container objects are planned.
+- Explicit container objects are first-class state (`container_state`) and are
+  indexed from sequence ids via `seq_to_latest_container`.
 
 ### Operation
 
@@ -190,7 +194,6 @@ This supports:
 ## Planned next additions
 
 - richer sequence-editing and annotation operation set
-- explicit container/pool model and merge operations
 - ligation protocol presets with sticky/blunt compatibility derivation
 - render/view model endpoint for frontend-independent graphical representation
 - schema publication for strict client-side validation

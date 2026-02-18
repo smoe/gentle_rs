@@ -2087,6 +2087,7 @@ dependencies = [
  "itertools 0.13.0",
  "lazy_static",
  "mlua",
+ "objc2-app-kit",
  "objc2-foundation",
  "rayon",
  "reqwest",

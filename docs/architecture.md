@@ -150,18 +150,18 @@ Legend:
 | Save sequence file | Done | Done | Done | Done | Done |
 | Restriction digest | Done | Done | Done | Done | Done |
 | Container state model | Done | Done | Done | Done | Done |
-| Container-first operations | Partial | Done | Done | Done | Done |
+| Container-first operations | Done | Done | Done | Done | Done |
 | Topology change (linear/circular) | Done | Done | Done | Done | Done |
-| Feature recomputation | Partial | Done | Done | Done | Done |
+| Feature recomputation | Done | Done | Done | Done | Done |
 | Ligation | Done | Done | Done | Done | Done |
 | PCR | Done | Done | Done | Done | Done |
-| Region extraction/editing | Partial | Done | Done | Done | Done |
+| Region extraction/editing | Done | Done | Done | Done | Done |
 | View toggles (show/hide tracks and panels) | Done | Done | Done | Done | Done |
 | TFBS annotation with progress | Done | Done | Done | Done | Done |
 | TFBS display filtering (4 criteria) | Done | Done | Done | Done | Done |
-| Sequence SVG export | Partial | Done | Done | Done | Done |
-| Lineage SVG export | Partial | Done | Done | Done | Done |
-| Pool export (overhang-aware) | Missing | Done | Done | Done | Done |
+| Sequence SVG export | Done | Done | Done | Done | Done |
+| Lineage SVG export | Done | Done | Done | Done | Done |
+| Pool export (overhang-aware) | Done | Done | Done | Done | Done |
 | State summary (seq + container) | Done | Done | Done | Done | Done |
 | Shared operation protocol | Partial | Done | Done | Done | Done |
 
@@ -181,20 +181,20 @@ Legend:
 |---|---|---|---|---|---|
 | `LoadFile` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SaveFile` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RenderSequenceSvg` | Missing | Wired | Exposed | Exposed | Implemented |
-| `RenderLineageSvg` | Missing | Wired | Exposed | Exposed | Implemented |
-| `ExportPool` | Missing | Wired | Exposed | Exposed | Implemented |
-| `DigestContainer` | Missing | Wired | Exposed | Exposed | Implemented |
-| `MergeContainersById` | Missing | Wired | Exposed | Exposed | Implemented |
-| `LigationContainer` | Missing | Wired | Exposed | Exposed | Implemented |
-| `FilterContainerByMolecularWeight` | Missing | Wired | Exposed | Exposed | Implemented |
+| `RenderSequenceSvg` | Wired | Wired | Exposed | Exposed | Implemented |
+| `RenderLineageSvg` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ExportPool` | Wired | Wired | Exposed | Exposed | Implemented |
+| `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
+| `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
+| `LigationContainer` | Wired | Wired | Exposed | Exposed | Implemented |
+| `FilterContainerByMolecularWeight` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Digest` | Wired | Wired | Exposed | Exposed | Implemented |
 | `MergeContainers` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Ligation` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Pcr` | Wired | Wired | Exposed | Exposed | Implemented |
 | `PcrAdvanced` | Wired | Wired | Exposed | Exposed | Implemented |
 | `PcrMutagenesis` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ExtractRegion` | Missing | Wired | Exposed | Exposed | Implemented |
+| `ExtractRegion` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExtractAnchoredRegion` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SelectCandidate` | Wired | Wired | Exposed | Exposed | Implemented |
 | `FilterByMolecularWeight` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -204,10 +204,10 @@ Legend:
 | `Branch` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SetDisplayVisibility` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SetTopology` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RecomputeFeatures` | Missing | Wired | Exposed | Exposed | Implemented |
-| `SetParameter` | Missing | Wired | Exposed | Exposed | Implemented |
+| `RecomputeFeatures` | Wired | Wired | Exposed | Exposed | Implemented |
+| `SetParameter` | Wired | Wired | Exposed | Exposed | Implemented |
 | `AnnotateTfbs` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Workflow` (multi-op run) | Missing | Wired | Exposed | Exposed | Implemented |
+| `Workflow` (multi-op run) | Wired | Wired | Exposed | Exposed | Implemented |
 
 Notes from current code:
 
@@ -216,11 +216,11 @@ Notes from current code:
 - GUI TFBS feature density can be reduced at display time via score-based
   criteria without mutating sequence annotations.
 - SVG export now honors TFBS display criteria from shared display state.
-- GUI has a container-centric read/view layer, but container-first operations
-  are not yet directly exposed as GUI actions.
-- Remaining GUI operation gaps are mainly `ExtractRegion`, `RecomputeFeatures`,
-  `SetParameter`, container-first operation actions, `RenderSequenceSvg`,
-  `RenderLineageSvg`, and generic workflow execution.
+- GUI now exposes direct actions for `ExtractRegion`, `RecomputeFeatures`,
+  `SetParameter`, container-first operations, sequence SVG rendering, lineage
+  SVG rendering, and workflow execution through shared engine operations.
+- GUI operation parity is now complete for currently implemented engine
+  operations.
 - CLI exposes all implemented operations (`op`/`workflow`) and adds some
   adapter-level utilities (render and import helpers).
 - REBASE/JASPAR snapshot update paths are now exposed across CLI, JS, Lua, and
@@ -233,10 +233,9 @@ Notes from current code:
 
 Immediate parity goal:
 
-1. Finish remaining GUI operation gaps (`ExtractRegion`, `RecomputeFeatures`,
-   `SetParameter`, container-first actions, optional generic workflow runner).
-2. Move remaining CLI-only utilities that represent stable contracts into engine-level
-   operations.
+1. Maintain operation parity as new operations are added.
+2. Move remaining CLI-only utilities that represent stable contracts into
+   engine-level operations.
 3. Keep JS/Lua convenience wrappers thin over shared operation contracts.
 
 ## 4. Engine model
@@ -378,14 +377,10 @@ Important separation:
 
 ### Phase A: expand operation parity
 
-Phase A core scope is largely complete.
+Phase A core scope is complete.
 
 Remaining Phase A items:
 
-- close GUI operation gaps (`ExtractRegion`, `RecomputeFeatures`, `SetParameter`)
-- expose container-first operations directly in GUI action surfaces
-- wire GUI export actions to shared render operations (`RenderSequenceSvg`,
-  `RenderLineageSvg`)
 - keep adapter-level helpers as wrappers over engine operations
 
 ### Phase B: GUI migration
@@ -435,13 +430,6 @@ If work is interrupted, resume in this order:
 
 ## 11. Current known gaps
 
-- GUI is close to parity but still missing a few engine operations
-- GUI does not yet provide direct triggers for container-first operations
-  (`DigestContainer`, `MergeContainersById`, `LigationContainer`,
-  `FilterContainerByMolecularWeight`)
-- GUI exports are not yet fully routed through engine render operations
-  (`RenderSequenceSvg`, `RenderLineageSvg`) despite those operations being
-  implemented and available in CLI/JS/Lua.
 - View model contract is not yet formalized
 - Some rendering/import/export utilities are still adapter-level contracts
   instead of engine operations

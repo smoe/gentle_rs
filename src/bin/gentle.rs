@@ -1,6 +1,6 @@
 use eframe::{egui, NativeOptions};
 use gentle::{about, app};
-use std::env;
+use std::{env, path::PathBuf};
 
 #[cfg(target_os = "macos")]
 fn configure_macos_process_name() {
@@ -15,10 +15,32 @@ fn configure_macos_process_name() {
 #[cfg(not(target_os = "macos"))]
 fn configure_macos_process_name() {}
 
+fn resolve_runtime_asset_path(path: &str) -> PathBuf {
+    let direct = PathBuf::from(path);
+    if direct.exists() {
+        return direct;
+    }
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let bundled = exe_dir.join("../Resources").join(path);
+            if bundled.exists() {
+                return bundled;
+            }
+        }
+    }
+    PathBuf::from(path)
+}
+
 fn load_icon(path: &str) -> egui::IconData {
+    let icon_path = resolve_runtime_asset_path(path);
     let (icon_rgba, icon_width, icon_height) = {
-        let image = image::open(path)
-            .expect(&("Failed to open icon path at '".to_owned() + path + "'"))
+        let image = image::open(&icon_path).unwrap_or_else(|e| {
+            panic!(
+                "Failed to open icon path '{}': {}",
+                icon_path.display(),
+                e
+            )
+        })
             .into_rgba8();
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();

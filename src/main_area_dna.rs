@@ -4,7 +4,8 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, DisplayTarget, Engine, EngineError,
         ErrorCode, ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation,
-        OperationProgress, PcrPrimerSpec, SnpMutationSpec, TfThresholdOverride, TfbsProgress,
+        OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
+        TfbsProgress, Workflow,
     },
     icons::*,
     render_dna::RenderDna,
@@ -48,6 +49,16 @@ struct EngineOpsUiState {
     pcr_mut_position: String,
     pcr_mut_ref: String,
     pcr_mut_alt: String,
+    #[serde(default)]
+    extract_from: String,
+    #[serde(default)]
+    extract_to: String,
+    #[serde(default)]
+    extract_output_id: String,
+    #[serde(default)]
+    parameter_name: String,
+    #[serde(default)]
+    parameter_value_json: String,
     #[serde(default)]
     anchored_mode_feature: bool,
     #[serde(default)]
@@ -112,6 +123,42 @@ struct EngineOpsUiState {
     tfbs_display_use_true_log_odds_quantile: bool,
     #[serde(default = "default_tfbs_quantile")]
     tfbs_display_min_true_log_odds_quantile: f64,
+    #[serde(default)]
+    container_digest_id: String,
+    #[serde(default)]
+    container_merge_ids: String,
+    #[serde(default)]
+    container_ligation_id: String,
+    #[serde(default)]
+    container_ligation_output_prefix: String,
+    #[serde(default = "default_true")]
+    container_ligation_protocol_sticky: bool,
+    #[serde(default)]
+    container_ligation_circularize: bool,
+    #[serde(default)]
+    container_ligation_unique: bool,
+    #[serde(default)]
+    container_mw_id: String,
+    #[serde(default)]
+    container_mw_min_bp: String,
+    #[serde(default)]
+    container_mw_max_bp: String,
+    #[serde(default)]
+    container_mw_error: String,
+    #[serde(default)]
+    container_mw_unique: bool,
+    #[serde(default)]
+    container_mw_output_prefix: String,
+    #[serde(default)]
+    workflow_run_id: String,
+    #[serde(default)]
+    workflow_ops_json: String,
+    #[serde(default)]
+    export_pool_inputs_text: String,
+    #[serde(default)]
+    export_pool_id: String,
+    #[serde(default)]
+    export_pool_human_id: String,
 }
 
 fn default_true() -> bool {
@@ -173,6 +220,11 @@ pub struct MainAreaDna {
     pcr_mut_position: String,
     pcr_mut_ref: String,
     pcr_mut_alt: String,
+    extract_from: String,
+    extract_to: String,
+    extract_output_id: String,
+    parameter_name: String,
+    parameter_value_json: String,
     anchored_mode_feature: bool,
     anchored_position: String,
     anchored_feature_kind: String,
@@ -202,9 +254,24 @@ pub struct MainAreaDna {
     op_status: String,
     op_error_popup: Option<String>,
     last_created_seq_ids: Vec<String>,
-    heartbeat_frame: u64,
-    heartbeat_last_ms: Option<u128>,
-    heartbeat_delta_ms: Option<u128>,
+    container_digest_id: String,
+    container_merge_ids: String,
+    container_ligation_id: String,
+    container_ligation_output_prefix: String,
+    container_ligation_protocol_sticky: bool,
+    container_ligation_circularize: bool,
+    container_ligation_unique: bool,
+    container_mw_id: String,
+    container_mw_min_bp: String,
+    container_mw_max_bp: String,
+    container_mw_error: String,
+    container_mw_unique: bool,
+    container_mw_output_prefix: String,
+    workflow_run_id: String,
+    workflow_ops_json: String,
+    export_pool_inputs_text: String,
+    export_pool_id: String,
+    export_pool_human_id: String,
 }
 
 impl MainAreaDna {
@@ -249,6 +316,11 @@ impl MainAreaDna {
             pcr_mut_position: "0".to_string(),
             pcr_mut_ref: "A".to_string(),
             pcr_mut_alt: "G".to_string(),
+            extract_from: "0".to_string(),
+            extract_to: "0".to_string(),
+            extract_output_id: String::new(),
+            parameter_name: "max_fragments_per_container".to_string(),
+            parameter_value_json: "80000".to_string(),
             anchored_mode_feature: true,
             anchored_position: "0".to_string(),
             anchored_feature_kind: "CDS".to_string(),
@@ -278,9 +350,24 @@ impl MainAreaDna {
             op_status: String::new(),
             op_error_popup: None,
             last_created_seq_ids: vec![],
-            heartbeat_frame: 0,
-            heartbeat_last_ms: None,
-            heartbeat_delta_ms: None,
+            container_digest_id: String::new(),
+            container_merge_ids: String::new(),
+            container_ligation_id: String::new(),
+            container_ligation_output_prefix: "ligation_container".to_string(),
+            container_ligation_protocol_sticky: true,
+            container_ligation_circularize: false,
+            container_ligation_unique: false,
+            container_mw_id: String::new(),
+            container_mw_min_bp: "100".to_string(),
+            container_mw_max_bp: "1000".to_string(),
+            container_mw_error: "0.10".to_string(),
+            container_mw_unique: false,
+            container_mw_output_prefix: "mw_container".to_string(),
+            workflow_run_id: "gui-workflow".to_string(),
+            workflow_ops_json: "[]".to_string(),
+            export_pool_inputs_text: seq_id_for_defaults.clone().unwrap_or_default(),
+            export_pool_id: String::new(),
+            export_pool_human_id: String::new(),
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -297,8 +384,36 @@ impl MainAreaDna {
         self.op_status = "Opened from lineage pool node".to_string();
     }
 
+    fn latest_container_for_active_seq(&self) -> Option<String> {
+        let seq_id = self.seq_id.as_ref()?;
+        let engine = self.engine.as_ref()?;
+        engine.read().ok().and_then(|guard| {
+            guard
+                .state()
+                .container_state
+                .seq_to_latest_container
+                .get(seq_id)
+                .cloned()
+        })
+    }
+
+    fn prefill_container_ids(&mut self) {
+        let Some(container_id) = self.latest_container_for_active_seq() else {
+            return;
+        };
+        if self.container_digest_id.trim().is_empty() {
+            self.container_digest_id = container_id.clone();
+        }
+        if self.container_ligation_id.trim().is_empty() {
+            self.container_ligation_id = container_id.clone();
+        }
+        if self.container_mw_id.trim().is_empty() {
+            self.container_mw_id = container_id;
+        }
+    }
+
     pub fn render(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        self.update_heartbeat();
+        self.prefill_container_ids();
         self.poll_tfbs_task(ctx);
         self.sync_from_engine_display();
         egui::TopBottomPanel::top("dna_top_buttons").show(ctx, |ui| {
@@ -574,6 +689,13 @@ impl MainAreaDna {
             {
                 self.export_active_sequence();
             }
+            if ui
+                .button("Export SVG")
+                .on_hover_text("Export active sequence map SVG via engine RenderSequenceSvg")
+                .clicked()
+            {
+                self.export_active_sequence_svg();
+            }
             ui.separator();
             if ui
                 .button("Engine Ops")
@@ -605,12 +727,6 @@ impl MainAreaDna {
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                        let heartbeat_now = self.heartbeat_last_ms.unwrap_or(0);
-                        let heartbeat_delta = self.heartbeat_delta_ms.unwrap_or(0);
-                        ui.monospace(format!(
-                            "heartbeat frame={} now_ms={} delta_ms={}",
-                            self.heartbeat_frame, heartbeat_now, heartbeat_delta
-                        ));
                         ui.label("IDs are comma-separated sequence IDs.");
                         let template_seq_id = self.seq_id.clone().unwrap_or_default();
 
@@ -815,6 +931,256 @@ impl MainAreaDna {
                         } else {
                             self.op_status = "Invalid mutagenesis parameters".to_string();
                         }
+                    }
+                });
+
+                ui.separator();
+                ui.label("Region extraction and engine settings");
+                ui.horizontal(|ui| {
+                    ui.label("Extract from");
+                    ui.text_edit_singleline(&mut self.extract_from);
+                    ui.label("to");
+                    ui.text_edit_singleline(&mut self.extract_to);
+                    ui.label("output_id");
+                    ui.text_edit_singleline(&mut self.extract_output_id);
+                    if ui.button("Extract Region").clicked() {
+                        let template = self.seq_id.clone().unwrap_or_default();
+                        if template.is_empty() {
+                            self.op_status = "No active template sequence".to_string();
+                        } else if let (Ok(from), Ok(to)) = (
+                            self.extract_from.parse::<usize>(),
+                            self.extract_to.parse::<usize>(),
+                        ) {
+                            self.apply_operation_with_feedback(Operation::ExtractRegion {
+                                input: template,
+                                from,
+                                to,
+                                output_id: if self.extract_output_id.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(self.extract_output_id.trim().to_string())
+                                },
+                            });
+                        } else {
+                            self.op_status = "Invalid ExtractRegion bounds".to_string();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Recompute Features").clicked() {
+                        let seq_id = self.seq_id.clone().unwrap_or_default();
+                        if seq_id.is_empty() {
+                            self.op_status = "No active template sequence".to_string();
+                        } else {
+                            self.apply_operation_with_feedback(Operation::RecomputeFeatures {
+                                seq_id,
+                            });
+                        }
+                    }
+                    ui.label("SetParameter name");
+                    ui.text_edit_singleline(&mut self.parameter_name);
+                    ui.label("json");
+                    ui.text_edit_singleline(&mut self.parameter_value_json);
+                    if ui.button("Set Parameter").clicked() {
+                        if self.parameter_name.trim().is_empty() {
+                            self.op_status = "SetParameter name cannot be empty".to_string();
+                        } else {
+                            match serde_json::from_str::<serde_json::Value>(
+                                self.parameter_value_json.trim(),
+                            ) {
+                                Ok(value) => {
+                                    self.apply_operation_with_feedback(Operation::SetParameter {
+                                        name: self.parameter_name.trim().to_string(),
+                                        value,
+                                    });
+                                }
+                                Err(e) => {
+                                    self.op_status = format!("Invalid SetParameter JSON value: {e}");
+                                }
+                            }
+                        }
+                    }
+                });
+
+                ui.separator();
+                ui.label("Container-first operations");
+                ui.horizontal(|ui| {
+                    ui.label("Digest container_id");
+                    ui.text_edit_singleline(&mut self.container_digest_id);
+                    ui.label("enzymes");
+                    ui.text_edit_singleline(&mut self.digest_enzymes_text);
+                    ui.label("prefix");
+                    ui.text_edit_singleline(&mut self.digest_prefix_text);
+                    if ui.button("Digest Container").clicked() {
+                        let enzymes = self
+                            .digest_enzymes_text
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>();
+                        if self.container_digest_id.trim().is_empty() {
+                            self.op_status = "Provide container_id for DigestContainer".to_string();
+                        } else if enzymes.is_empty() {
+                            self.op_status = "Provide at least one enzyme".to_string();
+                        } else {
+                            self.apply_operation_with_feedback(Operation::DigestContainer {
+                                container_id: self.container_digest_id.trim().to_string(),
+                                enzymes,
+                                output_prefix: Some(self.digest_prefix_text.clone()),
+                            });
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Merge container_ids");
+                    ui.text_edit_singleline(&mut self.container_merge_ids);
+                    if ui.button("Merge ContainersById").clicked() {
+                        let container_ids = Self::parse_ids(&self.container_merge_ids);
+                        if container_ids.is_empty() {
+                            self.op_status =
+                                "Provide at least one container_id for merge".to_string();
+                        } else {
+                            self.apply_operation_with_feedback(Operation::MergeContainersById {
+                                container_ids,
+                                output_prefix: Some("merged_container".to_string()),
+                            });
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Ligation container_id");
+                    ui.text_edit_singleline(&mut self.container_ligation_id);
+                    ui.checkbox(
+                        &mut self.container_ligation_protocol_sticky,
+                        "Sticky (off = Blunt)",
+                    );
+                    ui.checkbox(&mut self.container_ligation_circularize, "Circularize");
+                    ui.checkbox(&mut self.container_ligation_unique, "Unique");
+                });
+                ui.horizontal(|ui| {
+                    ui.label("prefix");
+                    ui.text_edit_singleline(&mut self.container_ligation_output_prefix);
+                    if ui.button("Ligate Container").clicked() {
+                        if self.container_ligation_id.trim().is_empty() {
+                            self.op_status =
+                                "Provide container_id for LigationContainer".to_string();
+                        } else {
+                            self.apply_operation_with_feedback(Operation::LigationContainer {
+                                container_id: self.container_ligation_id.trim().to_string(),
+                                circularize_if_possible: self.container_ligation_circularize,
+                                output_id: None,
+                                protocol: if self.container_ligation_protocol_sticky {
+                                    LigationProtocol::Sticky
+                                } else {
+                                    LigationProtocol::Blunt
+                                },
+                                output_prefix: if self.container_ligation_output_prefix.is_empty() {
+                                    None
+                                } else {
+                                    Some(self.container_ligation_output_prefix.clone())
+                                },
+                                unique: Some(self.container_ligation_unique),
+                            });
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("MW container_id");
+                    ui.text_edit_singleline(&mut self.container_mw_id);
+                    ui.label("min");
+                    ui.text_edit_singleline(&mut self.container_mw_min_bp);
+                    ui.label("max");
+                    ui.text_edit_singleline(&mut self.container_mw_max_bp);
+                    ui.label("error");
+                    ui.text_edit_singleline(&mut self.container_mw_error);
+                    ui.checkbox(&mut self.container_mw_unique, "Unique");
+                });
+                ui.horizontal(|ui| {
+                    ui.label("prefix");
+                    ui.text_edit_singleline(&mut self.container_mw_output_prefix);
+                    if ui.button("Filter Container MW").clicked() {
+                        if self.container_mw_id.trim().is_empty() {
+                            self.op_status =
+                                "Provide container_id for FilterContainerByMolecularWeight"
+                                    .to_string();
+                        } else if let (Ok(min_bp), Ok(max_bp), Ok(error)) = (
+                            self.container_mw_min_bp.parse::<usize>(),
+                            self.container_mw_max_bp.parse::<usize>(),
+                            self.container_mw_error.parse::<f64>(),
+                        ) {
+                            self.apply_operation_with_feedback(
+                                Operation::FilterContainerByMolecularWeight {
+                                    container_id: self.container_mw_id.trim().to_string(),
+                                    min_bp,
+                                    max_bp,
+                                    error,
+                                    unique: self.container_mw_unique,
+                                    output_prefix: if self.container_mw_output_prefix.is_empty() {
+                                        None
+                                    } else {
+                                        Some(self.container_mw_output_prefix.clone())
+                                    },
+                                },
+                            );
+                        } else {
+                            self.op_status =
+                                "Invalid container MW parameters (min/max/error)".to_string();
+                        }
+                    }
+                });
+
+                ui.separator();
+                ui.label("Workflow runner (JSON array of operations)");
+                ui.horizontal(|ui| {
+                    ui.label("run_id");
+                    ui.text_edit_singleline(&mut self.workflow_run_id);
+                    if ui.button("Run Workflow").clicked() {
+                        let ops = serde_json::from_str::<Vec<Operation>>(
+                            self.workflow_ops_json.trim(),
+                        );
+                        match ops {
+                            Ok(ops) => {
+                                if ops.is_empty() {
+                                    self.op_status = "Workflow has no operations".to_string();
+                                } else {
+                                    self.run_workflow_with_feedback(Workflow {
+                                        run_id: if self.workflow_run_id.trim().is_empty() {
+                                            "gui-workflow".to_string()
+                                        } else {
+                                            self.workflow_run_id.trim().to_string()
+                                        },
+                                        ops,
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                self.op_status = format!("Invalid workflow JSON: {e}");
+                            }
+                        }
+                    }
+                });
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.workflow_ops_json)
+                        .desired_rows(6)
+                        .hint_text(
+                            r#"[{"Digest":{"input":"seq_1","enzymes":["EcoRI"],"output_prefix":"d"}}]"#,
+                        ),
+                );
+
+                ui.separator();
+                ui.label("Pool export");
+                ui.horizontal(|ui| {
+                    ui.label("inputs");
+                    ui.text_edit_singleline(&mut self.export_pool_inputs_text);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("pool_id");
+                    ui.text_edit_singleline(&mut self.export_pool_id);
+                    ui.label("human_id");
+                    ui.text_edit_singleline(&mut self.export_pool_human_id);
+                    if ui.button("Export Pool").clicked() {
+                        self.export_pool_to_file();
                     }
                 });
 
@@ -1394,6 +1760,9 @@ impl MainAreaDna {
 
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
         self.last_created_seq_ids = result.created_seq_ids.clone();
+        if !self.last_created_seq_ids.is_empty() {
+            self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
+        }
         if let Some(engine) = &self.engine {
             // Only auto-switch current view if exactly one sequence is produced.
             // Multi-product ops (digest/ligation/merge) can trigger heavy redraw paths;
@@ -1686,6 +2055,42 @@ impl MainAreaDna {
         self.op_error_popup = None;
     }
 
+    fn run_workflow_with_feedback(&mut self, workflow: Workflow) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let started = Instant::now();
+        let workflow_run_id = workflow.run_id.clone();
+        let apply_result = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            guard.apply_workflow(workflow)
+        };
+        match apply_result {
+            Ok(results) => {
+                if results.is_empty() {
+                    self.last_created_seq_ids.clear();
+                    self.op_status = format!(
+                        "workflow '{}' completed in {} ms with 0 operations",
+                        workflow_run_id,
+                        started.elapsed().as_millis()
+                    );
+                    self.op_error_popup = None;
+                    return;
+                }
+                let op_count = results.len();
+                let total_created: usize = results.iter().map(|r| r.created_seq_ids.len()).sum();
+                let last_result = results.last().cloned().expect("non-empty workflow results");
+                self.handle_operation_success(last_result, started);
+                self.op_status = format!(
+                    "workflow '{}' ok: {} op(s), {} created sequence(s)\n{}",
+                    workflow_run_id, op_count, total_created, self.op_status
+                );
+            }
+            Err(e) => self.handle_operation_error(e, started),
+        }
+    }
+
     fn infer_export_format(path: &str) -> ExportFormat {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".fa") || lower.ends_with(".fasta") {
@@ -1721,6 +2126,68 @@ impl MainAreaDna {
             seq_id,
             path,
             format,
+        });
+    }
+
+    fn export_active_sequence_svg(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence to export".to_string();
+            return;
+        };
+        if self.engine.is_none() {
+            self.op_status = "No engine attached".to_string();
+            return;
+        }
+        let default_name = format!("{seq_id}.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Export canceled".to_string();
+            return;
+        };
+        let path = path.display().to_string();
+        let mode = if self.is_circular() {
+            RenderSvgMode::Circular
+        } else {
+            RenderSvgMode::Linear
+        };
+        self.apply_operation_with_feedback(Operation::RenderSequenceSvg { seq_id, mode, path });
+    }
+
+    fn export_pool_to_file(&mut self) {
+        if self.engine.is_none() {
+            self.op_status = "No engine attached".to_string();
+            return;
+        }
+        let inputs = Self::parse_ids(&self.export_pool_inputs_text);
+        if inputs.is_empty() {
+            self.op_status = "Provide at least one sequence id for ExportPool".to_string();
+            return;
+        }
+        let path = rfd::FileDialog::new()
+            .set_file_name("pool.json")
+            .add_filter("JSON", &["json"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Export canceled".to_string();
+            return;
+        };
+        let path = path.display().to_string();
+        self.apply_operation_with_feedback(Operation::ExportPool {
+            inputs,
+            path,
+            pool_id: if self.export_pool_id.trim().is_empty() {
+                None
+            } else {
+                Some(self.export_pool_id.trim().to_string())
+            },
+            human_id: if self.export_pool_human_id.trim().is_empty() {
+                None
+            } else {
+                Some(self.export_pool_human_id.trim().to_string())
+            },
         });
     }
 
@@ -1814,6 +2281,11 @@ impl MainAreaDna {
             pcr_mut_position: self.pcr_mut_position.clone(),
             pcr_mut_ref: self.pcr_mut_ref.clone(),
             pcr_mut_alt: self.pcr_mut_alt.clone(),
+            extract_from: self.extract_from.clone(),
+            extract_to: self.extract_to.clone(),
+            extract_output_id: self.extract_output_id.clone(),
+            parameter_name: self.parameter_name.clone(),
+            parameter_value_json: self.parameter_value_json.clone(),
             anchored_mode_feature: self.anchored_mode_feature,
             anchored_position: self.anchored_position.clone(),
             anchored_feature_kind: self.anchored_feature_kind.clone(),
@@ -1846,6 +2318,24 @@ impl MainAreaDna {
             tfbs_display_min_true_log_odds_bits: tfbs_display.min_true_log_odds_bits,
             tfbs_display_use_true_log_odds_quantile: tfbs_display.use_true_log_odds_quantile,
             tfbs_display_min_true_log_odds_quantile: tfbs_display.min_true_log_odds_quantile,
+            container_digest_id: self.container_digest_id.clone(),
+            container_merge_ids: self.container_merge_ids.clone(),
+            container_ligation_id: self.container_ligation_id.clone(),
+            container_ligation_output_prefix: self.container_ligation_output_prefix.clone(),
+            container_ligation_protocol_sticky: self.container_ligation_protocol_sticky,
+            container_ligation_circularize: self.container_ligation_circularize,
+            container_ligation_unique: self.container_ligation_unique,
+            container_mw_id: self.container_mw_id.clone(),
+            container_mw_min_bp: self.container_mw_min_bp.clone(),
+            container_mw_max_bp: self.container_mw_max_bp.clone(),
+            container_mw_error: self.container_mw_error.clone(),
+            container_mw_unique: self.container_mw_unique,
+            container_mw_output_prefix: self.container_mw_output_prefix.clone(),
+            workflow_run_id: self.workflow_run_id.clone(),
+            workflow_ops_json: self.workflow_ops_json.clone(),
+            export_pool_inputs_text: self.export_pool_inputs_text.clone(),
+            export_pool_id: self.export_pool_id.clone(),
+            export_pool_human_id: self.export_pool_human_id.clone(),
         }
     }
 
@@ -1874,6 +2364,11 @@ impl MainAreaDna {
         self.pcr_mut_position = s.pcr_mut_position;
         self.pcr_mut_ref = s.pcr_mut_ref;
         self.pcr_mut_alt = s.pcr_mut_alt;
+        self.extract_from = s.extract_from;
+        self.extract_to = s.extract_to;
+        self.extract_output_id = s.extract_output_id;
+        self.parameter_name = s.parameter_name;
+        self.parameter_value_json = s.parameter_value_json;
         self.anchored_mode_feature = s.anchored_mode_feature;
         self.anchored_position = s.anchored_position;
         self.anchored_feature_kind = s.anchored_feature_kind;
@@ -1898,6 +2393,24 @@ impl MainAreaDna {
         self.tfbs_per_tf_min_llr_bits = s.tfbs_per_tf_min_llr_bits;
         self.tfbs_per_tf_min_llr_quantile = s.tfbs_per_tf_min_llr_quantile;
         self.tfbs_clear_existing = s.tfbs_clear_existing;
+        self.container_digest_id = s.container_digest_id;
+        self.container_merge_ids = s.container_merge_ids;
+        self.container_ligation_id = s.container_ligation_id;
+        self.container_ligation_output_prefix = s.container_ligation_output_prefix;
+        self.container_ligation_protocol_sticky = s.container_ligation_protocol_sticky;
+        self.container_ligation_circularize = s.container_ligation_circularize;
+        self.container_ligation_unique = s.container_ligation_unique;
+        self.container_mw_id = s.container_mw_id;
+        self.container_mw_min_bp = s.container_mw_min_bp;
+        self.container_mw_max_bp = s.container_mw_max_bp;
+        self.container_mw_error = s.container_mw_error;
+        self.container_mw_unique = s.container_mw_unique;
+        self.container_mw_output_prefix = s.container_mw_output_prefix;
+        self.workflow_run_id = s.workflow_run_id;
+        self.workflow_ops_json = s.workflow_ops_json;
+        self.export_pool_inputs_text = s.export_pool_inputs_text;
+        self.export_pool_id = s.export_pool_id;
+        self.export_pool_human_id = s.export_pool_human_id;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -1927,15 +2440,16 @@ impl MainAreaDna {
         let Some(engine) = &self.engine else {
             return;
         };
+        let key = self.engine_ops_state_key();
         let value = match serde_json::to_value(self.current_engine_ops_state()) {
             Ok(v) => v,
             Err(_) => return,
         };
         let mut guard = engine.write().expect("Engine lock poisoned");
-        guard
-            .state_mut()
-            .metadata
-            .insert(self.engine_ops_state_key(), value);
+        if guard.state().metadata.get(&key) == Some(&value) {
+            return;
+        }
+        guard.state_mut().metadata.insert(key, value);
     }
 
     fn load_engine_ops_state(&mut self) {
@@ -1955,18 +2469,6 @@ impl MainAreaDna {
                 self.apply_engine_ops_state(state);
             }
         }
-    }
-
-    fn update_heartbeat(&mut self) {
-        self.heartbeat_frame = self.heartbeat_frame.saturating_add(1);
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        self.heartbeat_delta_ms = self
-            .heartbeat_last_ms
-            .and_then(|prev| now_ms.checked_sub(prev));
-        self.heartbeat_last_ms = Some(now_ms);
     }
 
     fn render_error_popup(&mut self, ctx: &egui::Context) {
