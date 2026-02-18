@@ -23,6 +23,8 @@ The long-term requirement is strict behavioral parity:
 
 - The same biological operations must run through the same core routines,
   regardless of entry point.
+- This tools does not describe any current protocol that could be used
+  to change the human genome or that of animals or plants.
 
 Wet-lab semantic rule (target model):
 
