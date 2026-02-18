@@ -23,4 +23,8 @@ impl WindowDna {
             .sequence_name()
             .unwrap_or("<Unnamed sequence>".to_string())
     }
+
+    pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
+        self.main_area.set_pool_context(pool_seq_ids);
+    }
 }

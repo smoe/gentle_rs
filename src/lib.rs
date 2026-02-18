@@ -4,6 +4,7 @@ use enzymes::Enzymes;
 use lazy_static::lazy_static;
 use translations::Translations;
 
+pub mod about;
 pub mod amino_acids;
 pub mod app;
 pub mod dna_display;

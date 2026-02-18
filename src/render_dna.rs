@@ -1,7 +1,6 @@
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
-    render_dna_linear::RenderDnaLinear,
-    restriction_enzyme::RestrictionEnzymeKey,
+    render_dna_linear::RenderDnaLinear, restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
 use gb_io::seq::Feature;

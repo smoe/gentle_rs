@@ -22,6 +22,14 @@ The long-term requirement is strict behavioral parity:
 - The same biological operations must run through the same core routines,
   regardless of entry point.
 
+Wet-lab semantic rule (target model):
+
+- A main DNA window represents a wet-lab container (tube/vial), not a single
+  guaranteed molecule.
+- A container may hold multiple candidate molecules/fragments.
+- Filter-like steps (PCR, gel extraction, in silico selection) produce a new
+  container with a narrower candidate set.
+
 ## 2. Core architecture rule
 
 GENtle should follow a single-engine architecture:
@@ -43,6 +51,8 @@ They only translate user input into engine operations and display results.
 - New automation CLI: `src/bin/gentle_cli.rs`
 - Protocol draft doc: `docs/protocol.md`
 - CLI docs updated: `docs/cli.md`
+- Project lineage/provenance graph in engine state (`ProjectState.lineage`)
+- Main window lineage view (branch/merge aware sequence history list)
 
 ### Engine capabilities currently implemented
 
@@ -100,16 +110,26 @@ Legend:
 
 | Operation | GUI | CLI (`gentle_cli`) | JS shell | Lua shell | Engine |
 |---|---|---|---|---|---|
-| `LoadFile` | Wired | Wired | Missing | Missing | Implemented |
-| `SaveFile` | Missing | Wired | Missing | Missing | Implemented |
-| `Digest` | Missing | Wired | Missing | Missing | Implemented |
-| `Ligation` | Missing | Wired | Missing | Missing | Implemented |
-| `Pcr` | Missing | Wired | Missing | Missing | Implemented |
-| `ExtractRegion` | Missing | Wired | Missing | Missing | Implemented |
-| `SetDisplayVisibility` | Wired | Wired | Missing | Missing | Implemented |
-| `SetTopology` | Wired | Wired | Missing | Missing | Implemented |
-| `RecomputeFeatures` | Missing | Wired | Missing | Missing | Implemented |
-| `Workflow` (multi-op run) | Missing | Wired | Missing | Missing | Implemented |
+| `LoadFile` | Wired | Wired | Exposed | Exposed | Implemented |
+| `SaveFile` | Missing | Wired | Exposed | Exposed | Implemented |
+| `Digest` | Missing | Wired | Exposed | Exposed | Implemented |
+| `MergeContainers` | Missing | Wired | Exposed | Exposed | Implemented |
+| `Ligation` | Missing | Wired | Exposed | Exposed | Implemented |
+| `Pcr` | Missing | Wired | Exposed | Exposed | Implemented |
+| `PcrAdvanced` | Missing | Wired | Exposed | Exposed | Implemented |
+| `PcrMutagenesis` | Missing | Wired | Exposed | Exposed | Implemented |
+| `ExtractRegion` | Missing | Wired | Exposed | Exposed | Implemented |
+| `SelectCandidate` | Missing | Wired | Exposed | Exposed | Implemented |
+| `FilterByMolecularWeight` | Missing | Wired | Exposed | Exposed | Implemented |
+| `Reverse` | Wired | Wired | Exposed | Exposed | Implemented |
+| `Complement` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ReverseComplement` | Wired | Wired | Exposed | Exposed | Implemented |
+| `Branch` | Wired | Wired | Exposed | Exposed | Implemented |
+| `SetDisplayVisibility` | Wired | Wired | Exposed | Exposed | Implemented |
+| `SetTopology` | Wired | Wired | Exposed | Exposed | Implemented |
+| `RecomputeFeatures` | Missing | Wired | Exposed | Exposed | Implemented |
+| `SetParameter` | Missing | Wired | Exposed | Exposed | Implemented |
+| `Workflow` (multi-op run) | Missing | Wired | Exposed | Exposed | Implemented |
 
 Notes from current code:
 
@@ -118,7 +138,8 @@ Notes from current code:
 - GUI does not yet expose save/digest/ligation/PCR/extract/workflow actions as
   engine operations.
 - CLI exposes all implemented operations and workflow execution.
-- JS/Lua parity wiring is still pending.
+- JS/Lua now expose generic operation/workflow bridges through `GentleEngine`
+  (`apply_operation`, `apply_workflow`), with convenience helpers still present.
 
 Immediate parity goal for Step 1 completion:
 
@@ -135,6 +156,17 @@ Immediate parity goal for Step 1 completion:
 
 - `sequences: HashMap<SeqId, DNAsequence>`
 - `metadata: HashMap<String, serde_json::Value>`
+- `lineage: LineageGraph`
+  - `nodes` (sequence lineage nodes with origin + creation op)
+  - `seq_to_node` (current sequence id -> latest lineage node)
+  - `edges` (parent -> child derivation edges, including multi-parent ligation)
+
+Planned extension for wet-lab semantics:
+
+- Introduce explicit container/pool entities so operations can target
+  "all candidates in container X" instead of one selected sequence id.
+- Keep `SelectCandidate` as explicit in-silico disambiguation when multiple
+  possible products exist.
 
 ### Operation-based execution
 
@@ -252,12 +284,22 @@ Important separation:
 
 Add operations to engine and CLI:
 
-- `Ligate`
+- `MergeContainers` (or `Mix`)
+- protocol-driven `Ligation` over merged candidate pools
 - `PCR`
 - region extraction/edit operations
 - annotation operations
 
 Then migrate JS/Lua wrappers to call engine instead of bespoke logic.
+
+Ligation protocol rule (planned):
+
+- `Ligation` must accept a `protocol` argument.
+- End compatibility behavior is derived from protocol, not free-form booleans.
+- Built-in minimal protocols:
+  - `sticky`
+  - `blunt`
+- Additional established protocols can be added as named presets later.
 
 ### Phase B: GUI migration
 
@@ -305,8 +347,9 @@ If work is interrupted, resume in this order:
 
 ## 11. Current known gaps
 
-- Lua shell does not yet expose `digest`
-- JS/Lua/GUI are not yet fully migrated to a shared engine API
+- GUI is not yet fully migrated to the shared operation API surface
+- Container/pool semantics are not yet first-class in engine state
+- Ligation is not yet protocol-driven and sticky-end compatibility aware
 - View model contract is not yet formalized
 - Operation set is still a subset of required cloning workflows
 

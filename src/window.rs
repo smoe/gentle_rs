@@ -23,4 +23,10 @@ impl Window {
             Self::Dna(window) => window.name(),
         }
     }
+
+    pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
+        match self {
+            Self::Dna(window) => window.set_pool_context(pool_seq_ids),
+        }
+    }
 }

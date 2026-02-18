@@ -75,6 +75,9 @@ rustyline = "*"
 mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
 deno_core = "*"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-foundation = "0.2.2"
+
 #[build-dependencies]
 #winresource = "*" # For Windows app icon
 
