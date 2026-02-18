@@ -14,7 +14,7 @@ build = "build.rs"
 [package.metadata.bundle]
 identifier = "com.example.gentle"
 icon = ["assets/icon.icns"]  # Path to your .icns file
-resources = ["assets/", "Credits.rtf"]      # Additional resources if needed
+resources = ["assets/", "docs/", "Credits.rtf"]      # Additional resources if needed
 
 
 [[bin]]
@@ -61,6 +61,7 @@ eframe = { version = "*", features = [
 	"persistence",
 ] }
 egui_extras = { version = "*", features = ["all_loaders"] }
+egui_commonmark = { version = "0.18.0", default-features = false, features = ["pulldown_cmark", "load-images"] }
 egui-file-dialog = "*" #  For file dialogs.
 copypasta = "*" # For clipboard things not in egui
 image = { version = "*", features = ["jpeg", "png"] }

@@ -80,6 +80,7 @@ fn feature_color(feature: &Feature) -> &'static str {
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
         "CDS" => "#cc1f1f",
         "GENE" => "#1f4fcc",
+        "MRNA" => "#b4640a",
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => "#238023",
         _ => "#6e6e6e",
     }
@@ -153,6 +154,16 @@ fn collect_features(dna: &DNAsequence, display: &DisplaySettings) -> Vec<Feature
     let mut ret = Vec::new();
     for feature in dna.features() {
         if feature.kind.to_string().to_ascii_uppercase() == "SOURCE" {
+            continue;
+        }
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if kind == "CDS" && !display.show_cds_features {
+            continue;
+        }
+        if kind == "GENE" && !display.show_gene_features {
+            continue;
+        }
+        if kind == "MRNA" && !display.show_mrna_features {
             continue;
         }
         if is_tfbs_feature(feature) {

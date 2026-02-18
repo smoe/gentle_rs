@@ -68,6 +68,13 @@ They only translate user input into engine operations and display results.
   - Lua shell resource sync (`sync_rebase`, `sync_jaspar`)
   - GUI File menu import actions (`Import REBASE Data...`, `Import JASPAR Data...`)
   - Runtime loading of local REBASE enzyme snapshot and local JASPAR motif registry
+- Reference genome prepare/extract baseline:
+  - engine operation `PrepareGenome` (one-time local install/cache of sequence + annotation)
+  - engine operation `ExtractGenomeRegion` (indexed region retrieval into project sequence state)
+  - optional `cache_dir` override passed through both operations
+  - progress events for background genome preparation in GUI
+  - annotation-derived gene listing API for GUI gene-name filtering
+  - local manifest + FASTA index persisted per prepared genome
 - Built-in JASPAR motif snapshot (2026 CORE non-redundant derived) is shipped in `assets/jaspar.motifs.json`
     with runtime override at `data/resources/jaspar.motifs.json`
 - TFBS runtime guardrails:
@@ -81,6 +88,9 @@ They only translate user input into engine operations and display results.
   - four optional criteria (`llr_bits`, `llr_quantile`,
     `true_log_odds_bits`, `true_log_odds_quantile`)
   - filter state is synchronized into `ProjectState.display`
+- Linear map viewport state is first-class and persistent:
+  - zoom/pan state (`linear_view_start_bp`, `linear_view_span_bp`)
+  - display-density LOD hides cluttered tracks at coarse scales (notably restriction sites)
 - SVG export parity for TFBS filtering:
   - linear/circular SVG export uses the same TFBS display criteria as GUI
   - no recomputation required to reduce visual TFBS density
@@ -94,6 +104,8 @@ They only translate user input into engine operations and display results.
   - `RenderSequenceSvg`
   - `RenderLineageSvg`
   - `ExportPool`
+  - `PrepareGenome`
+  - `ExtractGenomeRegion`
   - `DigestContainer`
   - `MergeContainersById`
   - `LigationContainer`
@@ -113,6 +125,7 @@ They only translate user input into engine operations and display results.
   - `ReverseComplement`
   - `Branch`
   - `SetDisplayVisibility`
+  - `SetLinearViewport`
   - `SetTopology`
   - `RecomputeFeatures`
   - `SetParameter`
@@ -164,6 +177,7 @@ Legend:
 | Sequence SVG export | Done | Done | Done | Done | Done |
 | Lineage SVG export | Done | Done | Done | Done | Done |
 | Pool export (overhang-aware) | Done | Done | Done | Done | Done |
+| Reference genome prepare + region extraction | Done | Done | Done | Done | Done |
 | State summary (seq + container) | Done | Done | Done | Done | Done |
 | Shared operation protocol | Partial | Done | Done | Done | Done |
 
@@ -186,6 +200,8 @@ Legend:
 | `RenderSequenceSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderLineageSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExportPool` | Wired | Wired | Exposed | Exposed | Implemented |
+| `PrepareGenome` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ExtractGenomeRegion` | Wired | Wired | Exposed | Exposed | Implemented |
 | `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
 | `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
 | `LigationContainer` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -205,6 +221,7 @@ Legend:
 | `ReverseComplement` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Branch` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SetDisplayVisibility` | Wired | Wired | Exposed | Exposed | Implemented |
+| `SetLinearViewport` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SetTopology` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RecomputeFeatures` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SetParameter` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -221,6 +238,11 @@ Notes from current code:
 - GUI now exposes direct actions for `ExtractRegion`, `RecomputeFeatures`,
   `SetParameter`, container-first operations, sequence SVG rendering, lineage
   SVG rendering, and workflow execution through shared engine operations.
+- GUI now exposes dedicated controls for `PrepareGenome` and
+  `ExtractGenomeRegion` from the main-window menu as separate dialogs:
+  `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
+- GUI genome selection is catalog-backed dropdown (no free-text genome id
+  entry), and retrieval provides gene-name filtering from parsed annotations.
 - GUI operation parity is now complete for currently implemented engine
   operations.
 - CLI exposes all implemented operations (`op`/`workflow`) and adds some

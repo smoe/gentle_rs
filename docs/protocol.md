@@ -32,7 +32,7 @@ Goal:
 {
   "sequences": {"seq_id": "DNAsequence object"},
   "metadata": {"any": "json"},
-  "display": {"ui_visibility_and_tfbs_filter_state": "..."},
+  "display": {"ui_visibility_tfbs_and_linear_viewport_state": "..."},
   "lineage": {"nodes": {}, "edges": []},
   "parameters": {"max_fragments_per_container": 80000},
   "container_state": {"containers": {}, "seq_to_latest_container": {}}
@@ -66,6 +66,7 @@ Current draft operations:
 - `ReverseComplement { input, output_id? }`
 - `Branch { input, output_id? }`
 - `SetDisplayVisibility { target, visible }`
+- `SetLinearViewport { start_bp, span_bp }`
 - `SetTopology { seq_id, circular }`
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)

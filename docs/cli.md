@@ -17,6 +17,12 @@ Resource update capability status:
 - `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
 - `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
 
+Reference genome capability status:
+
+- `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`)
+- `gentle_js`: supported via `apply_operation`
+- `gentle_lua`: supported via `apply_operation`
+
 ## Build and run
 
 From the repository root:
@@ -205,6 +211,8 @@ cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json 
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
+cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
+cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","catalog_path":"catalog.json"}}'
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -384,6 +392,12 @@ Set visibility of a GUI-equivalent display toggle (example: features):
 {"SetDisplayVisibility":{"target":"Features","visible":false}}
 ```
 
+Set linear-map viewport (zoom/pan state):
+
+```json
+{"SetLinearViewport":{"start_bp":1000,"span_bp":5000}}
+```
+
 Set an in-silico engine parameter (example: cap fragment/product combinatorics):
 
 ```json
@@ -409,11 +423,38 @@ Render lineage SVG (engine operation):
 {"RenderLineageSvg":{"path":"lineage.svg"}}
 ```
 
+Prepare a whole reference genome once (download/copy sequence + annotation and
+build local FASTA index):
+
+```json
+{"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 113","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+```
+
+Extract a genomic interval from the prepared cache (1-based inclusive
+coordinates):
+
+```json
+{"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 113","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+```
+
+Notes:
+
+- `PrepareGenome` is intended as a one-time setup step per genome and cache
+  location.
+- `ExtractGenomeRegion` expects the genome to have been prepared already.
+- If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
+- `cache_dir` is optional. If omitted, catalog/default cache settings are used.
+- `chromosome` accepts exact contig names and also tolerates `chr` prefix
+  differences (`1` vs `chr1`).
+
 Available `target` values:
 
 - `SequencePanel`
 - `MapPanel`
 - `Features`
+- `CdsFeatures`
+- `GeneFeatures`
+- `MrnaFeatures`
 - `Tfbs`
 - `RestrictionEnzymes`
 - `GcContents`
@@ -429,8 +470,8 @@ Save as GenBank:
 ### Current limitations in the new operation layer
 
 - `import-pool` is currently a CLI utility command and not yet an engine operation.
-- GUI still has a few direct action gaps for newer engine operations (for example
-  container-first operation actions and anchored-region forms).
+- `gentle_cli` does not yet expose dedicated `genomes ...` convenience
+  subcommands; genome workflows currently use `op`/`workflow` JSON.
 
 ## Error behavior
 

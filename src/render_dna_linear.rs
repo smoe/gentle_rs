@@ -9,7 +9,7 @@ use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, Vec2,
 };
 use gb_io::seq::{Feature, Location};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 
 const BASELINE_STROKE: f32 = 2.0;
@@ -22,6 +22,25 @@ const ORF_HEIGHT: f32 = 6.0;
 const GC_STRIP_HEIGHT: f32 = 6.0;
 const METHYLATION_TICK: f32 = 10.0;
 const RE_LABEL_BASE_OFFSET: f32 = 76.0;
+const RE_SITE_MAX_BP_PER_PX: f32 = 200.0;
+const RE_LABEL_MAX_BP_PER_PX: f32 = 30.0;
+const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
+const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
+
+#[derive(Debug, Clone, Copy)]
+struct LinearViewport {
+    start: usize,
+    end: usize,
+    span: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LinearDetailLevel {
+    show_feature_labels: bool,
+    show_restriction_sites: bool,
+    show_restriction_labels: bool,
+    show_methylation_sites: bool,
+}
 
 #[derive(Debug, Clone)]
 struct FeaturePosition {
@@ -57,7 +76,7 @@ pub struct RenderDnaLinear {
 
 impl RenderDnaLinear {
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
-        let sequence_length = dna.read().expect("DNA lock poisoned").len();
+        let sequence_length = dna.read().map(|d| d.len()).unwrap_or(0);
         Self {
             dna,
             display,
@@ -75,51 +94,76 @@ impl RenderDnaLinear {
         &self.area
     }
 
-    fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut needs_update = false;
+    fn is_rect_usable(rect: Rect) -> bool {
+        rect.min.x.is_finite()
+            && rect.min.y.is_finite()
+            && rect.max.x.is_finite()
+            && rect.max.y.is_finite()
+            && rect.width() > 0.0
+            && rect.height() > 0.0
+    }
 
-        let new_area = ui.available_rect_before_wrap();
-        if self.area != new_area {
-            needs_update = true;
-            self.area = new_area;
-        }
-
-        needs_update
-            || self
-                .display
-                .read()
-                .expect("DNA display lock poisoned")
-                .update_layout()
-                .update_map_dna()
+    fn layout_needs_recomputing(&self) -> bool {
+        self.display
+            .read()
+            .map(|d| d.update_layout().update_map_dna())
+            .unwrap_or(false)
     }
 
     fn layout_was_updated(&self) {
-        self.display
-            .write()
-            .expect("DNA display lock poisoned")
-            .update_layout_mut()
-            .map_dna_updated();
+        if let Ok(mut display) = self.display.write() {
+            display.update_layout_mut().map_dna_updated();
+        }
     }
 
     fn baseline_y(&self) -> f32 {
         self.area.center().y
     }
 
-    fn bp_to_x(&self, bp: usize) -> f32 {
+    fn viewport(&self) -> LinearViewport {
         if self.sequence_length == 0 {
+            return LinearViewport {
+                start: 0,
+                end: 0,
+                span: 0,
+            };
+        }
+        let (start_bp, span_bp) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_view_start_bp(),
+                    display.linear_view_span_bp(),
+                )
+            })
+            .unwrap_or((0, self.sequence_length));
+        let span = if span_bp == 0 || span_bp > self.sequence_length {
+            self.sequence_length
+        } else {
+            span_bp
+        };
+        let max_start = self.sequence_length.saturating_sub(span);
+        let start = start_bp.min(max_start);
+        let end = start.saturating_add(span).min(self.sequence_length);
+        LinearViewport { start, end, span }
+    }
+
+    fn bp_to_x(&self, bp: usize, viewport: LinearViewport) -> f32 {
+        if viewport.span == 0 {
             return self.area.left();
         }
-        let frac = bp as f32 / self.sequence_length as f32;
+        let frac = (bp.saturating_sub(viewport.start)) as f32 / viewport.span as f32;
         self.area.left() + frac * self.area.width()
     }
 
-    fn x_to_bp(&self, x: f32) -> usize {
-        if self.sequence_length == 0 {
+    fn x_to_bp(&self, x: f32, viewport: LinearViewport) -> usize {
+        if viewport.span == 0 {
             return 0;
         }
-        let frac = ((x - self.area.left()) / self.area.width()).clamp(0.0, 1.0);
-        let bp = (frac * self.sequence_length as f32).floor() as usize;
-        bp.min(self.sequence_length.saturating_sub(1))
+        let frac = ((x - self.area.left()) / self.area.width().max(1.0)).clamp(0.0, 1.0);
+        let bp = viewport.start + (frac * viewport.span as f32).floor() as usize;
+        bp.min(viewport.end.saturating_sub(1))
     }
 
     fn normalize_pos(&self, pos: isize) -> usize {
@@ -130,12 +174,56 @@ impl RenderDnaLinear {
         (((pos % len) + len) % len) as usize
     }
 
+    fn range_overlap(
+        a_start: usize,
+        a_end_exclusive: usize,
+        b_start: usize,
+        b_end_exclusive: usize,
+    ) -> Option<(usize, usize)> {
+        let start = a_start.max(b_start);
+        let end = a_end_exclusive.min(b_end_exclusive);
+        (start < end).then_some((start, end))
+    }
+
+    fn bp_per_px(&self, viewport: LinearViewport) -> f32 {
+        if viewport.span == 0 {
+            return 0.0;
+        }
+        viewport.span as f32 / self.area.width().max(1.0)
+    }
+
+    fn detail_level(&self, viewport: LinearViewport) -> LinearDetailLevel {
+        let bp_per_px = self.bp_per_px(viewport);
+        LinearDetailLevel {
+            show_feature_labels: bp_per_px <= FEATURE_LABEL_MAX_BP_PER_PX,
+            show_restriction_sites: bp_per_px <= RE_SITE_MAX_BP_PER_PX,
+            show_restriction_labels: bp_per_px <= RE_LABEL_MAX_BP_PER_PX,
+            show_methylation_sites: bp_per_px <= METHYLATION_MAX_BP_PER_PX,
+        }
+    }
+
     fn draw_feature(
         feature: &Feature,
+        show_cds_features: bool,
+        show_gene_features: bool,
+        show_mrna_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
+        hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
+            return false;
+        }
+        let feature_kind = feature.kind.to_string().to_ascii_uppercase();
+        if hidden_feature_kinds.contains(&feature_kind) {
+            return false;
+        }
+        if !RenderDna::feature_passes_kind_filter(
+            feature,
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+        ) {
             return false;
         }
         if RenderDna::is_tfbs_feature(feature) {
@@ -161,6 +249,21 @@ impl RenderDnaLinear {
         }
         lane_ends.push(end);
         lane_ends.len() - 1
+    }
+
+    fn tick_step(span: usize) -> usize {
+        if span <= 1 {
+            return 1;
+        }
+        let raw = (span as f64 / 8.0).max(1.0);
+        let base = 10_f64.powf(raw.log10().floor());
+        for scale in [1.0, 2.0, 5.0, 10.0] {
+            let step = (base * scale).round() as usize;
+            if (step as f64) >= raw {
+                return step.max(1);
+            }
+        }
+        span.max(1)
     }
 
     fn collect_location_strands(location: &Location, reverse: bool, strands: &mut Vec<bool>) {
@@ -194,7 +297,7 @@ impl RenderDnaLinear {
         }
     }
 
-    fn layout_features(&mut self) {
+    fn layout_features(&mut self, viewport: LinearViewport) {
         self.features.clear();
         if self.sequence_length == 0 {
             return;
@@ -225,18 +328,49 @@ impl RenderDnaLinear {
         }
 
         let mut seeds: Vec<Seed> = Vec::new();
-        let (show_tfbs, tfbs_display_criteria) = {
-            let display = self.display.read().expect("DNA display lock poisoned");
-            (display.show_tfbs(), display.tfbs_display_criteria())
-        };
+        let (
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+            show_tfbs,
+            tfbs_display_criteria,
+            hidden_feature_kinds,
+        ) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.show_cds_features(),
+                    display.show_gene_features(),
+                    display.show_mrna_features(),
+                    display.show_tfbs(),
+                    display.tfbs_display_criteria(),
+                    display.hidden_feature_kinds().clone(),
+                )
+            })
+            .unwrap_or((
+                true,
+                true,
+                true,
+                false,
+                TfbsDisplayCriteria::default(),
+                BTreeSet::new(),
+            ));
         let features = self
             .dna
             .read()
-            .expect("DNA lock poisoned")
-            .features()
-            .to_owned();
+            .map(|dna| dna.features().to_owned())
+            .unwrap_or_default();
         for (feature_number, feature) in features.iter().enumerate() {
-            if !Self::draw_feature(feature, show_tfbs, tfbs_display_criteria) {
+            if !Self::draw_feature(
+                feature,
+                show_cds_features,
+                show_gene_features,
+                show_mrna_features,
+                show_tfbs,
+                tfbs_display_criteria,
+                &hidden_feature_kinds,
+            ) {
                 continue;
             }
 
@@ -248,15 +382,29 @@ impl RenderDnaLinear {
                 continue;
             }
 
-            let mut from = self.normalize_pos(raw_from as isize);
-            let mut to = self.normalize_pos(raw_to as isize);
+            let mut from = raw_from as usize;
+            let mut to = raw_to as usize;
             if to < from {
                 std::mem::swap(&mut to, &mut from);
             }
+            if from >= self.sequence_length {
+                continue;
+            }
+            if to >= self.sequence_length {
+                to = self.sequence_length.saturating_sub(1);
+            }
 
-            let x1 = self.bp_to_x(from).max(self.area.left());
-            let end_bp = to.saturating_add(1).min(self.sequence_length);
-            let x2 = self.bp_to_x(end_bp).max(x1 + 1.0).min(self.area.right());
+            let feature_end_exclusive = to.saturating_add(1).min(self.sequence_length);
+            let Some((visible_start, visible_end)) =
+                Self::range_overlap(from, feature_end_exclusive, viewport.start, viewport.end)
+            else {
+                continue;
+            };
+            let x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
+            let x2 = self
+                .bp_to_x(visible_end, viewport)
+                .max(x1 + 1.0)
+                .min(self.area.right());
             let label = RenderDna::feature_name(feature);
 
             seeds.push(Seed {
@@ -355,7 +503,7 @@ impl RenderDnaLinear {
         if !self.area.contains(Pos2::new(x, self.baseline_y())) {
             return Err("Coordinate is outside the DNA visualization area.".to_string());
         }
-        Ok(self.x_to_bp(x) as i64)
+        Ok(self.x_to_bp(x, self.viewport()) as i64)
     }
 
     pub fn on_hover(&mut self, pointer_state: PointerState) {
@@ -372,28 +520,25 @@ impl RenderDnaLinear {
     }
 
     pub fn on_double_click(&mut self, pointer_state: PointerState) {
-        self.display
-            .write()
-            .expect("DNA display lock poisoned")
-            .deselect();
+        if let Ok(mut display) = self.display.write() {
+            display.deselect();
+        }
 
         if let Some(pos) = pointer_state.latest_pos() {
             if let Some(feature) = self.get_clicked_feature(pos) {
                 let selection = Selection::new(feature.from, feature.to, self.sequence_length);
-                self.display
-                    .write()
-                    .expect("DNA display lock poisoned")
-                    .select(selection);
+                if let Ok(mut display) = self.display.write() {
+                    display.select(selection);
+                }
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
                 let selection = Selection::new(
                     re_pos.key().from() as usize,
                     re_pos.key().to() as usize,
                     self.sequence_length,
                 );
-                self.display
-                    .write()
-                    .expect("DNA display lock poisoned")
-                    .select(selection);
+                if let Ok(mut display) = self.display.write() {
+                    display.select(selection);
+                }
             }
         }
     }
@@ -409,23 +554,24 @@ impl RenderDnaLinear {
         );
     }
 
-    fn draw_bp_ticks(&self, painter: &egui::Painter) {
-        if self.sequence_length == 0 {
+    fn draw_bp_ticks(&self, painter: &egui::Painter, viewport: LinearViewport) {
+        if viewport.span == 0 {
             return;
         }
         let y = self.baseline_y();
-        let mut tick: usize = 1;
-        while tick * 10 < self.sequence_length {
-            tick *= 10;
-        }
+        let tick = Self::tick_step(viewport.span);
         let font = FontId {
             size: 9.0,
             family: FontFamily::Monospace,
         };
 
-        let mut pos = tick;
-        while pos < self.sequence_length {
-            let x = self.bp_to_x(pos);
+        let mut pos = if viewport.start == 0 {
+            0
+        } else {
+            ((viewport.start / tick) + 1) * tick
+        };
+        while pos < viewport.end {
+            let x = self.bp_to_x(pos, viewport);
             painter.line_segment(
                 [Pos2::new(x, y - 4.0), Pos2::new(x, y + 4.0)],
                 Stroke::new(1.0, Color32::DARK_GRAY),
@@ -441,13 +587,12 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_name_and_length(&self, painter: &egui::Painter) {
+    fn draw_name_and_length(&self, painter: &egui::Painter, viewport: LinearViewport) {
         let name = self
             .dna
             .read()
-            .expect("DNA lock poisoned")
-            .name()
-            .clone()
+            .ok()
+            .and_then(|dna| dna.name().clone())
             .unwrap_or_else(|| "<no name>".to_string());
         painter.text(
             Pos2::new(self.area.left() + 6.0, self.area.top() + 6.0),
@@ -462,7 +607,17 @@ impl RenderDnaLinear {
         painter.text(
             Pos2::new(self.area.right() - 6.0, self.area.top() + 6.0),
             Align2::RIGHT_TOP,
-            format!("{} bp", self.sequence_length),
+            if viewport.span > 0 && viewport.span < self.sequence_length {
+                format!(
+                    "view {}..{} ({} bp) of {} bp",
+                    viewport.start.saturating_add(1),
+                    viewport.end,
+                    viewport.span,
+                    self.sequence_length
+                )
+            } else {
+                format!("{} bp", self.sequence_length)
+            },
             FontId {
                 size: 11.0,
                 family: FontFamily::Monospace,
@@ -482,17 +637,29 @@ impl RenderDnaLinear {
         colors
     }
 
-    fn draw_orf(&self, painter: &egui::Painter, orf: &OpenReadingFrame, color: Color32) {
+    fn draw_orf(
+        &self,
+        painter: &egui::Painter,
+        orf: &OpenReadingFrame,
+        color: Color32,
+        viewport: LinearViewport,
+    ) {
         let from = self.normalize_pos(orf.from() as isize);
         let to = self.normalize_pos(orf.to() as isize);
         let start = from.min(to);
-        let end = from.max(to);
-        if start == end {
+        let end_exclusive = from.max(to).saturating_add(1).min(self.sequence_length);
+        if start >= end_exclusive {
             return;
         }
 
-        let x1 = self.bp_to_x(start);
-        let x2 = self.bp_to_x(end).max(x1 + 1.0);
+        let Some((draw_start, draw_end)) =
+            Self::range_overlap(start, end_exclusive, viewport.start, viewport.end)
+        else {
+            return;
+        };
+
+        let x1 = self.bp_to_x(draw_start, viewport);
+        let x2 = self.bp_to_x(draw_end, viewport).max(x1 + 1.0);
         let frame_abs = orf.frame().unsigned_abs() as f32;
         let y = if orf.is_reverse() {
             self.baseline_y() + 10.0 + frame_abs * 7.0
@@ -539,36 +706,35 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_open_reading_frames(&self, painter: &egui::Painter) {
-        if !self
+    fn draw_open_reading_frames(&self, painter: &egui::Painter, viewport: LinearViewport) {
+        let show_orfs = self
             .display
             .read()
-            .expect("DNA display lock poisoned")
-            .show_open_reading_frames()
-        {
+            .map(|display| display.show_open_reading_frames())
+            .unwrap_or(false);
+        if !show_orfs {
             return;
         }
         let colors = Self::orf_colors();
         let orfs = self
             .dna
             .read()
-            .expect("DNA lock poisoned")
-            .open_reading_frames()
-            .clone();
+            .map(|dna| dna.open_reading_frames().clone())
+            .unwrap_or_default();
         for orf in &orfs {
             if let Some(color) = colors.get(&orf.frame()) {
-                self.draw_orf(painter, orf, *color);
+                self.draw_orf(painter, orf, *color, viewport);
             }
         }
     }
 
-    fn draw_gc_contents(&self, painter: &egui::Painter) {
-        if !self
+    fn draw_gc_contents(&self, painter: &egui::Painter, viewport: LinearViewport) {
+        let show_gc = self
             .display
             .read()
-            .expect("DNA display lock poisoned")
-            .show_gc_contents()
-        {
+            .map(|display| display.show_gc_contents())
+            .unwrap_or(false);
+        if !show_gc {
             return;
         }
         let y1 = self.baseline_y() - 4.0;
@@ -576,12 +742,20 @@ impl RenderDnaLinear {
         let gc_contents = self
             .dna
             .read()
-            .expect("DNA lock poisoned")
-            .gc_content()
-            .clone();
+            .map(|dna| dna.gc_content().clone())
+            .unwrap_or_default();
         for region in gc_contents.regions() {
-            let x1 = self.bp_to_x(region.from());
-            let x2 = self.bp_to_x(region.to()).max(x1 + 1.0);
+            let region_end_exclusive = region.to().saturating_add(1).min(self.sequence_length);
+            let Some((draw_start, draw_end)) = Self::range_overlap(
+                region.from(),
+                region_end_exclusive,
+                viewport.start,
+                viewport.end,
+            ) else {
+                continue;
+            };
+            let x1 = self.bp_to_x(draw_start, viewport);
+            let x2 = self.bp_to_x(draw_end, viewport).max(x1 + 1.0);
             let color = Color32::from_rgb(
                 255 - (region.gc() * 255.0) as u8,
                 (region.gc() * 255.0) as u8,
@@ -595,24 +769,34 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_methylation_sites(&self, painter: &egui::Painter) {
-        if !self
+    fn draw_methylation_sites(
+        &self,
+        painter: &egui::Painter,
+        viewport: LinearViewport,
+        detail: LinearDetailLevel,
+    ) {
+        let show_methylation = self
             .display
             .read()
-            .expect("DNA display lock poisoned")
-            .show_methylation_sites()
-        {
+            .map(|display| display.show_methylation_sites())
+            .unwrap_or(false);
+        if !show_methylation {
+            return;
+        }
+        if !detail.show_methylation_sites {
             return;
         }
         let y = self.baseline_y();
         let sites = self
             .dna
             .read()
-            .expect("DNA lock poisoned")
-            .methylation_sites()
-            .clone();
+            .map(|dna| dna.methylation_sites().clone())
+            .unwrap_or_default();
         for site in sites.sites() {
-            let x = self.bp_to_x(*site);
+            if *site < viewport.start || *site >= viewport.end {
+                continue;
+            }
+            let x = self.bp_to_x(*site, viewport);
             painter.line_segment(
                 [Pos2::new(x, y - METHYLATION_TICK), Pos2::new(x, y - 1.0)],
                 Stroke::new(1.0, Color32::DARK_RED),
@@ -620,13 +804,13 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_features(&self, painter: &egui::Painter) {
-        if !self
+    fn draw_features(&self, painter: &egui::Painter, detail: LinearDetailLevel) {
+        let show_features = self
             .display
             .read()
-            .expect("DNA display lock poisoned")
-            .show_features()
-        {
+            .map(|display| display.show_features())
+            .unwrap_or(false);
+        if !show_features {
             return;
         }
 
@@ -665,6 +849,9 @@ impl RenderDnaLinear {
                 painter.rect_stroke(feature.rect.expand(1.0), 2.0, stroke);
             }
 
+            if !detail.show_feature_labels {
+                continue;
+            }
             let align = if feature.label_pos.y < self.baseline_y() {
                 Align2::LEFT_BOTTOM
             } else {
@@ -683,24 +870,41 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_restriction_enzyme_sites(&mut self, painter: &egui::Painter) {
+    fn draw_restriction_enzyme_sites(
+        &mut self,
+        painter: &egui::Painter,
+        viewport: LinearViewport,
+        detail: LinearDetailLevel,
+    ) {
         self.restriction_enzyme_sites.clear();
 
         if !self
             .display
             .read()
-            .expect("DNA display lock poisoned")
-            .show_restriction_enzyme_sites()
+            .map(|display| display.show_restriction_enzyme_sites())
+            .unwrap_or(false)
         {
+            return;
+        }
+        if !detail.show_restriction_sites {
+            painter.text(
+                Pos2::new(self.area.left() + 6.0, self.area.bottom() - 6.0),
+                Align2::LEFT_BOTTOM,
+                "Restriction sites hidden at this zoom; zoom in to inspect cut sites.",
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::DARK_GRAY,
+            );
             return;
         }
 
         let groups = self
             .dna
             .read()
-            .expect("DNA lock poisoned")
-            .restriction_enzyme_groups()
-            .clone();
+            .map(|dna| dna.restriction_enzyme_groups().clone())
+            .unwrap_or_default();
 
         let mut keys: Vec<_> = groups.keys().cloned().collect();
         keys.sort();
@@ -712,8 +916,11 @@ impl RenderDnaLinear {
                 Some(names) => names,
                 None => continue,
             };
-
-            let x = self.bp_to_x(self.normalize_pos(key.pos()));
+            let pos = self.normalize_pos(key.pos());
+            if pos < viewport.start || pos >= viewport.end {
+                continue;
+            }
+            let x = self.bp_to_x(pos, viewport);
             let y = self.baseline_y();
             let color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
 
@@ -722,46 +929,47 @@ impl RenderDnaLinear {
                 Stroke::new(1.0, color),
             );
 
-            let label = names.join(",");
-            let label_width = Self::estimate_label_width(&label);
-            let label_left = x - label_width / 2.0;
-            let label_right = x + label_width / 2.0;
-            let place_top = idx % 2 == 0;
-            let label_lane = if place_top {
-                Self::allocate_lane(&mut top_label_lanes, label_left, label_right, 6.0)
-            } else {
-                Self::allocate_lane(&mut bottom_label_lanes, label_left, label_right, 6.0)
-            };
-
-            let label_y = if place_top {
-                y - RE_LABEL_BASE_OFFSET - LABEL_ROW_HEIGHT * label_lane as f32
-            } else {
-                y + RE_LABEL_BASE_OFFSET + LABEL_ROW_HEIGHT * label_lane as f32
-            };
-            let align = if place_top {
-                Align2::CENTER_BOTTOM
-            } else {
-                Align2::CENTER_TOP
-            };
-
             if let Some(hovered) = &self.hover_enzyme {
                 if hovered.key == *key {
                     painter.rect_filled(hovered.area, 1.0, Color32::LIGHT_YELLOW);
                 }
             }
-            let text_rect = painter.text(
-                Pos2::new(x, label_y),
-                align,
-                label,
-                FontId {
-                    size: 9.0,
-                    family: FontFamily::Monospace,
-                },
-                color,
-            );
-
             let tick_rect = Rect::from_center_size(Pos2::new(x, y), Vec2::new(6.0, 18.0));
-            let area = text_rect.expand(2.0).union(tick_rect);
+            let area = if detail.show_restriction_labels {
+                let label = names.join(",");
+                let label_width = Self::estimate_label_width(&label);
+                let label_left = x - label_width / 2.0;
+                let label_right = x + label_width / 2.0;
+                let place_top = idx % 2 == 0;
+                let label_lane = if place_top {
+                    Self::allocate_lane(&mut top_label_lanes, label_left, label_right, 6.0)
+                } else {
+                    Self::allocate_lane(&mut bottom_label_lanes, label_left, label_right, 6.0)
+                };
+                let label_y = if place_top {
+                    y - RE_LABEL_BASE_OFFSET - LABEL_ROW_HEIGHT * label_lane as f32
+                } else {
+                    y + RE_LABEL_BASE_OFFSET + LABEL_ROW_HEIGHT * label_lane as f32
+                };
+                let align = if place_top {
+                    Align2::CENTER_BOTTOM
+                } else {
+                    Align2::CENTER_TOP
+                };
+                let text_rect = painter.text(
+                    Pos2::new(x, label_y),
+                    align,
+                    label,
+                    FontId {
+                        size: 9.0,
+                        family: FontFamily::Monospace,
+                    },
+                    color,
+                );
+                text_rect.expand(2.0).union(tick_rect)
+            } else {
+                tick_rect
+            };
             self.restriction_enzyme_sites
                 .push(RestrictionEnzymePosition {
                     area,
@@ -770,21 +978,28 @@ impl RenderDnaLinear {
         }
     }
 
-    pub fn render(&mut self, ui: &mut egui::Ui) {
-        self.sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+    pub fn render(&mut self, ui: &mut egui::Ui, area: Rect) {
+        self.sequence_length = self.dna.read().map(|dna| dna.len()).unwrap_or(0);
+        let area_changed = self.area != area;
+        self.area = area;
+        let viewport = self.viewport();
+        let detail = self.detail_level(viewport);
 
-        if self.layout_needs_recomputing(ui) {
-            self.layout_features();
+        if (area_changed || self.layout_needs_recomputing()) && Self::is_rect_usable(self.area) {
+            self.layout_features(viewport);
             self.layout_was_updated();
         }
+        if !Self::is_rect_usable(self.area) {
+            return;
+        }
 
-        self.draw_name_and_length(ui.painter());
-        self.draw_gc_contents(ui.painter());
-        self.draw_methylation_sites(ui.painter());
+        self.draw_name_and_length(ui.painter(), viewport);
+        self.draw_gc_contents(ui.painter(), viewport);
+        self.draw_methylation_sites(ui.painter(), viewport, detail);
         self.draw_backbone(ui.painter());
-        self.draw_bp_ticks(ui.painter());
-        self.draw_open_reading_frames(ui.painter());
-        self.draw_features(ui.painter());
-        self.draw_restriction_enzyme_sites(ui.painter());
+        self.draw_bp_ticks(ui.painter(), viewport);
+        self.draw_open_reading_frames(ui.painter(), viewport);
+        self.draw_features(ui.painter(), detail);
+        self.draw_restriction_enzyme_sites(ui.painter(), viewport, detail);
     }
 }

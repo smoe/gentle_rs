@@ -5,6 +5,8 @@ use crate::{
 use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, Vec2};
 use std::sync::{Arc, RwLock};
 
+const MAX_SEQUENCE_PANEL_BP: usize = 100_000;
+
 #[derive(Clone, Debug)]
 pub struct RowDna {
     dna: Arc<RwLock<DNAsequence>>,
@@ -54,7 +56,31 @@ impl RowDna {
 
     #[inline(always)]
     fn seq_len(&self) -> usize {
-        self.dna.read().unwrap().len()
+        self.dna.read().map(|d| d.len()).unwrap_or(0)
+    }
+
+    fn window(&self) -> (usize, usize) {
+        let Ok(dna) = self.dna.read() else {
+            return (0, 0);
+        };
+        let seq_len = dna.len();
+        if seq_len == 0 {
+            return (0, 0);
+        }
+        if dna.is_circular() {
+            return (0, seq_len.min(MAX_SEQUENCE_PANEL_BP));
+        }
+        let Ok(display) = self.display.read() else {
+            return (0, 0);
+        };
+        let mut span = display.linear_view_span_bp();
+        if span == 0 || span > seq_len {
+            span = seq_len;
+        }
+        span = span.min(MAX_SEQUENCE_PANEL_BP);
+        let max_start = seq_len.saturating_sub(span);
+        let start = display.linear_view_start_bp().min(max_start);
+        (start, span)
     }
 
     pub fn layout(&mut self, block_offset: f32, block_height: f32, area: &Rect) {
@@ -66,11 +92,20 @@ impl RowDna {
             (block_width / (self.char_width * (self.batch_bases + 1) as f32)) as usize;
         let batches_per_line = batches_per_line.max(1);
         self.bases_per_line = batches_per_line * self.batch_bases;
-        self.blocks = (self.seq_len() + self.bases_per_line - 1) / self.bases_per_line;
+        let (_, span) = self.window();
+        self.blocks = if span == 0 {
+            0
+        } else {
+            (span + self.bases_per_line - 1) / self.bases_per_line
+        };
     }
 
     pub fn render(&self, _row_num: usize, block_num: usize, painter: &Painter, rect: &Rect) {
-        let seq_offset = block_num * self.bases_per_line;
+        let (window_start, window_span) = self.window();
+        if window_span == 0 || block_num >= self.blocks {
+            return;
+        }
+        let seq_offset = window_start + block_num * self.bases_per_line;
         let pos = Pos2 {
             x: rect.left() + self.number_offset,
             y: rect.top() + self.block_offset,
@@ -84,14 +119,16 @@ impl RowDna {
                 Color32::BLACK,
             );
         }
-        let selection = self.display.read().unwrap().selection();
-        let seq_end = (seq_offset + self.bases_per_line).min(self.seq_len());
-        if let Some(seq) = self
-            .dna
-            .read()
-            .unwrap()
-            .get_inclusive_range_safe(seq_offset..=seq_end)
-        {
+        let selection = self.display.read().ok().and_then(|d| d.selection());
+        let window_end_exclusive = window_start.saturating_add(window_span).min(self.seq_len());
+        let seq_end_exclusive = (seq_offset + self.bases_per_line).min(window_end_exclusive);
+        if seq_end_exclusive <= seq_offset {
+            return;
+        }
+        let seq = self.dna.read().ok().and_then(|dna| {
+            dna.get_inclusive_range_safe(seq_offset..=seq_end_exclusive.saturating_sub(1))
+        });
+        if let Some(seq) = seq {
             let y = rect.top() + self.block_offset;
             let mut x = pos.x + self.char_width * 2.0;
             seq.iter().enumerate().for_each(|(offset, base)| {
@@ -148,6 +185,21 @@ impl RowDna {
     #[inline(always)]
     pub fn blocks(&self) -> usize {
         self.blocks
+    }
+
+    pub fn block_for_position(&self, position: usize) -> Option<usize> {
+        if self.bases_per_line == 0 || self.blocks == 0 {
+            return None;
+        }
+        let (window_start, window_span) = self.window();
+        if window_span == 0 {
+            return None;
+        }
+        let window_end_exclusive = window_start.saturating_add(window_span);
+        if position < window_start || position >= window_end_exclusive {
+            return None;
+        }
+        Some((position - window_start) / self.bases_per_line)
     }
 
     pub fn compute_line_height(&mut self, size: &Vec2) {
