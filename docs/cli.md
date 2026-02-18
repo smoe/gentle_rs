@@ -11,6 +11,12 @@ GENtle currently provides three binaries:
 - `gentle_lua`: interactive Lua shell
 - `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
 
+Resource update capability status:
+
+- `gentle_cli`: supported (`resources sync-rebase`, `resources sync-jaspar`)
+- `gentle_js`: supported (`sync_rebase`, `sync_jaspar`)
+- `gentle_lua`: supported (`sync_rebase`, `sync_jaspar`)
+
 ## Build and run
 
 From the repository root:
@@ -81,14 +87,22 @@ Exit methods:
    - Loads/saves GENtle project JSON.
 4. `capabilities()`
    - Returns shared-engine capabilities.
-5. `apply_operation(state, op)`
+5. `state_summary(state)`
+   - Returns normalized sequence/container/display summary.
+6. `apply_operation(state, op)`
    - Applies one engine operation to a project state.
    - `op` may be a JS object or JSON string.
    - Returns `{ state, result }`.
-6. `apply_workflow(state, workflow)`
+7. `apply_workflow(state, workflow)`
    - Applies a workflow to a project state.
    - `workflow` may be a JS object or JSON string.
    - Returns `{ state, results }`.
+8. `sync_rebase(input, output, commercial_only)`
+   - Parses REBASE/Bairoch input and writes a REBASE resource JSON snapshot.
+   - `output` is optional (`null`/`""` uses default runtime resource path).
+9. `sync_jaspar(input, output)`
+   - Parses JASPAR PFM text and writes motif resource JSON snapshot.
+   - `output` is optional (`null`/`""` uses default runtime resource path).
 
 ### JavaScript example
 
@@ -127,12 +141,20 @@ Exit methods:
    - Loads/saves GENtle project JSON.
 4. `capabilities()`
    - Returns shared-engine capabilities.
-5. `apply_operation(project, op)`
+5. `state_summary(project)`
+   - Returns normalized sequence/container/display summary.
+6. `apply_operation(project, op)`
    - Applies one engine operation; `op` can be Lua table or JSON string.
    - Returns table with `state` and `result`.
-6. `apply_workflow(project, workflow)`
+7. `apply_workflow(project, workflow)`
    - Applies workflow; `workflow` can be Lua table or JSON string.
    - Returns table with `state` and `results`.
+8. `sync_rebase(input, output, commercial_only)`
+   - Parses REBASE/Bairoch input and writes a REBASE resource JSON snapshot.
+   - `output` and `commercial_only` are optional.
+9. `sync_jaspar(input, output)`
+   - Parses JASPAR PFM text and writes motif resource JSON snapshot.
+   - `output` is optional.
 
 ### Lua example
 
@@ -170,20 +192,78 @@ cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle_cli -- state-summary
 cargo run --bin gentle_cli -- op '<operation-json>'
 cargo run --bin gentle_cli -- workflow '<workflow-json>'
+cargo run --bin gentle_cli -- --progress op '<operation-json>'
+cargo run --bin gentle_cli -- --progress-stdout workflow '<workflow-json>'
 cargo run --bin gentle_cli -- export-state state.json
 cargo run --bin gentle_cli -- import-state state.json
 cargo run --bin gentle_cli -- save-project project.gentle.json
 cargo run --bin gentle_cli -- load-project project.gentle.json
 cargo run --bin gentle_cli -- render-svg pgex linear pgex.linear.svg
 cargo run --bin gentle_cli -- render-svg pgex circular pgex.circular.svg
+cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
+cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
+cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
+cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
+cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 ```
 
 You can pass JSON from a file with `@file.json`.
+
+Global CLI options:
+
+- `--state PATH`: use a non-default project state file
+- `--progress` or `--progress-stderr`: print live progress events to `stderr`
+- `--progress-stdout`: print live progress events to `stdout`
+
+Current progress events include TFBS annotation updates with per-motif and total
+percentages.
+When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
+
+`state-summary` output includes:
+
+- sequences
+- containers
+- display visibility flags
 
 Project aliases:
 
 - `save-project PATH` aliases `export-state PATH`
 - `load-project PATH` aliases `import-state PATH`
+
+Pool exchange commands:
+
+- `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
+  - Exports explicit sequence IDs (`IDS` is comma-separated) with topology and
+    overhang fields into a versioned JSON pool artifact.
+  - Adds `human_id` at pool level and per-member `human_id`.
+- `import-pool INPUT.pool.gentle.json [PREFIX]`
+  - Imports pool members into current state; generated IDs are prefixed.
+
+Rendering export commands:
+
+- `render-svg SEQ_ID linear|circular OUTPUT.svg`
+  - Calls engine operation `RenderSequenceSvg`.
+- `render-lineage-svg OUTPUT.svg`
+  - Calls engine operation `RenderLineageSvg`.
+
+Resource sync commands:
+
+- `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
+  - Parses REBASE/Bairoch-style records (`withrefm`) into GENtle restriction-enzyme JSON.
+  - `INPUT` may be a local file path or an `https://...` URL.
+  - Default output: `data/resources/rebase.enzymes.json`.
+  - At runtime, GENtle auto-loads this file (if present) and overrides embedded restriction enzymes.
+- `resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]`
+  - Parses JASPAR PFM text into motif snapshot JSON with IUPAC consensus.
+  - `INPUT` may be a local file path or an `https://...` URL.
+  - Default output: `data/resources/jaspar.motifs.json`.
+  - `ExtractAnchoredRegion` can resolve TF motifs by ID/name from this local registry.
+  - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
+
+Recommended suffixes:
+
+- pool artifacts: `*.pool.gentle.json`
+- project/state artifacts: `*.project.gentle.json` (or existing `*.gentle.json`)
 
 ### Example operations
 
@@ -246,6 +326,37 @@ Extract region (`from` inclusive, `to` exclusive):
 {"ExtractRegion":{"input":"pgex","from":100,"to":900,"output_id":"insert_candidate"}}
 ```
 
+Extract anchored region with flexible 5' boundary and fixed anchor side:
+
+```json
+{"ExtractAnchoredRegion":{"input":"pgex","anchor":{"FeatureBoundary":{"feature_kind":"CDS","feature_label":null,"boundary":"Start","occurrence":0}},"direction":"Upstream","target_length_bp":500,"length_tolerance_bp":100,"required_re_sites":["EcoRI"],"required_tf_motifs":["TATAAA"],"forward_primer":"GAATTC","reverse_primer":"CGTACC","output_prefix":"promoter","unique":false,"max_candidates":20}}
+```
+
+`required_tf_motifs` accepts either IUPAC motif strings or motif IDs/names from
+the local JASPAR snapshot.
+
+Annotate TFBS features using log-likelihood ratio thresholds:
+
+```json
+{"AnnotateTfbs":{"seq_id":"pgex","motifs":["MA0139.1","SP1","TATAAA"],"min_llr_bits":0.0,"min_llr_quantile":0.95,"per_tf_thresholds":[{"tf":"SP1","min_llr_bits":-1.0,"min_llr_quantile":0.80}],"clear_existing":true,"max_hits":500}}
+```
+
+`AnnotateTfbs` writes generated TFBS features with score qualifiers:
+
+- `llr_bits`: absolute log-likelihood ratio score (base 2)
+- `llr_quantile`: empirical score quantile in the scanned sequence region (both strands)
+- `true_log_odds_bits`: smoothed true log-odds score (base 2)
+- `true_log_odds_quantile`: empirical quantile of `true_log_odds_bits` in the scanned region
+- compatibility aliases are also written: `log_odds_ratio_bits`, `log_odds_ratio_quantile`
+
+Motif-selection shortcuts:
+
+- `motifs: ["ALL"]` or `motifs: ["*"]` scans all motifs from the local JASPAR registry.
+- `max_hits` controls safety capping of generated TFBS features:
+  - omitted: default cap of `500` hits
+  - `0`: unlimited (no cap)
+  - `N > 0`: stop after `N` accepted hits
+
 Select one candidate in-silico (explicit provenance step):
 
 ```json
@@ -279,11 +390,31 @@ Set an in-silico engine parameter (example: cap fragment/product combinatorics):
 {"SetParameter":{"name":"max_fragments_per_container","value":80000}}
 ```
 
+Export selected pool members (engine operation):
+
+```json
+{"ExportPool":{"inputs":["frag_1","frag_2"],"path":"digest.pool.gentle.json","pool_id":"digest_1","human_id":"BamHI+EcoRI digest"}}
+```
+
+Render sequence SVG (engine operation):
+
+```json
+{"RenderSequenceSvg":{"seq_id":"pgex","mode":"Linear","path":"pgex.linear.svg"}}
+{"RenderSequenceSvg":{"seq_id":"pgex","mode":"Circular","path":"pgex.circular.svg"}}
+```
+
+Render lineage SVG (engine operation):
+
+```json
+{"RenderLineageSvg":{"path":"lineage.svg"}}
+```
+
 Available `target` values:
 
 - `SequencePanel`
 - `MapPanel`
 - `Features`
+- `Tfbs`
 - `RestrictionEnzymes`
 - `GcContents`
 - `OpenReadingFrames`
@@ -297,8 +428,9 @@ Save as GenBank:
 
 ### Current limitations in the new operation layer
 
-- Ligation currently concatenates input sequences in order without sticky-end compatibility checks.
-- PCR currently supports linear templates and exact primer matching only (no mismatch model yet).
+- `import-pool` is currently a CLI utility command and not yet an engine operation.
+- GUI still has a few direct action gaps for newer engine operations (for example
+  container-first operation actions and anchored-region forms).
 
 ## Error behavior
 

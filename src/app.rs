@@ -9,7 +9,10 @@ use crate::{
     about,
     dna_sequence::{self, DNAsequence},
     engine::{DisplayTarget, Engine, GentleEngine, Operation, ProjectState},
+    enzymes,
     icons::APP_ICON,
+    lineage_export::export_lineage_svg,
+    resource_sync, tf_motifs,
     window::Window,
     TRANSLATIONS,
 };
@@ -230,6 +233,83 @@ impl GENtleApp {
         }
     }
 
+    fn prompt_export_lineage_svg(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .set_file_name("lineage.svg")
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        {
+            let path = path.display().to_string();
+            let svg = {
+                let engine = self.engine.read().unwrap();
+                export_lineage_svg(engine.state())
+            };
+            let _ = std::fs::write(path, svg);
+        }
+    }
+
+    fn refresh_project_restriction_enzymes(&mut self, resource_path: &str) -> Result<usize> {
+        let enzymes = enzymes::load_restriction_enzymes_from_path(resource_path)?;
+        let mut engine = self.engine.write().unwrap();
+        for dna in engine.state_mut().sequences.values_mut() {
+            enzymes.clone_into(dna.restriction_enzymes_mut());
+            dna.update_computed_features();
+        }
+        Ok(enzymes.len())
+    }
+
+    fn prompt_import_rebase_resource(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("REBASE withrefm", &["txt", "withrefm", "f19", "f20", "f21"])
+            .pick_file()
+        {
+            let input = path.display().to_string();
+            match resource_sync::sync_rebase(
+                &input,
+                Some(resource_sync::DEFAULT_REBASE_RESOURCE_PATH),
+                false,
+            ) {
+                Ok(report) => {
+                    let seq_count = self.engine.read().unwrap().state().sequences.len();
+                    let refresh_status = self.refresh_project_restriction_enzymes(&report.output);
+                    match refresh_status {
+                        Ok(loaded_count) => println!(
+                            "Imported REBASE from '{}' ({} enzymes); active set now {} enzymes, refreshed {} sequence(s)",
+                            report.source, report.item_count, loaded_count, seq_count
+                        ),
+                        Err(e) => eprintln!(
+                            "Imported REBASE from '{}', but could not refresh loaded sequences: {}",
+                            report.source, e
+                        ),
+                    }
+                }
+                Err(e) => eprintln!("Could not import REBASE from '{}': {}", input, e),
+            }
+        }
+    }
+
+    fn prompt_import_jaspar_resource(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("JASPAR motif matrix", &["txt", "jaspar", "pfm"])
+            .pick_file()
+        {
+            let input = path.display().to_string();
+            match resource_sync::sync_jaspar(
+                &input,
+                Some(resource_sync::DEFAULT_JASPAR_RESOURCE_PATH),
+            ) {
+                Ok(report) => {
+                    tf_motifs::reload();
+                    println!(
+                        "Imported JASPAR from '{}' ({} motifs) to '{}'",
+                        report.source, report.item_count, report.output
+                    );
+                }
+                Err(e) => eprintln!("Could not import JASPAR from '{}': {}", input, e),
+            }
+        }
+    }
+
     fn save_current_project(&mut self) -> bool {
         if let Some(path) = self.current_project_path.clone() {
             if self.save_project_to_file(&path).is_ok() {
@@ -320,8 +400,20 @@ impl GENtleApp {
                     self.prompt_open_sequence();
                     ui.close_menu();
                 }
+                if ui.button("Import REBASE Data...").clicked() {
+                    self.prompt_import_rebase_resource();
+                    ui.close_menu();
+                }
+                if ui.button("Import JASPAR Data...").clicked() {
+                    self.prompt_import_jaspar_resource();
+                    ui.close_menu();
+                }
                 if ui.button("Save Project...").clicked() {
                     self.prompt_save_project();
+                    ui.close_menu();
+                }
+                if ui.button("Export DALG SVG...").clicked() {
+                    self.prompt_export_lineage_svg();
                     ui.close_menu();
                 }
             });
@@ -392,7 +484,16 @@ impl GENtleApp {
             pool_members: Vec<String>,
         }
 
-        let (rows, lineage_edges, op_label_by_id) = {
+        #[derive(Clone)]
+        struct ContainerRow {
+            container_id: String,
+            kind: String,
+            member_count: usize,
+            representative: String,
+            members: Vec<String>,
+        }
+
+        let (rows, lineage_edges, op_label_by_id, containers) = {
             let engine = self.engine.read().unwrap();
             let state = engine.state();
             let mut op_created_count: HashMap<String, usize> = HashMap::new();
@@ -472,7 +573,20 @@ impl GENtleApp {
                     Some((from, to, e.op_id.clone()))
                 })
                 .collect();
-            (out, lineage_edges, op_label_by_id)
+            let mut containers: Vec<ContainerRow> = state
+                .container_state
+                .containers
+                .iter()
+                .map(|(id, c)| ContainerRow {
+                    container_id: id.clone(),
+                    kind: format!("{:?}", c.kind),
+                    member_count: c.members.len(),
+                    representative: c.members.first().cloned().unwrap_or_default(),
+                    members: c.members.clone(),
+                })
+                .collect();
+            containers.sort_by(|a, b| a.container_id.cmp(&b.container_id));
+            (out, lineage_edges, op_label_by_id, containers)
         };
 
         ui.heading("Lineage Graph");
@@ -699,6 +813,41 @@ impl GENtleApp {
                     });
             });
         }
+        ui.separator();
+        ui.heading("Containers");
+        ui.label("Container-level view of candidate sequence sets");
+        egui::ScrollArea::vertical()
+            .max_height(180.0)
+            .show(ui, |ui| {
+                egui::Grid::new("container_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("Container");
+                        ui.strong("Kind");
+                        ui.strong("Members");
+                        ui.strong("Representative");
+                        ui.strong("Action");
+                        ui.end_row();
+                        for c in &containers {
+                            ui.monospace(&c.container_id);
+                            ui.label(&c.kind);
+                            ui.monospace(format!("{}", c.member_count));
+                            ui.monospace(&c.representative);
+                            if c.member_count > 1 {
+                                if ui.button("Open Pool").clicked() {
+                                    open_pool = Some((c.representative.clone(), c.members.clone()));
+                                }
+                            } else if !c.representative.is_empty() {
+                                if ui.button("Open Seq").clicked() {
+                                    open_seq = Some(c.representative.clone());
+                                }
+                            } else {
+                                ui.label("-");
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
 
         if let Some(input) = select_candidate_from {
             let criterion = format!("gui_lineage_select:{input}");
@@ -783,6 +932,48 @@ impl GENtleApp {
                 Some(id) => format!("Load file: path={path}, as_id={id}"),
                 None => format!("Load file: path={path}"),
             },
+            Operation::DigestContainer {
+                container_id,
+                enzymes,
+                output_prefix,
+            } => format!(
+                "Digest container: container_id={container_id}, enzymes=[{}], output_prefix={}",
+                enzymes.join(", "),
+                output_prefix.clone().unwrap_or_else(|| "-".to_string())
+            ),
+            Operation::MergeContainersById {
+                container_ids,
+                output_prefix,
+            } => format!(
+                "Merge containers by id: container_ids={}, output_prefix={}",
+                container_ids.join(", "),
+                output_prefix.clone().unwrap_or_else(|| "-".to_string())
+            ),
+            Operation::LigationContainer {
+                container_id,
+                circularize_if_possible,
+                protocol,
+                output_prefix,
+                unique,
+                ..
+            } => format!(
+                "Ligation container: container_id={container_id}, protocol={:?}, circularize_if_possible={}, output_prefix={}, unique={}",
+                protocol,
+                circularize_if_possible,
+                output_prefix.clone().unwrap_or_else(|| "-".to_string()),
+                unique.unwrap_or(false)
+            ),
+            Operation::FilterContainerByMolecularWeight {
+                container_id,
+                min_bp,
+                max_bp,
+                error,
+                unique,
+                ..
+            } => format!(
+                "Molecular weight filter (container): container_id={}, min_bp={}, max_bp={}, error={:.2}, unique={}",
+                container_id, min_bp, max_bp, error, unique
+            ),
             Operation::Digest {
                 input,
                 enzymes,
@@ -905,6 +1096,7 @@ impl GENtleApp {
                     DisplayTarget::SequencePanel => "Sequence panel",
                     DisplayTarget::MapPanel => "Map panel",
                     DisplayTarget::Features => "Features",
+                    DisplayTarget::Tfbs => "TFBS",
                     DisplayTarget::RestrictionEnzymes => "Restriction enzymes",
                     DisplayTarget::GcContents => "GC contents",
                     DisplayTarget::OpenReadingFrames => "Open reading frames",
@@ -925,6 +1117,25 @@ impl GENtleApp {
             Operation::SetParameter { name, value } => {
                 format!("Set parameter: name={name}, value={value}")
             }
+            Operation::AnnotateTfbs {
+                seq_id,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds,
+                clear_existing,
+                max_hits,
+            } => format!(
+                "Annotate TFBS: seq_id={seq_id}, motifs=[{}], min_llr_bits={:?}, min_llr_quantile={:?}, per_tf_overrides={}, clear_existing={}, max_hits={}",
+                motifs.join(", "),
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds.len(),
+                clear_existing.unwrap_or(true),
+                max_hits
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "default(500)".to_string())
+            ),
             Operation::ExtractRegion {
                 input,
                 from,
@@ -934,11 +1145,53 @@ impl GENtleApp {
                 "Extract region: input={input}, from={from}, to={to}, output_id={}",
                 output_id.clone().unwrap_or_else(|| "-".to_string())
             ),
+            Operation::ExtractAnchoredRegion {
+                input,
+                anchor,
+                direction,
+                target_length_bp,
+                length_tolerance_bp,
+                required_re_sites,
+                required_tf_motifs,
+                output_prefix,
+                unique,
+                max_candidates,
+                ..
+            } => format!(
+                "Extract anchored region: input={input}, anchor={anchor:?}, direction={direction:?}, target_length_bp={}, tolerance_bp={}, re_sites=[{}], tf_motifs=[{}], output_prefix={}, unique={}, max_candidates={}",
+                target_length_bp,
+                length_tolerance_bp,
+                required_re_sites.join(", "),
+                required_tf_motifs.join(", "),
+                output_prefix.clone().unwrap_or_else(|| "-".to_string()),
+                unique.unwrap_or(false),
+                max_candidates
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            ),
             Operation::SaveFile {
                 seq_id,
                 path,
                 format,
             } => format!("Save file: seq_id={seq_id}, path={path}, format={format:?}"),
+            Operation::RenderSequenceSvg { seq_id, mode, path } => format!(
+                "Render sequence SVG: seq_id={seq_id}, mode={mode:?}, path={path}"
+            ),
+            Operation::RenderLineageSvg { path } => {
+                format!("Render lineage SVG: path={path}")
+            }
+            Operation::ExportPool {
+                inputs,
+                path,
+                pool_id,
+                human_id,
+            } => format!(
+                "Export pool: inputs={}, path={}, pool_id={}, human_id={}",
+                inputs.join(", "),
+                path,
+                pool_id.clone().unwrap_or_else(|| "-".to_string()),
+                human_id.clone().unwrap_or_else(|| "-".to_string())
+            ),
         }
     }
 }

@@ -11,8 +11,15 @@ codon_tables.json::
 commonvectors.db::
 dna_markers.json::
 enzymes.json::
+jaspar.motifs.json::
 ncoils.matrix::
 translations.csv::
+
+Data notes:
+
+- `enzymes.json` is restriction-enzyme data (REBASE-derived snapshot).
+- `jaspar.motifs.json` is a built-in JASPAR CORE motif snapshot (currently
+  generated from the 2026 non-redundant JASPAR-format release).
 
 # "Finder" icon (seen in OS' task bar)
 icon.png:: PNG with icon as used at startup by application

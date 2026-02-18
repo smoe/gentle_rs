@@ -1,5 +1,5 @@
 use crate::{
-    dna_display::{DnaDisplay, Selection},
+    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
     dna_sequence::DNAsequence,
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
@@ -130,8 +130,21 @@ impl RenderDnaLinear {
         (((pos % len) + len) % len) as usize
     }
 
-    fn draw_feature(feature: &Feature) -> bool {
-        feature.kind.to_string().to_ascii_uppercase() != "SOURCE"
+    fn draw_feature(
+        feature: &Feature,
+        show_tfbs: bool,
+        tfbs_display_criteria: TfbsDisplayCriteria,
+    ) -> bool {
+        if RenderDna::is_source_feature(feature) {
+            return false;
+        }
+        if RenderDna::is_tfbs_feature(feature) {
+            if !show_tfbs {
+                return false;
+            }
+            return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
+        }
+        true
     }
 
     fn estimate_label_width(label: &str) -> f32 {
@@ -212,6 +225,10 @@ impl RenderDnaLinear {
         }
 
         let mut seeds: Vec<Seed> = Vec::new();
+        let (show_tfbs, tfbs_display_criteria) = {
+            let display = self.display.read().expect("DNA display lock poisoned");
+            (display.show_tfbs(), display.tfbs_display_criteria())
+        };
         let features = self
             .dna
             .read()
@@ -219,7 +236,7 @@ impl RenderDnaLinear {
             .features()
             .to_owned();
         for (feature_number, feature) in features.iter().enumerate() {
-            if !Self::draw_feature(feature) {
+            if !Self::draw_feature(feature, show_tfbs, tfbs_display_criteria) {
                 continue;
             }
 

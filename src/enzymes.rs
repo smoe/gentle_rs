@@ -1,5 +1,9 @@
 use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
 use anyhow::{anyhow, Result};
+use std::fs;
+
+const RUNTIME_REBASE_PATH: &str = "data/resources/rebase.enzymes.json";
+const BUILTIN_ENZYMES_JSON: &str = include_str!("../assets/enzymes.json");
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
@@ -76,12 +80,51 @@ impl Enzymes {
             .cloned()
             .collect()
     }
+
+    fn recompute_derived_fields(&mut self) {
+        self.max_re_length = self
+            .restriction_enzymes
+            .iter()
+            .map(|re| re.sequence.len())
+            .max()
+            .unwrap_or(0);
+        self.has_nonpalindromic_restriction_enzymes = self
+            .restriction_enzymes
+            .iter()
+            .any(|re| !re.is_palindromic());
+    }
+}
+
+pub fn load_restriction_enzymes_from_json_text(json_text: &str) -> Result<Vec<RestrictionEnzyme>> {
+    Ok(Enzymes::new(json_text)?.restriction_enzymes)
+}
+
+pub fn load_restriction_enzymes_from_path(path: &str) -> Result<Vec<RestrictionEnzyme>> {
+    let text = fs::read_to_string(path)?;
+    load_restriction_enzymes_from_json_text(&text)
+}
+
+pub fn active_restriction_enzymes() -> Vec<RestrictionEnzyme> {
+    if let Ok(custom) = load_restriction_enzymes_from_path(RUNTIME_REBASE_PATH) {
+        if !custom.is_empty() {
+            return custom;
+        }
+    }
+    load_restriction_enzymes_from_json_text(BUILTIN_ENZYMES_JSON).unwrap_or_default()
 }
 
 impl Default for Enzymes {
     fn default() -> Self {
-        let json_text = include_str!("../assets/enzymes.json");
-        Enzymes::new(json_text).unwrap()
+        let mut base = Enzymes::new(BUILTIN_ENZYMES_JSON).unwrap();
+        if let Ok(text) = fs::read_to_string(RUNTIME_REBASE_PATH) {
+            if let Ok(custom) = Enzymes::new(&text) {
+                if !custom.restriction_enzymes.is_empty() {
+                    base.restriction_enzymes = custom.restriction_enzymes;
+                    base.recompute_derived_fields();
+                }
+            }
+        }
+        base
     }
 }
 

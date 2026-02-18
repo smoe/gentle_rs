@@ -321,6 +321,10 @@ impl DNAsequence {
         &self.seq.features
     }
 
+    pub fn features_mut(&mut self) -> &mut Vec<Feature> {
+        &mut self.seq.features
+    }
+
     pub fn name(&self) -> &Option<String> {
         &self.seq.name
     }

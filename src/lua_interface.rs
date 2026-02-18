@@ -1,8 +1,9 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{Engine, GentleEngine, Operation, ProjectState, Workflow};
+use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
-use crate::ENZYMES;
+use crate::{resource_sync, tf_motifs};
 use mlua::prelude::*;
 use mlua::{Error, Value};
 use mlua::{IntoLuaMulti, Lua, MultiValue, Result as LuaResult};
@@ -28,9 +29,7 @@ impl LuaInterface {
             GENtleApp::load_from_file(path).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
 
         // Add default enzymes and stuff
-        ENZYMES
-            .restriction_enzymes()
-            .clone_into(dna.restriction_enzymes_mut());
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
         dna.set_max_restriction_enzyme_sites(Some(2));
         dna.set_methylation_mode(MethylationMode::both());
         dna.update_computed_features();
@@ -49,10 +48,13 @@ impl LuaInterface {
         println!("  - load_project(filename): Loads a GENtle project JSON");
         println!("  - save_project(filename,project): Saves a GENtle project JSON");
         println!("  - capabilities(): Returns engine capabilities");
+        println!("  - state_summary(project): Returns sequence/container summary");
         println!(
             "  - apply_operation(project, op): Applies an operation (Lua table or JSON string)"
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
+        println!("  - sync_rebase(input, [output], [commercial_only]): Sync REBASE data");
+        println!("  - sync_jaspar(input, [output]): Sync JASPAR motif data");
         println!("A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites");
     }
 
@@ -61,6 +63,23 @@ impl LuaInterface {
         seq.write_genbank_file(&filename)
             .map_err(|e| Self::err(&format!("{}", e)))?;
         Ok(true)
+    }
+
+    fn sync_rebase(
+        input: String,
+        output: Option<String>,
+        commercial_only: Option<bool>,
+    ) -> LuaResult<resource_sync::SyncReport> {
+        let output = output.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        resource_sync::sync_rebase(&input, output, commercial_only.unwrap_or(false))
+            .map_err(|e| Self::err(&e))
+    }
+
+    fn sync_jaspar(input: String, output: Option<String>) -> LuaResult<resource_sync::SyncReport> {
+        let output = output.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let report = resource_sync::sync_jaspar(&input, output).map_err(|e| Self::err(&e))?;
+        tf_motifs::reload();
+        Ok(report)
     }
 
     // fn restriction_enzyme_digest(seq: DNAsequence, enzymes: String) -> LuaResult<Vec<DNAsequence>> {
@@ -131,6 +150,17 @@ impl LuaInterface {
         )?;
 
         self.lua.globals().set(
+            "state_summary",
+            self.lua.create_function(|lua, state: Value| {
+                let state: ProjectState = lua
+                    .from_value(state)
+                    .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                let engine = GentleEngine::from_state(state);
+                lua.to_value(&engine.summarize_state())
+            })?,
+        )?;
+
+        self.lua.globals().set(
             "apply_operation",
             self.lua
                 .create_function(|lua, (state, op): (Value, Value)| {
@@ -175,6 +205,25 @@ impl LuaInterface {
                         results,
                     };
                     lua.to_value(&response)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "sync_rebase",
+            self.lua.create_function(
+                |lua, (input, output, commercial_only): (String, Option<String>, Option<bool>)| {
+                    let report = Self::sync_rebase(input, output, commercial_only)?;
+                    lua.to_value(&report)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "sync_jaspar",
+            self.lua
+                .create_function(|lua, (input, output): (String, Option<String>)| {
+                    let report = Self::sync_jaspar(input, output)?;
+                    lua.to_value(&report)
                 })?,
         )?;
 

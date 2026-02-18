@@ -59,6 +59,7 @@ fn feature_name(feature: &Feature) -> String {
         Err(_) => String::new(),
     };
     for k in [
+        "label",
         "name",
         "standard_name",
         "gene",
@@ -79,6 +80,7 @@ fn feature_color(feature: &Feature) -> &'static str {
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
         "CDS" => "#cc1f1f",
         "GENE" => "#1f4fcc",
+        "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => "#238023",
         _ => "#6e6e6e",
     }
 }
@@ -90,11 +92,76 @@ fn feature_pointy(feature: &Feature) -> bool {
     )
 }
 
-fn collect_features(dna: &DNAsequence) -> Vec<FeatureVm> {
+fn is_tfbs_feature(feature: &Feature) -> bool {
+    matches!(
+        feature.kind.to_string().to_ascii_uppercase().as_str(),
+        "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
+    )
+}
+
+fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
+    feature
+        .qualifier_values(key.into())
+        .next()
+        .and_then(|v| v.trim().parse::<f64>().ok())
+}
+
+fn tfbs_feature_passes_display_filter(feature: &Feature, display: &DisplaySettings) -> bool {
+    if !is_tfbs_feature(feature) {
+        return true;
+    }
+    if display.tfbs_display_use_llr_bits {
+        let Some(value) = feature_qualifier_f64(feature, "llr_bits") else {
+            return false;
+        };
+        if value < display.tfbs_display_min_llr_bits {
+            return false;
+        }
+    }
+    if display.tfbs_display_use_llr_quantile {
+        let Some(value) = feature_qualifier_f64(feature, "llr_quantile") else {
+            return false;
+        };
+        if value < display.tfbs_display_min_llr_quantile {
+            return false;
+        }
+    }
+    if display.tfbs_display_use_true_log_odds_bits {
+        let value = feature_qualifier_f64(feature, "true_log_odds_bits")
+            .or_else(|| feature_qualifier_f64(feature, "log_odds_ratio_bits"));
+        let Some(value) = value else {
+            return false;
+        };
+        if value < display.tfbs_display_min_true_log_odds_bits {
+            return false;
+        }
+    }
+    if display.tfbs_display_use_true_log_odds_quantile {
+        let value = feature_qualifier_f64(feature, "true_log_odds_quantile")
+            .or_else(|| feature_qualifier_f64(feature, "log_odds_ratio_quantile"));
+        let Some(value) = value else {
+            return false;
+        };
+        if value < display.tfbs_display_min_true_log_odds_quantile {
+            return false;
+        }
+    }
+    true
+}
+
+fn collect_features(dna: &DNAsequence, display: &DisplaySettings) -> Vec<FeatureVm> {
     let mut ret = Vec::new();
     for feature in dna.features() {
         if feature.kind.to_string().to_ascii_uppercase() == "SOURCE" {
             continue;
+        }
+        if is_tfbs_feature(feature) {
+            if !display.show_tfbs {
+                continue;
+            }
+            if !tfbs_feature_passes_display_filter(feature, display) {
+                continue;
+            }
         }
         let Ok((from, to)) = feature.location.find_bounds() else {
             continue;
@@ -260,7 +327,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     }
 
     if display.show_features {
-        let features = collect_features(dna);
+        let features = collect_features(dna, display);
         let mut lane_top_by_idx: Vec<usize> = vec![0; features.len()];
         let mut lane_bottom_by_idx: Vec<usize> = vec![0; features.len()];
         let mut top_lane_ends: Vec<f32> = vec![];
@@ -569,7 +636,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_features {
-        for f in collect_features(dna) {
+        for f in collect_features(dna, display) {
             let mid = (f.from + f.to) / 2;
             let span = f.to.saturating_sub(f.from).saturating_add(1);
             let length_fraction = if len == 0 {
@@ -726,7 +793,28 @@ pub fn export_svg_pair(
 mod tests {
     use super::*;
     use crate::engine::DisplaySettings;
+    use gb_io::{seq::Location, FeatureKind};
     use std::fs;
+
+    fn push_tfbs_feature(
+        dna: &mut DNAsequence,
+        label: &str,
+        start: usize,
+        end: usize,
+        llr_bits: f64,
+    ) {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: FeatureKind::from("TFBS"),
+            location: Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                ("llr_bits".into(), Some(format!("{llr_bits:.3}"))),
+                ("llr_quantile".into(), Some("1.000".to_string())),
+                ("true_log_odds_bits".into(), Some("1.000".to_string())),
+                ("true_log_odds_quantile".into(), Some("1.000".to_string())),
+            ],
+        });
+    }
 
     #[test]
     fn snapshot_linear_svg() {
@@ -745,6 +833,32 @@ mod tests {
         let svg = export_circular_svg(&dna, &DisplaySettings::default());
         let expected = include_str!("../tests/snapshots/circular/minimal.svg");
         assert_eq!(svg, expected);
+    }
+
+    #[test]
+    fn tfbs_display_filter_applies_to_svg_export() {
+        let mut dna_linear = DNAsequence::from_sequence(&"ATGC".repeat(80)).unwrap();
+        dna_linear.update_computed_features();
+        push_tfbs_feature(&mut dna_linear, "TFBS low", 10, 20, -2.0);
+        push_tfbs_feature(&mut dna_linear, "TFBS high", 30, 40, 2.0);
+
+        let mut display = DisplaySettings::default();
+        display.show_tfbs = true;
+        display.tfbs_display_use_llr_bits = true;
+        display.tfbs_display_min_llr_bits = 0.0;
+        display.tfbs_display_use_llr_quantile = false;
+        display.tfbs_display_use_true_log_odds_bits = false;
+        display.tfbs_display_use_true_log_odds_quantile = false;
+
+        let linear_svg = export_linear_svg(&dna_linear, &display);
+        assert!(linear_svg.contains("TFBS high"));
+        assert!(!linear_svg.contains("TFBS low"));
+
+        let mut dna_circular = dna_linear.clone();
+        dna_circular.set_circular(true);
+        let circular_svg = export_circular_svg(&dna_circular, &display);
+        assert!(circular_svg.contains("TFBS high"));
+        assert!(!circular_svg.contains("TFBS low"));
     }
 
     #[test]

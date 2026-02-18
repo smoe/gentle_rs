@@ -1,9 +1,10 @@
 use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
-    engine::{Engine, GentleEngine, Operation, ProjectState, Workflow},
+    engine::{Engine, EngineStateSummary, GentleEngine, Operation, ProjectState, Workflow},
+    enzymes::active_restriction_enzymes,
     methylation_sites::MethylationMode,
-    ENZYMES,
+    resource_sync, tf_motifs,
 };
 use deno_core::*;
 use serde::Serialize;
@@ -26,13 +27,49 @@ fn load_dna(#[string] path: &str) -> Result<DNAsequence, deno_core::anyhow::Erro
     let mut dna = GENtleApp::load_from_file(path)?;
 
     // Add default enzymes and stuff
-    ENZYMES
-        .restriction_enzymes()
-        .clone_into(dna.restriction_enzymes_mut());
+    *dna.restriction_enzymes_mut() = active_restriction_enzymes();
     dna.set_max_restriction_enzyme_sites(Some(2));
     dna.set_methylation_mode(MethylationMode::both());
     dna.update_computed_features();
     Ok(dna)
+}
+
+#[op2]
+#[serde]
+fn sync_rebase_resource(
+    #[string] input: &str,
+    #[string] output: &str,
+    commercial_only: bool,
+) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+    resource_sync::sync_rebase(
+        input,
+        if output.trim().is_empty() {
+            None
+        } else {
+            Some(output)
+        },
+        commercial_only,
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e))
+}
+
+#[op2]
+#[serde]
+fn sync_jaspar_resource(
+    #[string] input: &str,
+    #[string] output: &str,
+) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+    let report = resource_sync::sync_jaspar(
+        input,
+        if output.trim().is_empty() {
+            None
+        } else {
+            Some(output)
+        },
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e))?;
+    tf_motifs::reload();
+    Ok(report)
 }
 
 #[op2]
@@ -64,6 +101,15 @@ fn save_project(
 #[serde]
 fn capabilities() -> Result<crate::engine::Capabilities, deno_core::anyhow::Error> {
     Ok(GentleEngine::capabilities())
+}
+
+#[op2]
+#[serde]
+fn state_summary(
+    #[serde] state: ProjectState,
+) -> Result<EngineStateSummary, deno_core::anyhow::Error> {
+    let engine = GentleEngine::from_state(state);
+    Ok(engine.summarize_state())
 }
 
 #[op2]
@@ -108,8 +154,11 @@ impl JavaScriptInterface {
         const LOAD_PROJECT: OpDecl = load_project();
         const SAVE_PROJECT: OpDecl = save_project();
         const CAPABILITIES: OpDecl = capabilities();
+        const STATE_SUMMARY: OpDecl = state_summary();
         const APPLY_OPERATION: OpDecl = apply_operation();
         const APPLY_WORKFLOW: OpDecl = apply_workflow();
+        const SYNC_REBASE_RESOURCE: OpDecl = sync_rebase_resource();
+        const SYNC_JASPAR_RESOURCE: OpDecl = sync_jaspar_resource();
         let ext = Extension {
             name: "my_ext",
             ops: std::borrow::Cow::Borrowed(&[
@@ -118,8 +167,11 @@ impl JavaScriptInterface {
                 LOAD_PROJECT,
                 SAVE_PROJECT,
                 CAPABILITIES,
+                STATE_SUMMARY,
                 APPLY_OPERATION,
                 APPLY_WORKFLOW,
+                SYNC_REBASE_RESOURCE,
+                SYNC_JASPAR_RESOURCE,
             ]),
             ..Default::default()
         };
@@ -136,6 +188,7 @@ impl JavaScriptInterface {
          	function load_project(path) {return Deno.core.ops.load_project(path)}
           	function save_project(state,path) {return Deno.core.ops.save_project(state,path)}
           	function capabilities() {return Deno.core.ops.capabilities()}
+          	function state_summary(state) {return Deno.core.ops.state_summary(state)}
           	function apply_operation(state, op) {
           		const payload = (typeof op === "string") ? op : JSON.stringify(op);
           		return Deno.core.ops.apply_operation(state, payload);
@@ -143,6 +196,12 @@ impl JavaScriptInterface {
           	function apply_workflow(state, workflow) {
           		const payload = (typeof workflow === "string") ? workflow : JSON.stringify(workflow);
           		return Deno.core.ops.apply_workflow(state, payload);
+          	}
+          	function sync_rebase(input, output, commercial_only) {
+          		return Deno.core.ops.sync_rebase_resource(input, output ?? "", commercial_only ?? false);
+          	}
+          	function sync_jaspar(input, output) {
+          		return Deno.core.ops.sync_jaspar_resource(input, output ?? "");
           	}
           	function digest(state, input, enzymes, output_id) {
           		const op = {
