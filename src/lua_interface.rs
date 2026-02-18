@@ -1,10 +1,12 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
+use crate::engine::{Engine, GentleEngine, Operation, ProjectState, Workflow};
 use crate::methylation_sites::MethylationMode;
 use crate::ENZYMES;
 use mlua::prelude::*;
 use mlua::{Error, Value};
 use mlua::{IntoLuaMulti, Lua, MultiValue, Result as LuaResult};
+use serde::Serialize;
 use serde_json::json;
 
 #[derive(Clone, Debug, Default)]
@@ -44,6 +46,13 @@ impl LuaInterface {
         println!("Available Rust functions:");
         println!("  - load_dna(filename): Loads a DNA sequence from a file");
         println!("  - write_gb(filename,seq): Writes a DNA sequence to a GenBank file");
+        println!("  - load_project(filename): Loads a GENtle project JSON");
+        println!("  - save_project(filename,project): Saves a GENtle project JSON");
+        println!("  - capabilities(): Returns engine capabilities");
+        println!(
+            "  - apply_operation(project, op): Applies an operation (Lua table or JSON string)"
+        );
+        println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
         println!("A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites");
     }
 
@@ -58,6 +67,24 @@ impl LuaInterface {
     //     let enzymes = enzymes.split(',').map(|s| s.trim()).collect::<Vec<_>>();
     //     Ok(vec![])
     // }
+
+    fn parse_or_decode<T>(lua: &Lua, input: Value) -> LuaResult<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match input {
+            Value::String(s) => {
+                let s = s.to_str().map_err(|e| Self::err(&e.to_string()))?;
+                serde_json::from_str(s.as_ref()).map_err(|e| Self::err(&format!("{e}")))
+            }
+            other => {
+                let json_value = lua
+                    .from_value::<serde_json::Value>(other)
+                    .map_err(|e| Self::err(&format!("{e}")))?;
+                serde_json::from_value(json_value).map_err(|e| Self::err(&format!("{e}")))
+            }
+        }
+    }
 
     pub fn register_rust_functions(&self) -> LuaResult<()> {
         self.lua.globals().set(
@@ -74,13 +101,82 @@ impl LuaInterface {
                 })?,
         )?;
 
-        // self.lua.globals().set(
-        //     "digest",
-        //     self.lua
-        //         .create_function(|_lua, (enzymes, seq): (String, DNAsequence)| {
-        //             Self::restriction_enzyme_digest(seq, enzymes)
-        //         })?,
-        // )?;
+        self.lua.globals().set(
+            "load_project",
+            self.lua.create_function(|lua, filename: String| {
+                let state = ProjectState::load_from_path(&filename)
+                    .map_err(|e| Self::err(&e.to_string()))?;
+                lua.to_value(&state)
+            })?,
+        )?;
+
+        self.lua.globals().set(
+            "save_project",
+            self.lua
+                .create_function(|lua, (filename, state): (String, Value)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    state
+                        .save_to_path(&filename)
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    Ok(true)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "capabilities",
+            self.lua
+                .create_function(|lua, _: ()| lua.to_value(&GentleEngine::capabilities()))?,
+        )?;
+
+        self.lua.globals().set(
+            "apply_operation",
+            self.lua
+                .create_function(|lua, (state, op): (Value, Value)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let op: Operation = Self::parse_or_decode(lua, op)?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine.apply(op).map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    let response = Response {
+                        state: engine.state().clone(),
+                        result,
+                    };
+                    lua.to_value(&response)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "apply_workflow",
+            self.lua
+                .create_function(|lua, (state, workflow): (Value, Value)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let workflow: Workflow = Self::parse_or_decode(lua, workflow)?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let results = engine
+                        .apply_workflow(workflow)
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        results: Vec<crate::engine::OpResult>,
+                    }
+                    let response = Response {
+                        state: engine.state().clone(),
+                        results,
+                    };
+                    lua.to_value(&response)
+                })?,
+        )?;
 
         Ok(())
     }

@@ -1,7 +1,5 @@
 use crate::{
-    dna_sequence::DNAsequence,
-    engine::DisplaySettings,
-    restriction_enzyme::RestrictionEnzymeKey,
+    dna_sequence::DNAsequence, engine::DisplaySettings, restriction_enzyme::RestrictionEnzymeKey,
 };
 use gb_io::seq::{Feature, Location};
 use std::collections::HashMap;
@@ -113,7 +111,12 @@ fn collect_features(dna: &DNAsequence) -> Vec<FeatureVm> {
             is_pointy: feature_pointy(feature),
         });
     }
-    ret.sort_by(|a, b| a.from.cmp(&b.from).then(a.to.cmp(&b.to)).then(a.label.cmp(&b.label)));
+    ret.sort_by(|a, b| {
+        a.from
+            .cmp(&b.from)
+            .then(a.to.cmp(&b.to))
+            .then(a.label.cmp(&b.label))
+    });
     ret
 }
 
@@ -159,7 +162,14 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         .set("viewBox", (0, 0, W, H))
         .set("width", W)
         .set("height", H)
-        .add(Rectangle::new().set("x", 0).set("y", 0).set("width", W).set("height", H).set("fill", "#ffffff"));
+        .add(
+            Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", W)
+                .set("height", H)
+                .set("fill", "#ffffff"),
+        );
     let mut labels: Vec<Text> = vec![];
 
     if display.show_gc_contents {
@@ -351,7 +361,8 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     }
 
     if display.show_restriction_enzymes {
-        let mut keys: Vec<RestrictionEnzymeKey> = dna.restriction_enzyme_groups().keys().cloned().collect();
+        let mut keys: Vec<RestrictionEnzymeKey> =
+            dna.restriction_enzyme_groups().keys().cloned().collect();
         keys.sort();
         let mut top_label_lanes: Vec<f32> = vec![];
         let mut bottom_label_lanes: Vec<f32> = vec![];
@@ -398,12 +409,16 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     }
 
     labels.push(
-        Text::new(dna.name().clone().unwrap_or_else(|| "<no name>".to_string()))
-            .set("x", 12)
-            .set("y", 24)
-            .set("font-family", "monospace")
-            .set("font-size", 16)
-            .set("fill", "#111111"),
+        Text::new(
+            dna.name()
+                .clone()
+                .unwrap_or_else(|| "<no name>".to_string()),
+        )
+        .set("x", 12)
+        .set("y", 24)
+        .set("font-family", "monospace")
+        .set("font-size", 16)
+        .set("fill", "#111111"),
     );
     labels.push(
         Text::new(format!("{} bp", len))
@@ -425,15 +440,27 @@ fn pos2xy(pos: usize, len: usize, cx: f32, cy: f32, r: f32) -> (f32, f32) {
     if len == 0 {
         return (cx, cy);
     }
-    let angle = 2.0 * std::f32::consts::PI * (pos as f32 / len as f32) - std::f32::consts::FRAC_PI_2;
+    let angle =
+        2.0 * std::f32::consts::PI * (pos as f32 / len as f32) - std::f32::consts::FRAC_PI_2;
     (cx + r * angle.cos(), cy + r * angle.sin())
 }
 
-fn circular_arc_path(from: usize, to: usize, len: usize, cx: f32, cy: f32, r: f32) -> Option<String> {
+fn circular_arc_path(
+    from: usize,
+    to: usize,
+    len: usize,
+    cx: f32,
+    cy: f32,
+    r: f32,
+) -> Option<String> {
     if len == 0 {
         return None;
     }
-    let mut delta = if to >= from { to - from } else { (len - from) + to };
+    let mut delta = if to >= from {
+        to - from
+    } else {
+        (len - from) + to
+    };
     if delta == 0 {
         return None;
     }
@@ -443,7 +470,11 @@ fn circular_arc_path(from: usize, to: usize, len: usize, cx: f32, cy: f32, r: f3
             return None;
         }
     }
-    let large_arc = if delta as f32 > (len as f32 / 2.0) { 1 } else { 0 };
+    let large_arc = if delta as f32 > (len as f32 / 2.0) {
+        1
+    } else {
+        0
+    };
     let sweep = 1;
     let (x1, y1) = pos2xy(from, len, cx, cy, r);
     let (x2, y2) = pos2xy(to, len, cx, cy, r);
@@ -462,15 +493,26 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
         .set("viewBox", (0, 0, W, H))
         .set("width", W)
         .set("height", H)
-        .add(Rectangle::new().set("x", 0).set("y", 0).set("width", W).set("height", H).set("fill", "#ffffff"));
+        .add(
+            Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", W)
+                .set("height", H)
+                .set("fill", "#ffffff"),
+        );
 
     doc = doc.add(
-        Text::new(dna.name().clone().unwrap_or_else(|| "<no name>".to_string()))
-            .set("x", 20)
-            .set("y", 34)
-            .set("font-family", "monospace")
-            .set("font-size", 16)
-            .set("fill", "#111111"),
+        Text::new(
+            dna.name()
+                .clone()
+                .unwrap_or_else(|| "<no name>".to_string()),
+        )
+        .set("x", 20)
+        .set("y", 34)
+        .set("font-family", "monospace")
+        .set("font-size", 16)
+        .set("fill", "#111111"),
     );
     doc = doc.add(
         Text::new(format!("{} bp", len))
@@ -536,7 +578,11 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
                 (span as f32 / len as f32).clamp(0.0, 1.0)
             };
             let offset = (0.14 * (1.0 - 0.6 * length_fraction)).clamp(0.05, 0.14);
-            let band = if f.is_reverse { 1.0 - offset } else { 1.0 + offset };
+            let band = if f.is_reverse {
+                1.0 - offset
+            } else {
+                1.0 + offset
+            };
             if let Some(path_d) = circular_arc_path(f.from, f.to, len, cx, cy, r * band) {
                 doc = doc.add(
                     Path::new()
@@ -596,7 +642,8 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_restriction_enzymes {
-        let mut keys: Vec<RestrictionEnzymeKey> = dna.restriction_enzyme_groups().keys().cloned().collect();
+        let mut keys: Vec<RestrictionEnzymeKey> =
+            dna.restriction_enzyme_groups().keys().cloned().collect();
         keys.sort();
         let mut last_right_y = -1e9f32;
         let mut last_left_y = 1e9f32;
@@ -665,7 +712,10 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     doc.to_string()
 }
 
-pub fn export_svg_pair(dna: &DNAsequence, display: &DisplaySettings) -> HashMap<&'static str, String> {
+pub fn export_svg_pair(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+) -> HashMap<&'static str, String> {
     let mut out = HashMap::new();
     out.insert("linear", export_linear_svg(dna, display));
     out.insert("circular", export_circular_svg(dna, display));

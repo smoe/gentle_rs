@@ -212,7 +212,12 @@ impl RenderDnaLinear {
         }
 
         let mut seeds: Vec<Seed> = Vec::new();
-        let features = self.dna.read().expect("DNA lock poisoned").features().to_owned();
+        let features = self
+            .dna
+            .read()
+            .expect("DNA lock poisoned")
+            .features()
+            .to_owned();
         for (feature_number, feature) in features.iter().enumerate() {
             if !Self::draw_feature(feature) {
                 continue;
@@ -379,7 +384,10 @@ impl RenderDnaLinear {
     fn draw_backbone(&self, painter: &egui::Painter) {
         let y = self.baseline_y();
         painter.line_segment(
-            [Pos2::new(self.area.left(), y), Pos2::new(self.area.right(), y)],
+            [
+                Pos2::new(self.area.left(), y),
+                Pos2::new(self.area.right(), y),
+            ],
             Stroke::new(BASELINE_STROKE, Color32::BLACK),
         );
     }
@@ -548,7 +556,12 @@ impl RenderDnaLinear {
         }
         let y1 = self.baseline_y() - 4.0;
         let y2 = y1 + GC_STRIP_HEIGHT;
-        let gc_contents = self.dna.read().expect("DNA lock poisoned").gc_content().clone();
+        let gc_contents = self
+            .dna
+            .read()
+            .expect("DNA lock poisoned")
+            .gc_content()
+            .clone();
         for region in gc_contents.regions() {
             let x1 = self.bp_to_x(region.from());
             let x2 = self.bp_to_x(region.to()).max(x1 + 1.0);
@@ -620,11 +633,7 @@ impl RenderDnaLinear {
                     Pos2::new(tip_x + 6.0, y)
                 };
                 painter.add(egui::Shape::convex_polygon(
-                    vec![
-                        Pos2::new(tip_x, y - h),
-                        tip,
-                        Pos2::new(tip_x, y + h),
-                    ],
+                    vec![Pos2::new(tip_x, y - h), tip, Pos2::new(tip_x, y + h)],
                     feature.color,
                     Stroke::NONE,
                 ));
@@ -736,10 +745,11 @@ impl RenderDnaLinear {
 
             let tick_rect = Rect::from_center_size(Pos2::new(x, y), Vec2::new(6.0, 18.0));
             let area = text_rect.expand(2.0).union(tick_rect);
-            self.restriction_enzyme_sites.push(RestrictionEnzymePosition {
-                area,
-                key: key.clone(),
-            });
+            self.restriction_enzyme_sites
+                .push(RestrictionEnzymePosition {
+                    area,
+                    key: key.clone(),
+                });
         }
     }
 

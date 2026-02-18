@@ -16,7 +16,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-
 // Defines static stroke styles (BLACK_1, GRAY_1) and a color map (ORF_COLORS) for Open Reading Frames (ORFs).
 lazy_static! {
     pub static ref BLACK_1: Stroke = Stroke {
@@ -79,8 +78,6 @@ impl FeaturePosition {
     }
 }
 
-
-
 /// Manages the rendering of circular DNA, including features, enzyme sites, and user interactions.
 #[derive(Debug, Clone)]
 pub struct RenderDnaCircular {
@@ -123,20 +120,17 @@ impl RenderDnaCircular {
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
-        }
-        else {
+        } else {
             println!("I RenderDnaCircular::on_click: Could not select any feature.");
         }
     }
-
 
     /// Handles hover events to highlight features and enzyme sites.
     pub fn on_hover(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
             self.hovered_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
             self.hover_enzyme = self.get_re_site_for_positon(pos);
-        }
-        else {
+        } else {
             println!("I RenderDnaCircular::on_hover: Could not select any feature.");
         }
     }
@@ -298,7 +292,7 @@ impl RenderDnaCircular {
         }
     }
 
-    /// Displays information about the hovered feature 
+    /// Displays information about the hovered feature
     fn draw_hovered_feature(&self, painter: &egui::Painter) {
         if let Some(feature_id) = self.hovered_feature_number {
             if let Some(fp) = self.features.get(feature_id) {

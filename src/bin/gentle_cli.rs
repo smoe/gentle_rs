@@ -1,5 +1,8 @@
-use gentle::engine::{Engine, GentleEngine, Operation, ProjectState, Workflow};
 use gentle::render_export::{export_circular_svg, export_linear_svg};
+use gentle::{
+    about,
+    engine::{Engine, GentleEngine, Operation, ProjectState, Workflow},
+};
 use serde::Serialize;
 use std::{env, fs};
 
@@ -23,12 +26,15 @@ struct StateSummary {
 fn usage() {
     eprintln!(
         "Usage:\n  \
+  gentle_cli --version\n  \
   gentle_cli [--state PATH] capabilities\n  \
   gentle_cli [--state PATH] op '<operation-json>'\n  \
   gentle_cli [--state PATH] workflow '<workflow-json>'\n  \
   gentle_cli [--state PATH] state-summary\n  \
   gentle_cli [--state PATH] export-state PATH\n  \
   gentle_cli [--state PATH] import-state PATH\n  \
+  gentle_cli [--state PATH] save-project PATH\n  \
+  gentle_cli [--state PATH] load-project PATH\n  \
   gentle_cli [--state PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n\n  \
   Tip: pass @file.json instead of inline JSON"
     );
@@ -98,6 +104,10 @@ fn run() -> Result<(), String> {
         usage();
         return Err("Missing command".to_string());
     }
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("{}", about::version_cli_text());
+        return Ok(());
+    }
 
     let (state_path, cmd_idx) = parse_global_state_arg(&args);
     if args.len() <= cmd_idx {
@@ -112,26 +122,26 @@ fn run() -> Result<(), String> {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
         }
-        "import-state" => {
+        "import-state" | "load-project" => {
             if args.len() <= cmd_idx + 1 {
                 usage();
-                return Err("Missing path for import-state".to_string());
+                return Err(format!("Missing path for {command}"));
             }
             let source = &args[cmd_idx + 1];
             let state = ProjectState::load_from_path(source).map_err(|e| e.to_string())?;
             state.save_to_path(&state_path).map_err(|e| e.to_string())?;
-            println!("Imported state from '{source}' into '{state_path}'");
+            println!("Loaded project from '{source}' into '{state_path}'");
             Ok(())
         }
-        "export-state" => {
+        "export-state" | "save-project" => {
             if args.len() <= cmd_idx + 1 {
                 usage();
-                return Err("Missing path for export-state".to_string());
+                return Err(format!("Missing path for {command}"));
             }
             let target = &args[cmd_idx + 1];
             let state = load_state(&state_path)?;
             state.save_to_path(target).map_err(|e| e.to_string())?;
-            println!("Exported state from '{state_path}' to '{target}'");
+            println!("Saved project from '{state_path}' to '{target}'");
             Ok(())
         }
         "state-summary" => {
@@ -178,7 +188,10 @@ fn run() -> Result<(), String> {
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let result = engine.apply(op).map_err(|e| e.to_string())?;
-            engine.state().save_to_path(&state_path).map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
             print_json(&result)
         }
         "workflow" => {
@@ -192,7 +205,10 @@ fn run() -> Result<(), String> {
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
-            engine.state().save_to_path(&state_path).map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
             print_json(&results)
         }
         _ => {

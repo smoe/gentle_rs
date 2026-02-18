@@ -35,6 +35,13 @@ Goal:
 }
 ```
 
+Semantic interpretation:
+
+- In GUI terms, a project window represents a wet-lab container context.
+- A container may map to multiple candidate sequences/fragments.
+- Current v1 state stores candidates primarily as sequence ids; explicit
+  container objects are planned.
+
 ### Operation
 
 Current draft operations:
@@ -42,12 +49,95 @@ Current draft operations:
 - `LoadFile { path, as_id? }`
 - `SaveFile { seq_id, path, format }`
 - `Digest { input, enzymes, output_prefix? }`
-- `Ligation { inputs, circularize_if_possible, output_id? }`
-- `Pcr { template, forward_primer, reverse_primer, output_id? }`
+- `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
+- `MergeContainers { inputs, output_prefix? }`
+- `Pcr { template, forward_primer, reverse_primer, output_id?, unique? }`
+- `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
+- `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `ExtractRegion { input, from, to, output_id? }`
+- `SelectCandidate { input, criterion, output_id? }`
+- `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
+- `Reverse { input, output_id? }`
+- `Complement { input, output_id? }`
+- `ReverseComplement { input, output_id? }`
+- `Branch { input, output_id? }`
 - `SetDisplayVisibility { target, visible }`
 - `SetTopology { seq_id, circular }`
 - `RecomputeFeatures { seq_id }`
+- `SetParameter { name, value }` (purely in-silico project parameter change)
+
+Planned operation refinements:
+
+- `MergeContainers { inputs, output_prefix? }`
+  - Explicitly models wet-lab mixing of multiple tubes/pools.
+- Protocol-based ligation:
+  - `Ligation { input_container, protocol, output_container?, ... }`
+  - `protocol` determines allowed end joins.
+  - Initial protocol values:
+    - `sticky`
+    - `blunt`
+  - Future protocol values may include established ligation workflows
+    represented as named presets.
+
+Current parameter support:
+
+- `max_fragments_per_container` (default `80000`)
+  - limits digest fragment output per operation
+  - also serves as ligation product-count limit guard
+
+Current ligation protocol behavior:
+
+- `protocol` is mandatory.
+- If `protocol = Blunt`, ligation enumerates ordered input pairs with blunt-end
+  compatibility checks.
+- If `protocol = Sticky`, ligation enumerates ordered input pairs with sticky-end
+  overhang compatibility checks.
+- `unique = true` requires exactly one product.
+
+`FilterByMolecularWeight` semantics:
+
+- Applies a bp-range filter across provided input sequence ids.
+- Effective accepted range is expanded by `error`:
+  - `effective_min = floor(min_bp * (1 - error))`
+  - `effective_max = ceil(max_bp * (1 + error))`
+- `unique = true` requires exactly one match, otherwise the operation fails.
+
+`Pcr` semantics (current):
+
+- Exact primer matching on linear templates.
+- Enumerates all valid amplicons formed by forward-primer matches and downstream
+  reverse-primer binding matches.
+- `unique = true` requires exactly one amplicon; otherwise fails.
+- `output_id` may only be used when exactly one amplicon is produced.
+
+`PcrAdvanced` semantics:
+
+- Primer spec fields:
+  - `sequence` (full primer, 5'->3')
+  - `anneal_len` (3' suffix length used for template binding)
+  - `max_mismatches` (allowed mismatches within anneal part)
+  - `require_3prime_exact_bases` (hard exact-match requirement at primer 3' end)
+  - `library_mode` (`Enumerate` or `Sample`) for degenerate/IUPAC primers
+  - `max_variants` cap for primer-library expansion
+  - `sample_seed` deterministic seed when `library_mode = Sample`
+- Supports 5' tails and mismatch-mediated mutagenesis.
+- Supports degenerate/randomized synthetic primers via IUPAC codes.
+- Product is constructed from:
+  - full forward primer sequence
+  - template interior between forward and reverse anneal windows
+  - reverse-complement of full reverse primer sequence
+
+`PcrMutagenesis` semantics:
+
+- Builds on `PcrAdvanced` primer behavior.
+- Accepts explicit SNP intents:
+  - `zero_based_position`
+  - `reference`
+  - `alternate`
+- Validates reference bases against the template.
+- Filters amplicons to those that introduce requested SNPs.
+- `require_all_mutations` (default `true`) controls whether all or at least one
+  mutation must be introduced.
 
 ### Workflow
 
@@ -100,5 +190,7 @@ This supports:
 ## Planned next additions
 
 - richer sequence-editing and annotation operation set
+- explicit container/pool model and merge operations
+- ligation protocol presets with sticky/blunt compatibility derivation
 - render/view model endpoint for frontend-independent graphical representation
 - schema publication for strict client-side validation

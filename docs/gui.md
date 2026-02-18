@@ -6,9 +6,10 @@ This page documents the current graphical interface of GENtle.
 
 ```bash
 cargo run --bin gentle
+cargo run --bin gentle -- path/to/project.gentle.json
 ```
 
-The GUI currently opens with example sequences from `test_files/`.
+The GUI opens an empty project unless a project path is passed on startup.
 
 ## Main window layout
 
@@ -18,6 +19,18 @@ A DNA window is split into two visual areas:
 - Sequence panel: text-oriented sequence rows
 
 Both panels can be shown/hidden from the toolbar.
+
+The project main window (lineage page) supports two views:
+
+- `Table`: tabular lineage view with per-sequence actions
+- `Graph`: node/edge lineage visualization
+
+Node click behavior in lineage `Graph` view:
+
+- Click on a single-sequence node: opens that sequence window.
+- Click on a pool node: opens a pool-context window (Engine Ops visible, pool
+  member distribution available).
+- Double-click on a node: runs `SelectCandidate` for that node.
 
 ## Toolbar buttons
 
@@ -41,6 +54,15 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Toggles methylation-site markers.
 
 Hovering any button shows a tooltip in the UI.
+
+## About GENtle
+
+Two About entries exist on macOS:
+
+- `Help -> About GENtle`: custom GENtle About window (icon + version/build text)
+- app menu `GENtle -> About GENtle`: standard macOS About panel
+
+The custom window and CLI `--version` share the same text payload.
 
 ## Map interactions
 
@@ -67,6 +89,35 @@ Current circular map conventions include:
 - Features arranged around the circular backbone
 - Restriction enzyme labels around the perimeter
 - Optional overlays for GC content, ORFs, and methylation sites
+
+## Pool Distribution (Engine Ops)
+
+When a strict engine operation creates multiple products (for example digest or
+ligation), the Engine Ops panel shows a molecular-weight proxy distribution
+based on sequence length in base pairs (`bp`).
+
+Bin breaks are computed as follows:
+
+- Compute `span = max_bp - min_bp` across created products.
+- Choose `bucket_size` adaptively:
+  - `50 bp` if `span <= 500`
+  - `100 bp` if `span <= 2000`
+  - `250 bp` otherwise
+- Anchor buckets at `min_bp` (not around a center value).
+- For each product length `bp`, compute:
+  - `idx = (bp - min_bp) / bucket_size`
+- Display bucket range:
+  - `lo = min_bp + idx * bucket_size`
+- `hi = lo + bucket_size - 1`
+
+## Engine Ops State Persistence
+
+Engine Ops panel input state is persisted in project metadata per active
+sequence id. This includes panel visibility and operation-form inputs.
+
+Metadata key format:
+
+- `gui.engine_ops.<seq_id>`
 
 ## Loading sequence files
 
