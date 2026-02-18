@@ -43,7 +43,7 @@ jobs:
         run: cargo check -q
 
       - name: Engine tests
-        run: cargo test -q engine::tests::
+        run: cargo test -q "engine::tests::"
 
       - name: Render snapshot tests
         run: cargo test -q render_export::tests::snapshot_

@@ -1,32 +1,419 @@
-use gentle::render_export::{export_circular_svg, export_linear_svg};
 use gentle::{
     about,
-    engine::{Engine, GentleEngine, Operation, ProjectState, Workflow},
+    engine::{
+        Engine, EngineStateSummary, GentleEngine, Operation, OperationProgress, ProjectState,
+        RenderSvgMode, TfbsProgress, Workflow,
+    },
 };
-use serde::Serialize;
-use std::{env, fs};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::{collections::HashMap, env, fs, path::Path};
 
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
+const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
+const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
 
-#[derive(Serialize)]
-struct SequenceSummary {
-    id: String,
-    name: Option<String>,
-    length: usize,
-    circular: bool,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolEnd {
+    end_type: String,
+    forward_5: String,
+    forward_3: String,
+    reverse_5: String,
+    reverse_3: String,
 }
 
-#[derive(Serialize)]
-struct StateSummary {
-    sequence_count: usize,
-    sequences: Vec<SequenceSummary>,
-    display: gentle::engine::DisplaySettings,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolMember {
+    seq_id: String,
+    #[serde(default)]
+    human_id: String,
+    name: Option<String>,
+    sequence: String,
+    length_bp: usize,
+    topology: String,
+    ends: PoolEnd,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolExport {
+    schema: String,
+    pool_id: String,
+    #[serde(default)]
+    human_id: String,
+    member_count: usize,
+    members: Vec<PoolMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RebaseEnzymeRecord {
+    id: usize,
+    name: String,
+    sequence: String,
+    cut: isize,
+    overlap: isize,
+    #[serde(rename = "type")]
+    enzyme_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prototype: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suppliers: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commercial: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JasparMotifRecord {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    consensus_iupac: String,
+    length: usize,
+    pfm: JasparPfmRows,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JasparPfmRows {
+    a: Vec<f64>,
+    c: Vec<f64>,
+    g: Vec<f64>,
+    t: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JasparMotifSnapshot {
+    schema: String,
+    source: String,
+    fetched_at_unix_ms: u128,
+    motif_count: usize,
+    motifs: Vec<JasparMotifRecord>,
+}
+
+fn now_unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn is_iupac_base(c: char) -> bool {
+    matches!(
+        c.to_ascii_uppercase(),
+        'A' | 'C'
+            | 'G'
+            | 'T'
+            | 'U'
+            | 'W'
+            | 'S'
+            | 'M'
+            | 'K'
+            | 'R'
+            | 'Y'
+            | 'B'
+            | 'D'
+            | 'H'
+            | 'V'
+            | 'N'
+    )
+}
+
+fn parse_int_pair_in_parens(spec: &str) -> Option<(isize, isize)> {
+    let start = spec.find('(')?;
+    let end = spec[start + 1..].find(')')? + start + 1;
+    let inside = &spec[start + 1..end];
+    let slash = inside.find('/')?;
+    let left = inside[..slash].trim().parse::<isize>().ok()?;
+    let right = inside[slash + 1..].trim().parse::<isize>().ok()?;
+    Some((left, right))
+}
+
+fn parse_rebase_site(spec: &str) -> Option<(String, isize, isize)> {
+    let sequence: String = spec
+        .chars()
+        .filter(|c| is_iupac_base(*c))
+        .map(|c| c.to_ascii_uppercase())
+        .collect();
+    if sequence.is_empty() {
+        return None;
+    }
+
+    if let Some((top, bottom)) = parse_int_pair_in_parens(spec) {
+        let cut = if top == 0 { 1 } else { top };
+        return Some((sequence, cut, bottom - top));
+    }
+
+    let mut pos = 0isize;
+    let mut top_cut: Option<isize> = None;
+    let mut bottom_cut: Option<isize> = None;
+    for ch in spec.chars() {
+        if is_iupac_base(ch) {
+            pos += 1;
+            continue;
+        }
+        if ch == '^' {
+            top_cut = Some(pos);
+        } else if ch == '_' {
+            bottom_cut = Some(pos);
+        }
+    }
+
+    let cut = top_cut.unwrap_or(1);
+    let overlap = match (top_cut, bottom_cut) {
+        (Some(t), Some(b)) => b - t,
+        _ => 0,
+    };
+    Some((sequence, cut, overlap))
+}
+
+fn parse_suppliers(field: Option<&String>) -> Vec<String> {
+    let Some(value) = field else {
+        return vec![];
+    };
+    value
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_string())
+        .collect()
+}
+
+fn parse_rebase_withrefm(text: &str, commercial_only: bool) -> Vec<RebaseEnzymeRecord> {
+    let mut fields: HashMap<String, String> = HashMap::new();
+    let mut last_tag: Option<String> = None;
+    let mut out: Vec<RebaseEnzymeRecord> = vec![];
+
+    let push_entry = |fields: &HashMap<String, String>, out: &mut Vec<RebaseEnzymeRecord>| {
+        let Some(name) = fields.get("1").cloned() else {
+            return;
+        };
+        let Some(spec) = fields.get("3").cloned() else {
+            return;
+        };
+        let Some((sequence, cut, overlap)) = parse_rebase_site(&spec) else {
+            return;
+        };
+        let suppliers = parse_suppliers(fields.get("7"));
+        let commercial = !suppliers.is_empty();
+        if commercial_only && !commercial {
+            return;
+        }
+        let id = out.len() + 1;
+        out.push(RebaseEnzymeRecord {
+            id,
+            name: name.trim().to_string(),
+            sequence,
+            cut,
+            overlap,
+            enzyme_type: "restriction".to_string(),
+            note: fields.get("5").cloned().filter(|s| !s.trim().is_empty()),
+            prototype: fields.get("2").cloned().filter(|s| !s.trim().is_empty()),
+            suppliers: if suppliers.is_empty() {
+                None
+            } else {
+                Some(suppliers)
+            },
+            commercial: Some(commercial),
+        });
+    };
+
+    for raw in text.lines() {
+        let line = raw.trim_end();
+        if line.trim() == "//" {
+            push_entry(&fields, &mut out);
+            fields.clear();
+            last_tag = None;
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('<') {
+            if let Some(pos) = rest.find('>') {
+                let tag = rest[..pos].trim().to_string();
+                let value = rest[pos + 1..].trim().to_string();
+                fields.insert(tag.clone(), value);
+                last_tag = Some(tag);
+                continue;
+            }
+        }
+        if let Some(tag) = &last_tag {
+            let extra = line.trim();
+            if !extra.is_empty() {
+                let entry = fields.entry(tag.clone()).or_default();
+                if !entry.is_empty() {
+                    entry.push(' ');
+                }
+                entry.push_str(extra);
+            }
+        }
+    }
+    if !fields.is_empty() {
+        push_entry(&fields, &mut out);
+    }
+    out
+}
+
+fn parse_jaspar_row(line: &str) -> Result<(char, Vec<f64>), String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Err("Empty JASPAR row".to_string());
+    }
+    let base = trimmed
+        .chars()
+        .next()
+        .ok_or_else(|| "Missing JASPAR base row label".to_string())?
+        .to_ascii_uppercase();
+    if !matches!(base, 'A' | 'C' | 'G' | 'T') {
+        return Err(format!("Unsupported JASPAR row label '{base}'"));
+    }
+    let payload = trimmed[1..].replace(['[', ']', ','], " ");
+    let values = payload
+        .split_whitespace()
+        .map(|v| {
+            v.parse::<f64>()
+                .map_err(|e| format!("Invalid JASPAR matrix number '{v}': {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if values.is_empty() {
+        return Err("JASPAR row has no values".to_string());
+    }
+    Ok((base, values))
+}
+
+fn bases_to_iupac(mut bases: Vec<char>) -> char {
+    bases.sort_unstable();
+    bases.dedup();
+    match bases.as_slice() {
+        ['A'] => 'A',
+        ['C'] => 'C',
+        ['G'] => 'G',
+        ['T'] => 'T',
+        ['A', 'C'] => 'M',
+        ['A', 'G'] => 'R',
+        ['A', 'T'] => 'W',
+        ['C', 'G'] => 'S',
+        ['C', 'T'] => 'Y',
+        ['G', 'T'] => 'K',
+        ['A', 'C', 'G'] => 'V',
+        ['A', 'C', 'T'] => 'H',
+        ['A', 'G', 'T'] => 'D',
+        ['C', 'G', 'T'] => 'B',
+        _ => 'N',
+    }
+}
+
+fn matrix_consensus_iupac(a: &[f64], c: &[f64], g: &[f64], t: &[f64]) -> Result<String, String> {
+    if !(a.len() == c.len() && c.len() == g.len() && g.len() == t.len()) {
+        return Err("JASPAR rows do not have equal length".to_string());
+    }
+    let mut out = String::with_capacity(a.len());
+    for i in 0..a.len() {
+        let max_val = a[i].max(c[i]).max(g[i]).max(t[i]);
+        if max_val <= 0.0 {
+            out.push('N');
+            continue;
+        }
+        let mut winners = Vec::new();
+        if (a[i] - max_val).abs() < f64::EPSILON {
+            winners.push('A');
+        }
+        if (c[i] - max_val).abs() < f64::EPSILON {
+            winners.push('C');
+        }
+        if (g[i] - max_val).abs() < f64::EPSILON {
+            winners.push('G');
+        }
+        if (t[i] - max_val).abs() < f64::EPSILON {
+            winners.push('T');
+        }
+        out.push(bases_to_iupac(winners));
+    }
+    Ok(out)
+}
+
+fn parse_jaspar_motifs(text: &str) -> Result<Vec<JasparMotifRecord>, String> {
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut i = 0usize;
+    let mut motifs = Vec::new();
+
+    while i < lines.len() {
+        let line = lines[i].trim();
+        i += 1;
+        if line.is_empty() {
+            continue;
+        }
+        if !line.starts_with('>') {
+            continue;
+        }
+        let header = line.trim_start_matches('>').trim();
+        let mut parts = header.splitn(2, char::is_whitespace);
+        let id = parts
+            .next()
+            .ok_or_else(|| "Malformed JASPAR header".to_string())?
+            .trim()
+            .to_string();
+        let name = parts
+            .next()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        let mut rows: HashMap<char, Vec<f64>> = HashMap::new();
+        while i < lines.len() {
+            let row_line = lines[i].trim();
+            if row_line.is_empty() {
+                i += 1;
+                continue;
+            }
+            if row_line.starts_with('>') {
+                break;
+            }
+            let (base, vals) = parse_jaspar_row(row_line)?;
+            rows.insert(base, vals);
+            i += 1;
+            if rows.len() == 4 {
+                break;
+            }
+        }
+
+        let (Some(a), Some(c), Some(g), Some(t)) = (
+            rows.get(&'A'),
+            rows.get(&'C'),
+            rows.get(&'G'),
+            rows.get(&'T'),
+        ) else {
+            return Err(format!(
+                "JASPAR motif '{id}' is missing one or more A/C/G/T rows"
+            ));
+        };
+        let consensus = matrix_consensus_iupac(a, c, g, t)?;
+        motifs.push(JasparMotifRecord {
+            id,
+            name,
+            length: consensus.len(),
+            consensus_iupac: consensus,
+            pfm: JasparPfmRows {
+                a: a.clone(),
+                c: c.clone(),
+                g: g.clone(),
+                t: t.clone(),
+            },
+        });
+    }
+
+    Ok(motifs)
+}
+
+fn ensure_parent_dir(path: &str) -> Result<(), String> {
+    let parent = Path::new(path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| Path::new(".").to_path_buf());
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
 }
 
 fn usage() {
     eprintln!(
         "Usage:\n  \
   gentle_cli --version\n  \
+  gentle_cli [--state PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH] capabilities\n  \
   gentle_cli [--state PATH] op '<operation-json>'\n  \
   gentle_cli [--state PATH] workflow '<workflow-json>'\n  \
@@ -35,7 +422,12 @@ fn usage() {
   gentle_cli [--state PATH] import-state PATH\n  \
   gentle_cli [--state PATH] save-project PATH\n  \
   gentle_cli [--state PATH] load-project PATH\n  \
-  gentle_cli [--state PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n\n  \
+  gentle_cli [--state PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
+  gentle_cli [--state PATH] render-lineage-svg OUTPUT.svg\n\n  \
+  gentle_cli [--state PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
+  gentle_cli [--state PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
+  gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
+  gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON"
     );
 }
@@ -45,6 +437,28 @@ fn load_json_arg(value: &str) -> Result<String, String> {
         fs::read_to_string(path).map_err(|e| format!("Could not read JSON file '{path}': {e}"))
     } else {
         Ok(value.to_string())
+    }
+}
+
+fn read_text_input(path_or_url: &str) -> Result<String, String> {
+    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+        let response = std::panic::catch_unwind(|| reqwest::blocking::get(path_or_url))
+            .map_err(|_| {
+                format!("Could not fetch URL '{path_or_url}': networking backend panicked")
+            })?
+            .map_err(|e| format!("Could not fetch URL '{path_or_url}': {e}"))?;
+        if !response.status().is_success() {
+            return Err(format!(
+                "Could not fetch URL '{path_or_url}': HTTP {}",
+                response.status()
+            ));
+        }
+        response
+            .text()
+            .map_err(|e| format!("Could not read URL response '{path_or_url}': {e}"))
+    } else {
+        fs::read_to_string(path_or_url)
+            .map_err(|e| format!("Could not read file '{path_or_url}': {e}"))
     }
 }
 
@@ -63,32 +477,148 @@ fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_global_state_arg(args: &[String]) -> (String, usize) {
-    if args.len() >= 3 && args[1] == "--state" {
-        return (args[2].clone(), 3);
-    }
-    (DEFAULT_STATE_PATH.to_string(), 1)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProgressSink {
+    Stdout,
+    Stderr,
 }
 
-fn summarize_state(engine: &GentleEngine) -> StateSummary {
-    let mut sequences: Vec<SequenceSummary> = engine
-        .state()
-        .sequences
-        .iter()
-        .map(|(id, dna)| SequenceSummary {
-            id: id.to_string(),
-            name: dna.name().clone(),
-            length: dna.len(),
-            circular: dna.is_circular(),
-        })
-        .collect();
-    sequences.sort_by(|a, b| a.id.cmp(&b.id));
+#[derive(Clone, Debug)]
+struct GlobalCliArgs {
+    state_path: String,
+    cmd_idx: usize,
+    progress_sink: Option<ProgressSink>,
+}
 
-    StateSummary {
-        sequence_count: sequences.len(),
-        sequences,
-        display: engine.state().display.clone(),
+fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
+    let mut state_path = DEFAULT_STATE_PATH.to_string();
+    let mut progress_sink: Option<ProgressSink> = None;
+    let mut idx = 1usize;
+
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--state" => {
+                if idx + 1 >= args.len() {
+                    return Err("Missing PATH after --state".to_string());
+                }
+                state_path = args[idx + 1].clone();
+                idx += 2;
+            }
+            "--progress" | "--progress-stderr" => {
+                progress_sink = Some(ProgressSink::Stderr);
+                idx += 1;
+            }
+            "--progress-stdout" => {
+                progress_sink = Some(ProgressSink::Stdout);
+                idx += 1;
+            }
+            _ => break,
+        }
     }
+
+    Ok(GlobalCliArgs {
+        state_path,
+        cmd_idx: idx,
+        progress_sink,
+    })
+}
+
+struct ProgressPrinter {
+    sink: ProgressSink,
+    last_total_tenths: Option<i64>,
+    last_motif_index: Option<usize>,
+}
+
+impl ProgressPrinter {
+    fn new(sink: ProgressSink) -> Self {
+        Self {
+            sink,
+            last_total_tenths: None,
+            last_motif_index: None,
+        }
+    }
+
+    fn print_line(&self, line: &str) {
+        match self.sink {
+            ProgressSink::Stdout => println!("{line}"),
+            ProgressSink::Stderr => eprintln!("{line}"),
+        }
+    }
+
+    fn on_tfbs_progress(&mut self, p: TfbsProgress) {
+        let total_tenths = (p.total_percent * 10.0).floor() as i64;
+        let motif_changed = self.last_motif_index != Some(p.motif_index);
+        let progressed = self
+            .last_total_tenths
+            .map(|prev| total_tenths > prev)
+            .unwrap_or(true);
+        let done = (p.total_percent - 100.0).abs() < f64::EPSILON;
+        if motif_changed || progressed || done {
+            self.last_motif_index = Some(p.motif_index);
+            self.last_total_tenths = Some(total_tenths);
+            self.print_line(&format!(
+                "progress tfbs seq={} motif={}/{} id={} motif_pct={:.1} total_pct={:.1} steps={}/{}",
+                p.seq_id,
+                p.motif_index,
+                p.motif_count,
+                p.motif_id,
+                p.motif_percent,
+                p.total_percent,
+                p.scanned_steps,
+                p.total_steps
+            ));
+        }
+    }
+
+    fn on_progress(&mut self, progress: OperationProgress) {
+        let OperationProgress::Tfbs(p) = progress;
+        self.on_tfbs_progress(p);
+    }
+}
+
+fn summarize_state(engine: &GentleEngine) -> EngineStateSummary {
+    engine.summarize_state()
+}
+
+fn unique_id(
+    existing: &std::collections::HashMap<String, gentle::dna_sequence::DNAsequence>,
+    base: &str,
+) -> String {
+    if !existing.contains_key(base) {
+        return base.to_string();
+    }
+    let mut i = 2usize;
+    loop {
+        let candidate = format!("{base}_{i}");
+        if !existing.contains_key(&candidate) {
+            return candidate;
+        }
+        i += 1;
+    }
+}
+
+fn apply_member_overhang(
+    member: &PoolMember,
+    dna: &mut gentle::dna_sequence::DNAsequence,
+) -> Result<(), String> {
+    let mut value =
+        serde_json::to_value(&*dna).map_err(|e| format!("Could not serialize sequence: {e}"))?;
+    let obj = value
+        .as_object_mut()
+        .ok_or_else(|| "Internal serialization shape error".to_string())?;
+    obj.insert(
+        "overhang".to_string(),
+        json!({
+            "forward_3": member.ends.forward_3.as_bytes(),
+            "forward_5": member.ends.forward_5.as_bytes(),
+            "reverse_3": member.ends.reverse_3.as_bytes(),
+            "reverse_5": member.ends.reverse_5.as_bytes(),
+        }),
+    );
+    let patched: gentle::dna_sequence::DNAsequence =
+        serde_json::from_value(value).map_err(|e| format!("Could not restore overhang: {e}"))?;
+    *dna = patched;
+    Ok(())
 }
 
 fn main() {
@@ -109,7 +639,9 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    let (state_path, cmd_idx) = parse_global_state_arg(&args);
+    let global = parse_global_args(&args)?;
+    let state_path = global.state_path.clone();
+    let cmd_idx = global.cmd_idx;
     if args.len() <= cmd_idx {
         usage();
         return Err("Missing command".to_string());
@@ -118,6 +650,103 @@ fn run() -> Result<(), String> {
     let command = &args[cmd_idx];
 
     match command.as_str() {
+        "resources" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err(
+                    "resources requires a subcommand: sync-rebase or sync-jaspar".to_string(),
+                );
+            }
+            match args[cmd_idx + 1].as_str() {
+                "sync-rebase" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(
+                            "resources sync-rebase requires INPUT.withrefm path".to_string()
+                        );
+                    }
+                    let input = &args[cmd_idx + 2];
+                    let mut output = DEFAULT_REBASE_RESOURCE_PATH.to_string();
+                    let mut commercial_only = false;
+                    for arg in args.iter().skip(cmd_idx + 3) {
+                        if arg == "--commercial-only" {
+                            commercial_only = true;
+                        } else if !arg.starts_with("--") {
+                            output = arg.clone();
+                        }
+                    }
+                    let text = read_text_input(input)?;
+                    let enzymes = parse_rebase_withrefm(&text, commercial_only);
+                    if enzymes.is_empty() {
+                        return Err(format!(
+                            "No REBASE enzymes were parsed from '{input}'{}",
+                            if commercial_only {
+                                " (commercial-only filter active)"
+                            } else {
+                                ""
+                            }
+                        ));
+                    }
+                    ensure_parent_dir(&output)?;
+                    let json = serde_json::to_string_pretty(&enzymes).map_err(|e| {
+                        format!("Could not serialize REBASE resource snapshot: {e}")
+                    })?;
+                    fs::write(&output, json)
+                        .map_err(|e| format!("Could not write REBASE output '{output}': {e}"))?;
+                    println!(
+                        "Synced {} REBASE enzymes to '{}'{}",
+                        enzymes.len(),
+                        output,
+                        if commercial_only {
+                            " (commercial-only)"
+                        } else {
+                            ""
+                        }
+                    );
+                    Ok(())
+                }
+                "sync-jaspar" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(
+                            "resources sync-jaspar requires INPUT.jaspar.txt path".to_string()
+                        );
+                    }
+                    let input = &args[cmd_idx + 2];
+                    let output = args
+                        .get(cmd_idx + 3)
+                        .filter(|s| !s.starts_with("--"))
+                        .cloned()
+                        .unwrap_or_else(|| DEFAULT_JASPAR_RESOURCE_PATH.to_string());
+                    let text = read_text_input(input)?;
+                    let motifs = parse_jaspar_motifs(&text)?;
+                    if motifs.is_empty() {
+                        return Err(format!("No JASPAR motifs were parsed from '{input}'"));
+                    }
+                    let snapshot = JasparMotifSnapshot {
+                        schema: "gentle.tf_motifs.v2".to_string(),
+                        source: input.clone(),
+                        fetched_at_unix_ms: now_unix_ms(),
+                        motif_count: motifs.len(),
+                        motifs,
+                    };
+                    ensure_parent_dir(&output)?;
+                    let json = serde_json::to_string_pretty(&snapshot).map_err(|e| {
+                        format!("Could not serialize JASPAR resource snapshot: {e}")
+                    })?;
+                    fs::write(&output, json)
+                        .map_err(|e| format!("Could not write JASPAR output '{output}': {e}"))?;
+                    println!(
+                        "Synced {} JASPAR motifs to '{}'",
+                        snapshot.motif_count, output
+                    );
+                    Ok(())
+                }
+                other => Err(format!(
+                    "Unknown resources subcommand '{other}' (expected sync-rebase or sync-jaspar)"
+                )),
+            }
+        }
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
@@ -157,24 +786,136 @@ fn run() -> Result<(), String> {
             let seq_id = &args[cmd_idx + 1];
             let mode = &args[cmd_idx + 2];
             let output = &args[cmd_idx + 3];
-
-            let state = load_state(&state_path)?;
-            let dna = state
-                .sequences
-                .get(seq_id)
-                .ok_or_else(|| format!("Sequence '{seq_id}' not found in state '{state_path}'"))?;
-            let svg = match mode.as_str() {
-                "linear" => export_linear_svg(dna, &state.display),
-                "circular" => export_circular_svg(dna, &state.display),
+            let mode = match mode.as_str() {
+                "linear" => RenderSvgMode::Linear,
+                "circular" => RenderSvgMode::Circular,
                 _ => {
                     return Err(format!(
                         "Unknown render mode '{mode}', expected 'linear' or 'circular'"
                     ))
                 }
             };
-            fs::write(output, svg)
-                .map_err(|e| format!("Could not write SVG output '{output}': {e}"))?;
-            println!("Wrote {mode} SVG for '{seq_id}' to '{output}'");
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::RenderSequenceSvg {
+                    seq_id: seq_id.to_string(),
+                    mode,
+                    path: output.to_string(),
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "render-lineage-svg" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("render-lineage-svg requires: OUTPUT.svg".to_string());
+            }
+            let output = &args[cmd_idx + 1];
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::RenderLineageSvg {
+                    path: output.to_string(),
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "export-pool" => {
+            if args.len() <= cmd_idx + 2 {
+                usage();
+                return Err(
+                    "export-pool requires: IDS OUTPUT.pool.gentle.json [HUMAN_ID]".to_string(),
+                );
+            }
+            let ids = args[cmd_idx + 1]
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            if ids.is_empty() {
+                return Err("export-pool requires at least one sequence id".to_string());
+            }
+            let output = &args[cmd_idx + 2];
+            let human_id = args.get(cmd_idx + 3).cloned();
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::ExportPool {
+                    inputs: ids,
+                    path: output.to_string(),
+                    pool_id: Some("pool_export".to_string()),
+                    human_id,
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            print_json(&result)
+        }
+        "import-pool" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("import-pool requires: INPUT.pool.gentle.json [PREFIX]".to_string());
+            }
+            let input = &args[cmd_idx + 1];
+            let prefix = args
+                .get(cmd_idx + 2)
+                .cloned()
+                .unwrap_or_else(|| "pool".to_string());
+            let text = fs::read_to_string(input)
+                .map_err(|e| format!("Could not read pool file '{input}': {e}"))?;
+            let pool: PoolExport = serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid pool JSON '{input}': {e}"))?;
+            if pool.schema != "gentle.pool.v1" {
+                return Err(format!(
+                    "Unsupported pool schema '{}', expected 'gentle.pool.v1'",
+                    pool.schema
+                ));
+            }
+
+            let mut state = load_state(&state_path)?;
+            for (idx, member) in pool.members.iter().enumerate() {
+                let mut dna = gentle::dna_sequence::DNAsequence::from_sequence(&member.sequence)
+                    .map_err(|e| format!("Invalid DNA in pool member '{}': {e}", member.seq_id))?;
+                if let Some(name) = &member.name {
+                    let mut value = serde_json::to_value(&dna)
+                        .map_err(|e| format!("Could not serialize sequence: {e}"))?;
+                    if let Some(obj) = value.as_object_mut() {
+                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
+                            seq_obj.insert("name".to_string(), json!(name));
+                        }
+                    }
+                    dna = serde_json::from_value(value)
+                        .map_err(|e| format!("Could not set sequence name: {e}"))?;
+                }
+                if member.topology.eq_ignore_ascii_case("circular") {
+                    dna.set_circular(true);
+                }
+                apply_member_overhang(member, &mut dna)?;
+                dna.update_computed_features();
+                let base = format!("{prefix}_{}", idx + 1);
+                let id = unique_id(&state.sequences, &base);
+                state.sequences.insert(id, dna);
+            }
+            state.save_to_path(&state_path).map_err(|e| e.to_string())?;
+            println!(
+                "Imported pool '{}' ({} members) into '{}'",
+                pool.pool_id, pool.member_count, state_path
+            );
             Ok(())
         }
         "op" => {
@@ -187,7 +928,14 @@ fn run() -> Result<(), String> {
                 serde_json::from_str(&json).map_err(|e| format!("Invalid operation JSON: {e}"))?;
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let result = engine.apply(op).map_err(|e| e.to_string())?;
+            let result = if let Some(sink) = global.progress_sink {
+                let mut printer = ProgressPrinter::new(sink);
+                engine
+                    .apply_with_progress(op, |p| printer.on_progress(p))
+                    .map_err(|e| e.to_string())?
+            } else {
+                engine.apply(op).map_err(|e| e.to_string())?
+            };
             engine
                 .state()
                 .save_to_path(&state_path)
@@ -204,7 +952,14 @@ fn run() -> Result<(), String> {
                 serde_json::from_str(&json).map_err(|e| format!("Invalid workflow JSON: {e}"))?;
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
+            let results = if let Some(sink) = global.progress_sink {
+                let mut printer = ProgressPrinter::new(sink);
+                engine
+                    .apply_workflow_with_progress(workflow, |p| printer.on_progress(p))
+                    .map_err(|e| e.to_string())?
+            } else {
+                engine.apply_workflow(workflow).map_err(|e| e.to_string())?
+            };
             engine
                 .state()
                 .save_to_path(&state_path)
@@ -215,5 +970,78 @@ fn run() -> Result<(), String> {
             usage();
             Err(format!("Unknown command '{command}'"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_rebase_site_with_slash_notation() {
+        let (seq, cut, overlap) = parse_rebase_site("GAATTC (1/5)").unwrap();
+        assert_eq!(seq, "GAATTC");
+        assert_eq!(cut, 1);
+        assert_eq!(overlap, 4);
+    }
+
+    #[test]
+    fn test_parse_rebase_withrefm_minimal() {
+        let text = r#"
+<1>EcoRI
+<2>EcoRI
+<3>GAATTC (1/5)
+<7>N
+//
+"#;
+        let items = parse_rebase_withrefm(text, true);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "EcoRI");
+        assert_eq!(items[0].sequence, "GAATTC");
+        assert_eq!(items[0].overlap, 4);
+    }
+
+    #[test]
+    fn test_parse_jaspar_motifs_consensus() {
+        let text = r#"
+>MA0001.1 TEST
+A [ 10 0 0 0 ]
+C [ 0 10 0 0 ]
+G [ 0 0 10 0 ]
+T [ 0 0 0 10 ]
+"#;
+        let motifs = parse_jaspar_motifs(text).unwrap();
+        assert_eq!(motifs.len(), 1);
+        assert_eq!(motifs[0].id, "MA0001.1");
+        assert_eq!(motifs[0].consensus_iupac, "ACGT");
+    }
+
+    #[test]
+    fn test_parse_global_args_progress_stdout_and_state() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "--state".to_string(),
+            "x.json".to_string(),
+            "--progress-stdout".to_string(),
+            "op".to_string(),
+            "{}".to_string(),
+        ];
+        let parsed = parse_global_args(&args).unwrap();
+        assert_eq!(parsed.state_path, "x.json");
+        assert_eq!(parsed.progress_sink, Some(ProgressSink::Stdout));
+        assert_eq!(parsed.cmd_idx, 4);
+    }
+
+    #[test]
+    fn test_parse_global_args_progress_stderr_default_flag() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "--progress".to_string(),
+            "capabilities".to_string(),
+        ];
+        let parsed = parse_global_args(&args).unwrap();
+        assert_eq!(parsed.state_path, DEFAULT_STATE_PATH);
+        assert_eq!(parsed.progress_sink, Some(ProgressSink::Stderr));
+        assert_eq!(parsed.cmd_idx, 2);
     }
 }

@@ -1,6 +1,13 @@
 use crate::{
-    app::GENtleApp, dna_sequence::DNAsequence, iupac_code::IupacCode,
-    methylation_sites::MethylationMode, restriction_enzyme::RestrictionEnzyme, ENZYMES,
+    app::GENtleApp,
+    dna_sequence::DNAsequence,
+    enzymes::active_restriction_enzymes,
+    iupac_code::IupacCode,
+    lineage_export::export_lineage_svg,
+    methylation_sites::MethylationMode,
+    render_export::{export_circular_svg, export_linear_svg},
+    restriction_enzyme::RestrictionEnzyme,
+    tf_motifs,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -19,12 +26,14 @@ pub type SeqId = String;
 pub type OpId = String;
 pub type RunId = String;
 pub type NodeId = String;
+pub type ContainerId = String;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DisplayTarget {
     SequencePanel,
     MapPanel,
     Features,
+    Tfbs,
     RestrictionEnzymes,
     GcContents,
     OpenReadingFrames,
@@ -37,6 +46,15 @@ pub struct DisplaySettings {
     pub show_sequence_panel: bool,
     pub show_map_panel: bool,
     pub show_features: bool,
+    pub show_tfbs: bool,
+    pub tfbs_display_use_llr_bits: bool,
+    pub tfbs_display_min_llr_bits: f64,
+    pub tfbs_display_use_llr_quantile: bool,
+    pub tfbs_display_min_llr_quantile: f64,
+    pub tfbs_display_use_true_log_odds_bits: bool,
+    pub tfbs_display_min_true_log_odds_bits: f64,
+    pub tfbs_display_use_true_log_odds_quantile: bool,
+    pub tfbs_display_min_true_log_odds_quantile: f64,
     pub show_restriction_enzymes: bool,
     pub show_gc_contents: bool,
     pub show_open_reading_frames: bool,
@@ -49,6 +67,15 @@ impl Default for DisplaySettings {
             show_sequence_panel: true,
             show_map_panel: true,
             show_features: true,
+            show_tfbs: false,
+            tfbs_display_use_llr_bits: true,
+            tfbs_display_min_llr_bits: 0.0,
+            tfbs_display_use_llr_quantile: true,
+            tfbs_display_min_llr_quantile: 0.95,
+            tfbs_display_use_true_log_odds_bits: false,
+            tfbs_display_min_true_log_odds_bits: 0.0,
+            tfbs_display_use_true_log_odds_quantile: false,
+            tfbs_display_min_true_log_odds_quantile: 0.95,
             show_restriction_enzymes: true,
             show_gc_contents: true,
             show_open_reading_frames: true,
@@ -95,6 +122,31 @@ pub struct LineageGraph {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContainerKind {
+    Singleton,
+    Pool,
+    Selection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Container {
+    pub container_id: ContainerId,
+    pub kind: ContainerKind,
+    pub name: Option<String>,
+    pub members: Vec<SeqId>,
+    pub created_by_op: Option<OpId>,
+    pub created_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ContainerState {
+    pub containers: HashMap<ContainerId, Container>,
+    pub seq_to_latest_container: HashMap<SeqId, ContainerId>,
+    pub next_container_counter: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EngineParameters {
     pub max_fragments_per_container: usize,
@@ -118,6 +170,8 @@ pub struct ProjectState {
     pub lineage: LineageGraph,
     #[serde(default)]
     pub parameters: EngineParameters,
+    #[serde(default)]
+    pub container_state: ContainerState,
 }
 
 impl ProjectState {
@@ -151,6 +205,12 @@ pub enum ExportFormat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RenderSvgMode {
+    Linear,
+    Circular,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PrimerLibraryMode {
     Enumerate,
     Sample,
@@ -175,9 +235,41 @@ pub struct SnpMutationSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TfThresholdOverride {
+    pub tf: String,
+    pub min_llr_bits: Option<f64>,
+    pub min_llr_quantile: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LigationProtocol {
     Sticky,
     Blunt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AnchorBoundary {
+    Start,
+    End,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AnchorDirection {
+    Upstream,
+    Downstream,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AnchoredRegionAnchor {
+    Position {
+        zero_based: usize,
+    },
+    FeatureBoundary {
+        feature_kind: Option<String>,
+        feature_label: Option<String>,
+        boundary: AnchorBoundary,
+        occurrence: Option<usize>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +282,45 @@ pub enum Operation {
         seq_id: SeqId,
         path: String,
         format: ExportFormat,
+    },
+    RenderSequenceSvg {
+        seq_id: SeqId,
+        mode: RenderSvgMode,
+        path: String,
+    },
+    RenderLineageSvg {
+        path: String,
+    },
+    ExportPool {
+        inputs: Vec<SeqId>,
+        path: String,
+        pool_id: Option<String>,
+        human_id: Option<String>,
+    },
+    DigestContainer {
+        container_id: ContainerId,
+        enzymes: Vec<String>,
+        output_prefix: Option<String>,
+    },
+    MergeContainersById {
+        container_ids: Vec<ContainerId>,
+        output_prefix: Option<String>,
+    },
+    LigationContainer {
+        container_id: ContainerId,
+        circularize_if_possible: bool,
+        output_id: Option<SeqId>,
+        protocol: LigationProtocol,
+        output_prefix: Option<String>,
+        unique: Option<bool>,
+    },
+    FilterContainerByMolecularWeight {
+        container_id: ContainerId,
+        min_bp: usize,
+        max_bp: usize,
+        error: f64,
+        unique: bool,
+        output_prefix: Option<String>,
     },
     Digest {
         input: SeqId,
@@ -237,6 +368,20 @@ pub enum Operation {
         to: usize,
         output_id: Option<SeqId>,
     },
+    ExtractAnchoredRegion {
+        input: SeqId,
+        anchor: AnchoredRegionAnchor,
+        direction: AnchorDirection,
+        target_length_bp: usize,
+        length_tolerance_bp: usize,
+        required_re_sites: Vec<String>,
+        required_tf_motifs: Vec<String>,
+        forward_primer: Option<String>,
+        reverse_primer: Option<String>,
+        output_prefix: Option<String>,
+        unique: Option<bool>,
+        max_candidates: Option<usize>,
+    },
     SelectCandidate {
         input: SeqId,
         criterion: String,
@@ -281,6 +426,46 @@ pub enum Operation {
         name: String,
         value: serde_json::Value,
     },
+    AnnotateTfbs {
+        seq_id: SeqId,
+        motifs: Vec<String>,
+        min_llr_bits: Option<f64>,
+        min_llr_quantile: Option<f64>,
+        #[serde(default)]
+        per_tf_thresholds: Vec<TfThresholdOverride>,
+        clear_existing: Option<bool>,
+        #[serde(default)]
+        max_hits: Option<usize>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolEnd {
+    end_type: String,
+    forward_5: String,
+    forward_3: String,
+    reverse_5: String,
+    reverse_3: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolMember {
+    seq_id: SeqId,
+    human_id: String,
+    name: Option<String>,
+    sequence: String,
+    length_bp: usize,
+    topology: String,
+    ends: PoolEnd,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolExport {
+    schema: String,
+    pool_id: String,
+    human_id: String,
+    member_count: usize,
+    members: Vec<PoolMember>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,6 +481,23 @@ pub struct OpResult {
     pub changed_seq_ids: Vec<SeqId>,
     pub warnings: Vec<String>,
     pub messages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TfbsProgress {
+    pub seq_id: String,
+    pub motif_id: String,
+    pub motif_index: usize,
+    pub motif_count: usize,
+    pub scanned_steps: usize,
+    pub total_steps: usize,
+    pub motif_percent: f64,
+    pub total_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OperationProgress {
+    Tfbs(TfbsProgress),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -336,6 +538,31 @@ pub struct Capabilities {
     pub deterministic_operation_log: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineSequenceSummary {
+    pub id: String,
+    pub name: Option<String>,
+    pub length: usize,
+    pub circular: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineContainerSummary {
+    pub id: String,
+    pub kind: String,
+    pub member_count: usize,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineStateSummary {
+    pub sequence_count: usize,
+    pub sequences: Vec<EngineSequenceSummary>,
+    pub container_count: usize,
+    pub containers: Vec<EngineContainerSummary>,
+    pub display: DisplaySettings,
+}
+
 pub trait Engine {
     fn apply(&mut self, op: Operation) -> Result<OpResult, EngineError>;
     fn apply_workflow(&mut self, wf: Workflow) -> Result<Vec<OpResult>, EngineError>;
@@ -360,6 +587,7 @@ impl GentleEngine {
             ..Self::default()
         };
         ret.reconcile_lineage_nodes();
+        ret.reconcile_containers();
         ret
     }
 
@@ -377,6 +605,13 @@ impl GentleEngine {
             supported_operations: vec![
                 "LoadFile".to_string(),
                 "SaveFile".to_string(),
+                "RenderSequenceSvg".to_string(),
+                "RenderLineageSvg".to_string(),
+                "ExportPool".to_string(),
+                "DigestContainer".to_string(),
+                "MergeContainersById".to_string(),
+                "LigationContainer".to_string(),
+                "FilterContainerByMolecularWeight".to_string(),
                 "Digest".to_string(),
                 "MergeContainers".to_string(),
                 "Ligation".to_string(),
@@ -384,6 +619,7 @@ impl GentleEngine {
                 "PcrAdvanced".to_string(),
                 "PcrMutagenesis".to_string(),
                 "ExtractRegion".to_string(),
+                "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
                 "FilterByMolecularWeight".to_string(),
                 "Reverse".to_string(),
@@ -394,6 +630,7 @@ impl GentleEngine {
                 "SetTopology".to_string(),
                 "RecomputeFeatures".to_string(),
                 "SetParameter".to_string(),
+                "AnnotateTfbs".to_string(),
             ],
             supported_export_formats: vec!["GenBank".to_string(), "Fasta".to_string()],
             deterministic_operation_log: true,
@@ -402,6 +639,45 @@ impl GentleEngine {
 
     pub fn operation_log(&self) -> &[OperationRecord] {
         &self.journal
+    }
+
+    pub fn apply_with_progress<F>(
+        &mut self,
+        op: Operation,
+        mut on_progress: F,
+    ) -> Result<OpResult, EngineError>
+    where
+        F: FnMut(OperationProgress),
+    {
+        let run_id = "interactive".to_string();
+        let result = self.apply_internal(op.clone(), &run_id, &mut on_progress)?;
+        self.journal.push(OperationRecord {
+            run_id,
+            op,
+            result: result.clone(),
+        });
+        Ok(result)
+    }
+
+    pub fn apply_workflow_with_progress<F>(
+        &mut self,
+        wf: Workflow,
+        mut on_progress: F,
+    ) -> Result<Vec<OpResult>, EngineError>
+    where
+        F: FnMut(OperationProgress),
+    {
+        let mut results = Vec::new();
+        for op in &wf.ops {
+            let result = self.apply_internal(op.clone(), &wf.run_id, &mut on_progress)?;
+            self.journal.push(OperationRecord {
+                run_id: wf.run_id.clone(),
+                op: op.clone(),
+                result: result.clone(),
+            });
+            results.push(result);
+        }
+        Ok(results)
     }
 
     fn next_op_id(&mut self) -> OpId {
@@ -497,6 +773,110 @@ impl GentleEngine {
         }
     }
 
+    fn next_container_id(&mut self) -> ContainerId {
+        loop {
+            self.state.container_state.next_container_counter += 1;
+            let id = format!(
+                "container-{}",
+                self.state.container_state.next_container_counter
+            );
+            if !self.state.container_state.containers.contains_key(&id) {
+                return id;
+            }
+        }
+    }
+
+    fn add_container(
+        &mut self,
+        members: &[SeqId],
+        kind: ContainerKind,
+        name: Option<String>,
+        created_by_op: Option<&str>,
+    ) -> Option<ContainerId> {
+        if members.is_empty() {
+            return None;
+        }
+        let container_id = self.next_container_id();
+        let container = Container {
+            container_id: container_id.clone(),
+            kind,
+            name,
+            members: members.to_vec(),
+            created_by_op: created_by_op.map(ToString::to_string),
+            created_at_unix_ms: Self::now_unix_ms(),
+        };
+        self.state
+            .container_state
+            .containers
+            .insert(container_id.clone(), container);
+        for seq_id in members {
+            self.state
+                .container_state
+                .seq_to_latest_container
+                .insert(seq_id.clone(), container_id.clone());
+        }
+        Some(container_id)
+    }
+
+    fn reconcile_containers(&mut self) {
+        let seq_ids: Vec<SeqId> = self.state.sequences.keys().cloned().collect();
+        for seq_id in &seq_ids {
+            if !self
+                .state
+                .container_state
+                .seq_to_latest_container
+                .contains_key(seq_id)
+            {
+                let _ = self.add_container(
+                    std::slice::from_ref(seq_id),
+                    ContainerKind::Singleton,
+                    Some(format!("Imported sequence {seq_id}")),
+                    None,
+                );
+            }
+        }
+    }
+
+    fn add_container_from_result(&mut self, op: &Operation, result: &OpResult) {
+        if result.created_seq_ids.is_empty() {
+            return;
+        }
+        let kind = if matches!(op, Operation::SelectCandidate { .. }) {
+            ContainerKind::Selection
+        } else if result.created_seq_ids.len() > 1 {
+            ContainerKind::Pool
+        } else {
+            ContainerKind::Singleton
+        };
+        let name = match op {
+            Operation::LoadFile { .. } => Some("Imported sequence".to_string()),
+            Operation::Digest { .. } => Some("Digest products".to_string()),
+            Operation::DigestContainer { .. } => Some("Digest products".to_string()),
+            Operation::MergeContainers { .. } => Some("Merged container".to_string()),
+            Operation::MergeContainersById { .. } => Some("Merged container".to_string()),
+            Operation::Ligation { .. } => Some("Ligation products".to_string()),
+            Operation::LigationContainer { .. } => Some("Ligation products".to_string()),
+            Operation::Pcr { .. }
+            | Operation::PcrAdvanced { .. }
+            | Operation::PcrMutagenesis { .. } => Some("PCR products".to_string()),
+            Operation::ExtractRegion { .. } => Some("Extracted region".to_string()),
+            Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
+            Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
+            Operation::FilterByMolecularWeight { .. } => {
+                Some("Molecular-weight filtered".to_string())
+            }
+            Operation::FilterContainerByMolecularWeight { .. } => {
+                Some("Molecular-weight filtered".to_string())
+            }
+            Operation::Reverse { .. }
+            | Operation::Complement { .. }
+            | Operation::ReverseComplement { .. }
+            | Operation::Branch { .. } => Some("Derived sequence".to_string()),
+            _ => None,
+        };
+        let _ = self.add_container(&result.created_seq_ids, kind, name, Some(&result.op_id));
+    }
+
     fn add_lineage_edges(
         &mut self,
         parent_seq_ids: &[SeqId],
@@ -547,9 +927,7 @@ impl GentleEngine {
     }
 
     fn prepare_sequence_light(dna: &mut DNAsequence) {
-        ENZYMES
-            .restriction_enzymes()
-            .clone_into(dna.restriction_enzymes_mut());
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
         dna.set_max_restriction_enzyme_sites(Some(2));
         dna.set_methylation_mode(MethylationMode::both());
     }
@@ -662,6 +1040,152 @@ impl GentleEngine {
         self.state.parameters.max_fragments_per_container
     }
 
+    fn container_members(&self, container_id: &str) -> Result<Vec<SeqId>, EngineError> {
+        let container = self
+            .state
+            .container_state
+            .containers
+            .get(container_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Container '{container_id}' not found"),
+            })?;
+        if container.members.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Container '{container_id}' has no members"),
+            });
+        }
+        for seq_id in &container.members {
+            if !self.state.sequences.contains_key(seq_id) {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Container '{container_id}' references unknown sequence '{seq_id}'"
+                    ),
+                });
+            }
+        }
+        Ok(container.members.clone())
+    }
+
+    fn flatten_container_members(
+        &self,
+        container_ids: &[ContainerId],
+    ) -> Result<Vec<SeqId>, EngineError> {
+        if container_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "At least one container id is required".to_string(),
+            });
+        }
+        let mut members = Vec::new();
+        for container_id in container_ids {
+            members.extend(self.container_members(container_id)?);
+            if members.len() > self.max_fragments_per_container() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Container merge input count exceeds max_fragments_per_container={}",
+                        self.max_fragments_per_container()
+                    ),
+                });
+            }
+        }
+        if members.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No sequences found in selected containers".to_string(),
+            });
+        }
+        Ok(members)
+    }
+
+    fn resolve_enzymes(
+        &self,
+        enzymes: &[String],
+    ) -> Result<(Vec<RestrictionEnzyme>, Vec<String>), EngineError> {
+        if enzymes.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Digest requires at least one enzyme".to_string(),
+            });
+        }
+
+        let mut by_name: HashMap<String, RestrictionEnzyme> = HashMap::new();
+        for enzyme in active_restriction_enzymes() {
+            by_name.entry(enzyme.name.clone()).or_insert(enzyme);
+        }
+        for dna in self.state.sequences.values() {
+            for enzyme in dna.restriction_enzymes() {
+                by_name
+                    .entry(enzyme.name.clone())
+                    .or_insert_with(|| enzyme.clone());
+            }
+        }
+
+        let mut found = Vec::new();
+        let mut missing = Vec::new();
+        let mut seen_names: HashSet<String> = HashSet::new();
+        for name in enzymes {
+            if let Some(enzyme) = by_name.get(name) {
+                if seen_names.insert(name.clone()) {
+                    found.push(enzyme.clone());
+                }
+            } else if !missing.contains(name) {
+                missing.push(name.clone());
+            }
+        }
+
+        if found.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "None of the requested enzymes are known: {}",
+                    enzymes.join(",")
+                ),
+            });
+        }
+        Ok((found, missing))
+    }
+
+    pub fn summarize_state(&self) -> EngineStateSummary {
+        let mut sequences: Vec<EngineSequenceSummary> = self
+            .state
+            .sequences
+            .iter()
+            .map(|(id, dna)| EngineSequenceSummary {
+                id: id.to_string(),
+                name: dna.name().clone(),
+                length: dna.len(),
+                circular: dna.is_circular(),
+            })
+            .collect();
+        sequences.sort_by(|a, b| a.id.cmp(&b.id));
+
+        let mut containers: Vec<EngineContainerSummary> = self
+            .state
+            .container_state
+            .containers
+            .iter()
+            .map(|(id, c)| EngineContainerSummary {
+                id: id.to_string(),
+                kind: format!("{:?}", c.kind),
+                member_count: c.members.len(),
+                members: c.members.clone(),
+            })
+            .collect();
+        containers.sort_by(|a, b| a.id.cmp(&b.id));
+
+        EngineStateSummary {
+            sequence_count: sequences.len(),
+            sequences,
+            container_count: containers.len(),
+            containers,
+            display: self.state.display.clone(),
+        }
+    }
+
     fn save_as_fasta(seq_id: &str, dna: &DNAsequence, path: &str) -> Result<(), EngineError> {
         let mut file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -692,6 +1216,101 @@ impl GentleEngine {
         }
 
         Ok(())
+    }
+
+    fn overhang_text(v: &[u8]) -> String {
+        String::from_utf8_lossy(v).to_string()
+    }
+
+    fn infer_pool_end_type(end: &PoolEnd) -> String {
+        let any = !end.forward_5.is_empty()
+            || !end.forward_3.is_empty()
+            || !end.reverse_5.is_empty()
+            || !end.reverse_3.is_empty();
+        if !any {
+            return "blunt".to_string();
+        }
+        if !end.forward_5.is_empty() || !end.reverse_5.is_empty() {
+            return "sticky_5p".to_string();
+        }
+        if !end.forward_3.is_empty() || !end.reverse_3.is_empty() {
+            return "sticky_3p".to_string();
+        }
+        "unknown".to_string()
+    }
+
+    fn default_pool_human_id(inputs: &[SeqId]) -> String {
+        if inputs.len() <= 4 {
+            format!("Pool({})", inputs.join(", "))
+        } else {
+            format!("Pool({} members, first: {})", inputs.len(), inputs[0])
+        }
+    }
+
+    fn export_pool_file(
+        &self,
+        inputs: &[SeqId],
+        path: &str,
+        pool_id: Option<String>,
+        human_id: Option<String>,
+    ) -> Result<(String, String, usize), EngineError> {
+        if inputs.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ExportPool requires at least one input sequence id".to_string(),
+            });
+        }
+        let mut members: Vec<PoolMember> = Vec::with_capacity(inputs.len());
+        for seq_id in inputs {
+            let dna = self
+                .state
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Sequence '{seq_id}' not found"),
+                })?;
+            let mut end = PoolEnd {
+                end_type: String::new(),
+                forward_5: Self::overhang_text(&dna.overhang().forward_5),
+                forward_3: Self::overhang_text(&dna.overhang().forward_3),
+                reverse_5: Self::overhang_text(&dna.overhang().reverse_5),
+                reverse_3: Self::overhang_text(&dna.overhang().reverse_3),
+            };
+            end.end_type = Self::infer_pool_end_type(&end);
+            members.push(PoolMember {
+                seq_id: seq_id.clone(),
+                human_id: dna.name().clone().unwrap_or_else(|| seq_id.clone()),
+                name: dna.name().clone(),
+                sequence: dna.get_forward_string(),
+                length_bp: dna.len(),
+                topology: if dna.is_circular() {
+                    "circular".to_string()
+                } else {
+                    "linear".to_string()
+                },
+                ends: end,
+            });
+        }
+
+        let pool_id = pool_id.unwrap_or_else(|| "pool_export".to_string());
+        let human_id = human_id.unwrap_or_else(|| Self::default_pool_human_id(inputs));
+        let export = PoolExport {
+            schema: "gentle.pool.v1".to_string(),
+            pool_id: pool_id.clone(),
+            human_id: human_id.clone(),
+            member_count: members.len(),
+            members,
+        };
+        let text = serde_json::to_string_pretty(&export).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize pool JSON: {e}"),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write pool file '{path}': {e}"),
+        })?;
+        Ok((pool_id, human_id, export.member_count))
     }
 
     fn reverse_complement(seq: &str) -> String {
@@ -735,6 +1354,566 @@ impl GentleEngine {
             }
         }
         Ok(upper)
+    }
+
+    fn resolve_tf_motif_or_iupac(token: &str) -> Result<String, EngineError> {
+        let normalized = token.trim().to_ascii_uppercase();
+        if normalized.is_empty() {
+            return Ok(normalized);
+        }
+        if normalized
+            .as_bytes()
+            .iter()
+            .all(|b| IupacCode::is_valid_letter(*b))
+        {
+            return Self::normalize_iupac_text(&normalized);
+        }
+        if let Some(motif) = tf_motifs::resolve_motif_definition(&normalized) {
+            return Self::normalize_iupac_text(&motif.consensus_iupac);
+        }
+        Err(EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "TF motif '{}' was neither valid IUPAC text nor found in local motif registry",
+                token
+            ),
+        })
+    }
+
+    fn iupac_letter_counts(letter: u8) -> [f64; 4] {
+        match letter.to_ascii_uppercase() {
+            b'A' => [1.0, 0.0, 0.0, 0.0],
+            b'C' => [0.0, 1.0, 0.0, 0.0],
+            b'G' => [0.0, 0.0, 1.0, 0.0],
+            b'T' | b'U' => [0.0, 0.0, 0.0, 1.0],
+            b'M' => [1.0, 1.0, 0.0, 0.0], // A/C
+            b'R' => [1.0, 0.0, 1.0, 0.0], // A/G
+            b'W' => [1.0, 0.0, 0.0, 1.0], // A/T
+            b'S' => [0.0, 1.0, 1.0, 0.0], // C/G
+            b'Y' => [0.0, 1.0, 0.0, 1.0], // C/T
+            b'K' => [0.0, 0.0, 1.0, 1.0], // G/T
+            b'V' => [1.0, 1.0, 1.0, 0.0], // A/C/G
+            b'H' => [1.0, 1.0, 0.0, 1.0], // A/C/T
+            b'D' => [1.0, 0.0, 1.0, 1.0], // A/G/T
+            b'B' => [0.0, 1.0, 1.0, 1.0], // C/G/T
+            _ => [1.0, 1.0, 1.0, 1.0],    // N/unknown
+        }
+    }
+
+    fn matrix_from_iupac(consensus: &str) -> Vec<[f64; 4]> {
+        consensus
+            .as_bytes()
+            .iter()
+            .map(|b| Self::iupac_letter_counts(*b))
+            .collect()
+    }
+
+    fn resolve_tf_motif_for_scoring(
+        token: &str,
+    ) -> Result<(String, Option<String>, String, Vec<[f64; 4]>), EngineError> {
+        let normalized = token.trim().to_ascii_uppercase();
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Empty TF motif token".to_string(),
+            });
+        }
+        if normalized
+            .as_bytes()
+            .iter()
+            .all(|b| IupacCode::is_valid_letter(*b))
+        {
+            let consensus = Self::normalize_iupac_text(&normalized)?;
+            let matrix = Self::matrix_from_iupac(&consensus);
+            return Ok((consensus.clone(), None, consensus, matrix));
+        }
+        if let Some(motif) = tf_motifs::resolve_motif_definition(&normalized) {
+            let consensus = Self::normalize_iupac_text(&motif.consensus_iupac)?;
+            return Ok((motif.id, motif.name, consensus, motif.matrix_counts));
+        }
+        Err(EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "TF motif '{}' was neither valid IUPAC text nor found in local motif registry",
+                token
+            ),
+        })
+    }
+
+    fn validate_tf_thresholds(min_llr_quantile: f64) -> Result<(), EngineError> {
+        if !(0.0..=1.0).contains(&min_llr_quantile) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "TFBS min_llr_quantile must be between 0.0 and 1.0, got {}",
+                    min_llr_quantile
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn smooth_probability_matrix(matrix_counts: &[[f64; 4]]) -> Vec<[f64; 4]> {
+        if matrix_counts.is_empty() {
+            return vec![];
+        }
+        let max_col_sum = matrix_counts
+            .iter()
+            .map(|c| c.iter().sum::<f64>())
+            .fold(0.0_f64, f64::max);
+        let baseline = max_col_sum.max(1.0);
+
+        let mut out = Vec::with_capacity(matrix_counts.len());
+        for col in matrix_counts {
+            let mut adjusted = *col;
+            let col_sum = adjusted.iter().sum::<f64>();
+
+            // Missing observations are distributed uniformly to match the
+            // highest-supported column count in this motif.
+            if baseline > col_sum {
+                let add = (baseline - col_sum) / 4.0;
+                for v in &mut adjusted {
+                    *v += add;
+                }
+            }
+
+            let epsilon = baseline * 1e-9;
+            for v in &mut adjusted {
+                *v += epsilon;
+            }
+
+            let total = adjusted.iter().sum::<f64>();
+            let mut p_col = [0.0_f64; 4];
+            for i in 0..4 {
+                let p = (adjusted[i] / total).clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+                p_col[i] = p;
+            }
+            out.push(p_col);
+        }
+        out
+    }
+
+    fn prepare_scoring_matrices(matrix_counts: &[[f64; 4]]) -> (Vec<[f64; 4]>, Vec<[f64; 4]>) {
+        let probabilities = Self::smooth_probability_matrix(matrix_counts);
+        let background = [0.25_f64, 0.25_f64, 0.25_f64, 0.25_f64];
+        let mut llr = Vec::with_capacity(probabilities.len());
+        let mut true_log_odds = Vec::with_capacity(probabilities.len());
+
+        for col in probabilities {
+            let mut llr_col = [0.0_f64; 4];
+            let mut lor_col = [0.0_f64; 4];
+            for i in 0..4 {
+                let p = col[i];
+                let q = background[i];
+                llr_col[i] = (p / q).log2();
+                let odds_p = p / (1.0 - p);
+                let odds_q = q / (1.0 - q);
+                lor_col[i] = (odds_p / odds_q).log2();
+            }
+            llr.push(llr_col);
+            true_log_odds.push(lor_col);
+        }
+        (llr, true_log_odds)
+    }
+
+    fn base_to_idx(base: u8) -> Option<usize> {
+        match base.to_ascii_uppercase() {
+            b'A' => Some(0),
+            b'C' => Some(1),
+            b'G' => Some(2),
+            b'T' => Some(3),
+            _ => None,
+        }
+    }
+
+    fn score_matrix_window(window: &[u8], score_matrix: &[[f64; 4]]) -> Option<f64> {
+        if window.len() != score_matrix.len() {
+            return None;
+        }
+        let mut score = 0.0_f64;
+        for (idx, base) in window.iter().enumerate() {
+            let b = Self::base_to_idx(*base)?;
+            score += score_matrix[idx][b];
+        }
+        Some(score)
+    }
+
+    fn empirical_quantile(sorted_scores: &[f64], score: f64) -> f64 {
+        if sorted_scores.is_empty() {
+            return 0.0;
+        }
+        let mut lo = 0usize;
+        let mut hi = sorted_scores.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if sorted_scores[mid] <= score {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo as f64 / sorted_scores.len() as f64
+    }
+
+    fn scan_tf_scores(
+        sequence: &[u8],
+        llr_matrix: &[[f64; 4]],
+        true_log_odds_matrix: &[[f64; 4]],
+        mut on_progress: impl FnMut(usize, usize),
+    ) -> Vec<(usize, bool, f64, f64, f64, f64)> {
+        if llr_matrix.is_empty()
+            || sequence.len() < llr_matrix.len()
+            || llr_matrix.len() != true_log_odds_matrix.len()
+        {
+            return vec![];
+        }
+        let mut raw_hits = Vec::new();
+        let mut all_llr_scores = Vec::new();
+        let mut all_true_log_odds_scores = Vec::new();
+        let len = llr_matrix.len();
+        let windows = sequence.len().saturating_sub(len).saturating_add(1);
+        let total_steps = windows.saturating_mul(2);
+        let progress_stride = (total_steps / 200).max(1);
+        let mut scanned_steps = 0usize;
+        on_progress(scanned_steps, total_steps);
+        for start in 0..=(sequence.len() - len) {
+            let window = &sequence[start..start + len];
+            if let (Some(llr), Some(true_log_odds)) = (
+                Self::score_matrix_window(window, llr_matrix),
+                Self::score_matrix_window(window, true_log_odds_matrix),
+            ) {
+                all_llr_scores.push(llr);
+                all_true_log_odds_scores.push(true_log_odds);
+                raw_hits.push((start, false, llr, true_log_odds));
+            }
+            scanned_steps = scanned_steps.saturating_add(1);
+            if scanned_steps % progress_stride == 0 || scanned_steps == total_steps {
+                on_progress(scanned_steps, total_steps);
+            }
+            let rc_window = Self::reverse_complement_bytes(window);
+            if let (Some(llr), Some(true_log_odds)) = (
+                Self::score_matrix_window(&rc_window, llr_matrix),
+                Self::score_matrix_window(&rc_window, true_log_odds_matrix),
+            ) {
+                all_llr_scores.push(llr);
+                all_true_log_odds_scores.push(true_log_odds);
+                raw_hits.push((start, true, llr, true_log_odds));
+            }
+            scanned_steps = scanned_steps.saturating_add(1);
+            if scanned_steps % progress_stride == 0 || scanned_steps == total_steps {
+                on_progress(scanned_steps, total_steps);
+            }
+        }
+        if scanned_steps != total_steps {
+            on_progress(total_steps, total_steps);
+        }
+        all_llr_scores.sort_by(|a, b| a.total_cmp(b));
+        all_true_log_odds_scores.sort_by(|a, b| a.total_cmp(b));
+        raw_hits
+            .into_iter()
+            .map(|(start, reverse, llr_bits, true_log_odds_bits)| {
+                (
+                    start,
+                    reverse,
+                    llr_bits,
+                    Self::empirical_quantile(&all_llr_scores, llr_bits),
+                    true_log_odds_bits,
+                    Self::empirical_quantile(&all_true_log_odds_scores, true_log_odds_bits),
+                )
+            })
+            .collect()
+    }
+
+    fn is_generated_tfbs_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|v| v.eq_ignore_ascii_case("tfbs"))
+    }
+
+    fn remove_generated_tfbs_features(features: &mut Vec<gb_io::seq::Feature>) {
+        features.retain(|f| !Self::is_generated_tfbs_feature(f));
+    }
+
+    fn build_tfbs_feature(
+        start: usize,
+        end: usize,
+        reverse: bool,
+        tf_id: &str,
+        tf_name: Option<&str>,
+        llr_bits: f64,
+        llr_quantile: f64,
+        true_log_odds_bits: f64,
+        true_log_odds_quantile: f64,
+    ) -> gb_io::seq::Feature {
+        let base_location = gb_io::seq::Location::simple_range(start as i64, end as i64);
+        let location = if reverse {
+            gb_io::seq::Location::Complement(Box::new(base_location))
+        } else {
+            base_location
+        };
+        let mut qualifiers = vec![
+            ("label".into(), Some(format!("TFBS {tf_id}"))),
+            ("tf_id".into(), Some(tf_id.to_string())),
+            ("llr_bits".into(), Some(format!("{llr_bits:.6}"))),
+            ("llr_quantile".into(), Some(format!("{llr_quantile:.6}"))),
+            (
+                "true_log_odds_bits".into(),
+                Some(format!("{true_log_odds_bits:.6}")),
+            ),
+            (
+                "true_log_odds_quantile".into(),
+                Some(format!("{true_log_odds_quantile:.6}")),
+            ),
+            (
+                "log_odds_ratio_bits".into(),
+                Some(format!("{true_log_odds_bits:.6}")),
+            ),
+            (
+                "log_odds_ratio_quantile".into(),
+                Some(format!("{true_log_odds_quantile:.6}")),
+            ),
+            (
+                "note".into(),
+                Some(format!(
+                    "tf_id={tf_id}; llr_bits={llr_bits:.4}; llr_quantile={llr_quantile:.4}; true_log_odds_bits={true_log_odds_bits:.4}; true_log_odds_quantile={true_log_odds_quantile:.4}"
+                )),
+            ),
+            ("gentle_generated".into(), Some("tfbs".to_string())),
+        ];
+        if let Some(name) = tf_name {
+            if !name.trim().is_empty() {
+                qualifiers.push(("bound_moiety".into(), Some(name.trim().to_string())));
+            }
+        }
+        gb_io::seq::Feature {
+            kind: gb_io::FeatureKind::from("TFBS"),
+            location,
+            qualifiers,
+        }
+    }
+
+    fn iupac_letter_complement(letter: u8) -> Option<u8> {
+        match letter.to_ascii_uppercase() {
+            b'A' => Some(b'T'),
+            b'C' => Some(b'G'),
+            b'G' => Some(b'C'),
+            b'T' | b'U' => Some(b'A'),
+            b'W' => Some(b'W'),
+            b'S' => Some(b'S'),
+            b'M' => Some(b'K'),
+            b'K' => Some(b'M'),
+            b'R' => Some(b'Y'),
+            b'Y' => Some(b'R'),
+            b'B' => Some(b'V'),
+            b'D' => Some(b'H'),
+            b'H' => Some(b'D'),
+            b'V' => Some(b'B'),
+            b'N' => Some(b'N'),
+            _ => None,
+        }
+    }
+
+    fn reverse_complement_iupac(seq: &str) -> Result<String, EngineError> {
+        let seq = Self::normalize_iupac_text(seq)?;
+        let mut out = String::with_capacity(seq.len());
+        for b in seq.as_bytes().iter().rev() {
+            let c = Self::iupac_letter_complement(*b).ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Invalid IUPAC nucleotide '{}'", *b as char),
+            })?;
+            out.push(c as char);
+        }
+        Ok(out)
+    }
+
+    fn iupac_match_at(sequence: &[u8], pattern: &[u8], start: usize) -> bool {
+        if pattern.is_empty() {
+            return true;
+        }
+        if start > sequence.len() || start + pattern.len() > sequence.len() {
+            return false;
+        }
+        for i in 0..pattern.len() {
+            let s = IupacCode::from_letter(sequence[start + i]);
+            let p = IupacCode::from_letter(pattern[i]);
+            if s.is_empty() || p.is_empty() || s.subset(p).is_empty() {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn contains_iupac_pattern(sequence: &[u8], pattern: &[u8]) -> bool {
+        if pattern.is_empty() {
+            return true;
+        }
+        if sequence.len() < pattern.len() {
+            return false;
+        }
+        for start in 0..=(sequence.len() - pattern.len()) {
+            if Self::iupac_match_at(sequence, pattern, start) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn contains_motif_any_strand(sequence: &[u8], motif: &str) -> Result<bool, EngineError> {
+        let motif = Self::normalize_iupac_text(motif)?;
+        if motif.is_empty() {
+            return Ok(true);
+        }
+        let motif_bytes = motif.as_bytes();
+        if Self::contains_iupac_pattern(sequence, motif_bytes) {
+            return Ok(true);
+        }
+        let motif_rc = Self::reverse_complement_iupac(&motif)?;
+        Ok(Self::contains_iupac_pattern(sequence, motif_rc.as_bytes()))
+    }
+
+    fn feature_labels(feature: &gb_io::seq::Feature) -> Vec<String> {
+        let mut labels = Vec::new();
+        for key in [
+            "label",
+            "gene",
+            "locus_tag",
+            "product",
+            "standard_name",
+            "note",
+        ] {
+            for value in feature.qualifier_values(key.into()) {
+                let v = value.trim();
+                if !v.is_empty() {
+                    labels.push(v.to_string());
+                }
+            }
+        }
+        labels
+    }
+
+    fn resolve_anchor_position(
+        dna: &DNAsequence,
+        anchor: &AnchoredRegionAnchor,
+    ) -> Result<usize, EngineError> {
+        match anchor {
+            AnchoredRegionAnchor::Position { zero_based } => {
+                if *zero_based > dna.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Anchor position {} is out of bounds for sequence length {}",
+                            zero_based,
+                            dna.len()
+                        ),
+                    });
+                }
+                Ok(*zero_based)
+            }
+            AnchoredRegionAnchor::FeatureBoundary {
+                feature_kind,
+                feature_label,
+                boundary,
+                occurrence,
+            } => {
+                let kind_filter = feature_kind.as_ref().map(|s| s.to_ascii_uppercase());
+                let label_filter = feature_label.as_ref().map(|s| s.to_ascii_uppercase());
+                let mut matches = Vec::new();
+                for feature in dna.features() {
+                    if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
+                        continue;
+                    }
+                    if let Some(expected_kind) = &kind_filter {
+                        if feature.kind.to_string().to_ascii_uppercase() != *expected_kind {
+                            continue;
+                        }
+                    }
+                    if let Some(expected_label) = &label_filter {
+                        let labels = Self::feature_labels(feature);
+                        let found_label = labels.iter().any(|label| {
+                            let upper = label.to_ascii_uppercase();
+                            upper == *expected_label || upper.contains(expected_label)
+                        });
+                        if !found_label {
+                            continue;
+                        }
+                    }
+                    let Ok((from, to)) = feature.location.find_bounds() else {
+                        continue;
+                    };
+                    if from < 0 || to < 0 {
+                        continue;
+                    }
+                    let pos = match boundary {
+                        AnchorBoundary::Start => from as usize,
+                        AnchorBoundary::End => to as usize,
+                    };
+                    if pos <= dna.len() {
+                        matches.push(pos);
+                    }
+                }
+                if matches.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: "No feature matched anchored-region anchor".to_string(),
+                    });
+                }
+                matches.sort_unstable();
+                let idx = occurrence.unwrap_or(0);
+                matches.get(idx).cloned().ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Feature anchor occurrence {} was requested, but only {} match(es) found",
+                        idx,
+                        matches.len()
+                    ),
+                })
+            }
+        }
+    }
+
+    fn anchored_range(
+        anchor_pos: usize,
+        len: usize,
+        direction: &AnchorDirection,
+        seq_len: usize,
+        circular: bool,
+    ) -> Option<(usize, usize)> {
+        if len == 0 || seq_len == 0 {
+            return None;
+        }
+        match direction {
+            AnchorDirection::Upstream => {
+                if !circular {
+                    if anchor_pos > seq_len || anchor_pos < len {
+                        return None;
+                    }
+                    Some((anchor_pos - len, anchor_pos))
+                } else {
+                    if anchor_pos > seq_len || len > seq_len {
+                        return None;
+                    }
+                    let start = if anchor_pos >= len {
+                        anchor_pos - len
+                    } else {
+                        seq_len - (len - anchor_pos)
+                    };
+                    Some((start, anchor_pos))
+                }
+            }
+            AnchorDirection::Downstream => {
+                if !circular {
+                    if anchor_pos > seq_len || anchor_pos + len > seq_len {
+                        return None;
+                    }
+                    Some((anchor_pos, anchor_pos + len))
+                } else {
+                    if anchor_pos > seq_len || len > seq_len {
+                        return None;
+                    }
+                    Some((anchor_pos, anchor_pos + len))
+                }
+            }
+        }
     }
 
     fn primer_options(seq: &str) -> Result<Vec<Vec<u8>>, EngineError> {
@@ -946,8 +2125,55 @@ impl GentleEngine {
         ret
     }
 
-    fn apply_internal(&mut self, op: Operation, run_id: &str) -> Result<OpResult, EngineError> {
+    fn apply_internal(
+        &mut self,
+        op: Operation,
+        run_id: &str,
+        on_progress: &mut dyn FnMut(OperationProgress),
+    ) -> Result<OpResult, EngineError> {
         self.reconcile_lineage_nodes();
+        self.reconcile_containers();
+        let op_for_containers = op.clone();
+        let op = match op {
+            Operation::MergeContainersById {
+                container_ids,
+                output_prefix,
+            } => Operation::MergeContainers {
+                inputs: self.flatten_container_members(&container_ids)?,
+                output_prefix,
+            },
+            Operation::LigationContainer {
+                container_id,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                output_prefix,
+                unique,
+            } => Operation::Ligation {
+                inputs: self.container_members(&container_id)?,
+                circularize_if_possible,
+                output_id,
+                protocol,
+                output_prefix,
+                unique,
+            },
+            Operation::FilterContainerByMolecularWeight {
+                container_id,
+                min_bp,
+                max_bp,
+                error,
+                unique,
+                output_prefix,
+            } => Operation::FilterByMolecularWeight {
+                inputs: self.container_members(&container_id)?,
+                min_bp,
+                max_bp,
+                error,
+                unique,
+                output_prefix,
+            },
+            other => other,
+        };
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
@@ -1014,6 +2240,51 @@ impl GentleEngine {
                     .messages
                     .push(format!("Wrote '{seq_id}' to '{path}'"));
             }
+            Operation::RenderSequenceSvg { seq_id, mode, path } => {
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let svg = match mode {
+                    RenderSvgMode::Linear => export_linear_svg(dna, &self.state.display),
+                    RenderSvgMode::Circular => export_circular_svg(dna, &self.state.display),
+                };
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write SVG output '{path}': {e}"),
+                })?;
+                result.messages.push(format!(
+                    "Wrote {:?} SVG for '{}' to '{}'",
+                    mode, seq_id, path
+                ));
+            }
+            Operation::RenderLineageSvg { path } => {
+                let svg = export_lineage_svg(&self.state);
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write SVG output '{path}': {e}"),
+                })?;
+                result
+                    .messages
+                    .push(format!("Wrote lineage SVG to '{}'", path));
+            }
+            Operation::ExportPool {
+                inputs,
+                path,
+                pool_id,
+                human_id,
+            } => {
+                let (pool_id, human_id, count) =
+                    self.export_pool_file(&inputs, &path, pool_id, human_id)?;
+                result.messages.push(format!(
+                    "Wrote pool export '{}' ({}) with {} members to '{}'",
+                    pool_id, human_id, count, path
+                ));
+            }
             Operation::Digest {
                 input,
                 enzymes,
@@ -1030,31 +2301,7 @@ impl GentleEngine {
                     })?
                     .clone();
 
-                if enzymes.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "Digest requires at least one enzyme".to_string(),
-                    });
-                }
-
-                let names_ref: Vec<&str> = enzymes.iter().map(|s| s.as_str()).collect();
-                let found = ENZYMES.restriction_enzymes_by_name(&names_ref);
-                if found.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "None of the requested enzymes are known: {}",
-                            enzymes.join(",")
-                        ),
-                    });
-                }
-
-                let found_names: HashSet<String> = found.iter().map(|e| e.name.clone()).collect();
-                let missing: Vec<String> = enzymes
-                    .iter()
-                    .filter(|name| !found_names.contains(*name))
-                    .cloned()
-                    .collect();
+                let (found, missing) = self.resolve_enzymes(&enzymes)?;
                 if !missing.is_empty() {
                     result
                         .warnings
@@ -1079,6 +2326,70 @@ impl GentleEngine {
                     "Digest created {} fragment(s); feature recomputation deferred",
                     result.created_seq_ids.len()
                 ));
+            }
+            Operation::DigestContainer {
+                container_id,
+                enzymes,
+                output_prefix,
+            } => {
+                let inputs = self.container_members(&container_id)?;
+                parent_seq_ids.extend(inputs.clone());
+                let (found, missing) = self.resolve_enzymes(&enzymes)?;
+                if !missing.is_empty() {
+                    result
+                        .warnings
+                        .push(format!("Unknown enzymes ignored: {}", missing.join(",")));
+                }
+                let prefix = output_prefix.unwrap_or_else(|| format!("{container_id}_digest"));
+                for input in inputs {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(&input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
+                    let fragments = Self::digest_with_guard(
+                        &dna,
+                        found.clone(),
+                        self.max_fragments_per_container(),
+                    )?;
+                    for (i, mut fragment) in fragments.into_iter().enumerate() {
+                        // Keep digest interactive by deferring expensive feature recomputation.
+                        Self::prepare_sequence_light(&mut fragment);
+                        let candidate = format!("{}_{}_{}", prefix, input, i + 1);
+                        let seq_id = self.unique_seq_id(&candidate);
+                        self.state.sequences.insert(seq_id.clone(), fragment);
+                        self.add_lineage_node(
+                            &seq_id,
+                            SequenceOrigin::Derived,
+                            Some(&result.op_id),
+                        );
+                        result.created_seq_ids.push(seq_id);
+                        if result.created_seq_ids.len() > self.max_fragments_per_container() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Digest produced more than max_fragments_per_container={}",
+                                    self.max_fragments_per_container()
+                                ),
+                            });
+                        }
+                    }
+                }
+
+                result.messages.push(format!(
+                    "Digest container '{}' created {} fragment(s); feature recomputation deferred",
+                    container_id,
+                    result.created_seq_ids.len()
+                ));
+            }
+            Operation::MergeContainersById { .. }
+            | Operation::LigationContainer { .. }
+            | Operation::FilterContainerByMolecularWeight { .. } => {
+                unreachable!("container operation variants are normalized before execution")
             }
             Operation::MergeContainers {
                 inputs,
@@ -1865,6 +3176,240 @@ impl GentleEngine {
                     from, to, input, seq_id
                 ));
             }
+            Operation::ExtractAnchoredRegion {
+                input,
+                anchor,
+                direction,
+                target_length_bp,
+                length_tolerance_bp,
+                required_re_sites,
+                required_tf_motifs,
+                forward_primer,
+                reverse_primer,
+                output_prefix,
+                unique,
+                max_candidates,
+            } => {
+                parent_seq_ids.push(input.clone());
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&input)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{input}' not found"),
+                    })?
+                    .clone();
+
+                if target_length_bp == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ExtractAnchoredRegion requires target_length_bp >= 1".to_string(),
+                    });
+                }
+
+                let anchor_pos = Self::resolve_anchor_position(&dna, &anchor)?;
+                let min_len = target_length_bp.saturating_sub(length_tolerance_bp).max(1);
+                let max_len = target_length_bp
+                    .saturating_add(length_tolerance_bp)
+                    .max(min_len);
+
+                let forward_primer = match forward_primer {
+                    Some(p) => {
+                        let v = Self::normalize_iupac_text(&p)?;
+                        if v.is_empty() {
+                            None
+                        } else {
+                            Some(v)
+                        }
+                    }
+                    None => None,
+                };
+                let reverse_primer = match reverse_primer {
+                    Some(p) => {
+                        let v = Self::normalize_iupac_text(&p)?;
+                        if v.is_empty() {
+                            None
+                        } else {
+                            Some(v)
+                        }
+                    }
+                    None => None,
+                };
+                let reverse_primer_rc = reverse_primer
+                    .as_ref()
+                    .map(|p| Self::reverse_complement_iupac(p))
+                    .transpose()?;
+
+                let mut tf_motifs = Vec::new();
+                for motif in required_tf_motifs {
+                    let m = Self::resolve_tf_motif_or_iupac(&motif)?;
+                    if !m.is_empty() {
+                        tf_motifs.push(m);
+                    }
+                }
+
+                let (required_enzymes, missing_enzymes) = if required_re_sites.is_empty() {
+                    (Vec::new(), Vec::new())
+                } else {
+                    self.resolve_enzymes(&required_re_sites)?
+                };
+                if !missing_enzymes.is_empty() {
+                    result.warnings.push(format!(
+                        "Unknown anchored-region enzymes ignored: {}",
+                        missing_enzymes.join(",")
+                    ));
+                }
+
+                #[derive(Clone)]
+                struct Candidate {
+                    start: usize,
+                    end: usize,
+                    len: usize,
+                    sequence: String,
+                    score: usize,
+                }
+
+                let mut candidates = Vec::new();
+                for len in min_len..=max_len {
+                    let Some((start, end)) = Self::anchored_range(
+                        anchor_pos,
+                        len,
+                        &direction,
+                        dna.len(),
+                        dna.is_circular(),
+                    ) else {
+                        continue;
+                    };
+                    let Some(fragment) = dna.get_range_safe(start..end) else {
+                        continue;
+                    };
+                    if fragment.is_empty() {
+                        continue;
+                    }
+                    let fragment_text = String::from_utf8_lossy(&fragment).to_string();
+                    let fragment_bytes = fragment_text.as_bytes();
+
+                    if let Some(fwd) = &forward_primer {
+                        if !Self::iupac_match_at(fragment_bytes, fwd.as_bytes(), 0) {
+                            continue;
+                        }
+                    }
+                    if let Some(rev_rc) = &reverse_primer_rc {
+                        if rev_rc.len() > fragment_bytes.len() {
+                            continue;
+                        }
+                        let start_idx = fragment_bytes.len() - rev_rc.len();
+                        if !Self::iupac_match_at(fragment_bytes, rev_rc.as_bytes(), start_idx) {
+                            continue;
+                        }
+                    }
+
+                    let mut motif_ok = true;
+                    for motif in &tf_motifs {
+                        if !Self::contains_motif_any_strand(fragment_bytes, motif)? {
+                            motif_ok = false;
+                            break;
+                        }
+                    }
+                    if !motif_ok {
+                        continue;
+                    }
+
+                    if !required_enzymes.is_empty() {
+                        let frag_dna = DNAsequence::from_sequence(&fragment_text).map_err(|e| {
+                            EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not evaluate anchored-region enzyme constraints: {e}"
+                                ),
+                            }
+                        })?;
+                        let mut enzymes_ok = true;
+                        for enzyme in &required_enzymes {
+                            if enzyme.get_sites(&frag_dna, None).is_empty() {
+                                enzymes_ok = false;
+                                break;
+                            }
+                        }
+                        if !enzymes_ok {
+                            continue;
+                        }
+                    }
+
+                    candidates.push(Candidate {
+                        start,
+                        end,
+                        len,
+                        sequence: fragment_text,
+                        score: len.abs_diff(target_length_bp),
+                    });
+                }
+
+                if candidates.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "No anchored-region candidate satisfied the configured constraints"
+                                .to_string(),
+                    });
+                }
+
+                candidates.sort_by(|a, b| {
+                    a.score
+                        .cmp(&b.score)
+                        .then(a.start.cmp(&b.start))
+                        .then(a.end.cmp(&b.end))
+                });
+
+                let require_unique = unique.unwrap_or(false);
+                if require_unique && candidates.len() != 1 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "ExtractAnchoredRegion unique=true requires exactly one candidate, found {}",
+                            candidates.len()
+                        ),
+                    });
+                }
+
+                let limit = max_candidates
+                    .unwrap_or(candidates.len())
+                    .min(self.max_fragments_per_container());
+                if limit == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ExtractAnchoredRegion max_candidates must be >= 1".to_string(),
+                    });
+                }
+                if candidates.len() > limit {
+                    result.warnings.push(format!(
+                        "Anchored-region candidates truncated from {} to {} by max_candidates/max_fragments_per_container",
+                        candidates.len(),
+                        limit
+                    ));
+                    candidates.truncate(limit);
+                }
+
+                let prefix = output_prefix.unwrap_or_else(|| format!("{input}_anchored"));
+                for (idx, cand) in candidates.into_iter().enumerate() {
+                    let mut out =
+                        DNAsequence::from_sequence(&cand.sequence).map_err(|e| EngineError {
+                            code: ErrorCode::Internal,
+                            message: format!("Could not create anchored-region sequence: {e}"),
+                        })?;
+                    out.set_circular(false);
+                    Self::prepare_sequence(&mut out);
+                    let seq_id = self.unique_seq_id(&format!("{}_{}", prefix, idx + 1));
+                    self.state.sequences.insert(seq_id.clone(), out);
+                    self.add_lineage_node(&seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    result.created_seq_ids.push(seq_id.clone());
+                    result.messages.push(format!(
+                        "Anchored-region candidate '{}' [{}..{}, {} bp] score={}",
+                        seq_id, cand.start, cand.end, cand.len, cand.score
+                    ));
+                }
+            }
             Operation::SelectCandidate {
                 input,
                 criterion,
@@ -2118,6 +3663,7 @@ impl GentleEngine {
                         ("map_panel", &mut self.state.display.show_map_panel)
                     }
                     DisplayTarget::Features => ("features", &mut self.state.display.show_features),
+                    DisplayTarget::Tfbs => ("tfbs", &mut self.state.display.show_tfbs),
                     DisplayTarget::RestrictionEnzymes => (
                         "restriction_enzymes",
                         &mut self.state.display.show_restriction_enzymes,
@@ -2173,6 +3719,206 @@ impl GentleEngine {
                     .messages
                     .push(format!("Recomputed features for '{seq_id}'"));
             }
+            Operation::AnnotateTfbs {
+                seq_id,
+                motifs,
+                min_llr_bits,
+                min_llr_quantile,
+                per_tf_thresholds,
+                clear_existing,
+                max_hits,
+            } => {
+                const DEFAULT_MAX_TFBS_HITS: usize = 500;
+                let motifs = if motifs.len() == 1
+                    && matches!(motifs[0].trim().to_ascii_uppercase().as_str(), "ALL" | "*")
+                {
+                    tf_motifs::all_motif_ids()
+                } else {
+                    motifs
+                };
+
+                if motifs.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "AnnotateTfbs requires at least one motif".to_string(),
+                    });
+                }
+                let default_min_llr_bits = min_llr_bits.unwrap_or(f64::NEG_INFINITY);
+                let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.95);
+                Self::validate_tf_thresholds(default_min_llr_quantile)?;
+
+                let mut override_map: HashMap<String, (Option<f64>, Option<f64>)> = HashMap::new();
+                for o in &per_tf_thresholds {
+                    let key = o.tf.trim().to_ascii_uppercase();
+                    if key.is_empty() {
+                        continue;
+                    }
+                    if let Some(q) = o.min_llr_quantile {
+                        Self::validate_tf_thresholds(q)?;
+                    }
+                    override_map.insert(key, (o.min_llr_bits, o.min_llr_quantile));
+                }
+
+                let _ = self.ensure_lineage_node(&seq_id);
+                let dna = self
+                    .state
+                    .sequences
+                    .get_mut(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let seq_text = dna.get_forward_string();
+                let seq_bytes = seq_text.as_bytes();
+
+                if clear_existing.unwrap_or(true) {
+                    Self::remove_generated_tfbs_features(dna.features_mut());
+                }
+
+                let mut added = 0usize;
+                let max_hits = match max_hits {
+                    Some(0) => None,
+                    Some(v) => Some(v),
+                    None => Some(DEFAULT_MAX_TFBS_HITS),
+                };
+                let motif_count = motifs.len();
+                let mut cap_reached = false;
+                'motif_loop: for (motif_idx, token) in motifs.into_iter().enumerate() {
+                    let token_key = token.trim().to_ascii_uppercase();
+                    if token_key.is_empty() {
+                        continue;
+                    }
+                    let (tf_id, tf_name, _consensus, matrix_counts) =
+                        Self::resolve_tf_motif_for_scoring(&token)?;
+                    let (llr_matrix, true_log_odds_matrix) =
+                        Self::prepare_scoring_matrices(&matrix_counts);
+                    if llr_matrix.is_empty() || llr_matrix.len() > seq_bytes.len() {
+                        result.warnings.push(format!(
+                            "TF '{}' skipped: motif length {} exceeds sequence length {}",
+                            tf_id,
+                            llr_matrix.len(),
+                            seq_bytes.len()
+                        ));
+                        continue;
+                    }
+
+                    let mut eff_bits = default_min_llr_bits;
+                    let mut eff_quantile = default_min_llr_quantile;
+                    let id_key = tf_id.to_ascii_uppercase();
+                    let name_key = tf_name
+                        .as_ref()
+                        .map(|n| n.trim().to_ascii_uppercase())
+                        .unwrap_or_default();
+                    for key in [token_key.as_str(), id_key.as_str(), name_key.as_str()] {
+                        if key.is_empty() {
+                            continue;
+                        }
+                        if let Some((b, q)) = override_map.get(key) {
+                            if let Some(v) = b {
+                                eff_bits = *v;
+                            }
+                            if let Some(v) = q {
+                                eff_quantile = *v;
+                            }
+                            break;
+                        }
+                    }
+
+                    let seq_id_for_progress = seq_id.clone();
+                    let tf_id_for_progress = tf_id.clone();
+                    let motif_index = motif_idx + 1;
+                    let hits = Self::scan_tf_scores(
+                        seq_bytes,
+                        &llr_matrix,
+                        &true_log_odds_matrix,
+                        |scanned_steps, total_steps| {
+                            let motif_fraction = if total_steps == 0 {
+                                1.0
+                            } else {
+                                (scanned_steps as f64 / total_steps as f64).clamp(0.0, 1.0)
+                            };
+                            let total_fraction = if motif_count == 0 {
+                                1.0
+                            } else {
+                                ((motif_index - 1) as f64 + motif_fraction) / motif_count as f64
+                            }
+                            .clamp(0.0, 1.0);
+                            on_progress(OperationProgress::Tfbs(TfbsProgress {
+                                seq_id: seq_id_for_progress.clone(),
+                                motif_id: tf_id_for_progress.clone(),
+                                motif_index,
+                                motif_count,
+                                scanned_steps,
+                                total_steps,
+                                motif_percent: motif_fraction * 100.0,
+                                total_percent: total_fraction * 100.0,
+                            }));
+                        },
+                    );
+                    let mut kept = 0usize;
+                    for (
+                        start,
+                        reverse,
+                        llr_bits,
+                        llr_quantile,
+                        true_log_odds_bits,
+                        true_log_odds_quantile,
+                    ) in hits
+                    {
+                        if llr_bits < eff_bits || llr_quantile < eff_quantile {
+                            continue;
+                        }
+                        let end = start + llr_matrix.len();
+                        dna.features_mut().push(Self::build_tfbs_feature(
+                            start,
+                            end,
+                            reverse,
+                            &tf_id,
+                            tf_name.as_deref(),
+                            llr_bits,
+                            llr_quantile,
+                            true_log_odds_bits,
+                            true_log_odds_quantile,
+                        ));
+                        kept += 1;
+                        added += 1;
+                        if let Some(limit) = max_hits {
+                            if added >= limit {
+                                cap_reached = true;
+                                break;
+                            }
+                        }
+                    }
+                    result.messages.push(format!(
+                        "TF '{}' annotated {} hit(s) with min_llr_bits={} and min_llr_quantile={}",
+                        tf_id, kept, eff_bits, eff_quantile
+                    ));
+                    on_progress(OperationProgress::Tfbs(TfbsProgress {
+                        seq_id: seq_id.clone(),
+                        motif_id: tf_id,
+                        motif_index,
+                        motif_count,
+                        scanned_steps: 1,
+                        total_steps: 1,
+                        motif_percent: 100.0,
+                        total_percent: (motif_index as f64 / motif_count.max(1) as f64) * 100.0,
+                    }));
+                    if cap_reached {
+                        if let Some(limit) = max_hits {
+                            result.warnings.push(format!(
+                                "TFBS hit cap ({limit}) reached; skipping remaining motif scans"
+                            ));
+                        }
+                        break 'motif_loop;
+                    }
+                }
+
+                result.changed_seq_ids.push(seq_id.clone());
+                result.messages.push(format!(
+                    "Annotated {} TFBS feature(s) on '{}'",
+                    added, seq_id
+                ));
+            }
             Operation::SetParameter { name, value } => {
                 match name.as_str() {
                     "max_fragments_per_container" => {
@@ -2208,6 +3954,7 @@ impl GentleEngine {
             &result.op_id,
             run_id,
         );
+        self.add_container_from_result(&op_for_containers, &result);
 
         Ok(result)
     }
@@ -2216,7 +3963,8 @@ impl GentleEngine {
 impl Engine for GentleEngine {
     fn apply(&mut self, op: Operation) -> Result<OpResult, EngineError> {
         let run_id = "interactive".to_string();
-        let result = self.apply_internal(op.clone(), &run_id)?;
+        let mut noop = |_p: OperationProgress| {};
+        let result = self.apply_internal(op.clone(), &run_id, &mut noop)?;
         self.journal.push(OperationRecord {
             run_id,
             op,
@@ -2228,7 +3976,8 @@ impl Engine for GentleEngine {
     fn apply_workflow(&mut self, wf: Workflow) -> Result<Vec<OpResult>, EngineError> {
         let mut results = Vec::new();
         for op in &wf.ops {
-            let result = self.apply_internal(op.clone(), &wf.run_id)?;
+            let mut noop = |_p: OperationProgress| {};
+            let result = self.apply_internal(op.clone(), &wf.run_id, &mut noop)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
                 op: op.clone(),
@@ -2255,6 +4004,7 @@ mod tests {
     #[test]
     fn test_set_display_visibility() {
         let mut engine = GentleEngine::new();
+        assert!(!engine.state().display.show_tfbs);
         let res = engine
             .apply(Operation::SetDisplayVisibility {
                 target: DisplayTarget::Features,
@@ -2263,6 +4013,14 @@ mod tests {
             .unwrap();
         assert!(res.messages.iter().any(|m| m.contains("features")));
         assert!(!engine.state().display.show_features);
+        let res_tfbs = engine
+            .apply(Operation::SetDisplayVisibility {
+                target: DisplayTarget::Tfbs,
+                visible: true,
+            })
+            .unwrap();
+        assert!(res_tfbs.messages.iter().any(|m| m.contains("tfbs")));
+        assert!(engine.state().display.show_tfbs);
     }
 
     #[test]
@@ -2290,6 +4048,75 @@ mod tests {
                 .get_forward_string(),
             "GCATG"
         );
+    }
+
+    #[test]
+    fn test_extract_anchored_region_with_constraints_unique() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("tpl".to_string(), seq("TTTGAATTCACGTACGTACGTTAAACCC"));
+        let mut engine = GentleEngine::from_state(state);
+        let res = engine
+            .apply(Operation::ExtractAnchoredRegion {
+                input: "tpl".to_string(),
+                anchor: AnchoredRegionAnchor::Position { zero_based: 21 },
+                direction: AnchorDirection::Upstream,
+                target_length_bp: 18,
+                length_tolerance_bp: 2,
+                required_re_sites: vec!["EcoRI".to_string()],
+                required_tf_motifs: vec!["CACGTA".to_string()],
+                forward_primer: Some("GAATTC".to_string()),
+                reverse_primer: Some("ACGT".to_string()),
+                output_prefix: Some("prom".to_string()),
+                unique: Some(true),
+                max_candidates: Some(5),
+            })
+            .unwrap();
+        assert_eq!(res.created_seq_ids, vec!["prom_1".to_string()]);
+        assert_eq!(
+            engine
+                .state()
+                .sequences
+                .get("prom_1")
+                .unwrap()
+                .get_forward_string(),
+            "GAATTCACGTACGTACGT"
+        );
+    }
+
+    #[test]
+    fn test_extract_anchored_region_from_feature_boundary() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::LoadFile {
+                path: "test_files/pGEX-3X.gb".to_string(),
+                as_id: Some("pgex".to_string()),
+            })
+            .unwrap();
+        let res = engine
+            .apply(Operation::ExtractAnchoredRegion {
+                input: "pgex".to_string(),
+                anchor: AnchoredRegionAnchor::FeatureBoundary {
+                    feature_kind: Some("CDS".to_string()),
+                    feature_label: None,
+                    boundary: AnchorBoundary::Start,
+                    occurrence: Some(0),
+                },
+                direction: AnchorDirection::Upstream,
+                target_length_bp: 60,
+                length_tolerance_bp: 0,
+                required_re_sites: vec![],
+                required_tf_motifs: vec![],
+                forward_primer: None,
+                reverse_primer: None,
+                output_prefix: Some("cds_up".to_string()),
+                unique: Some(true),
+                max_candidates: Some(1),
+            })
+            .unwrap();
+        assert_eq!(res.created_seq_ids, vec!["cds_up_1".to_string()]);
+        assert_eq!(engine.state().sequences.get("cds_up_1").unwrap().len(), 60);
     }
 
     #[test]
@@ -3063,5 +4890,644 @@ mod tests {
             })
             .unwrap();
         assert_eq!(res.created_seq_ids.len(), 2);
+    }
+
+    #[test]
+    fn test_load_file_operation() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::LoadFile {
+                path: "test_files/pGEX_3X.fa".to_string(),
+                as_id: Some("pgex".to_string()),
+            })
+            .unwrap();
+        assert_eq!(res.created_seq_ids, vec!["pgex".to_string()]);
+        assert!(engine.state().sequences.contains_key("pgex"));
+    }
+
+    #[test]
+    fn test_save_file_operation_genbank() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), seq("ATGCCA"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("gb");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::SaveFile {
+                seq_id: "s".to_string(),
+                path: path_text.clone(),
+                format: ExportFormat::GenBank,
+            })
+            .unwrap();
+        assert!(res.changed_seq_ids.contains(&"s".to_string()));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("LOCUS"));
+    }
+
+    #[test]
+    fn test_set_topology_operation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), seq("ATGCCA"));
+        let mut engine = GentleEngine::from_state(state);
+        let res = engine
+            .apply(Operation::SetTopology {
+                seq_id: "s".to_string(),
+                circular: true,
+            })
+            .unwrap();
+        assert!(res.changed_seq_ids.contains(&"s".to_string()));
+        assert!(engine.state().sequences.get("s").unwrap().is_circular());
+    }
+
+    #[test]
+    fn test_recompute_features_operation() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("ATGAAACCCGGGTTT"));
+        let mut engine = GentleEngine::from_state(state);
+        let res = engine
+            .apply(Operation::RecomputeFeatures {
+                seq_id: "s".to_string(),
+            })
+            .unwrap();
+        assert!(res.changed_seq_ids.contains(&"s".to_string()));
+    }
+
+    #[test]
+    fn test_prepare_scoring_matrices_avoid_negative_infinity() {
+        let matrix = vec![[10.0, 0.0, 0.0, 0.0], [5.0, 0.0, 0.0, 0.0]];
+        let (llr, true_log_odds) = GentleEngine::prepare_scoring_matrices(&matrix);
+        assert_eq!(llr.len(), 2);
+        for col in llr {
+            for v in col {
+                assert!(v.is_finite());
+            }
+        }
+        assert_eq!(true_log_odds.len(), 2);
+        for col in true_log_odds {
+            for v in col {
+                assert!(v.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn test_annotate_tfbs_adds_scored_features() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("TTTACGTAAACGTGGG"));
+        let mut engine = GentleEngine::from_state(state);
+        let res = engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(0.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: None,
+            })
+            .unwrap();
+        assert!(res.changed_seq_ids.contains(&"s".to_string()));
+        let dna = engine.state().sequences.get("s").unwrap();
+        let tfbs_features: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .collect();
+        assert!(!tfbs_features.is_empty());
+        assert!(tfbs_features.iter().all(|f| {
+            f.qualifier_values("llr_bits".into()).next().is_some()
+                && f.qualifier_values("llr_quantile".into()).next().is_some()
+                && f.qualifier_values("true_log_odds_bits".into())
+                    .next()
+                    .is_some()
+                && f.qualifier_values("true_log_odds_quantile".into())
+                    .next()
+                    .is_some()
+        }));
+    }
+
+    #[test]
+    fn test_annotate_tfbs_progress_reaches_completion() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("TTTACGTAAACGTGGG"));
+        let mut engine = GentleEngine::from_state(state);
+        let mut progress_events: Vec<TfbsProgress> = vec![];
+        let res = engine
+            .apply_with_progress(
+                Operation::AnnotateTfbs {
+                    seq_id: "s".to_string(),
+                    motifs: vec!["ACGT".to_string(), "TATAAA".to_string()],
+                    min_llr_bits: Some(0.0),
+                    min_llr_quantile: Some(0.0),
+                    per_tf_thresholds: vec![],
+                    clear_existing: Some(true),
+                    max_hits: None,
+                },
+                |OperationProgress::Tfbs(p)| {
+                    progress_events.push(p);
+                },
+            )
+            .unwrap();
+        assert!(res.changed_seq_ids.contains(&"s".to_string()));
+        assert!(!progress_events.is_empty());
+        let last = progress_events.last().unwrap();
+        assert_eq!(last.motif_index, last.motif_count);
+        assert!((last.motif_percent - 100.0).abs() < f64::EPSILON);
+        assert!((last.total_percent - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_annotate_tfbs_per_tf_override_changes_quantile_threshold() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("TTTACGTAAACGTGGG"));
+        let mut engine = GentleEngine::from_state(state);
+        let strict = engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(1.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: None,
+            })
+            .unwrap();
+        let strict_count = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .count();
+        assert!(strict.changed_seq_ids.contains(&"s".to_string()));
+
+        let relaxed = engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(1.0),
+                per_tf_thresholds: vec![TfThresholdOverride {
+                    tf: "ACGT".to_string(),
+                    min_llr_bits: None,
+                    min_llr_quantile: Some(0.0),
+                }],
+                clear_existing: Some(true),
+                max_hits: None,
+            })
+            .unwrap();
+        let relaxed_count = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .count();
+        assert!(relaxed.changed_seq_ids.contains(&"s".to_string()));
+        assert!(relaxed_count >= strict_count);
+    }
+
+    #[test]
+    fn test_annotate_tfbs_max_hits_cap_and_unlimited() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("ACGTACGTACGTACGTACGT"));
+        let mut engine = GentleEngine::from_state(state);
+
+        let capped = engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(0.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: Some(2),
+            })
+            .unwrap();
+        assert!(capped.changed_seq_ids.contains(&"s".to_string()));
+        let capped_count = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .count();
+        assert_eq!(capped_count, 2);
+
+        let unlimited = engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(0.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: Some(0),
+            })
+            .unwrap();
+        assert!(unlimited.changed_seq_ids.contains(&"s".to_string()));
+        let unlimited_count = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .count();
+        assert!(unlimited_count > capped_count);
+    }
+
+    #[test]
+    fn test_render_sequence_svg_operation() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq(&"ATGC".repeat(40)));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("svg");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::RenderSequenceSvg {
+                seq_id: "s".to_string(),
+                mode: RenderSvgMode::Linear,
+                path: path_text.clone(),
+            })
+            .unwrap();
+        assert!(res.messages.iter().any(|m| m.contains("SVG")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("<svg"));
+    }
+
+    #[test]
+    fn test_render_lineage_svg_operation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), seq("ATGCCA"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("svg");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::RenderLineageSvg {
+                path: path_text.clone(),
+            })
+            .unwrap();
+        assert!(res.messages.iter().any(|m| m.contains("lineage SVG")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("<svg"));
+    }
+
+    #[test]
+    fn test_export_pool_operation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("a".to_string(), seq("ATGC"));
+        state.sequences.insert("b".to_string(), seq("TTAA"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pool.gentle.json");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::ExportPool {
+                inputs: vec!["a".to_string(), "b".to_string()],
+                path: path_text.clone(),
+                pool_id: Some("pool_1".to_string()),
+                human_id: Some("test pool".to_string()),
+            })
+            .unwrap();
+        assert!(res.messages.iter().any(|m| m.contains("Wrote pool export")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["schema"], "gentle.pool.v1");
+        assert_eq!(v["pool_id"], "pool_1");
+        assert_eq!(v["human_id"], "test pool");
+        assert_eq!(v["member_count"], 2);
+    }
+
+    #[test]
+    fn test_save_file_operation_fasta() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), seq("ATGCCA"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("fa");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::SaveFile {
+                seq_id: "s".to_string(),
+                path: path_text.clone(),
+                format: ExportFormat::Fasta,
+            })
+            .unwrap();
+        assert!(res.changed_seq_ids.contains(&"s".to_string()));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.starts_with(">"));
+        assert!(text.contains("ATGCCA"));
+    }
+
+    #[test]
+    fn test_render_sequence_svg_operation_circular() {
+        let mut state = ProjectState::default();
+        let mut s = seq(&"ATGC".repeat(40));
+        s.set_circular(true);
+        state.sequences.insert("s".to_string(), s);
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("svg");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::RenderSequenceSvg {
+                seq_id: "s".to_string(),
+                mode: RenderSvgMode::Circular,
+                path: path_text.clone(),
+            })
+            .unwrap();
+        assert!(res.messages.iter().any(|m| m.contains("SVG")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("<svg"));
+    }
+
+    #[test]
+    fn test_export_pool_operation_defaults() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("a".to_string(), seq("ATGC"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pool.gentle.json");
+        let path_text = path.display().to_string();
+        engine
+            .apply(Operation::ExportPool {
+                inputs: vec!["a".to_string()],
+                path: path_text.clone(),
+                pool_id: None,
+                human_id: None,
+            })
+            .unwrap();
+        let text = std::fs::read_to_string(path_text).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["pool_id"], "pool_export");
+        assert!(v["human_id"].as_str().unwrap().starts_with("Pool("));
+    }
+
+    #[test]
+    fn test_export_pool_operation_empty_inputs_fails() {
+        let mut engine = GentleEngine::new();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pool.gentle.json");
+        let path_text = path.display().to_string();
+        let err = engine
+            .apply(Operation::ExportPool {
+                inputs: vec![],
+                path: path_text,
+                pool_id: None,
+                human_id: None,
+            })
+            .unwrap_err();
+        assert!(err.message.contains("at least one input"));
+    }
+
+    #[test]
+    fn test_export_pool_operation_missing_sequence_fails() {
+        let mut engine = GentleEngine::new();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pool.gentle.json");
+        let path_text = path.display().to_string();
+        let err = engine
+            .apply(Operation::ExportPool {
+                inputs: vec!["missing".to_string()],
+                path: path_text,
+                pool_id: None,
+                human_id: None,
+            })
+            .unwrap_err();
+        assert!(err.message.contains("not found"));
+    }
+
+    #[test]
+    fn test_set_parameter_unknown_name_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "unknown_param".to_string(),
+                value: serde_json::json!(1),
+            })
+            .unwrap_err();
+        assert!(err.message.contains("Unknown parameter"));
+    }
+
+    #[test]
+    fn test_set_parameter_invalid_type_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "max_fragments_per_container".to_string(),
+                value: serde_json::json!("not-a-number"),
+            })
+            .unwrap_err();
+        assert!(err.message.contains("requires a positive integer"));
+    }
+
+    #[test]
+    fn test_set_parameter_zero_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "max_fragments_per_container".to_string(),
+                value: serde_json::json!(0),
+            })
+            .unwrap_err();
+        assert!(err.message.contains("must be >= 1"));
+    }
+
+    #[test]
+    fn test_containers_created_on_load_and_digest() {
+        let mut engine = GentleEngine::new();
+        let load = engine
+            .apply(Operation::LoadFile {
+                path: "test_files/pGEX_3X.fa".to_string(),
+                as_id: Some("pgex".to_string()),
+            })
+            .unwrap();
+        let seq_id = load.created_seq_ids.first().unwrap().clone();
+        let latest = engine
+            .state()
+            .container_state
+            .seq_to_latest_container
+            .get(&seq_id)
+            .cloned();
+        assert!(latest.is_some());
+        let digest = engine
+            .apply(Operation::Digest {
+                input: "pgex".to_string(),
+                enzymes: vec!["BamHI".to_string(), "EcoRI".to_string()],
+                output_prefix: Some("frag".to_string()),
+            })
+            .unwrap();
+        assert!(digest.created_seq_ids.len() >= 2);
+        let container_id = engine
+            .state()
+            .container_state
+            .seq_to_latest_container
+            .get(digest.created_seq_ids.first().unwrap())
+            .unwrap();
+        let container = engine
+            .state()
+            .container_state
+            .containers
+            .get(container_id)
+            .unwrap();
+        assert!(matches!(container.kind, ContainerKind::Pool));
+        assert_eq!(container.members.len(), digest.created_seq_ids.len());
+    }
+
+    #[test]
+    fn test_select_candidate_creates_selection_container_kind() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("frag".to_string(), seq(&"ATGC".repeat(40)));
+        let mut engine = GentleEngine::from_state(state);
+        let res = engine
+            .apply(Operation::SelectCandidate {
+                input: "frag".to_string(),
+                criterion: "manual".to_string(),
+                output_id: Some("picked".to_string()),
+            })
+            .unwrap();
+        let picked = res.created_seq_ids.first().unwrap();
+        let cid = engine
+            .state()
+            .container_state
+            .seq_to_latest_container
+            .get(picked)
+            .unwrap();
+        let c = engine.state().container_state.containers.get(cid).unwrap();
+        assert!(matches!(c.kind, ContainerKind::Selection));
+    }
+
+    #[test]
+    fn test_container_operations_map_to_core_ops() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("a".to_string(), seq(&"ATGC".repeat(40)));
+        state
+            .sequences
+            .insert("b".to_string(), seq(&"TTAA".repeat(40)));
+        let mut engine = GentleEngine::from_state(state);
+        let merge = engine
+            .apply(Operation::MergeContainersById {
+                container_ids: vec![
+                    engine
+                        .state()
+                        .container_state
+                        .seq_to_latest_container
+                        .get("a")
+                        .unwrap()
+                        .clone(),
+                    engine
+                        .state()
+                        .container_state
+                        .seq_to_latest_container
+                        .get("b")
+                        .unwrap()
+                        .clone(),
+                ],
+                output_prefix: Some("pool".to_string()),
+            })
+            .unwrap();
+        assert_eq!(merge.created_seq_ids.len(), 2);
+
+        let pool_container = engine
+            .state()
+            .container_state
+            .seq_to_latest_container
+            .get(merge.created_seq_ids.first().unwrap())
+            .unwrap()
+            .clone();
+        let lig = engine
+            .apply(Operation::LigationContainer {
+                container_id: pool_container.clone(),
+                circularize_if_possible: false,
+                output_id: None,
+                protocol: LigationProtocol::Blunt,
+                output_prefix: Some("lig".to_string()),
+                unique: None,
+            })
+            .unwrap();
+        assert!(!lig.created_seq_ids.is_empty());
+
+        let filtered = engine
+            .apply(Operation::FilterContainerByMolecularWeight {
+                container_id: pool_container,
+                min_bp: 120,
+                max_bp: 400,
+                error: 0.0,
+                unique: false,
+                output_prefix: Some("mw".to_string()),
+            })
+            .unwrap();
+        assert!(!filtered.created_seq_ids.is_empty());
+    }
+
+    #[test]
+    fn test_digest_container_and_state_summary_include_containers() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::LoadFile {
+                path: "test_files/pGEX_3X.fa".to_string(),
+                as_id: Some("pgex".to_string()),
+            })
+            .unwrap();
+        let cid = engine
+            .state()
+            .container_state
+            .seq_to_latest_container
+            .get("pgex")
+            .unwrap()
+            .clone();
+        let res = engine
+            .apply(Operation::DigestContainer {
+                container_id: cid,
+                enzymes: vec!["BamHI".to_string(), "EcoRI".to_string()],
+                output_prefix: Some("dig".to_string()),
+            })
+            .unwrap();
+        assert!(!res.created_seq_ids.is_empty());
+        let summary = engine.summarize_state();
+        assert!(summary.container_count > 0);
+        assert!(!summary.containers.is_empty());
     }
 }

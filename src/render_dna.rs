@@ -1,6 +1,9 @@
 use crate::{
-    dna_display::DnaDisplay, dna_sequence::DNAsequence, render_dna_circular::RenderDnaCircular,
-    render_dna_linear::RenderDnaLinear, restriction_enzyme::RestrictionEnzymeKey,
+    dna_display::{DnaDisplay, TfbsDisplayCriteria},
+    dna_sequence::DNAsequence,
+    render_dna_circular::RenderDnaCircular,
+    render_dna_linear::RenderDnaLinear,
+    restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
 use gb_io::seq::Feature;
@@ -112,8 +115,73 @@ impl RenderDna {
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Color32::from_rgb(35, 120, 35),
             _ => Color32::GRAY,
         }
+    }
+
+    pub fn is_tfbs_feature(feature: &Feature) -> bool {
+        matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
+        )
+    }
+
+    fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
+        feature
+            .qualifier_values(key.into())
+            .next()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+    }
+
+    pub fn tfbs_feature_passes_display_filter(
+        feature: &Feature,
+        criteria: TfbsDisplayCriteria,
+    ) -> bool {
+        if !Self::is_tfbs_feature(feature) {
+            return true;
+        }
+        if criteria.use_llr_bits {
+            let Some(value) = Self::feature_qualifier_f64(feature, "llr_bits") else {
+                return false;
+            };
+            if value < criteria.min_llr_bits {
+                return false;
+            }
+        }
+        if criteria.use_llr_quantile {
+            let Some(value) = Self::feature_qualifier_f64(feature, "llr_quantile") else {
+                return false;
+            };
+            if value < criteria.min_llr_quantile {
+                return false;
+            }
+        }
+        if criteria.use_true_log_odds_bits {
+            let value = Self::feature_qualifier_f64(feature, "true_log_odds_bits")
+                .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_bits"));
+            let Some(value) = value else {
+                return false;
+            };
+            if value < criteria.min_true_log_odds_bits {
+                return false;
+            }
+        }
+        if criteria.use_true_log_odds_quantile {
+            let value = Self::feature_qualifier_f64(feature, "true_log_odds_quantile")
+                .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_quantile"));
+            let Some(value) = value else {
+                return false;
+            };
+            if value < criteria.min_true_log_odds_quantile {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn is_source_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "SOURCE"
     }
 
     pub fn feature_name(feature: &Feature) -> String {
@@ -122,6 +190,7 @@ impl RenderDna {
             Err(_) => String::new(),
         };
         for k in [
+            "label",
             "name",
             "standard_name",
             "gene",

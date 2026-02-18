@@ -1,0 +1,53 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: GENtle
+Upstream-Contact:
+ Magnus Manske <magnusmanske@googlemail.com>
+Source: https://github.com/magnusmanske/gentle_rs/
+
+Files: *
+Copyright: 2024-2026, Magnus Manske
+           2026       Steffen Möller <moeller@debian.org>
+License: GPL-2+
+ The upstream application UI text states: "Released under GPL 2003".
+ This package metadata maps that to "GPL-2 or later".
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 is available in `/usr/share/common-licenses/GPL-2`.
+
+Files: assets/enzymes.json
+Copyright: REBASE authors and maintainers
+License: REBASE-Redistribution
+ This file is derived from REBASE restriction-enzyme data.
+ Redistribution is permitted provided derivative changes remain freely
+ available under equivalent free terms.
+ .
+ Upstream source: https://rebase.neb.com/rebase/rebase.files.html
+
+Files: assets/jaspar.motifs.json data/resources/jaspar.motifs.json
+Copyright: JASPAR Consortium
+License: CC-BY-4.0
+ This data is derived from the JASPAR CORE motif collection (2026 release).
+ .
+ Upstream source:
+ https://jaspar.elixir.no/download/data/2026/CORE/
+ JASPAR2026_CORE_non-redundant_pfms_jaspar.txt
+ .
+ This source package includes a built-in snapshot in `assets/` and allows
+ runtime replacement/extension via `data/resources/`.
+
+License: GPL-2+
+ This program is free software; you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
+
+License: REBASE-Redistribution
+ REBASE-derived data in this package is redistributed under upstream terms
+ that permit redistribution and require derivative changes to remain free.
+ See upstream REBASE license/terms pages for the authoritative wording.
+
+License: CC-BY-4.0
+ Creative Commons Attribution 4.0 International (CC BY 4.0).
+ .
+ The full text is available at:
+ https://creativecommons.org/licenses/by/4.0/

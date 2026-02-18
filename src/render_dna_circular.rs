@@ -1,5 +1,5 @@
 use crate::{
-    dna_display::{DnaDisplay, Selection},
+    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
     dna_sequence::DNAsequence,
     gc_contents::GcRegion,
     render_dna::RenderDna,
@@ -514,6 +514,10 @@ impl RenderDnaCircular {
     /// Lays out features on the circular DNA
     fn layout_features(&mut self) {
         self.features.clear();
+        let (show_tfbs, tfbs_display_criteria) = {
+            let display = self.display.read().expect("Display lock poisoned");
+            (display.show_tfbs(), display.tfbs_display_criteria())
+        };
         let features = self
             .dna
             .read()
@@ -522,9 +526,13 @@ impl RenderDnaCircular {
             .to_owned();
         for (feature_number, feature) in features.iter().enumerate() {
             let fp_opt = match &feature.location {
-                gb_io::seq::Location::Range(from, to) => {
-                    self.layout_feature_from_range(feature, *from, *to)
-                }
+                gb_io::seq::Location::Range(from, to) => self.layout_feature_from_range(
+                    feature,
+                    *from,
+                    *to,
+                    show_tfbs,
+                    tfbs_display_criteria,
+                ),
                 gb_io::seq::Location::External(_, _) => None, // TODO
                 gb_io::seq::Location::Between(_, _) => None,  // TODO
                 gb_io::seq::Location::Complement(_) => None,  // TODO
@@ -550,8 +558,10 @@ impl RenderDnaCircular {
         feature: &Feature,
         start: (i64, gb_io::seq::Before),
         end: (i64, gb_io::seq::After),
+        show_tfbs: bool,
+        tfbs_display_criteria: TfbsDisplayCriteria,
     ) -> Option<FeaturePosition> {
-        if !Self::draw_feature(feature) {
+        if !Self::draw_feature(feature, show_tfbs, tfbs_display_criteria) {
             return None;
         }
         let mut ret: FeaturePosition = FeaturePosition {
@@ -811,9 +821,21 @@ impl RenderDnaCircular {
 
     /// Determines if a feature should be drawn, true for all features that are not of kind
     /// "SOURCE"
-    fn draw_feature(feature: &Feature) -> bool {
-        let feature_kind = feature.kind.to_string().to_ascii_uppercase();
-        feature_kind != "SOURCE"
+    fn draw_feature(
+        feature: &Feature,
+        show_tfbs: bool,
+        tfbs_display_criteria: TfbsDisplayCriteria,
+    ) -> bool {
+        if RenderDna::is_source_feature(feature) {
+            return false;
+        }
+        if RenderDna::is_tfbs_feature(feature) {
+            if !show_tfbs {
+                return false;
+            }
+            return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
+        }
+        true
     }
 
     /// Determines if a feature should be drawn

@@ -24,6 +24,7 @@ The project main window (lineage page) supports two views:
 
 - `Table`: tabular lineage view with per-sequence actions
 - `Graph`: node/edge lineage visualization
+- `Containers`: container list with kind/member-count and open actions
 
 Node click behavior in lineage `Graph` view:
 
@@ -44,14 +45,20 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Shows or hides the graphical DNA map.
 4. Show/Hide features
    - Toggles annotated feature rendering.
-5. Show/Hide restriction enzymes
+5. Show/Hide TFBS
+   - Toggles computed TFBS annotations.
+   - Default is off.
+6. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
-6. Show/Hide GC content
+7. Show/Hide GC content
    - Toggles GC-content visualization overlay.
-7. Show/Hide ORFs
+8. Show/Hide ORFs
    - Toggles open reading frame overlays.
-8. Show/Hide methylation sites
+9. Show/Hide methylation sites
    - Toggles methylation-site markers.
+10. Export Seq
+   - Exports the active sequence via engine `SaveFile`.
+   - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
 
 Hovering any button shows a tooltip in the UI.
 
@@ -110,6 +117,78 @@ Bin breaks are computed as follows:
   - `lo = min_bp + idx * bucket_size`
 - `hi = lo + bucket_size - 1`
 
+## Anchored Region Extraction (Engine Ops)
+
+The Engine Ops panel includes an `Extract Anchored` form for promoter-like
+design constraints:
+
+- fixed anchor:
+  - absolute position (0-based), or
+  - feature boundary (`kind`, optional `label`, `Start/End`, `occurrence`)
+- direction:
+  - `Upstream` or `Downstream`
+- flexible target length:
+  - `target len` with `tolerance`
+- hard constraints:
+  - required restriction enzyme sites
+  - required TF motifs (ID/name or IUPAC)
+  - optional forward/reverse primer constraints
+- candidate controls:
+  - `Unique`
+  - `max candidates`
+  - output prefix
+
+Execution calls engine operation `ExtractAnchoredRegion` and creates one or
+more candidate sequences as operation results.
+
+## TFBS Annotation (Engine Ops)
+
+The Engine Ops panel includes `TFBS annotation (log-likelihood ratio)`:
+
+- motif selection:
+  - `All known JASPAR motifs` mode (explicit all)
+  - or selected motifs as comma-separated IDs/names/IUPAC
+  - selection helper:
+    - filter JASPAR entries
+    - add entries to selected motif list with `+`
+- global thresholds:
+  - `min llr_bits` (absolute log-likelihood ratio score, base 2)
+  - `min llr_quantile` (empirical quantile in the scanned sequence region; both strands)
+- per-TF overrides:
+  - `per-TF min llr_bits` as `TF=VALUE,...`
+  - `per-TF min llr_quantile` as `TF=VALUE,...`
+- `Clear previous TFBS`:
+  - removes prior generated TFBS annotations before writing fresh results
+
+Execution calls engine operation `AnnotateTfbs` and writes scored TFBS features
+onto the active sequence. Generated TFBS qualifiers now include four scores:
+`llr_bits`, `llr_quantile`, `true_log_odds_bits`, and
+`true_log_odds_quantile`.
+
+Safety behavior:
+
+- GUI uses engine default TFBS cap (`500` accepted hits per operation) to keep
+  the UI responsive on dense scans.
+- CLI/JSON workflows can override this via `AnnotateTfbs.max_hits` (`0` means
+  unlimited).
+
+While TFBS annotation is running, GUI shows live progress indicators and keeps
+repainting until completion:
+
+- per-motif percentage (based on actual scan steps)
+- total percentage across all selected motifs (fraction of TFs addressed)
+
+TFBS display reduction (no recomputation needed):
+
+- `TFBS display filter` offers four checkbox-enabled criteria:
+  - `llr_bits`
+  - `llr_quantile`
+  - `true_log_odds_bits`
+  - `true_log_odds_quantile`
+- each enabled criterion applies its threshold live to visible TFBS features
+- disabling all criteria shows all TFBS features
+- sequence SVG export now uses the same TFBS filter settings as the GUI display
+
 ## Engine Ops State Persistence
 
 Engine Ops panel input state is persisted in project metadata per active
@@ -123,7 +202,24 @@ Metadata key format:
 
 Use the top application menu:
 
-- `File -> Open`
+- `File -> Open Sequence...`
+- `File -> Open Project...`
+- `File -> Import REBASE Data...`
+- `File -> Import JASPAR Data...`
+- `File -> Save Project...`
+- `File -> Export DALG SVG...`
+
+Resource import behavior:
+
+- `Import REBASE Data...`
+  - Parses a REBASE/Bairoch input file and updates
+    `data/resources/rebase.enzymes.json`.
+  - Loaded project sequences are refreshed so restriction-site tracks use the
+    newly imported enzyme set immediately.
+- `Import JASPAR Data...`
+  - Parses a JASPAR PFM input file and updates
+    `data/resources/jaspar.motifs.json`.
+  - TF motif lookups for anchored extraction use the refreshed motif registry.
 
 Supported in the current flow:
 

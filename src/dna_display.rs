@@ -63,6 +63,33 @@ pub enum AminoAcidFrame {
     ReverseCompelment(u8), // 1,2,3
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TfbsDisplayCriteria {
+    pub use_llr_bits: bool,
+    pub min_llr_bits: f64,
+    pub use_llr_quantile: bool,
+    pub min_llr_quantile: f64,
+    pub use_true_log_odds_bits: bool,
+    pub min_true_log_odds_bits: f64,
+    pub use_true_log_odds_quantile: bool,
+    pub min_true_log_odds_quantile: f64,
+}
+
+impl Default for TfbsDisplayCriteria {
+    fn default() -> Self {
+        Self {
+            use_llr_bits: true,
+            min_llr_bits: 0.0,
+            use_llr_quantile: true,
+            min_llr_quantile: 0.95,
+            use_true_log_odds_bits: false,
+            min_true_log_odds_bits: 0.0,
+            use_true_log_odds_quantile: false,
+            min_true_log_odds_quantile: 0.95,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UpdateLayoutParts {
     update_map_dna: bool,
@@ -98,6 +125,8 @@ pub struct DnaDisplay {
     show_reverse_complement: bool,
     show_open_reading_frames: bool,
     show_features: bool,
+    show_tfbs: bool,
+    tfbs_display_criteria: TfbsDisplayCriteria,
     show_gc_contents: bool,
     show_methylation_sites: bool,
     update_layout: UpdateLayoutParts,
@@ -141,6 +170,33 @@ impl DnaDisplay {
 
     pub fn show_features(&self) -> bool {
         self.show_features
+    }
+
+    pub fn show_tfbs(&self) -> bool {
+        self.show_tfbs
+    }
+
+    pub fn toggle_show_tfbs(&mut self) {
+        self.show_tfbs = !self.show_tfbs;
+        self.mark_layout_dirty();
+    }
+
+    pub fn set_show_tfbs(&mut self, value: bool) {
+        if self.show_tfbs != value {
+            self.show_tfbs = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn tfbs_display_criteria(&self) -> TfbsDisplayCriteria {
+        self.tfbs_display_criteria
+    }
+
+    pub fn set_tfbs_display_criteria(&mut self, criteria: TfbsDisplayCriteria) {
+        if self.tfbs_display_criteria != criteria {
+            self.tfbs_display_criteria = criteria;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn show_reverse_complement(&self) -> bool {
@@ -260,6 +316,8 @@ impl Default for DnaDisplay {
             show_reverse_complement: true,
             show_open_reading_frames: true,
             show_features: true,
+            show_tfbs: false,
+            tfbs_display_criteria: TfbsDisplayCriteria::default(),
             show_gc_contents: true,
             show_methylation_sites: false,
             update_layout: UpdateLayoutParts::default(),
