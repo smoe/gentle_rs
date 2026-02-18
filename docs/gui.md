@@ -43,20 +43,24 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Shows or hides the sequence text panel.
 3. Show/Hide map panel
    - Shows or hides the graphical DNA map.
-4. Show/Hide features
-   - Toggles annotated feature rendering.
-5. Show/Hide TFBS
+4. CDS
+   - Shows or hides CDS feature rendering.
+5. Gene
+   - Shows or hides gene feature rendering.
+6. mRNA
+   - Shows or hides mRNA feature rendering.
+7. Show/Hide TFBS
    - Toggles computed TFBS annotations.
    - Default is off.
-6. Show/Hide restriction enzymes
+8. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
-7. Show/Hide GC content
+9. Show/Hide GC content
    - Toggles GC-content visualization overlay.
-8. Show/Hide ORFs
+10. Show/Hide ORFs
    - Toggles open reading frame overlays.
-9. Show/Hide methylation sites
+11. Show/Hide methylation sites
    - Toggles methylation-site markers.
-10. Export Seq
+12. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
 
@@ -70,6 +74,24 @@ Two About entries exist on macOS:
 - app menu `GENtle -> About GENtle`: standard macOS About panel
 
 The custom window and CLI `--version` share the same text payload.
+
+## Help manuals
+
+The `Help` menu now includes:
+
+- `GUI Manual`: opens `docs/gui.md` in an in-app markdown viewer
+- `CLI Manual`: opens `docs/cli.md` in an in-app markdown viewer
+- help now opens in its own native window (separate viewport), not as an overlay in the project window
+
+Help content loading behavior:
+
+- if `docs/gui.md` / `docs/cli.md` exists at runtime, GUI loads those files
+- otherwise GUI falls back to embedded copies compiled into the app binary
+
+Markdown image support:
+
+- image rendering is enabled in the help viewer
+- use standard markdown image syntax (`![alt](path-or-url)`)
 
 ## Map interactions
 
@@ -189,6 +211,49 @@ TFBS display reduction (no recomputation needed):
 - disabling all criteria shows all TFBS features
 - sequence SVG export now uses the same TFBS filter settings as the GUI display
 
+## Reference Genomes (Main Menu)
+
+Reference-genome workflow is split into two separate dialogs (masks) in the
+main project window menu:
+
+- `File -> Prepare Reference Genome...` (or `Genome -> Prepare Reference Genome...`)
+- `File -> Retrieve Genome Sequence...` (or `Genome -> Retrieve Genome Sequence...`)
+
+Recommended flow:
+
+1. Prepare/cache a genome once:
+   - open `Prepare Reference Genome...`
+   - set `catalog` + `cache_dir`
+   - select `genome` from dropdown values loaded from catalog JSON
+   - click `Prepare Genome`
+   - this runs in background, shows live progress, and builds local FASTA index
+2. Extract a region when needed:
+   - open `Retrieve Genome Sequence...`
+   - select the same `genome` from dropdown
+   - use `Gene filter` (name/id text filter, analogous to TF interest filtering)
+   - click a filtered gene to auto-fill `chr`, `start_1based`, `end_1based`
+   - optionally edit coordinates and set `output_id`
+   - click `Extract Region`
+   - coordinates are 1-based and inclusive
+
+Equivalent workflow JSON (still supported via workflow runner):
+
+```json
+[
+  {"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 113","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
+  {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 113","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+]
+```
+
+Notes:
+
+- `Catalog...` opens a file picker for genome catalog JSON.
+- `cache_dir` can be selected via folder picker; persistent project-local
+  storage is recommended over `/tmp`.
+- If `catalog` is empty, engine uses default `assets/genomes.json`.
+- Retrieval fields are enabled only after the selected genome is prepared.
+- Extracted regions are added to project state and opened in sequence windows.
+
 ## Engine Ops State Persistence
 
 Engine Ops panel input state is persisted in project metadata per active
@@ -204,10 +269,17 @@ Use the top application menu:
 
 - `File -> Open Sequence...`
 - `File -> Open Project...`
+- `File -> Prepare Reference Genome...`
+- `File -> Retrieve Genome Sequence...`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
+
+Shortcut:
+
+- `Cmd+Shift+G` opens `Retrieve Genome Sequence...`.
+- `Cmd+Shift+P` opens `Prepare Reference Genome...`.
 
 Resource import behavior:
 

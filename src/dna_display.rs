@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use eframe::egui::Color32;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,6 +11,13 @@ pub struct Selection {
 
 impl Selection {
     pub fn new(from: usize, to: usize, sequence_length: usize) -> Self {
+        if sequence_length == 0 {
+            return Self {
+                from: 0,
+                to: 0,
+                sequence_length: 0,
+            };
+        }
         if to > sequence_length {
             Self {
                 from: to % sequence_length,
@@ -33,6 +42,9 @@ impl Selection {
     }
 
     pub fn parts(&self) -> Vec<(usize, usize)> {
+        if self.sequence_length == 0 {
+            return vec![];
+        }
         if self.from < self.to {
             vec![(self.from, self.to)]
         } else {
@@ -41,6 +53,9 @@ impl Selection {
     }
 
     pub fn contains(&self, position: usize) -> bool {
+        if self.sequence_length == 0 {
+            return false;
+        }
         if self.from < self.to {
             position >= self.from && position < self.to
         } else {
@@ -125,7 +140,11 @@ pub struct DnaDisplay {
     show_reverse_complement: bool,
     show_open_reading_frames: bool,
     show_features: bool,
+    show_cds_features: bool,
+    show_gene_features: bool,
+    show_mrna_features: bool,
     show_tfbs: bool,
+    hidden_feature_kinds: BTreeSet<String>,
     tfbs_display_criteria: TfbsDisplayCriteria,
     show_gc_contents: bool,
     show_methylation_sites: bool,
@@ -133,6 +152,8 @@ pub struct DnaDisplay {
     aa_letters: AminoAcidLetters,
     aa_frame: AminoAcidFrame,
     selection: Option<Selection>,
+    linear_view_start_bp: usize,
+    linear_view_span_bp: usize,
 }
 
 impl DnaDisplay {
@@ -172,6 +193,39 @@ impl DnaDisplay {
         self.show_features
     }
 
+    pub fn show_cds_features(&self) -> bool {
+        self.show_cds_features
+    }
+
+    pub fn set_show_cds_features(&mut self, value: bool) {
+        if self.show_cds_features != value {
+            self.show_cds_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn show_gene_features(&self) -> bool {
+        self.show_gene_features
+    }
+
+    pub fn set_show_gene_features(&mut self, value: bool) {
+        if self.show_gene_features != value {
+            self.show_gene_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn show_mrna_features(&self) -> bool {
+        self.show_mrna_features
+    }
+
+    pub fn set_show_mrna_features(&mut self, value: bool) {
+        if self.show_mrna_features != value {
+            self.show_mrna_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn show_tfbs(&self) -> bool {
         self.show_tfbs
     }
@@ -195,6 +249,30 @@ impl DnaDisplay {
     pub fn set_tfbs_display_criteria(&mut self, criteria: TfbsDisplayCriteria) {
         if self.tfbs_display_criteria != criteria {
             self.tfbs_display_criteria = criteria;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn hidden_feature_kinds(&self) -> &BTreeSet<String> {
+        &self.hidden_feature_kinds
+    }
+
+    pub fn feature_kind_visible(&self, kind: &str) -> bool {
+        let normalized = kind.trim().to_ascii_uppercase();
+        !self.hidden_feature_kinds.contains(&normalized)
+    }
+
+    pub fn set_feature_kind_visible(&mut self, kind: &str, visible: bool) {
+        let normalized = kind.trim().to_ascii_uppercase();
+        if normalized.is_empty() {
+            return;
+        }
+        let changed = if visible {
+            self.hidden_feature_kinds.remove(&normalized)
+        } else {
+            self.hidden_feature_kinds.insert(normalized)
+        };
+        if changed {
             self.mark_layout_dirty();
         }
     }
@@ -307,6 +385,22 @@ impl DnaDisplay {
             _ => Color32::BLACK,
         }
     }
+
+    pub fn linear_view_start_bp(&self) -> usize {
+        self.linear_view_start_bp
+    }
+
+    pub fn linear_view_span_bp(&self) -> usize {
+        self.linear_view_span_bp
+    }
+
+    pub fn set_linear_viewport(&mut self, start_bp: usize, span_bp: usize) {
+        if self.linear_view_start_bp != start_bp || self.linear_view_span_bp != span_bp {
+            self.linear_view_start_bp = start_bp;
+            self.linear_view_span_bp = span_bp;
+            self.mark_layout_dirty();
+        }
+    }
 }
 
 impl Default for DnaDisplay {
@@ -316,7 +410,11 @@ impl Default for DnaDisplay {
             show_reverse_complement: true,
             show_open_reading_frames: true,
             show_features: true,
+            show_cds_features: true,
+            show_gene_features: true,
+            show_mrna_features: true,
             show_tfbs: false,
+            hidden_feature_kinds: BTreeSet::new(),
             tfbs_display_criteria: TfbsDisplayCriteria::default(),
             show_gc_contents: true,
             show_methylation_sites: false,
@@ -324,6 +422,8 @@ impl Default for DnaDisplay {
             aa_letters: AminoAcidLetters::Single,
             aa_frame: AminoAcidFrame::None,
             selection: None,
+            linear_view_start_bp: 0,
+            linear_view_span_bp: 0,
         }
     }
 }

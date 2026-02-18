@@ -16,6 +16,8 @@ pub struct RenderSequence {
     rows: Vec<SequenceRow>,
     block_height: f32,
     max_blocks: usize,
+    last_selection_anchor: Option<usize>,
+    pending_scroll_block: Option<usize>,
 }
 
 impl RenderSequence {
@@ -23,20 +25,30 @@ impl RenderSequence {
         dna: Arc<RwLock<DNAsequence>>,
         display: Arc<RwLock<DnaDisplay>>,
     ) -> Self {
+        let (show_restriction_enzymes, show_reverse_complement, aa_frame) = display
+            .read()
+            .map(|d| {
+                (
+                    d.show_restriction_enzyme_sites(),
+                    d.show_reverse_complement(),
+                    d.aa_frame(),
+                )
+            })
+            .unwrap_or((false, false, AminoAcidFrame::None));
         let mut rows = Vec::new();
         rows.push(SequenceRow::Dna(RowDna::new(dna.clone(), display.clone())));
-        if display.read().unwrap().show_restriction_enzyme_sites() {
+        if show_restriction_enzymes {
             rows.push(SequenceRow::RestrictionEnzymes(RowRestrictionEnzymes::new(
                 dna.clone(),
                 display.clone(),
             )));
         }
-        if display.read().unwrap().show_reverse_complement() {
+        if show_reverse_complement {
             rows.push(SequenceRow::Dna(
                 RowDna::new(dna.clone(), display.clone()).reverse_complement(),
             ));
         }
-        if display.read().unwrap().aa_frame() != AminoAcidFrame::None {
+        if aa_frame != AminoAcidFrame::None {
             rows.push(SequenceRow::AminoAcids);
         }
         rows.push(SequenceRow::Separator(RowBlank::new()));
@@ -46,6 +58,8 @@ impl RenderSequence {
             rows,
             block_height: 0.0,
             max_blocks: 0,
+            last_selection_anchor: None,
+            pending_scroll_block: None,
         }
     }
 
@@ -53,34 +67,75 @@ impl RenderSequence {
         &self.area
     }
 
+    fn is_rect_usable(rect: Rect) -> bool {
+        rect.min.x.is_finite()
+            && rect.min.y.is_finite()
+            && rect.max.x.is_finite()
+            && rect.max.y.is_finite()
+            && rect.width() > 0.0
+            && rect.height() > 0.0
+    }
+
     fn layout_needs_recomputing(&mut self, ui: &mut egui::Ui) -> bool {
         let mut ret = false;
 
         // Recompute layout if area has changed
-        let new_area = ui.available_rect_before_wrap();
+        let mut new_area = ui.available_rect_before_wrap();
+        if !Self::is_rect_usable(new_area) {
+            new_area = ui.max_rect();
+        }
+        if !Self::is_rect_usable(new_area) {
+            return false;
+        }
         if self.area != new_area {
             ret = true;
             self.area = new_area;
         }
 
         // Recompute layout if update flag is set
-        ret = ret
-            || self
-                .display
-                .read()
-                .unwrap()
-                .update_layout()
-                .update_map_sequence();
+        let display_needs_update = self
+            .display
+            .read()
+            .map(|d| d.update_layout().update_map_sequence())
+            .unwrap_or(false);
+        ret = ret || display_needs_update;
 
         ret
     }
 
     fn layout_was_updated(&self) {
-        self.display
-            .write()
-            .unwrap()
-            .update_layout_mut()
-            .map_sequence_updated();
+        if let Ok(mut display) = self.display.write() {
+            display.update_layout_mut().map_sequence_updated();
+        }
+    }
+
+    fn block_for_position(&self, position: usize) -> Option<usize> {
+        self.rows.iter().find_map(|row| match row {
+            SequenceRow::Dna(row) => row.block_for_position(position),
+            _ => None,
+        })
+    }
+
+    fn update_scroll_target_from_selection(&mut self) {
+        let selection_anchor = self
+            .display
+            .read()
+            .ok()
+            .and_then(|display| display.selection().map(|selection| selection.from()));
+        if selection_anchor == self.last_selection_anchor {
+            return;
+        }
+        self.last_selection_anchor = selection_anchor;
+        self.pending_scroll_block = selection_anchor.and_then(|pos| self.block_for_position(pos));
+    }
+
+    pub fn request_scroll_to_selection(&mut self) {
+        self.pending_scroll_block = self
+            .display
+            .read()
+            .ok()
+            .and_then(|display| display.selection().map(|selection| selection.from()))
+            .and_then(|pos| self.block_for_position(pos));
     }
 
     pub fn font() -> FontId {
@@ -102,7 +157,16 @@ impl RenderSequence {
     }
 
     fn layout(&mut self, ui: &mut egui::Ui) {
-        self.area = ui.available_rect_before_wrap();
+        let mut area = ui.available_rect_before_wrap();
+        if !Self::is_rect_usable(area) {
+            area = ui.max_rect();
+        }
+        if !Self::is_rect_usable(area) {
+            self.area = Rect::NOTHING;
+            self.max_blocks = 0;
+            return;
+        }
+        self.area = area;
         let painter = ui.painter();
         let size = Self::get_size_of_a(painter);
         for row in self.rows.iter_mut() {
@@ -120,7 +184,7 @@ impl RenderSequence {
             );
             block_offset += row.line_height();
         }
-        self.max_blocks = self.rows.iter().map(|row| row.blocks()).max().unwrap();
+        self.max_blocks = self.rows.iter().map(|row| row.blocks()).max().unwrap_or(0);
     }
 
     pub fn render(&mut self, ui: &mut egui::Ui) {
@@ -128,24 +192,29 @@ impl RenderSequence {
             self.layout(ui);
             self.layout_was_updated();
         }
+        if !Self::is_rect_usable(self.area) || self.max_blocks == 0 || self.block_height <= 0.0 {
+            return;
+        }
 
-        egui::ScrollArea::vertical().show_rows(
-            ui,
-            self.block_height,
-            self.max_blocks,
-            |ui, row_range| {
-                for block_num in row_range {
-                    let size = Vec2 {
-                        x: self.area.width(),
-                        y: self.block_height,
-                    };
-                    let (response, painter) = ui.allocate_painter(size, Sense::hover());
-                    let rect = response.rect;
-                    for (row_num, row) in self.rows.iter_mut().enumerate() {
-                        row.render(row_num, block_num, &painter, &rect);
-                    }
+        self.update_scroll_target_from_selection();
+        let mut scroll_area = egui::ScrollArea::vertical();
+        if let Some(target_block) = self.pending_scroll_block.take() {
+            let target_offset = (target_block as f32 * self.block_height).max(0.0);
+            scroll_area = scroll_area.vertical_scroll_offset(target_offset);
+        }
+
+        scroll_area.show_rows(ui, self.block_height, self.max_blocks, |ui, row_range| {
+            for block_num in row_range {
+                let size = Vec2::new(
+                    self.area.width().clamp(1.0, 100_000.0),
+                    self.block_height.clamp(1.0, 100_000.0),
+                );
+                let (response, painter) = ui.allocate_painter(size, Sense::hover());
+                let rect = response.rect;
+                for (row_num, row) in self.rows.iter_mut().enumerate() {
+                    row.render(row_num, block_num, &painter, &rect);
                 }
-            },
-        );
+            }
+        });
     }
 }

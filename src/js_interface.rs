@@ -220,10 +220,16 @@ impl JavaScriptInterface {
         ret
     }
 
+    pub fn run_checked(&mut self, code: String) -> Result<(), String> {
+        self.runtime
+            .execute_script("<usage>", code)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     pub fn run(&mut self, code: String) {
-        match self.runtime.execute_script("<usage>", code) {
-            Ok(_) => {}
-            Err(e) => eprintln!("{}", e),
+        if let Err(e) = self.run_checked(code) {
+            eprintln!("{e}");
         }
     }
 }

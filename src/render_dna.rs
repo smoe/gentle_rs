@@ -5,10 +5,11 @@ use crate::{
     render_dna_linear::RenderDnaLinear,
     restriction_enzyme::RestrictionEnzymeKey,
 };
-use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Widget};
+use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2, Widget};
 use gb_io::seq::Feature;
 use std::{
     fmt::Debug,
+    panic::{catch_unwind, AssertUnwindSafe},
     sync::{Arc, RwLock},
 };
 
@@ -35,19 +36,12 @@ pub enum RenderDna {
 
 impl RenderDna {
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
-        let is_circular = dna.read().unwrap().is_circular();
+        let is_circular = dna.read().map(|d| d.is_circular()).unwrap_or(true);
         match is_circular {
             true => {
                 RenderDna::Circular(Arc::new(RwLock::new(RenderDnaCircular::new(dna, display))))
             }
             false => RenderDna::Linear(Arc::new(RwLock::new(RenderDnaLinear::new(dna, display)))),
-        }
-    }
-
-    fn area(&self) -> Rect {
-        match self {
-            RenderDna::Circular(renderer) => renderer.read().unwrap().area().to_owned(),
-            RenderDna::Linear(renderer) => renderer.read().unwrap().area().to_owned(),
         }
     }
 
@@ -60,47 +54,92 @@ impl RenderDna {
 
     pub fn on_click(&self, pointer_state: PointerState) {
         match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().on_click(pointer_state),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().on_click(pointer_state),
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_click(pointer_state);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_click(pointer_state);
+                }
+            }
         }
     }
 
     pub fn on_hover(&self, pointer_state: PointerState) {
         match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().on_hover(pointer_state),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().on_hover(pointer_state),
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_hover(pointer_state);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_hover(pointer_state);
+                }
+            }
         }
     }
 
     pub fn on_double_click(&self, pointer_state: PointerState) {
         match self {
             RenderDna::Circular(renderer) => {
-                renderer.write().unwrap().on_double_click(pointer_state)
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_double_click(pointer_state);
+                }
             }
-            RenderDna::Linear(renderer) => renderer.write().unwrap().on_double_click(pointer_state),
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.on_double_click(pointer_state);
+                }
+            }
         }
     }
 
     pub fn get_selected_feature_id(&self) -> Option<usize> {
         match self {
-            RenderDna::Circular(renderer) => renderer.read().unwrap().selected_feature_number(),
-            RenderDna::Linear(renderer) => renderer.read().unwrap().selected_feature_number(),
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_feature_number()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_feature_number()),
         }
     }
 
     pub fn select_feature(&self, feature_number: Option<usize>) {
         match self {
             RenderDna::Circular(renderer) => {
-                renderer.write().unwrap().select_feature(feature_number)
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_feature(feature_number);
+                }
             }
-            RenderDna::Linear(renderer) => renderer.write().unwrap().select_feature(feature_number),
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_feature(feature_number);
+                }
+            }
         }
     }
 
-    fn render(&self, ui: &mut egui::Ui) {
-        match self {
-            RenderDna::Circular(renderer) => renderer.write().unwrap().render(ui),
-            RenderDna::Linear(renderer) => renderer.write().unwrap().render(ui),
+    fn render(&self, ui: &mut egui::Ui, area: Rect) {
+        let result = catch_unwind(AssertUnwindSafe(|| match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.render(ui, area);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.render(ui, area);
+                }
+            }
+        }));
+        if result.is_err() {
+            eprintln!("W RenderDna: recovered from panic while rendering map");
         }
     }
 
@@ -115,9 +154,40 @@ impl RenderDna {
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
+            "MRNA" => Color32::from_rgb(180, 100, 10),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Color32::from_rgb(35, 120, 35),
             _ => Color32::GRAY,
         }
+    }
+
+    pub fn is_cds_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "CDS"
+    }
+
+    pub fn is_gene_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "GENE"
+    }
+
+    pub fn is_mrna_feature(feature: &Feature) -> bool {
+        feature.kind.to_string().to_ascii_uppercase() == "MRNA"
+    }
+
+    pub fn feature_passes_kind_filter(
+        feature: &Feature,
+        show_cds_features: bool,
+        show_gene_features: bool,
+        show_mrna_features: bool,
+    ) -> bool {
+        if Self::is_cds_feature(feature) && !show_cds_features {
+            return false;
+        }
+        if Self::is_gene_feature(feature) && !show_gene_features {
+            return false;
+        }
+        if Self::is_mrna_feature(feature) && !show_mrna_features {
+            return false;
+        }
+        true
     }
 
     pub fn is_tfbs_feature(feature: &Feature) -> bool {
@@ -125,6 +195,11 @@ impl RenderDna {
             feature.kind.to_string().to_ascii_uppercase().as_str(),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
         )
+    }
+
+    pub fn is_regulatory_feature(feature: &Feature) -> bool {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        Self::is_tfbs_feature(feature) || kind.contains("REGULATORY")
     }
 
     fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
@@ -185,10 +260,6 @@ impl RenderDna {
     }
 
     pub fn feature_name(feature: &Feature) -> String {
-        let mut label_text = match feature.location.find_bounds() {
-            Ok((from, to)) => format!("{from}..{to}"),
-            Err(_) => String::new(),
-        };
         for k in [
             "label",
             "name",
@@ -199,19 +270,53 @@ impl RenderDna {
             "region_name",
             "bound_moiety",
         ] {
-            label_text = match feature.qualifier_values(k.into()).next() {
+            let label_text = match feature.qualifier_values(k.into()).next() {
                 Some(s) => s.to_owned(),
                 None => continue,
             };
-            break;
+            if !label_text.trim().is_empty() {
+                return label_text;
+            }
         }
-        label_text
+
+        // Keep dense regulatory tracks readable: don't use coordinate-only labels there.
+        if Self::is_regulatory_feature(feature) {
+            return String::new();
+        }
+
+        match feature.location.find_bounds() {
+            Ok((from, to)) => format!("{from}..{to}"),
+            Err(_) => String::new(),
+        }
     }
 }
 
 impl Widget for RenderDna {
     fn ui(self, ui: &mut Ui) -> Response {
-        self.render(ui);
-        ui.allocate_response(self.area().size(), Sense::click())
+        let available = ui.available_size_before_wrap();
+        let mut width = if available.x.is_finite() {
+            available.x
+        } else {
+            1.0
+        };
+        let mut height = if available.y.is_finite() {
+            available.y
+        } else {
+            1.0
+        };
+        if width <= 0.0 {
+            width = ui.max_rect().width().max(1.0);
+        }
+        if height <= 0.0 {
+            height = ui.max_rect().height().max(1.0);
+        }
+        let safe_size = Vec2::new(width.clamp(1.0, 100_000.0), height.clamp(1.0, 100_000.0));
+        let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click());
+        let builder = egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(ui.layout().clone());
+        let mut child_ui = ui.new_child(builder);
+        self.render(&mut child_ui, rect);
+        response
     }
 }

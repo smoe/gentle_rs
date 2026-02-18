@@ -412,23 +412,25 @@ fn ensure_parent_dir(path: &str) -> Result<(), String> {
 fn usage() {
     eprintln!(
         "Usage:\n  \
+  gentle_cli --help\n  \
   gentle_cli --version\n  \
-  gentle_cli [--state PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
-  gentle_cli [--state PATH] capabilities\n  \
-  gentle_cli [--state PATH] op '<operation-json>'\n  \
-  gentle_cli [--state PATH] workflow '<workflow-json>'\n  \
-  gentle_cli [--state PATH] state-summary\n  \
-  gentle_cli [--state PATH] export-state PATH\n  \
-  gentle_cli [--state PATH] import-state PATH\n  \
-  gentle_cli [--state PATH] save-project PATH\n  \
-  gentle_cli [--state PATH] load-project PATH\n  \
-  gentle_cli [--state PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
-  gentle_cli [--state PATH] render-lineage-svg OUTPUT.svg\n\n  \
-  gentle_cli [--state PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
-  gentle_cli [--state PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
+  gentle_cli [--state PATH|--project PATH] capabilities\n  \
+  gentle_cli [--state PATH|--project PATH] op '<operation-json>'\n  \
+  gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'\n  \
+  gentle_cli [--state PATH|--project PATH] state-summary\n  \
+  gentle_cli [--state PATH|--project PATH] export-state PATH\n  \
+  gentle_cli [--state PATH|--project PATH] import-state PATH\n  \
+  gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
+  gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
+  gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
+  gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
-  Tip: pass @file.json instead of inline JSON"
+  Tip: pass @file.json instead of inline JSON\n  \
+  --project is an alias of --state for project.gentle.json files"
     );
 }
 
@@ -497,9 +499,9 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
 
     while idx < args.len() {
         match args[idx].as_str() {
-            "--state" => {
+            "--state" | "--project" => {
                 if idx + 1 >= args.len() {
-                    return Err("Missing PATH after --state".to_string());
+                    return Err(format!("Missing PATH after {}", args[idx]));
                 }
                 state_path = args[idx + 1].clone();
                 idx += 2;
@@ -571,8 +573,9 @@ impl ProgressPrinter {
     }
 
     fn on_progress(&mut self, progress: OperationProgress) {
-        let OperationProgress::Tfbs(p) = progress;
-        self.on_tfbs_progress(p);
+        if let OperationProgress::Tfbs(p) = progress {
+            self.on_tfbs_progress(p);
+        }
     }
 }
 
@@ -633,6 +636,10 @@ fn run() -> Result<(), String> {
     if args.len() <= 1 {
         usage();
         return Err("Missing command".to_string());
+    }
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        usage();
+        return Ok(());
     }
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("{}", about::version_cli_text());
@@ -1043,5 +1050,18 @@ T [ 0 0 0 10 ]
         assert_eq!(parsed.state_path, DEFAULT_STATE_PATH);
         assert_eq!(parsed.progress_sink, Some(ProgressSink::Stderr));
         assert_eq!(parsed.cmd_idx, 2);
+    }
+
+    #[test]
+    fn test_parse_global_args_project_alias() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "--project".to_string(),
+            "project.gentle.json".to_string(),
+            "state-summary".to_string(),
+        ];
+        let parsed = parse_global_args(&args).unwrap();
+        assert_eq!(parsed.state_path, "project.gentle.json");
+        assert_eq!(parsed.cmd_idx, 3);
     }
 }

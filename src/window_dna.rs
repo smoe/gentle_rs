@@ -1,5 +1,6 @@
 use crate::{dna_sequence::DNAsequence, engine::GentleEngine, main_area_dna::MainAreaDna};
 use eframe::egui;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone, Debug)]
@@ -15,7 +16,12 @@ impl WindowDna {
     }
 
     pub fn update(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| self.main_area.render(ctx, ui));
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            egui::CentralPanel::default().show(ctx, |ui| self.main_area.render(ctx, ui));
+        }));
+        if result.is_err() {
+            eprintln!("E WindowDna: recovered from panic while rendering DNA window");
+        }
     }
 
     pub fn name(&self) -> String {

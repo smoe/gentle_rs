@@ -1,5 +1,5 @@
 use crate::{
-    dna_display::{DnaDisplay, TfbsDisplayCriteria},
+    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, DisplayTarget, Engine, EngineError,
@@ -15,7 +15,7 @@ use crate::{
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     sync::{
         mpsc::{self, Receiver, TryRecvError},
         Arc, Mutex, RwLock,
@@ -275,6 +275,19 @@ pub struct MainAreaDna {
 }
 
 impl MainAreaDna {
+    fn feature_kinds_for_toggle_buttons(&self) -> Vec<String> {
+        let mut kinds = BTreeSet::new();
+        if let Ok(dna) = self.dna.read() {
+            for feature in dna.features() {
+                let kind = feature.kind.to_string().trim().to_ascii_uppercase();
+                if !kind.is_empty() && kind != "SOURCE" {
+                    kinds.insert(kind);
+                }
+            }
+        }
+        kinds.into_iter().collect()
+    }
+
     pub fn new(
         dna: DNAsequence,
         seq_id: Option<String>,
@@ -450,18 +463,18 @@ impl MainAreaDna {
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let button = egui::ImageButton::new(
                 ICON_CIRCULAR_LINEAR
                     .clone()
-                    .fit_to_fraction(Vec2::new(2.0, 2.0))
+                    .fit_to_exact_size(Vec2::new(20.0, 20.0))
                     .rounding(5.0),
             );
             let response = ui
                 .add(button)
                 .on_hover_text("Toggle DNA map topology: circular <-> linear");
             if response.clicked() {
-                if let (Some(engine), Some(seq_id)) = (&self.engine, &self.seq_id) {
+                if let (Some(engine), Some(seq_id)) = (self.engine.clone(), self.seq_id.clone()) {
                     let new_circular = !self.dna.read().expect("DNA lock poisoned").is_circular();
                     let op = Operation::SetTopology {
                         seq_id: seq_id.clone(),
@@ -478,10 +491,11 @@ impl MainAreaDna {
                             .expect("Engine lock poisoned")
                             .state()
                             .sequences
-                            .get(seq_id)
+                            .get(&seq_id)
                             .cloned()
                         {
                             *self.dna.write().expect("DNA lock poisoned") = updated;
+                            self.clear_feature_focus();
                         }
                     }
                 } else {
@@ -511,27 +525,115 @@ impl MainAreaDna {
                 self.set_display_visibility(DisplayTarget::MapPanel, self.show_map);
             };
 
-            let features_active = self
+            if !self.is_circular() {
+                let (start_bp, span_bp, sequence_length) = self.current_linear_viewport();
+                if sequence_length > 0 {
+                    ui.separator();
+                    if ui
+                        .small_button("-")
+                        .on_hover_text("Zoom out linear map")
+                        .clicked()
+                    {
+                        self.zoom_linear_viewport_around(
+                            start_bp.saturating_add(span_bp / 2),
+                            false,
+                        );
+                    }
+                    if ui
+                        .small_button("+")
+                        .on_hover_text("Zoom in linear map")
+                        .clicked()
+                    {
+                        self.zoom_linear_viewport_around(
+                            start_bp.saturating_add(span_bp / 2),
+                            true,
+                        );
+                    }
+                    if ui
+                        .small_button("Fit")
+                        .on_hover_text("Reset linear map to full sequence")
+                        .clicked()
+                    {
+                        self.set_linear_viewport(0, sequence_length);
+                    }
+                    let mut pan_start = start_bp;
+                    let max_start = sequence_length.saturating_sub(span_bp);
+                    let pan = ui.add_enabled(
+                        max_start > 0,
+                        egui::Slider::new(&mut pan_start, 0..=max_start).text("Pan"),
+                    );
+                    if pan.changed() {
+                        self.set_linear_viewport(pan_start, span_bp);
+                    }
+                    let view_end = start_bp.saturating_add(span_bp).min(sequence_length);
+                    ui.monospace(format!(
+                        "view {}..{} ({} bp)",
+                        start_bp.saturating_add(1),
+                        view_end,
+                        span_bp
+                    ));
+                }
+            }
+
+            let cds_active = self
                 .dna_display
                 .read()
                 .expect("DNA display lock poisoned")
-                .show_features();
-            let button = egui::ImageButton::new(ICON_FEATURES.clone().rounding(5.0))
-                .selected(features_active);
-            let response = ui
-                .add(button)
-                .on_hover_text("Show or hide annotated sequence features");
-            if response.clicked() {
+                .show_cds_features();
+            let cds_response = ui
+                .selectable_label(cds_active, "CDS")
+                .on_hover_text("Show or hide CDS features");
+            if cds_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
-                    !display.show_features()
+                    !display.show_cds_features()
                 };
                 self.dna_display
                     .write()
                     .expect("DNA display lock poisoned")
-                    .set_show_features(visible);
-                self.set_display_visibility(DisplayTarget::Features, visible);
-            };
+                    .set_show_cds_features(visible);
+                self.set_display_visibility(DisplayTarget::CdsFeatures, visible);
+            }
+
+            let gene_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_gene_features();
+            let gene_response = ui
+                .selectable_label(gene_active, "Gene")
+                .on_hover_text("Show or hide gene features");
+            if gene_response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_gene_features()
+                };
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_show_gene_features(visible);
+                self.set_display_visibility(DisplayTarget::GeneFeatures, visible);
+            }
+
+            let mrna_active = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .show_mrna_features();
+            let mrna_response = ui
+                .selectable_label(mrna_active, "mRNA")
+                .on_hover_text("Show or hide mRNA features");
+            if mrna_response.clicked() {
+                let visible = {
+                    let display = self.dna_display.read().expect("DNA display lock poisoned");
+                    !display.show_mrna_features()
+                };
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_show_mrna_features(visible);
+                self.set_display_visibility(DisplayTarget::MrnaFeatures, visible);
+            }
 
             let tfbs_active = self
                 .dna_display
@@ -551,6 +653,26 @@ impl MainAreaDna {
                     .expect("DNA display lock poisoned")
                     .set_show_tfbs(visible);
                 self.set_display_visibility(DisplayTarget::Tfbs, visible);
+            }
+
+            for kind in self
+                .feature_kinds_for_toggle_buttons()
+                .into_iter()
+                .filter(|kind| !matches!(kind.as_str(), "CDS" | "GENE" | "MRNA" | "TFBS"))
+            {
+                let visible = self
+                    .dna_display
+                    .read()
+                    .map(|display| display.feature_kind_visible(&kind))
+                    .unwrap_or(true);
+                let response = ui
+                    .selectable_label(visible, &kind)
+                    .on_hover_text(format!("Show or hide {kind} features"));
+                if response.clicked() {
+                    if let Ok(mut display) = self.dna_display.write() {
+                        display.set_feature_kind_visible(&kind, !visible);
+                    }
+                }
             }
 
             let re_active = self
@@ -966,6 +1088,7 @@ impl MainAreaDna {
                         }
                     }
                 });
+
                 ui.horizontal(|ui| {
                     if ui.button("Recompute Features").clicked() {
                         let seq_id = self.seq_id.clone().unwrap_or_default();
@@ -1700,6 +1823,9 @@ impl MainAreaDna {
         self.show_map = settings.show_map_panel;
         let mut display = self.dna_display.write().expect("DNA display lock poisoned");
         display.set_show_features(settings.show_features);
+        display.set_show_cds_features(settings.show_cds_features);
+        display.set_show_gene_features(settings.show_gene_features);
+        display.set_show_mrna_features(settings.show_mrna_features);
         display.set_show_tfbs(settings.show_tfbs);
         display.set_tfbs_display_criteria(TfbsDisplayCriteria {
             use_llr_bits: settings.tfbs_display_use_llr_bits,
@@ -1715,6 +1841,141 @@ impl MainAreaDna {
         display.set_show_gc_contents(settings.show_gc_contents);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);
         display.set_show_methylation_sites(settings.show_methylation_sites);
+        display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
+    }
+
+    fn current_linear_viewport(&self) -> (usize, usize, usize) {
+        let sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+        if sequence_length == 0 {
+            return (0, 0, 0);
+        }
+        let (start_bp, span_bp) = {
+            let display = self.dna_display.read().expect("DNA display lock poisoned");
+            (
+                display.linear_view_start_bp(),
+                display.linear_view_span_bp(),
+            )
+        };
+        let span = if span_bp == 0 || span_bp > sequence_length {
+            sequence_length
+        } else {
+            span_bp
+        };
+        let max_start = sequence_length.saturating_sub(span);
+        let start = start_bp.min(max_start);
+        (start, span, sequence_length)
+    }
+
+    fn set_linear_viewport(&self, start_bp: usize, span_bp: usize) {
+        let sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+        if sequence_length == 0 {
+            return;
+        }
+        let span = if span_bp == 0 {
+            sequence_length
+        } else {
+            span_bp.clamp(1, sequence_length)
+        };
+        let max_start = sequence_length.saturating_sub(span);
+        let start = start_bp.min(max_start);
+
+        self.dna_display
+            .write()
+            .expect("DNA display lock poisoned")
+            .set_linear_viewport(start, span);
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        let display = &mut guard.state_mut().display;
+        display.linear_view_start_bp = start;
+        display.linear_view_span_bp = span;
+    }
+
+    fn zoom_linear_viewport_around(&self, center_bp: usize, zoom_in: bool) {
+        let (start, span, sequence_length) = self.current_linear_viewport();
+        if sequence_length == 0 {
+            return;
+        }
+        let mut new_span = if zoom_in {
+            (span / 2).max(1)
+        } else {
+            span.saturating_mul(2).min(sequence_length)
+        };
+        if new_span == 0 {
+            new_span = sequence_length;
+        }
+        let center_bp = center_bp.min(sequence_length.saturating_sub(1));
+        let half = new_span / 2;
+        let proposed_start = center_bp.saturating_sub(half);
+        let max_start = sequence_length.saturating_sub(new_span);
+        let new_start = proposed_start.min(max_start);
+        if new_start != start || new_span != span {
+            self.set_linear_viewport(new_start, new_span);
+        }
+    }
+
+    fn pan_linear_viewport(&self, delta_bp: isize) {
+        let (start, span, sequence_length) = self.current_linear_viewport();
+        if sequence_length == 0 || span >= sequence_length || delta_bp == 0 {
+            return;
+        }
+        let max_start = sequence_length.saturating_sub(span) as isize;
+        let new_start = (start as isize + delta_bp).clamp(0, max_start) as usize;
+        if new_start != start {
+            self.set_linear_viewport(new_start, span);
+        }
+    }
+
+    fn feature_bounds(&self, feature_id: usize) -> Option<(usize, usize)> {
+        let dna = self.dna.read().expect("DNA lock poisoned");
+        let feature = dna.features().get(feature_id)?;
+        let (from, to) = feature.location.find_bounds().ok()?;
+        if from < 0 || to < 0 {
+            return None;
+        }
+        let seq_len = dna.len();
+        if seq_len == 0 {
+            return None;
+        }
+        let start = (from as usize).min(seq_len.saturating_sub(1));
+        let end = (to as usize).min(seq_len.saturating_sub(1));
+        Some((start, end))
+    }
+
+    fn focus_feature(&mut self, feature_id: usize) {
+        self.map_dna.select_feature(Some(feature_id));
+        let Some((start, end)) = self.feature_bounds(feature_id) else {
+            return;
+        };
+        let sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+        if sequence_length == 0 {
+            return;
+        }
+        self.dna_display
+            .write()
+            .expect("DNA display lock poisoned")
+            .select(Selection::new(start, end, sequence_length));
+        self.map_sequence.request_scroll_to_selection();
+
+        if !self.is_circular() {
+            let center = start.saturating_add(end.saturating_sub(start) / 2);
+            let (_, span, len) = self.current_linear_viewport();
+            if len > 0 {
+                let span = span.clamp(1, len);
+                let max_start = len.saturating_sub(span);
+                let new_start = center.saturating_sub(span / 2).min(max_start);
+                self.set_linear_viewport(new_start, span);
+            }
+        }
+    }
+
+    fn clear_feature_focus(&mut self) {
+        self.map_dna.select_feature(None);
+        self.dna_display
+            .write()
+            .expect("DNA display lock poisoned")
+            .deselect();
     }
 
     fn apply_sequence_derivation(&mut self, op: Operation) {
@@ -1740,6 +2001,7 @@ impl MainAreaDna {
 
         self.seq_id = Some(new_seq_id.clone());
         *self.dna.write().expect("DNA lock poisoned") = new_dna;
+        self.clear_feature_focus();
     }
 
     fn apply_operation_with_feedback(&mut self, op: Operation) {
@@ -1763,7 +2025,7 @@ impl MainAreaDna {
         if !self.last_created_seq_ids.is_empty() {
             self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
         }
-        if let Some(engine) = &self.engine {
+        if let Some(engine) = self.engine.clone() {
             // Only auto-switch current view if exactly one sequence is produced.
             // Multi-product ops (digest/ligation/merge) can trigger heavy redraw paths;
             // keep the current view stable and let the user select products explicitly.
@@ -1779,6 +2041,7 @@ impl MainAreaDna {
                     {
                         self.seq_id = Some(new_seq_id.clone());
                         *self.dna.write().expect("DNA lock poisoned") = new_dna;
+                        self.clear_feature_focus();
                     }
                 }
             } else if let Some(current_seq_id) = self.seq_id.clone() {
@@ -1796,6 +2059,7 @@ impl MainAreaDna {
                         .cloned()
                     {
                         *self.dna.write().expect("DNA lock poisoned") = updated_dna;
+                        self.clear_feature_focus();
                     }
                 }
             }
@@ -1863,7 +2127,10 @@ impl MainAreaDna {
                 Ok(mut guard) => {
                     let mut last_motif_index: Option<usize> = None;
                     let mut last_total_tenths: Option<i64> = None;
-                    guard.apply_with_progress(op, move |OperationProgress::Tfbs(p)| {
+                    guard.apply_with_progress(op, move |progress| {
+                        let OperationProgress::Tfbs(p) = progress else {
+                            return;
+                        };
                         let total_tenths = (p.total_percent * 10.0).floor() as i64;
                         let motif_changed = last_motif_index != Some(p.motif_index);
                         let progressed = last_total_tenths
@@ -1968,7 +2235,7 @@ impl MainAreaDna {
     }
 
     fn run_preset_digest_merge_ligate(&mut self) {
-        let Some(engine) = &self.engine else {
+        let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
             return;
         };
@@ -2043,6 +2310,7 @@ impl MainAreaDna {
             {
                 self.seq_id = Some(new_seq_id);
                 *self.dna.write().expect("DNA lock poisoned") = new_dna;
+                self.clear_feature_focus();
             }
         }
         self.op_status = format!(
@@ -2570,6 +2838,24 @@ impl MainAreaDna {
         );
 
         let selected_id = self.get_selected_feature_id();
+        let (
+            show_cds_features,
+            show_gene_features,
+            show_mrna_features,
+            show_tfbs,
+            tfbs_display_criteria,
+            hidden_feature_kinds,
+        ) = {
+            let display = self.dna_display.read().expect("DNA display lock poisoned");
+            (
+                display.show_cds_features(),
+                display.show_gene_features(),
+                display.show_mrna_features(),
+                display.show_tfbs(),
+                display.tfbs_display_criteria(),
+                display.hidden_feature_kinds().clone(),
+            )
+        };
         let typed_features = self
             .dna
             .read()
@@ -2577,41 +2863,93 @@ impl MainAreaDna {
             .features()
             .iter()
             .enumerate()
-            .map(|(id, feature)| {
-                let kind = feature.kind.to_string();
-
-                (kind, id)
+            .filter_map(|(id, feature)| {
+                if RenderDna::is_source_feature(feature) {
+                    return None;
+                }
+                if !RenderDna::feature_passes_kind_filter(
+                    feature,
+                    show_cds_features,
+                    show_gene_features,
+                    show_mrna_features,
+                ) {
+                    return None;
+                }
+                if hidden_feature_kinds.contains(&feature.kind.to_string().to_ascii_uppercase()) {
+                    return None;
+                }
+                if RenderDna::is_tfbs_feature(feature) {
+                    if !show_tfbs {
+                        return None;
+                    }
+                    if !RenderDna::tfbs_feature_passes_display_filter(
+                        feature,
+                        tfbs_display_criteria,
+                    ) {
+                        return None;
+                    }
+                }
+                let (from, to) = feature.location.find_bounds().ok()?;
+                if from < 0 || to < 0 {
+                    return None;
+                }
+                let label = {
+                    let name = RenderDna::feature_name(feature);
+                    if name.trim().is_empty() {
+                        format!("{} #{}", feature.kind.to_string(), id + 1)
+                    } else {
+                        name
+                    }
+                };
+                Some((feature.kind.to_string(), id, label))
             })
             .collect::<Vec<_>>();
         let mut grouped_features: HashMap<String, Vec<usize>> = HashMap::new();
-        for (kind, id) in typed_features {
+        let mut label_by_id: HashMap<usize, String> = HashMap::new();
+        for (kind, id, label) in typed_features {
             grouped_features.entry(kind).or_default().push(id);
+            label_by_id.insert(id, label);
         }
         let mut group_keys = grouped_features.keys().collect::<Vec<_>>();
         group_keys.sort();
+        let mut clicked_feature: Option<usize> = None;
+        let feature_font_size = ui
+            .style()
+            .text_styles
+            .get(&egui::TextStyle::Button)
+            .map(|font| font.size)
+            .unwrap_or(13.0);
+        let kind_font_size = feature_font_size + 1.0;
         for kind in group_keys {
-            let ids = grouped_features.get(kind).unwrap();
-            ui.collapsing(kind, |ui| {
-                for id in ids {
-                    let name = match &self
-                        .dna
-                        .read()
-                        .expect("DNA lock poisoned")
-                        .features()
-                        .get(*id)
-                    {
-                        Some(feature) => RenderDna::feature_name(feature),
-                        None => continue,
-                    };
-                    let selected = selected_id == Some(*id);
-                    ui.horizontal(|ui| {
-                        let button = egui::Button::new(name).selected(selected);
-                        if ui.add(button).clicked() {
-                            self.map_dna.select_feature(Some(*id));
-                        }
-                    });
-                }
-            });
+            let Some(ids) = grouped_features.get(kind) else {
+                continue;
+            };
+            ui.collapsing(
+                egui::RichText::new(kind.as_str())
+                    .size(kind_font_size)
+                    .strong(),
+                |ui| {
+                    for id in ids {
+                        let name = match label_by_id.get(id) {
+                            Some(name) => name,
+                            None => continue,
+                        };
+                        let selected = selected_id == Some(*id);
+                        ui.horizontal(|ui| {
+                            let button = egui::Button::new(
+                                egui::RichText::new(name).size(feature_font_size),
+                            )
+                            .selected(selected);
+                            if ui.add(button).clicked() {
+                                clicked_feature = Some(*id);
+                            }
+                        });
+                    }
+                },
+            );
+        }
+        if let Some(id) = clicked_feature {
+            self.focus_feature(id);
         }
     }
 
@@ -2635,16 +2973,27 @@ impl MainAreaDna {
                         .expect("DNA lock poisoned")
                         .features()
                         .get(id)
-                        .unwrap()
-                        .to_owned(); // Temporary copy
-
-                    let name = RenderDna::feature_name(&feature);
-                    ui.heading(name);
-                    let desc = &match feature.location.find_bounds() {
-                        Ok((from, to)) => format!("{from}..{to}"),
-                        Err(_) => String::new(),
-                    };
-                    ui.monospace(desc);
+                        .cloned();
+                    if let Some(feature) = feature {
+                        let name = {
+                            let label = RenderDna::feature_name(&feature);
+                            if label.trim().is_empty() {
+                                feature.kind.to_string()
+                            } else {
+                                label
+                            }
+                        };
+                        ui.heading(name);
+                        let desc = &match feature.location.find_bounds() {
+                            Ok((from, to)) => format!("{from}..{to}"),
+                            Err(_) => String::new(),
+                        };
+                        ui.monospace(desc);
+                    } else {
+                        self.clear_feature_focus();
+                        let description = self.get_sequence_description();
+                        ui.heading(description);
+                    }
                 }
                 None => {
                     let description = self.get_sequence_description();
@@ -2670,7 +3019,14 @@ impl MainAreaDna {
 
             Frame::none().show(ui, |ui| {
                 ui.vertical(|ui| {
-                    self.render_features(ui);
+                    ui.set_width(320.0);
+                    let tree_height = (ui.available_height() * 0.55).max(180.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(tree_height)
+                        .show(ui, |ui| {
+                            self.render_features(ui);
+                        });
+                    ui.separator();
                     self.render_description(ui);
                 });
             });
@@ -2682,16 +3038,48 @@ impl MainAreaDna {
             if response.hovered() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_hover(pointer_state);
+
+                if !self.is_circular() {
+                    let scroll = ctx.input(|i| i.raw_scroll_delta);
+                    if scroll.y.abs() > 0.0 {
+                        let (start_bp, span_bp, sequence_length) = self.current_linear_viewport();
+                        if sequence_length > 0 {
+                            let center_bp = response
+                                .hover_pos()
+                                .map(|pos| {
+                                    let frac = ((pos.x - response.rect.left())
+                                        / response.rect.width().max(1.0))
+                                    .clamp(0.0, 1.0);
+                                    start_bp + (frac * span_bp as f32).floor() as usize
+                                })
+                                .unwrap_or_else(|| start_bp.saturating_add(span_bp / 2));
+                            self.zoom_linear_viewport_around(center_bp, scroll.y > 0.0);
+                        }
+                    } else if scroll.x.abs() > 0.0 {
+                        let (_, span_bp, _) = self.current_linear_viewport();
+                        let delta_bp = ((-scroll.x / response.rect.width().max(1.0))
+                            * span_bp as f32) as isize;
+                        self.pan_linear_viewport(delta_bp);
+                    }
+                }
             }
 
             if response.clicked() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_click(pointer_state);
+                if let Some(feature_id) = self.map_dna.get_selected_feature_id() {
+                    self.focus_feature(feature_id);
+                } else {
+                    self.clear_feature_focus();
+                }
             }
 
             if response.double_clicked() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_double_click(pointer_state);
+                if let Some(feature_id) = self.map_dna.get_selected_feature_id() {
+                    self.focus_feature(feature_id);
+                }
             }
         });
     }

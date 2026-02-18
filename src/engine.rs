@@ -2,6 +2,7 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
+    genomes::{GenomeCatalog, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH},
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
@@ -33,6 +34,9 @@ pub enum DisplayTarget {
     SequencePanel,
     MapPanel,
     Features,
+    CdsFeatures,
+    GeneFeatures,
+    MrnaFeatures,
     Tfbs,
     RestrictionEnzymes,
     GcContents,
@@ -46,6 +50,9 @@ pub struct DisplaySettings {
     pub show_sequence_panel: bool,
     pub show_map_panel: bool,
     pub show_features: bool,
+    pub show_cds_features: bool,
+    pub show_gene_features: bool,
+    pub show_mrna_features: bool,
     pub show_tfbs: bool,
     pub tfbs_display_use_llr_bits: bool,
     pub tfbs_display_min_llr_bits: f64,
@@ -59,6 +66,8 @@ pub struct DisplaySettings {
     pub show_gc_contents: bool,
     pub show_open_reading_frames: bool,
     pub show_methylation_sites: bool,
+    pub linear_view_start_bp: usize,
+    pub linear_view_span_bp: usize,
 }
 
 impl Default for DisplaySettings {
@@ -67,6 +76,9 @@ impl Default for DisplaySettings {
             show_sequence_panel: true,
             show_map_panel: true,
             show_features: true,
+            show_cds_features: true,
+            show_gene_features: true,
+            show_mrna_features: true,
             show_tfbs: false,
             tfbs_display_use_llr_bits: true,
             tfbs_display_min_llr_bits: 0.0,
@@ -80,6 +92,8 @@ impl Default for DisplaySettings {
             show_gc_contents: true,
             show_open_reading_frames: true,
             show_methylation_sites: false,
+            linear_view_start_bp: 0,
+            linear_view_span_bp: 0,
         }
     }
 }
@@ -297,6 +311,20 @@ pub enum Operation {
         pool_id: Option<String>,
         human_id: Option<String>,
     },
+    PrepareGenome {
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ExtractGenomeRegion {
+        genome_id: String,
+        chromosome: String,
+        start_1based: usize,
+        end_1based: usize,
+        output_id: Option<SeqId>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     DigestContainer {
         container_id: ContainerId,
         enzymes: Vec<String>,
@@ -415,6 +443,10 @@ pub enum Operation {
         target: DisplayTarget,
         visible: bool,
     },
+    SetLinearViewport {
+        start_bp: usize,
+        span_bp: usize,
+    },
     SetTopology {
         seq_id: SeqId,
         circular: bool,
@@ -498,6 +530,7 @@ pub struct TfbsProgress {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperationProgress {
     Tfbs(TfbsProgress),
+    GenomePrepare(PrepareGenomeProgress),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -608,6 +641,8 @@ impl GentleEngine {
                 "RenderSequenceSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "ExportPool".to_string(),
+                "PrepareGenome".to_string(),
+                "ExtractGenomeRegion".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
                 "LigationContainer".to_string(),
@@ -627,6 +662,7 @@ impl GentleEngine {
                 "ReverseComplement".to_string(),
                 "Branch".to_string(),
                 "SetDisplayVisibility".to_string(),
+                "SetLinearViewport".to_string(),
                 "SetTopology".to_string(),
                 "RecomputeFeatures".to_string(),
                 "SetParameter".to_string(),
@@ -691,6 +727,23 @@ impl GentleEngine {
             .map(|s| s.to_string_lossy().to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "sequence".to_string())
+    }
+
+    fn normalize_id_token(raw: &str) -> String {
+        let mut out = String::new();
+        for c in raw.chars() {
+            if c.is_ascii_alphanumeric() {
+                out.push(c.to_ascii_lowercase());
+            } else if matches!(c, '_' | '-' | '.') {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "region".to_string()
+        } else {
+            trimmed.to_string()
+        }
     }
 
     fn now_unix_ms() -> u128 {
@@ -861,6 +914,7 @@ impl GentleEngine {
             | Operation::PcrMutagenesis { .. } => Some("PCR products".to_string()),
             Operation::ExtractRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
+            Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -2285,6 +2339,100 @@ impl GentleEngine {
                     pool_id, human_id, count, path
                 ));
             }
+            Operation::PrepareGenome {
+                genome_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let catalog_path =
+                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let catalog =
+                    GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Could not open genome catalog '{catalog_path}': {e}"),
+                    })?;
+                let report = catalog
+                    .prepare_genome_once_with_progress(
+                        &genome_id,
+                        cache_dir.as_deref(),
+                        &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!("Could not prepare genome '{genome_id}': {e}"),
+                    })?;
+                let status = if report.reused_existing {
+                    "reused existing local cache"
+                } else {
+                    "downloaded and installed"
+                };
+                result.messages.push(format!(
+                    "Prepared genome '{}' ({status}). cache='{}' sequence='{}', annotation='{}'",
+                    genome_id,
+                    cache_dir
+                        .clone()
+                        .unwrap_or_else(|| "catalog/default".to_string()),
+                    report.sequence_path,
+                    report.annotation_path
+                ));
+            }
+            Operation::ExtractGenomeRegion {
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let catalog_path =
+                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let catalog =
+                    GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Could not open genome catalog '{catalog_path}': {e}"),
+                    })?;
+                let sequence = catalog
+                    .get_sequence_region_with_cache(
+                        &genome_id,
+                        &chromosome,
+                        start_1based,
+                        end_1based,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not load genome region {}:{}-{} from '{}': {}",
+                            chromosome, start_1based, end_1based, genome_id, e
+                        ),
+                    })?;
+                let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not construct DNA sequence from genome slice: {e}"),
+                })?;
+                Self::prepare_sequence(&mut dna);
+                let default_id = format!(
+                    "{}_{}_{}_{}",
+                    Self::normalize_id_token(&genome_id),
+                    Self::normalize_id_token(&chromosome),
+                    start_1based,
+                    end_1based
+                );
+                let base = output_id.unwrap_or(default_id);
+                let seq_id = self.unique_seq_id(&base);
+                self.state.sequences.insert(seq_id.clone(), dna);
+                self.add_lineage_node(
+                    &seq_id,
+                    SequenceOrigin::ImportedGenomic,
+                    Some(&result.op_id),
+                );
+                result.created_seq_ids.push(seq_id.clone());
+                result.messages.push(format!(
+                    "Extracted genome region {}:{}-{} from '{}' as '{}'",
+                    chromosome, start_1based, end_1based, genome_id, seq_id
+                ));
+            }
             Operation::Digest {
                 input,
                 enzymes,
@@ -3663,6 +3811,15 @@ impl GentleEngine {
                         ("map_panel", &mut self.state.display.show_map_panel)
                     }
                     DisplayTarget::Features => ("features", &mut self.state.display.show_features),
+                    DisplayTarget::CdsFeatures => {
+                        ("cds_features", &mut self.state.display.show_cds_features)
+                    }
+                    DisplayTarget::GeneFeatures => {
+                        ("gene_features", &mut self.state.display.show_gene_features)
+                    }
+                    DisplayTarget::MrnaFeatures => {
+                        ("mrna_features", &mut self.state.display.show_mrna_features)
+                    }
                     DisplayTarget::Tfbs => ("tfbs", &mut self.state.display.show_tfbs),
                     DisplayTarget::RestrictionEnzymes => (
                         "restriction_enzymes",
@@ -3684,6 +3841,13 @@ impl GentleEngine {
                 result
                     .messages
                     .push(format!("Set display target '{name}' to {visible}"));
+            }
+            Operation::SetLinearViewport { start_bp, span_bp } => {
+                self.state.display.linear_view_start_bp = start_bp;
+                self.state.display.linear_view_span_bp = span_bp;
+                result.messages.push(format!(
+                    "Set linear viewport start_bp={start_bp}, span_bp={span_bp}"
+                ));
             }
             Operation::SetTopology { seq_id, circular } => {
                 let _ = self.ensure_lineage_node(&seq_id);
@@ -3996,15 +4160,32 @@ impl Engine for GentleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::{write::GzEncoder, Compression};
+    use std::fs;
+    use std::io::Write;
+    use std::path::Path;
+    use tempfile::tempdir;
 
     fn seq(s: &str) -> DNAsequence {
         DNAsequence::from_sequence(s).unwrap()
+    }
+
+    fn write_gzip(path: &Path, text: &str) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut encoder = GzEncoder::new(file, Compression::default());
+        encoder.write_all(text.as_bytes()).unwrap();
+        encoder.finish().unwrap();
+    }
+
+    fn file_url(path: &Path) -> String {
+        format!("file://{}", path.display())
     }
 
     #[test]
     fn test_set_display_visibility() {
         let mut engine = GentleEngine::new();
         assert!(!engine.state().display.show_tfbs);
+        assert!(engine.state().display.show_cds_features);
         let res = engine
             .apply(Operation::SetDisplayVisibility {
                 target: DisplayTarget::Features,
@@ -4021,6 +4202,29 @@ mod tests {
             .unwrap();
         assert!(res_tfbs.messages.iter().any(|m| m.contains("tfbs")));
         assert!(engine.state().display.show_tfbs);
+
+        let res_cds = engine
+            .apply(Operation::SetDisplayVisibility {
+                target: DisplayTarget::CdsFeatures,
+                visible: false,
+            })
+            .unwrap();
+        assert!(res_cds.messages.iter().any(|m| m.contains("cds_features")));
+        assert!(!engine.state().display.show_cds_features);
+    }
+
+    #[test]
+    fn test_set_linear_viewport() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetLinearViewport {
+                start_bp: 123,
+                span_bp: 456,
+            })
+            .unwrap();
+        assert!(res.messages.iter().any(|m| m.contains("linear viewport")));
+        assert_eq!(engine.state().display.linear_view_start_bp, 123);
+        assert_eq!(engine.state().display.linear_view_span_bp, 456);
     }
 
     #[test]
@@ -5033,8 +5237,10 @@ mod tests {
                     clear_existing: Some(true),
                     max_hits: None,
                 },
-                |OperationProgress::Tfbs(p)| {
-                    progress_events.push(p);
+                |progress| {
+                    if let OperationProgress::Tfbs(p) = progress {
+                        progress_events.push(p);
+                    }
                 },
             )
             .unwrap();
@@ -5529,5 +5735,62 @@ mod tests {
         let summary = engine.summarize_state();
         assert!(summary.container_count > 0);
         assert!(!summary.containers.is_empty());
+    }
+
+    #[test]
+    fn test_prepare_genome_and_extract_region_operations() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\";\n",
+        );
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let prep = engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(prep
+            .messages
+            .iter()
+            .any(|m| m.contains("Prepared genome 'ToyGenome'")));
+
+        let extract = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("toy_slice".to_string()),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(extract.created_seq_ids, vec!["toy_slice".to_string()]);
+        let loaded = engine.state().sequences.get("toy_slice").unwrap();
+        assert_eq!(loaded.get_forward_string(), "GTACGTAC");
     }
 }
