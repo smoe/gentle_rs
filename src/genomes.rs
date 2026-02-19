@@ -3411,6 +3411,118 @@ mod tests {
     }
 
     #[test]
+    fn test_prepare_second_run_reuses_sequence_and_annotation_without_redownload() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        );
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let mut first_phases: Vec<String> = vec![];
+        let first = catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                first_phases.push(progress.phase);
+            })
+            .unwrap();
+        assert!(!first.reused_existing);
+        assert!(first_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
+        assert!(first_phases
+            .iter()
+            .any(|phase| phase == "download_annotation"));
+
+        let mut second_phases: Vec<String> = vec![];
+        let second = catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                second_phases.push(progress.phase);
+            })
+            .unwrap();
+        assert!(second.reused_existing);
+        assert!(!second_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
+        assert!(!second_phases
+            .iter()
+            .any(|phase| phase == "download_annotation"));
+        assert!(second_phases.iter().any(|phase| phase == "index_blast"));
+        assert!(second_phases.iter().any(|phase| phase == "ready"));
+    }
+
+    #[test]
+    fn test_prepare_warns_but_succeeds_when_makeblastdb_missing() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        );
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let report = catalog.prepare_genome_once("ToyGenome").unwrap();
+        assert!(!report.blast_index_ready);
+        assert!(!report.warnings.is_empty());
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.to_ascii_lowercase().contains("makeblastdb")));
+
+        let inspection = catalog
+            .inspect_prepared_genome("ToyGenome", None)
+            .unwrap()
+            .expect("inspection should exist");
+        assert!(!inspection.blast_index_ready);
+    }
+
+    #[test]
     fn test_parse_annotation_attributes_handles_quoted_semicolons() {
         let attrs = parse_annotation_attributes(
             r#"gene_id "GENE1"; gene_name "A;B"; Dbxref=GeneID:12345,HGNC:HGNC:5;"#,

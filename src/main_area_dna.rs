@@ -737,6 +737,33 @@ impl MainAreaDna {
                 self.set_display_visibility(DisplayTarget::Tfbs, visible);
             }
 
+            let regulatory_near_baseline = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .regulatory_tracks_near_baseline();
+            let regulatory_label = if regulatory_near_baseline {
+                "REG@DNA"
+            } else {
+                "REG@TOP"
+            };
+            let regulatory_tooltip = if regulatory_near_baseline {
+                "Regulatory features are placed near the DNA/GC strip. Click to move them to dedicated top lanes."
+            } else {
+                "Regulatory features are placed in dedicated top lanes. Click to move them near the DNA/GC strip."
+            };
+            let response = ui
+                .button(regulatory_label)
+                .on_hover_text(regulatory_tooltip);
+            if response.clicked() {
+                let new_value = !regulatory_near_baseline;
+                self.dna_display
+                    .write()
+                    .expect("DNA display lock poisoned")
+                    .set_regulatory_tracks_near_baseline(new_value);
+                self.sync_regulatory_track_placement_to_engine(new_value);
+            }
+
             for kind in self
                 .feature_kinds_for_toggle_buttons()
                 .into_iter()
@@ -2050,6 +2077,14 @@ impl MainAreaDna {
         display.tfbs_display_min_true_log_odds_quantile = criteria.min_true_log_odds_quantile;
     }
 
+    fn sync_regulatory_track_placement_to_engine(&self, near_baseline: bool) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard.state_mut().display.regulatory_tracks_near_baseline = near_baseline;
+    }
+
     fn sync_from_engine_display(&mut self) {
         let Some(engine) = &self.engine else {
             return;
@@ -2081,6 +2116,7 @@ impl MainAreaDna {
         display.set_show_gc_contents(settings.show_gc_contents);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);
         display.set_show_methylation_sites(settings.show_methylation_sites);
+        display.set_regulatory_tracks_near_baseline(settings.regulatory_tracks_near_baseline);
         display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
     }
 
