@@ -11,6 +11,8 @@ codon_tables.json::
 commonvectors.db::
 dna_markers.json::
 enzymes.json::
+genomes.json::
+helper_genomes.json::
 jaspar.motifs.json::
 ncoils.matrix::
 translations.csv::
@@ -18,8 +20,19 @@ translations.csv::
 Data notes:
 
 - `enzymes.json` is restriction-enzyme data (REBASE-derived snapshot).
+- `dna_markers.json` is the built-in DNA-ladder catalog used for pool gel
+  ladder auto-selection and rendering.
 - `jaspar.motifs.json` is a built-in JASPAR CORE motif snapshot (currently
   generated from the 2026 non-redundant JASPAR-format release).
+- `genomes.json` is the default reference-genome catalog.
+  Entries may use explicit `sequence_remote`/`annotations_remote` URLs or
+  `ncbi_assembly_accession` + `ncbi_assembly_name` for direct NCBI GenBank/RefSeq
+  FTP-derived sources.
+- `helper_genomes.json` is a curated starter catalog for lab helper systems
+  (plasmid/lenti/adeno/AAV plus yeast/E. coli host references), intended to be
+  copied and edited for local vector inventories.
+  Entries can use explicit local/remote URLs or `genbank_accession` for
+  NCBI EFetch-derived FASTA + GenBank annotation during prepare/index.
 
 # "Finder" icon (seen in OS' task bar)
 icon.png:: PNG with icon as used at startup by application

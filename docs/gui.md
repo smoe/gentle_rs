@@ -81,6 +81,7 @@ The `Help` menu now includes:
 
 - `GUI Manual`: opens `docs/gui.md` in an in-app markdown viewer
 - `CLI Manual`: opens `docs/cli.md` in an in-app markdown viewer
+- on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 
 Help content loading behavior:
@@ -92,6 +93,8 @@ Markdown image support:
 
 - image rendering is enabled in the help viewer
 - use standard markdown image syntax (`![alt](path-or-url)`)
+- relative image paths in `docs/*.md` are resolved relative to the markdown file location
+- `Reload` in the help window reloads markdown + images from disk
 
 ## Map interactions
 
@@ -138,6 +141,31 @@ Bin breaks are computed as follows:
 - Display bucket range:
   - `lo = min_bp + idx * bucket_size`
 - `hi = lo + bucket_size - 1`
+
+## Pool Gel (Ladder View)
+
+When pool members are available, Engine Ops also shows a virtual agarose-gel
+preview:
+
+- one or two DNA ladders are auto-selected to span the pool bp range
+- ladders are drawn in lanes next to a pool lane (bands from pool members)
+- pool-band labels show bp, with multiplicity when multiple members have the
+  same length
+
+Ladder source:
+
+- built-in ladder catalog: `assets/dna_markers.json` (derived from historical
+  GENtle marker data)
+- historical references:
+  - `https://github.com/GENtle-persons/gentle-m/blob/main/src/marker.txt`
+  - `http://en.wikibooks.org/wiki/GENtle/DNA_markers`
+
+Controls:
+
+- `gel ladders`: optional comma-separated ladder names
+  - if empty, ladder selection is automatic
+- `Export Pool Gel SVG`: writes the current ladder + pool band view to SVG via
+  shared engine operation `RenderPoolGelSvg`
 
 ## Anchored Region Extraction (Engine Ops)
 
@@ -218,6 +246,8 @@ main project window menu:
 
 - `File -> Prepare Reference Genome...` (or `Genome -> Prepare Reference Genome...`)
 - `File -> Retrieve Genome Sequence...` (or `Genome -> Retrieve Genome Sequence...`)
+- `File -> Prepare Helper Genome...` (or `Genome -> Prepare Helper Genome...`)
+- `File -> Retrieve Helper Sequence...` (or `Genome -> Retrieve Helper Sequence...`)
 
 Recommended flow:
 
@@ -225,15 +255,23 @@ Recommended flow:
    - open `Prepare Reference Genome...`
    - set `catalog` + `cache_dir`
    - select `genome` from dropdown values loaded from catalog JSON
+   - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
    - this runs in background, shows live progress, and builds local FASTA index
 2. Extract a region when needed:
    - open `Retrieve Genome Sequence...`
    - select the same `genome` from dropdown
-   - use `Gene filter` (name/id text filter, analogous to TF interest filtering)
+   - retrieval dropdown lists only genomes already prepared in the selected
+     `catalog` + `cache_dir`
+   - use `Gene filter` as case-insensitive regular expression
+     (for example: `^TP53$`, `^HLA-.*`)
+   - use `Biotype filter` checkboxes (auto-populated from parsed annotation data)
+   - tune `Top matches` to cap candidate scanning on very large genomes
+   - browse candidates page-by-page (`Prev`/`Next`) to avoid rendering huge lists
    - click a filtered gene to auto-fill `chr`, `start_1based`, `end_1based`
    - optionally edit coordinates and set `output_id`
-   - click `Extract Region`
+   - click `Extract Selected Gene` (engine op `ExtractGenomeGene`) or
+     `Extract Region` (explicit coordinate extraction)
    - coordinates are 1-based and inclusive
 
 Equivalent workflow JSON (still supported via workflow runner):
@@ -241,6 +279,7 @@ Equivalent workflow JSON (still supported via workflow runner):
 ```json
 [
   {"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 113","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
+  {"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 113","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
   {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 113","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ]
 ```
@@ -251,7 +290,21 @@ Notes:
 - `cache_dir` can be selected via folder picker; persistent project-local
   storage is recommended over `/tmp`.
 - If `catalog` is empty, engine uses default `assets/genomes.json`.
+- A curated starter catalog for local helper systems is available at
+  `assets/helper_genomes.json` (plasmid/lentivirus/adenovirus/AAV plus yeast/E. coli host references).
+- Catalog entries may specify `ncbi_assembly_accession` + `ncbi_assembly_name`
+  instead of explicit remote URLs. In that case GENtle derives NCBI GenBank/RefSeq
+  FTP URLs for sequence (`*_genomic.fna.gz`) and annotation (`*_genomic.gff.gz`)
+  during `Prepare Genome`.
+- Catalog entries may also specify `genbank_accession` (for helper vectors and
+  non-assembly records). If explicit URLs are absent, GENtle derives NCBI EFetch
+  sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
+  indexes extracted feature records for search/retrieval.
 - Retrieval fields are enabled only after the selected genome is prepared.
+- During preparation, a persistent `genes.json` index is built in the genome
+  cache to keep retrieval responsive.
+- `start_1based` and `end_1based` fields are constrained to numeric input and
+  up to 10 digits.
 - Extracted regions are added to project state and opened in sequence windows.
 
 ## Engine Ops State Persistence
@@ -271,6 +324,8 @@ Use the top application menu:
 - `File -> Open Project...`
 - `File -> Prepare Reference Genome...`
 - `File -> Retrieve Genome Sequence...`
+- `File -> Prepare Helper Genome...`
+- `File -> Retrieve Helper Sequence...`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
 - `File -> Save Project...`

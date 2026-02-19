@@ -4,7 +4,10 @@ use std::{
     hash::{Hash, Hasher},
     panic::{catch_unwind, AssertUnwindSafe},
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, RwLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, RwLock,
+    },
     time::{Duration, Instant},
 };
 
@@ -13,12 +16,12 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
         DisplayTarget, Engine, EngineError, ErrorCode, GentleEngine, OpResult, Operation,
-        OperationProgress, ProjectState,
+        ProjectState,
     },
     enzymes,
     genomes::{
         GenomeCatalog, GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CACHE_DIR,
-        DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs,
@@ -28,9 +31,16 @@ use crate::{
 use anyhow::{anyhow, Result};
 use eframe::egui::{self, menu, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use pulldown_cmark::{Event, LinkType, Parser, Tag};
+use regex::{Regex, RegexBuilder};
 
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
+static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+pub fn request_open_help_from_native_menu() {
+    NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
 
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
@@ -60,6 +70,9 @@ pub struct GENtleApp {
     genome_prepare_progress: Option<PrepareGenomeProgress>,
     genome_prepare_status: String,
     genome_gene_filter: String,
+    genome_gene_filter_limit: usize,
+    genome_gene_filter_page: usize,
+    genome_biotype_filter: HashMap<String, bool>,
     genome_genes: Vec<GenomeGeneRecord>,
     genome_genes_loaded_key: Option<String>,
     genome_genes_error: String,
@@ -124,6 +137,9 @@ impl Default for GENtleApp {
             genome_prepare_progress: None,
             genome_prepare_status: String::new(),
             genome_gene_filter: String::new(),
+            genome_gene_filter_limit: 5000,
+            genome_gene_filter_page: 0,
+            genome_biotype_filter: HashMap::new(),
             genome_genes: vec![],
             genome_genes_loaded_key: None,
             genome_genes_error: String::new(),
@@ -158,9 +174,165 @@ impl GENtleApp {
         None
     }
 
-    fn read_help_doc_or_fallback(path: &str, fallback: &'static str) -> String {
+    fn rewrite_markdown_relative_image_links(markdown: &str, base_dir: &Path) -> String {
+        let mut replacements = Vec::new();
+        for (event, range) in Parser::new(markdown).into_offset_iter() {
+            let Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                ..
+            }) = event
+            else {
+                continue;
+            };
+            if link_type != LinkType::Inline {
+                continue;
+            }
+
+            let Some(abs_path) = Self::resolve_relative_image_path(dest_url.as_ref(), base_dir)
+            else {
+                continue;
+            };
+
+            let span = &markdown[range.clone()];
+            let Some(rewritten_span) =
+                Self::rewrite_inline_image_destination(span, abs_path.as_path())
+            else {
+                continue;
+            };
+            replacements.push((range, rewritten_span));
+        }
+
+        if replacements.is_empty() {
+            return markdown.to_string();
+        }
+
+        let mut rewritten = markdown.to_string();
+        replacements.sort_by(|a, b| b.0.start.cmp(&a.0.start));
+        for (range, replacement) in replacements {
+            rewritten.replace_range(range, &replacement);
+        }
+        rewritten
+    }
+
+    fn rewrite_inline_image_destination(span: &str, absolute_dest: &Path) -> Option<String> {
+        let (dest_start, dest_end) = Self::find_inline_image_destination(span)?;
+        let mut rewritten = String::with_capacity(span.len() + 64);
+        rewritten.push_str(&span[..dest_start]);
+        rewritten.push_str(&absolute_dest.to_string_lossy());
+        rewritten.push_str(&span[dest_end..]);
+        Some(rewritten)
+    }
+
+    fn find_inline_image_destination(span: &str) -> Option<(usize, usize)> {
+        let bytes = span.as_bytes();
+        if bytes.len() < 4 || bytes[0] != b'!' || bytes[1] != b'[' {
+            return None;
+        }
+
+        let mut i = 2usize;
+        let mut bracket_depth = 1usize;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => {
+                    i = (i + 2).min(bytes.len());
+                }
+                b'[' => {
+                    bracket_depth += 1;
+                    i += 1;
+                }
+                b']' => {
+                    bracket_depth = bracket_depth.saturating_sub(1);
+                    i += 1;
+                    if bracket_depth == 0 {
+                        break;
+                    }
+                }
+                _ => i += 1,
+            }
+        }
+        if bracket_depth != 0 {
+            return None;
+        }
+
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'(' {
+            return None;
+        }
+        i += 1;
+
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            return None;
+        }
+
+        if bytes[i] == b'<' {
+            let dest_start = i + 1;
+            i += 1;
+            while i < bytes.len() {
+                match bytes[i] {
+                    b'\\' => {
+                        i = (i + 2).min(bytes.len());
+                    }
+                    b'>' => return Some((dest_start, i)),
+                    _ => i += 1,
+                }
+            }
+            return None;
+        }
+
+        let dest_start = i;
+        let mut paren_depth = 0usize;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'\\' => {
+                    i = (i + 2).min(bytes.len());
+                }
+                b'(' => {
+                    paren_depth += 1;
+                    i += 1;
+                }
+                b')' => {
+                    if paren_depth == 0 {
+                        break;
+                    }
+                    paren_depth -= 1;
+                    i += 1;
+                }
+                b if b.is_ascii_whitespace() && paren_depth == 0 => break,
+                _ => i += 1,
+            }
+        }
+        if dest_start == i {
+            return None;
+        }
+        Some((dest_start, i))
+    }
+
+    fn resolve_relative_image_path(path: &str, base_dir: &Path) -> Option<PathBuf> {
+        if path.is_empty()
+            || path.starts_with('/')
+            || path.starts_with('\\')
+            || path.starts_with('#')
+            || path.contains("://")
+            || path.contains(':')
+        {
+            return None;
+        }
+        let joined = base_dir.join(path);
+        Some(joined.canonicalize().unwrap_or(joined))
+    }
+
+    fn load_help_doc(path: &str, fallback: &'static str) -> String {
         if let Some(runtime_path) = Self::resolve_runtime_doc_path(path) {
-            if let Ok(text) = fs::read_to_string(runtime_path) {
+            if let Ok(text) = fs::read_to_string(&runtime_path) {
+                if let Some(base_dir) = runtime_path.parent() {
+                    return Self::rewrite_markdown_relative_image_links(&text, base_dir);
+                }
                 return text;
             }
         }
@@ -168,8 +340,14 @@ impl GENtleApp {
     }
 
     fn refresh_help_docs(&mut self) {
-        self.help_gui_markdown = Self::read_help_doc_or_fallback("docs/gui.md", GUI_MANUAL_MD);
-        self.help_cli_markdown = Self::read_help_doc_or_fallback("docs/cli.md", CLI_MANUAL_MD);
+        self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
+        self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
+    }
+
+    fn consume_native_help_request(&mut self) {
+        if NATIVE_HELP_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.open_help_doc(HelpDoc::Gui);
+        }
     }
 
     fn open_help_doc(&mut self, doc: HelpDoc) {
@@ -393,6 +571,20 @@ impl GENtleApp {
         self.show_reference_genome_retrieve_dialog = true;
     }
 
+    fn open_helper_genome_prepare_dialog(&mut self) {
+        self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
+        self.genome_cache_dir = "data/helper_genomes".to_string();
+        self.invalidate_genome_genes();
+        self.show_reference_genome_prepare_dialog = true;
+    }
+
+    fn open_helper_genome_retrieve_dialog(&mut self) {
+        self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
+        self.genome_cache_dir = "data/helper_genomes".to_string();
+        self.invalidate_genome_genes();
+        self.show_reference_genome_retrieve_dialog = true;
+    }
+
     fn genome_catalog_path_opt(&self) -> Option<String> {
         let trimmed = self.genome_catalog_path.trim();
         if trimmed.is_empty() {
@@ -445,6 +637,8 @@ impl GENtleApp {
         self.genome_genes_error.clear();
         self.genome_genes_loaded_key = None;
         self.genome_selected_gene = None;
+        self.genome_gene_filter_page = 0;
+        self.genome_biotype_filter.clear();
     }
 
     fn genome_genes_loaded_key(&self) -> String {
@@ -481,40 +675,92 @@ impl GENtleApp {
         match loaded {
             Ok(genes) => {
                 self.genome_genes = genes;
+                self.sync_genome_biotype_filter();
             }
             Err(e) => {
                 self.genome_genes_error = e;
+                self.genome_biotype_filter.clear();
             }
         }
         self.genome_genes_loaded_key = Some(key);
     }
 
-    fn selected_genome_prepared(&self) -> Result<bool, String> {
-        let genome_id = self.genome_id.trim();
-        if genome_id.is_empty() {
-            return Ok(false);
+    fn sync_genome_biotype_filter(&mut self) {
+        let mut discovered: Vec<String> = self
+            .genome_genes
+            .iter()
+            .filter_map(|gene| gene.biotype.as_ref())
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+            .collect();
+        discovered.sort();
+        discovered.dedup();
+
+        let mut next: HashMap<String, bool> = HashMap::with_capacity(discovered.len());
+        for biotype in discovered {
+            let enabled = self
+                .genome_biotype_filter
+                .get(&biotype)
+                .copied()
+                .unwrap_or(true);
+            next.insert(biotype, enabled);
         }
+        self.genome_biotype_filter = next;
+    }
+
+    fn unprepared_genomes_for_prepare_dialog(&self) -> Result<Vec<String>, String> {
         let catalog_path = self.genome_catalog_path_resolved();
         let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
         let cache_dir = self.genome_cache_dir_opt();
-        catalog.is_prepared(genome_id, cache_dir.as_deref())
+        let mut names: Vec<String> = vec![];
+        for name in catalog.list_genomes() {
+            match catalog.is_prepared(&name, cache_dir.as_deref()) {
+                Ok(false) => names.push(name),
+                Ok(true) => {}
+                Err(e) => {
+                    return Err(format!(
+                        "Could not check preparation status for '{name}': {e}"
+                    ));
+                }
+            }
+        }
+        Ok(names)
+    }
+
+    fn prepared_genomes_for_retrieve_dialog(&self) -> Result<Vec<String>, String> {
+        let catalog_path = self.genome_catalog_path_resolved();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
+        let cache_dir = self.genome_cache_dir_opt();
+        let mut names: Vec<String> = vec![];
+        for name in catalog.list_genomes() {
+            match catalog.is_prepared(&name, cache_dir.as_deref()) {
+                Ok(true) => names.push(name),
+                Ok(false) => {}
+                Err(e) => {
+                    return Err(format!(
+                        "Could not check preparation status for '{name}': {e}"
+                    ));
+                }
+            }
+        }
+        Ok(names)
     }
 
     fn choose_genome_from_catalog(ui: &mut Ui, genome_id: &mut String, names: &[String]) -> bool {
         let mut changed = false;
-        let selected_text = if genome_id.is_empty() {
-            "(choose genome)".to_string()
-        } else {
+        let selected_text = if names.iter().any(|name| name == genome_id) {
             genome_id.clone()
+        } else if names.is_empty() {
+            "(no genomes available)".to_string()
+        } else {
+            "(choose genome)".to_string()
         };
         egui::ComboBox::from_label("genome")
             .selected_text(selected_text)
             .show_ui(ui, |ui| {
                 for name in names {
-                    if ui
-                        .selectable_value(genome_id, name.clone(), name)
-                        .changed()
-                    {
+                    if ui.selectable_value(genome_id, name.clone(), name).changed() {
                         changed = true;
                     }
                 }
@@ -558,12 +804,8 @@ impl GENtleApp {
             self.genome_prepare_status = "Select a genome first".to_string();
             return;
         }
-        let op = Operation::PrepareGenome {
-            genome_id: genome_id.clone(),
-            catalog_path: self.genome_catalog_path_opt(),
-            cache_dir: self.genome_cache_dir_opt(),
-        };
-        let engine = self.engine.clone();
+        let catalog_path = self.genome_catalog_path_opt();
+        let cache_dir = self.genome_cache_dir_opt();
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
         self.genome_prepare_progress = None;
         self.genome_prepare_status =
@@ -574,45 +816,47 @@ impl GENtleApp {
         });
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
-            let outcome = match engine.write() {
-                Ok(mut guard) => {
-                    let mut last_phase = String::new();
-                    let mut last_percent_tenths: Option<i64> = None;
-                    let mut last_bytes_bucket: u64 = 0;
-                    guard.apply_with_progress(op, move |progress| {
-                        let OperationProgress::GenomePrepare(p) = progress else {
-                            return;
-                        };
-                        let phase_changed = p.phase != last_phase;
-                        let percent_tenths = p.percent.map(|v| (v * 10.0).floor() as i64);
-                        let percent_progressed = percent_tenths
-                            .map(|value| {
-                                last_percent_tenths
-                                    .map(|prev| value > prev)
-                                    .unwrap_or(true)
-                            })
-                            .unwrap_or(false);
-                        let bytes_bucket = p.bytes_done / (8 * 1024 * 1024);
-                        let bytes_progressed = bytes_bucket > last_bytes_bucket;
-                        let done = p.phase == "ready"
-                            || p.percent
-                                .map(|v| (v - 100.0).abs() < f64::EPSILON)
-                                .unwrap_or(false);
-                        if phase_changed || percent_progressed || bytes_progressed || done {
-                            last_phase = p.phase.clone();
-                            if let Some(v) = percent_tenths {
-                                last_percent_tenths = Some(v);
-                            }
-                            last_bytes_bucket = bytes_bucket;
-                            let _ = tx_progress.send(GenomePrepareTaskMessage::Progress(p));
-                        }
-                    })
+            let mut last_phase = String::new();
+            let mut last_percent_tenths: Option<i64> = None;
+            let mut last_bytes_bucket: u64 = 0;
+            let mut progress_forwarder = move |p: PrepareGenomeProgress| {
+                let phase_changed = p.phase != last_phase;
+                let percent_tenths = p.percent.map(|v| (v * 10.0).floor() as i64);
+                let percent_progressed = percent_tenths
+                    .map(|value| last_percent_tenths.map(|prev| value > prev).unwrap_or(true))
+                    .unwrap_or(false);
+                let bytes_bucket = p.bytes_done / (8 * 1024 * 1024);
+                let bytes_progressed = bytes_bucket > last_bytes_bucket;
+                let done = p.phase == "ready"
+                    || p.percent
+                        .map(|v| (v - 100.0).abs() < f64::EPSILON)
+                        .unwrap_or(false);
+                if phase_changed || percent_progressed || bytes_progressed || done {
+                    last_phase = p.phase.clone();
+                    if let Some(v) = percent_tenths {
+                        last_percent_tenths = Some(v);
+                    }
+                    last_bytes_bucket = bytes_bucket;
+                    let _ = tx_progress.send(GenomePrepareTaskMessage::Progress(p));
                 }
-                Err(_) => Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "Engine lock poisoned while preparing genome".to_string(),
-                }),
             };
+            let outcome = GentleEngine::prepare_reference_genome_once(
+                &genome_id,
+                catalog_path.as_deref(),
+                cache_dir.as_deref(),
+                &mut progress_forwarder,
+            )
+            .map(|report| OpResult {
+                op_id: "background-prepare-genome".to_string(),
+                created_seq_ids: vec![],
+                changed_seq_ids: vec![],
+                warnings: vec![],
+                messages: vec![GentleEngine::format_prepare_genome_message(
+                    &genome_id,
+                    cache_dir.as_deref(),
+                    &report,
+                )],
+            });
             let _ = tx.send(GenomePrepareTaskMessage::Done(outcome));
         });
     }
@@ -671,10 +915,8 @@ impl GENtleApp {
                     self.invalidate_genome_genes();
                 }
                 Err(e) => {
-                    self.genome_prepare_status = format!(
-                        "Prepare genome failed after {:.1}s: {}",
-                        elapsed, e.message
-                    );
+                    self.genome_prepare_status =
+                        format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
                 }
             }
         }
@@ -699,21 +941,41 @@ impl GENtleApp {
         }
     }
 
-    fn gene_record_matches_filter(gene: &GenomeGeneRecord, filter: &str) -> bool {
-        let needle = filter.trim().to_ascii_lowercase();
-        if needle.is_empty() {
-            return true;
-        }
+    fn gene_record_matches_regex(gene: &GenomeGeneRecord, regex: &Regex) -> bool {
         gene.gene_name
             .as_ref()
-            .map(|name| name.to_ascii_lowercase().contains(&needle))
+            .map(|name| regex.is_match(name))
             .unwrap_or(false)
             || gene
                 .gene_id
                 .as_ref()
-                .map(|id| id.to_ascii_lowercase().contains(&needle))
+                .map(|id| regex.is_match(id))
                 .unwrap_or(false)
-            || gene.chromosome.to_ascii_lowercase().contains(&needle)
+            || regex.is_match(&gene.chromosome)
+    }
+
+    fn gene_record_matches_filter(gene: &GenomeGeneRecord, regex: Option<&Regex>) -> bool {
+        if let Some(re) = regex {
+            return Self::gene_record_matches_regex(gene, re);
+        }
+        true
+    }
+
+    fn gene_record_matches_biotype_filter(&self, gene: &GenomeGeneRecord) -> bool {
+        if self.genome_biotype_filter.is_empty() {
+            return true;
+        }
+        let Some(raw_biotype) = gene.biotype.as_ref() else {
+            return true;
+        };
+        let biotype = raw_biotype.trim();
+        if biotype.is_empty() {
+            return true;
+        }
+        self.genome_biotype_filter
+            .get(biotype)
+            .copied()
+            .unwrap_or(true)
     }
 
     fn gene_record_label(gene: &GenomeGeneRecord) -> String {
@@ -731,10 +993,130 @@ impl GENtleApp {
             .strand
             .map(|s| s.to_string())
             .unwrap_or_else(|| ".".to_string());
+        let biotype = gene
+            .biotype
+            .as_ref()
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .unwrap_or("-");
         format!(
-            "{}: {}:{}-{} ({})",
-            name, gene.chromosome, gene.start_1based, gene.end_1based, strand
+            "{}: {}:{}-{} ({}, {})",
+            name, gene.chromosome, gene.start_1based, gene.end_1based, strand, biotype
         )
+    }
+
+    fn selected_gene_query_and_occurrence(&self) -> Option<(String, usize)> {
+        let selected_idx = self.genome_selected_gene?;
+        let selected_gene = self.genome_genes.get(selected_idx)?;
+        let query = selected_gene
+            .gene_id
+            .as_ref()
+            .or(selected_gene.gene_name.as_ref())
+            .cloned()?;
+        let mut occurrence = 0usize;
+        for (idx, gene) in self.genome_genes.iter().enumerate() {
+            let matches_query = gene
+                .gene_id
+                .as_ref()
+                .map(|id| id.eq_ignore_ascii_case(&query))
+                .unwrap_or(false)
+                || gene
+                    .gene_name
+                    .as_ref()
+                    .map(|name| name.eq_ignore_ascii_case(&query))
+                    .unwrap_or(false);
+            if matches_query {
+                occurrence += 1;
+            }
+            if idx == selected_idx {
+                break;
+            }
+        }
+        if occurrence == 0 {
+            None
+        } else {
+            Some((query, occurrence))
+        }
+    }
+
+    fn filtered_gene_candidate_indices(&self) -> (Vec<usize>, bool, Option<String>) {
+        let limit = self.genome_gene_filter_limit.max(1);
+        let mut indices: Vec<usize> = Vec::with_capacity(limit.min(2048));
+        let mut overflow = false;
+        let needle = self.genome_gene_filter.trim();
+        let regex = if needle.is_empty() {
+            None
+        } else {
+            match RegexBuilder::new(needle).case_insensitive(true).build() {
+                Ok(re) => Some(re),
+                Err(e) => {
+                    return (vec![], false, Some(format!("Invalid regex: {e}")));
+                }
+            }
+        };
+        for (idx, gene) in self.genome_genes.iter().enumerate() {
+            if Self::gene_record_matches_filter(gene, regex.as_ref())
+                && self.gene_record_matches_biotype_filter(gene)
+            {
+                if indices.len() < limit {
+                    indices.push(idx);
+                } else {
+                    overflow = true;
+                    break;
+                }
+            }
+        }
+        (indices, overflow, None)
+    }
+
+    fn normalize_coordinate_field(value: &mut String) {
+        value.retain(|ch| ch.is_ascii_digit());
+        if value.len() > 10 {
+            value.truncate(10);
+        }
+    }
+
+    fn extract_reference_genome_gene(&mut self) {
+        let genome_id = self.genome_id.trim().to_string();
+        if genome_id.is_empty() {
+            self.genome_retrieve_status = "Select a genome first".to_string();
+            return;
+        }
+        let Some((gene_query, occurrence)) = self.selected_gene_query_and_occurrence() else {
+            self.genome_retrieve_status =
+                "Select a gene with a gene_id or gene_name first".to_string();
+            return;
+        };
+        let output_id = if self.genome_output_id.trim().is_empty() {
+            None
+        } else {
+            Some(self.genome_output_id.trim().to_string())
+        };
+        let op = Operation::ExtractGenomeGene {
+            genome_id,
+            gene_query,
+            occurrence: Some(occurrence),
+            output_id,
+            catalog_path: self.genome_catalog_path_opt(),
+            cache_dir: self.genome_cache_dir_opt(),
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(r) => {
+                for seq_id in &r.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                self.genome_retrieve_status = Self::format_op_result_status(
+                    "Extract gene: ok",
+                    &r.created_seq_ids,
+                    &r.warnings,
+                    &r.messages,
+                );
+            }
+            Err(e) => {
+                self.genome_retrieve_status = format!("Extract gene failed: {}", e.message);
+            }
+        }
     }
 
     fn extract_reference_genome_region(&mut self) {
@@ -832,24 +1214,38 @@ impl GENtleApp {
                         format!("Catalog error: {}", self.genome_catalog_error),
                     );
                 }
-                let selection_changed = Self::choose_genome_from_catalog(
-                    ui,
-                    &mut self.genome_id,
-                    &self.genome_catalog_genomes,
-                );
+                let preparable_genomes = match self.unprepared_genomes_for_prepare_dialog() {
+                    Ok(names) => names,
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Prepared-state check error: {e}"),
+                        );
+                        vec![]
+                    }
+                };
+                let selection_changed =
+                    Self::choose_genome_from_catalog(ui, &mut self.genome_id, &preparable_genomes);
                 if selection_changed {
                     self.invalidate_genome_genes();
+                }
+                if preparable_genomes.is_empty() {
+                    ui.label("All genomes in this catalog are already prepared.");
+                }
+                let selected_preparable = preparable_genomes.iter().any(|n| n == &self.genome_id);
+                if !self.genome_id.trim().is_empty() && !selected_preparable {
+                    ui.label("Selected genome is already prepared and cannot be selected here.");
                 }
                 let running = self.genome_prepare_task.is_some();
                 ui.horizontal(|ui| {
                     if ui
-                        .add_enabled(!running && !self.genome_id.is_empty(), egui::Button::new("Prepare Genome"))
+                        .add_enabled(
+                            !running && selected_preparable,
+                            egui::Button::new("Prepare Genome"),
+                        )
                         .clicked()
                     {
                         self.start_prepare_reference_genome();
-                    }
-                    if ui.button("Retrieve Sequence...").clicked() {
-                        self.open_reference_genome_retrieve_dialog();
                     }
                 });
                 if let Some(progress) = &self.genome_prepare_progress {
@@ -861,23 +1257,23 @@ impl GENtleApp {
                                 if total == 0 {
                                     None
                                 } else {
-                                    Some((progress.bytes_done as f32 / total as f32).clamp(0.0, 1.0))
+                                    Some(
+                                        (progress.bytes_done as f32 / total as f32).clamp(0.0, 1.0),
+                                    )
                                 }
                             })
                         })
                         .unwrap_or(0.0);
-                    ui.add(egui::ProgressBar::new(fraction).show_percentage().text(format!(
-                        "{}: {}",
-                        progress.phase, progress.item
-                    )));
+                    ui.add(
+                        egui::ProgressBar::new(fraction)
+                            .show_percentage()
+                            .text(format!("{}: {}", progress.phase, progress.item)),
+                    );
                     let bytes_total = progress
                         .bytes_total
                         .map(|b| b.to_string())
                         .unwrap_or_else(|| "?".to_string());
-                    ui.label(format!(
-                        "bytes: {} / {}",
-                        progress.bytes_done, bytes_total
-                    ));
+                    ui.label(format!("bytes: {} / {}", progress.bytes_done, bytes_total));
                 }
                 if !self.genome_prepare_status.is_empty() {
                     ui.separator();
@@ -926,28 +1322,29 @@ impl GENtleApp {
                         format!("Catalog error: {}", self.genome_catalog_error),
                     );
                 }
-                let selection_changed = Self::choose_genome_from_catalog(
-                    ui,
-                    &mut self.genome_id,
-                    &self.genome_catalog_genomes,
-                );
+                let prepared_genomes = match self.prepared_genomes_for_retrieve_dialog() {
+                    Ok(names) => names,
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Prepared-state check error: {e}"),
+                        );
+                        vec![]
+                    }
+                };
+                if !prepared_genomes.is_empty() && !prepared_genomes.contains(&self.genome_id) {
+                    self.genome_id = prepared_genomes[0].clone();
+                    self.invalidate_genome_genes();
+                }
+                let selection_changed =
+                    Self::choose_genome_from_catalog(ui, &mut self.genome_id, &prepared_genomes);
                 if selection_changed {
                     self.invalidate_genome_genes();
                 }
-
-                let (genome_ready, readiness_message) = match self.selected_genome_prepared() {
-                    Ok(true) => (true, "Genome is prepared and indexed.".to_string()),
-                    Ok(false) => (
-                        false,
-                        "Genome is not prepared yet. Use 'Prepare Genome' first.".to_string(),
-                    ),
-                    Err(e) => (false, format!("Could not check preparation status: {e}")),
-                };
-                ui.label(readiness_message);
-                if !genome_ready {
-                    if ui.button("Prepare Genome...").clicked() {
-                        self.open_reference_genome_prepare_dialog();
-                    }
+                if prepared_genomes.is_empty() {
+                    ui.label(
+                        "No prepared genomes are available in this catalog/cache. Use 'Prepare Reference Genome...' first.",
+                    );
                 } else {
                     self.ensure_genome_genes_loaded();
                     if !self.genome_genes_error.is_empty() {
@@ -959,32 +1356,124 @@ impl GENtleApp {
                     ui.separator();
                     ui.horizontal(|ui| {
                         ui.label("Gene filter");
-                        ui.text_edit_singleline(&mut self.genome_gene_filter);
+                        let response = ui.text_edit_singleline(&mut self.genome_gene_filter);
+                        if response.changed() {
+                            self.genome_gene_filter_page = 0;
+                        }
                         if ui.button("Clear").clicked() {
                             self.genome_gene_filter.clear();
+                            self.genome_gene_filter_page = 0;
                         }
                     });
-                    let filtered_indices: Vec<usize> = self
-                        .genome_genes
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, gene)| {
-                            if Self::gene_record_matches_filter(gene, &self.genome_gene_filter) {
-                                Some(idx)
-                            } else {
-                                None
+                    ui.small("Supports case-insensitive regex (for example: ^TP53$).");
+                    ui.horizontal(|ui| {
+                        ui.label("Top matches");
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut self.genome_gene_filter_limit)
+                                    .speed(100.0)
+                                    .range(100..=100_000),
+                            )
+                            .changed()
+                        {
+                            self.genome_gene_filter_page = 0;
+                        }
+                    });
+                    if !self.genome_biotype_filter.is_empty() {
+                        ui.separator();
+                        ui.label("Biotype filter");
+                        ui.horizontal(|ui| {
+                            if ui.button("All").clicked() {
+                                for enabled in self.genome_biotype_filter.values_mut() {
+                                    *enabled = true;
+                                }
+                                self.genome_gene_filter_page = 0;
                             }
-                        })
-                        .collect();
+                            if ui.button("None").clicked() {
+                                for enabled in self.genome_biotype_filter.values_mut() {
+                                    *enabled = false;
+                                }
+                                self.genome_gene_filter_page = 0;
+                            }
+                        });
+                        let mut biotypes: Vec<String> =
+                            self.genome_biotype_filter.keys().cloned().collect();
+                        biotypes.sort();
+                        egui::ScrollArea::vertical()
+                            .max_height(120.0)
+                            .show(ui, |ui| {
+                                for biotype in biotypes {
+                                    if let Some(enabled) =
+                                        self.genome_biotype_filter.get_mut(&biotype)
+                                    {
+                                        if ui.checkbox(enabled, &biotype).changed() {
+                                            self.genome_gene_filter_page = 0;
+                                        }
+                                    }
+                                }
+                            });
+                    }
+                    let (filtered_indices, overflow, regex_error) =
+                        self.filtered_gene_candidate_indices();
+                    if let Some(error) = regex_error {
+                        ui.colored_label(egui::Color32::from_rgb(190, 70, 70), error);
+                    }
+                    const GENE_PAGE_SIZE: usize = 100;
+                    let page_count =
+                        ((filtered_indices.len() + GENE_PAGE_SIZE - 1) / GENE_PAGE_SIZE).max(1);
+                    if self.genome_gene_filter_page >= page_count {
+                        self.genome_gene_filter_page = page_count.saturating_sub(1);
+                    }
+                    let page_start = self.genome_gene_filter_page * GENE_PAGE_SIZE;
+                    let page_end = (page_start + GENE_PAGE_SIZE).min(filtered_indices.len());
+                    let shown_note = if overflow {
+                        format!(
+                            " (limited to top {} matches)",
+                            self.genome_gene_filter_limit
+                        )
+                    } else {
+                        String::new()
+                    };
                     ui.label(format!(
-                        "Genes: {} shown / {} total",
+                        "Genes: {} candidate{} / {} total",
                         filtered_indices.len(),
+                        shown_note,
                         self.genome_genes.len()
                     ));
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                self.genome_gene_filter_page > 0,
+                                egui::Button::new("Prev"),
+                            )
+                            .clicked()
+                        {
+                            self.genome_gene_filter_page -= 1;
+                        }
+                        ui.label(format!(
+                            "Page {}/{}",
+                            self.genome_gene_filter_page + 1,
+                            page_count
+                        ));
+                        if ui
+                            .add_enabled(
+                                self.genome_gene_filter_page + 1 < page_count,
+                                egui::Button::new("Next"),
+                            )
+                            .clicked()
+                        {
+                            self.genome_gene_filter_page += 1;
+                        }
+                    });
                     egui::ScrollArea::vertical()
-                        .max_height(180.0)
+                        .max_height(220.0)
                         .show(ui, |ui| {
-                            for idx in filtered_indices.into_iter().take(300) {
+                            for idx in filtered_indices
+                                .iter()
+                                .copied()
+                                .skip(page_start)
+                                .take(page_end.saturating_sub(page_start))
+                            {
                                 let label = Self::gene_record_label(&self.genome_genes[idx]);
                                 let selected = self.genome_selected_gene == Some(idx);
                                 if ui.selectable_label(selected, label).clicked() {
@@ -997,13 +1486,40 @@ impl GENtleApp {
                         ui.label("chr");
                         ui.text_edit_singleline(&mut self.genome_chromosome);
                         ui.label("start_1based");
-                        ui.text_edit_singleline(&mut self.genome_start_1based);
+                        let start_changed = ui
+                            .add(
+                                egui::TextEdit::singleline(&mut self.genome_start_1based)
+                                    .desired_width(90.0)
+                                    .char_limit(10),
+                            )
+                            .changed();
+                        if start_changed {
+                            Self::normalize_coordinate_field(&mut self.genome_start_1based);
+                        }
                         ui.label("end_1based");
-                        ui.text_edit_singleline(&mut self.genome_end_1based);
+                        let end_changed = ui
+                            .add(
+                                egui::TextEdit::singleline(&mut self.genome_end_1based)
+                                    .desired_width(90.0)
+                                    .char_limit(10),
+                            )
+                            .changed();
+                        if end_changed {
+                            Self::normalize_coordinate_field(&mut self.genome_end_1based);
+                        }
                     });
                     ui.horizontal(|ui| {
                         ui.label("output_id");
                         ui.text_edit_singleline(&mut self.genome_output_id);
+                        if ui
+                            .add_enabled(
+                                self.genome_selected_gene.is_some(),
+                                egui::Button::new("Extract Selected Gene"),
+                            )
+                            .clicked()
+                        {
+                            self.extract_reference_genome_gene();
+                        }
                         if ui.button("Extract Region").clicked() {
                             self.extract_reference_genome_region();
                         }
@@ -1177,6 +1693,14 @@ impl GENtleApp {
                     self.open_reference_genome_retrieve_dialog();
                     ui.close_menu();
                 }
+                if ui.button("Prepare Helper Genome...").clicked() {
+                    self.open_helper_genome_prepare_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Retrieve Helper Sequence...").clicked() {
+                    self.open_helper_genome_retrieve_dialog();
+                    ui.close_menu();
+                }
                 if ui.button("Import REBASE Data...").clicked() {
                     self.prompt_import_rebase_resource();
                     ui.close_menu();
@@ -1201,6 +1725,15 @@ impl GENtleApp {
                 }
                 if ui.button("Retrieve Genome Sequence...").clicked() {
                     self.open_reference_genome_retrieve_dialog();
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("Prepare Helper Genome...").clicked() {
+                    self.open_helper_genome_prepare_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Retrieve Helper Sequence...").clicked() {
+                    self.open_helper_genome_retrieve_dialog();
                     ui.close_menu();
                 }
             });
@@ -1803,6 +2336,10 @@ impl GENtleApp {
                 self.help_doc = HelpDoc::Cli;
             }
             ui.separator();
+            if ui.button("Reload").clicked() {
+                self.refresh_help_docs();
+                self.help_markdown_cache = CommonMarkCache::default();
+            }
             if ui.button("Close").clicked() {
                 self.show_help_dialog = false;
             }
@@ -1812,9 +2349,11 @@ impl GENtleApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let markdown = self.active_help_markdown().to_string();
-                CommonMarkViewer::new()
-                    .max_image_width(Some(1200))
-                    .show(ui, &mut self.help_markdown_cache, &markdown);
+                CommonMarkViewer::new().max_image_width(Some(1200)).show(
+                    ui,
+                    &mut self.help_markdown_cache,
+                    &markdown,
+                );
             });
     }
 
@@ -2078,6 +2617,20 @@ impl GENtleApp {
             Operation::RenderLineageSvg { path } => {
                 format!("Render lineage SVG: path={path}")
             }
+            Operation::RenderPoolGelSvg {
+                inputs,
+                path,
+                ladders,
+            } => format!(
+                "Render pool gel SVG: inputs={}, path={}, ladders={}",
+                inputs.join(", "),
+                path,
+                ladders
+                    .as_ref()
+                    .map(|v| v.join(", "))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "auto".to_string())
+            ),
             Operation::ExportPool {
                 inputs,
                 path,
@@ -2118,6 +2671,24 @@ impl GENtleApp {
                 catalog_path.clone().unwrap_or_else(|| "-".to_string()),
                 cache_dir.clone().unwrap_or_else(|| "-".to_string())
             ),
+            Operation::ExtractGenomeGene {
+                genome_id,
+                gene_query,
+                occurrence,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => format!(
+                "Extract genome gene: genome_id={}, gene_query={}, occurrence={}, output_id={}, catalog_path={}, cache_dir={}",
+                genome_id,
+                gene_query,
+                occurrence
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                output_id.clone().unwrap_or_else(|| "-".to_string()),
+                catalog_path.clone().unwrap_or_else(|| "-".to_string()),
+                cache_dir.clone().unwrap_or_else(|| "-".to_string())
+            ),
         }
     }
 }
@@ -2129,6 +2700,8 @@ impl eframe::App for GENtleApp {
                 egui_extras::install_image_loaders(ctx);
                 self.update_has_run_before = true;
             }
+            about::install_native_help_menu_bridge();
+            self.consume_native_help_request();
             let dirty_marker = if self.is_project_dirty() { " *" } else { "" };
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
                 "GENtle - {}{} (v{})",
@@ -2219,5 +2792,72 @@ impl eframe::App for GENtleApp {
         if update_result.is_err() {
             eprintln!("E GENtleApp: recovered from panic in app update");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GENtleApp;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn load_help_doc_returns_fallback_when_missing() {
+        let loaded = GENtleApp::load_help_doc(
+            "/definitely/missing/gentle/help-doc.md",
+            "fallback help markdown",
+        );
+        assert_eq!(loaded, "fallback help markdown");
+    }
+
+    #[test]
+    fn load_help_doc_uses_runtime_file_and_rewrites_relative_images() {
+        let temp = tempdir().unwrap();
+        let docs_dir = temp.path().join("docs");
+        let images_dir = docs_dir.join("images");
+        fs::create_dir_all(&images_dir).unwrap();
+
+        let image_path = images_dir.join("gui.png");
+        fs::write(&image_path, b"fake image").unwrap();
+
+        let markdown_path = docs_dir.join("gui.md");
+        fs::write(
+            &markdown_path,
+            "# Help\n\n![GUI](<images/gui.png> \"GUI Screenshot\")\n",
+        )
+        .unwrap();
+
+        let loaded = GENtleApp::load_help_doc(markdown_path.to_str().unwrap(), "fallback");
+        let abs_image = image_path.canonicalize().unwrap();
+        let expected = format!(
+            "![GUI](<{}> \"GUI Screenshot\")",
+            abs_image.to_string_lossy()
+        );
+        assert!(loaded.contains(&expected), "{loaded}");
+    }
+
+    #[test]
+    fn rewrite_markdown_relative_image_links_handles_paths_with_parentheses() {
+        let temp = tempdir().unwrap();
+        let docs_dir = temp.path().join("docs");
+        let images_dir = docs_dir.join("images");
+        fs::create_dir_all(&images_dir).unwrap();
+
+        let image_path = images_dir.join("gui(1).png");
+        fs::write(&image_path, b"fake image").unwrap();
+
+        let markdown = "![Shot](images/gui(1).png)\n";
+        let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, &docs_dir);
+        let abs_image = image_path.canonicalize().unwrap();
+        let expected = format!("![Shot]({})", abs_image.to_string_lossy());
+        assert!(rewritten.contains(&expected), "{rewritten}");
+    }
+
+    #[test]
+    fn rewrite_markdown_relative_image_links_keeps_absolute_and_reference_images() {
+        let markdown = "![Web](https://example.com/gui.png)\n![Root](/tmp/gui.png)\n![ByRef][img]\n\n[img]: images/gui.png\n";
+        let temp = tempdir().unwrap();
+        let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, temp.path());
+        assert_eq!(rewritten, markdown);
     }
 }

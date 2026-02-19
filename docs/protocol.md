@@ -52,6 +52,9 @@ Current draft operations:
 
 - `LoadFile { path, as_id? }`
 - `SaveFile { seq_id, path, format }`
+- `RenderSequenceSvg { seq_id, mode, path }`
+- `RenderLineageSvg { path }`
+- `RenderPoolGelSvg { inputs, path, ladders? }`
 - `Digest { input, enzymes, output_prefix? }`
 - `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
 - `MergeContainers { inputs, output_prefix? }`
@@ -106,6 +109,15 @@ Current ligation protocol behavior:
   - `effective_min = floor(min_bp * (1 - error))`
   - `effective_max = ceil(max_bp * (1 + error))`
 - `unique = true` requires exactly one match, otherwise the operation fails.
+
+`RenderPoolGelSvg` semantics:
+
+- Accepts explicit `inputs` (sequence ids) and an output `path`.
+- Computes pool molecular-weight proxy from sequence bp lengths.
+- Chooses one or two ladders to span pool range:
+  - from explicit `ladders` list when provided
+  - otherwise from built-in ladder catalog (auto mode)
+- Renders ladder lanes plus pooled band lane as SVG artifact.
 
 `Pcr` semantics (current):
 

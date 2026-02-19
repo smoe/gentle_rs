@@ -70,6 +70,8 @@ reqwest = { version = "*", features = ["blocking", "json"] }
 tempfile = "*"
 winres = "0.1"
 flate2 = "1.0"
+regex = "^1"
+pulldown-cmark = "0.12.2"
 
 # For cli
 rustyline = "*"
@@ -77,8 +79,9 @@ mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
 deno_core = "*"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5.2"
 objc2-foundation = "0.2.2"
-objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSResponder"] }
+objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder"] }
 
 #[build-dependencies]
 #winresource = "*" # For Windows app icon

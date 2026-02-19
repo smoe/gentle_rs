@@ -1,6 +1,7 @@
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
     dna_sequence::DNAsequence,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
     render_dna::RestrictionEnzymePosition,
@@ -8,7 +9,7 @@ use crate::{
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, Vec2,
 };
-use gb_io::seq::{Feature, Location};
+use gb_io::seq::Feature;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, RwLock};
 
@@ -26,6 +27,8 @@ const RE_SITE_MAX_BP_PER_PX: f32 = 200.0;
 const RE_LABEL_MAX_BP_PER_PX: f32 = 30.0;
 const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
 const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
+const FEATURE_LABEL_PADDING_X: f32 = 3.0;
+const FEATURE_LABEL_MAX_EXPANSION_PX: f32 = 120.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -52,12 +55,13 @@ struct FeaturePosition {
     is_pointy: bool,
     is_reverse: bool,
     rect: Rect,
-    label_pos: Pos2,
+    exon_rects: Vec<Rect>,
+    intron_connectors: Vec<[Pos2; 3]>,
 }
 
 impl FeaturePosition {
     fn contains(&self, pos: Pos2) -> bool {
-        self.rect.contains(pos)
+        self.exon_rects.iter().any(|rect| rect.contains(pos))
     }
 }
 
@@ -202,6 +206,20 @@ impl RenderDnaLinear {
         }
     }
 
+    fn estimate_feature_label_width(label: &str) -> f32 {
+        let chars = label.chars().count().max(1) as f32;
+        chars * LABEL_CHAR_WIDTH + FEATURE_LABEL_PADDING_X * 2.0
+    }
+
+    fn feature_label_color(fill: Color32) -> Color32 {
+        let luminance = 0.299 * fill.r() as f32 + 0.587 * fill.g() as f32 + 0.114 * fill.b() as f32;
+        if luminance < 145.0 {
+            Color32::WHITE
+        } else {
+            Color32::BLACK
+        }
+    }
+
     fn draw_feature(
         feature: &Feature,
         show_cds_features: bool,
@@ -266,59 +284,25 @@ impl RenderDnaLinear {
         span.max(1)
     }
 
-    fn collect_location_strands(location: &Location, reverse: bool, strands: &mut Vec<bool>) {
-        match location {
-            Location::Range(_, _) | Location::Between(_, _) => strands.push(reverse),
-            Location::Complement(inner) => Self::collect_location_strands(inner, !reverse, strands),
-            Location::Join(parts)
-            | Location::Order(parts)
-            | Location::Bond(parts)
-            | Location::OneOf(parts) => {
-                for part in parts {
-                    Self::collect_location_strands(part, reverse, strands);
-                }
-            }
-            Location::External(_, maybe_loc) => {
-                if let Some(loc) = maybe_loc {
-                    Self::collect_location_strands(loc, reverse, strands);
-                }
-            }
-            Location::Gap(_) => {}
-        }
-    }
-
-    fn feature_is_reverse(feature: &Feature) -> bool {
-        let mut strands = Vec::new();
-        Self::collect_location_strands(&feature.location, false, &mut strands);
-        if strands.is_empty() {
-            false
-        } else {
-            strands.iter().filter(|is_reverse| **is_reverse).count() > strands.len() / 2
-        }
-    }
-
     fn layout_features(&mut self, viewport: LinearViewport) {
         self.features.clear();
         if self.sequence_length == 0 {
             return;
         }
+        let show_feature_labels = self.bp_per_px(viewport) <= FEATURE_LABEL_MAX_BP_PER_PX;
 
         #[derive(Clone)]
         struct Seed {
             feature_number: usize,
             from: usize,
             to: usize,
+            exon_segments: Vec<(f32, f32)>,
             x1: f32,
             x2: f32,
             label: String,
             color: Color32,
             is_pointy: bool,
             is_reverse: bool,
-        }
-        impl Seed {
-            fn span(&self) -> usize {
-                self.to.saturating_sub(self.from).saturating_add(1)
-            }
         }
 
         #[derive(Clone)]
@@ -394,29 +378,98 @@ impl RenderDnaLinear {
                 to = self.sequence_length.saturating_sub(1);
             }
 
-            let feature_end_exclusive = to.saturating_add(1).min(self.sequence_length);
-            let Some((visible_start, visible_end)) =
-                Self::range_overlap(from, feature_end_exclusive, viewport.start, viewport.end)
-            else {
-                continue;
-            };
-            let x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
-            let x2 = self
-                .bp_to_x(visible_end, viewport)
-                .max(x1 + 1.0)
-                .min(self.area.right());
             let label = RenderDna::feature_name(feature);
+            let mut exon_ranges: Vec<(usize, usize)> = vec![];
+            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+            if exon_ranges.is_empty() {
+                exon_ranges.push((from, to));
+            }
+            exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+            let mut exon_segments: Vec<(f32, f32)> = Vec::new();
+            for (exon_start, exon_end_inclusive) in exon_ranges {
+                if exon_start >= self.sequence_length {
+                    continue;
+                }
+                let exon_end_inclusive =
+                    exon_end_inclusive.min(self.sequence_length.saturating_sub(1));
+                let exon_end_exclusive = exon_end_inclusive
+                    .saturating_add(1)
+                    .min(self.sequence_length);
+                let Some((visible_start, visible_end)) = Self::range_overlap(
+                    exon_start,
+                    exon_end_exclusive,
+                    viewport.start,
+                    viewport.end,
+                ) else {
+                    continue;
+                };
+                let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
+                let seg_x2 = self
+                    .bp_to_x(visible_end, viewport)
+                    .max(seg_x1 + 1.0)
+                    .min(self.area.right());
+                exon_segments.push((seg_x1, seg_x2));
+            }
+            if exon_segments.is_empty() {
+                continue;
+            }
+            exon_segments.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+
+            if show_feature_labels && !label.trim().is_empty() {
+                let wanted_width = Self::estimate_feature_label_width(&label);
+                if let Some((widest_idx, _)) = exon_segments
+                    .iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| (a.1 - a.0).total_cmp(&(b.1 - b.0)))
+                {
+                    let (mut lx1, mut lx2) = exon_segments[widest_idx];
+                    let current_width = (lx2 - lx1).max(1.0);
+                    let capped_wanted_width =
+                        wanted_width.min(current_width + FEATURE_LABEL_MAX_EXPANSION_PX);
+                    if capped_wanted_width > current_width {
+                        let center = (lx1 + lx2) * 0.5;
+                        lx1 = center - capped_wanted_width * 0.5;
+                        lx2 = center + capped_wanted_width * 0.5;
+                        if lx1 < self.area.left() {
+                            lx2 += self.area.left() - lx1;
+                            lx1 = self.area.left();
+                        }
+                        if lx2 > self.area.right() {
+                            lx1 -= lx2 - self.area.right();
+                            lx2 = self.area.right();
+                            if lx1 < self.area.left() {
+                                lx1 = self.area.left();
+                            }
+                        }
+                        lx2 = lx2.max((lx1 + 1.0).min(self.area.right()));
+                        exon_segments[widest_idx] = (lx1, lx2);
+                    }
+                }
+            }
+            let x1 = exon_segments
+                .iter()
+                .map(|(sx1, _)| *sx1)
+                .fold(f32::INFINITY, f32::min);
+            let x2 = exon_segments
+                .iter()
+                .map(|(_, sx2)| *sx2)
+                .fold(f32::NEG_INFINITY, f32::max);
+            if !x1.is_finite() || !x2.is_finite() {
+                continue;
+            }
 
             seeds.push(Seed {
                 feature_number,
                 from,
                 to,
+                exon_segments,
                 x1,
                 x2,
                 label,
                 color: RenderDna::feature_color(feature),
                 is_pointy: RenderDna::is_feature_pointy(feature),
-                is_reverse: Self::feature_is_reverse(feature),
+                is_reverse: feature_is_reverse(feature),
             });
         }
 
@@ -425,8 +478,8 @@ impl RenderDnaLinear {
         let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
         let mut lane_order = seeds.clone();
         lane_order.sort_by(|a, b| {
-            b.span()
-                .cmp(&a.span())
+            (b.x2 - b.x1)
+                .total_cmp(&(a.x2 - a.x1))
                 .then_with(|| a.x1.total_cmp(&b.x1))
                 .then_with(|| a.feature_number.cmp(&b.feature_number))
         });
@@ -455,16 +508,40 @@ impl RenderDnaLinear {
             } else {
                 self.baseline_y() - BASELINE_MARGIN - FEATURE_GAP * feature_lane as f32
             };
-            let rect = Rect::from_min_max(
-                Pos2::new(seed.x1, center_y - FEATURE_HEIGHT / 2.0),
-                Pos2::new(seed.x2, center_y + FEATURE_HEIGHT / 2.0),
-            );
-
-            let label_pos = if seed.is_reverse {
-                Pos2::new(seed.x1, rect.bottom() + 2.0)
+            let exon_rects: Vec<Rect> = seed
+                .exon_segments
+                .iter()
+                .map(|(x1, x2)| {
+                    Rect::from_min_max(
+                        Pos2::new(*x1, center_y - FEATURE_HEIGHT / 2.0),
+                        Pos2::new(*x2, center_y + FEATURE_HEIGHT / 2.0),
+                    )
+                })
+                .collect();
+            if exon_rects.is_empty() {
+                continue;
+            }
+            let mut rect = exon_rects[0];
+            for exon_rect in exon_rects.iter().skip(1) {
+                rect = rect.union(*exon_rect);
+            }
+            let connector_delta = 5.0;
+            let connector_apex_y = if seed.is_reverse {
+                center_y + connector_delta
             } else {
-                Pos2::new(seed.x1, rect.top() - 2.0)
+                center_y - connector_delta
             };
+            let mut intron_connectors: Vec<[Pos2; 3]> = Vec::new();
+            for (left, right) in exon_rects.iter().zip(exon_rects.iter().skip(1)) {
+                if right.left() <= left.right() {
+                    continue;
+                }
+                let start = Pos2::new(left.right(), center_y);
+                let end = Pos2::new(right.left(), center_y);
+                let apex_x = (start.x + end.x) * 0.5;
+                let apex = Pos2::new(apex_x, connector_apex_y);
+                intron_connectors.push([start, apex, end]);
+            }
 
             self.features.push(FeaturePosition {
                 feature_number: seed.feature_number,
@@ -475,7 +552,8 @@ impl RenderDnaLinear {
                 is_pointy: seed.is_pointy,
                 is_reverse: seed.is_reverse,
                 rect,
-                label_pos,
+                exon_rects,
+                intron_connectors,
             });
         }
     }
@@ -493,6 +571,10 @@ impl RenderDnaLinear {
 
     pub fn selected_feature_number(&self) -> Option<usize> {
         self.selected_feature_number
+    }
+
+    pub fn hovered_feature_number(&self) -> Option<usize> {
+        self.hovered_feature_number
     }
 
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
@@ -818,16 +900,23 @@ impl RenderDnaLinear {
             let selected = self.selected_feature_number == Some(feature.feature_number);
             let hovered = self.hovered_feature_number == Some(feature.feature_number);
 
-            painter.rect_filled(feature.rect, 1.5, feature.color);
+            for exon_rect in &feature.exon_rects {
+                painter.rect_filled(*exon_rect, 1.5, feature.color);
+            }
 
             if feature.is_pointy {
-                let tip_x = if feature.is_reverse {
-                    feature.rect.left()
+                let tip_target = if feature.is_reverse {
+                    feature.exon_rects.first().copied().unwrap_or(feature.rect)
                 } else {
-                    feature.rect.right()
+                    feature.exon_rects.last().copied().unwrap_or(feature.rect)
                 };
-                let y = feature.rect.center().y;
-                let h = feature.rect.height() / 2.0;
+                let tip_x = if feature.is_reverse {
+                    tip_target.left()
+                } else {
+                    tip_target.right()
+                };
+                let y = tip_target.center().y;
+                let h = tip_target.height() / 2.0;
                 let tip = if feature.is_reverse {
                     Pos2::new(tip_x - 6.0, y)
                 } else {
@@ -839,6 +928,16 @@ impl RenderDnaLinear {
                     Stroke::NONE,
                 ));
             }
+            for connector in &feature.intron_connectors {
+                painter.line_segment(
+                    [connector[0], connector[1]],
+                    Stroke::new(1.0, Color32::DARK_GRAY),
+                );
+                painter.line_segment(
+                    [connector[1], connector[2]],
+                    Stroke::new(1.0, Color32::DARK_GRAY),
+                );
+            }
 
             if selected || hovered {
                 let stroke = if selected {
@@ -846,26 +945,33 @@ impl RenderDnaLinear {
                 } else {
                     Stroke::new(1.5, Color32::WHITE)
                 };
-                painter.rect_stroke(feature.rect.expand(1.0), 2.0, stroke);
+                for exon_rect in &feature.exon_rects {
+                    painter.rect_stroke(exon_rect.expand(1.0), 2.0, stroke);
+                }
             }
 
             if !detail.show_feature_labels {
                 continue;
             }
-            let align = if feature.label_pos.y < self.baseline_y() {
-                Align2::LEFT_BOTTOM
-            } else {
-                Align2::LEFT_TOP
-            };
-            painter.text(
-                feature.label_pos,
-                align,
+            if feature.label.trim().is_empty() {
+                continue;
+            }
+            let label_rect = feature
+                .exon_rects
+                .iter()
+                .copied()
+                .max_by(|a, b| a.width().total_cmp(&b.width()))
+                .unwrap_or(feature.rect);
+            let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
+            text_painter.text(
+                label_rect.center(),
+                Align2::CENTER_CENTER,
                 &feature.label,
                 FontId {
                     size: 10.0,
                     family: FontFamily::Monospace,
                 },
-                Color32::BLACK,
+                Self::feature_label_color(feature.color),
             );
         }
     }
@@ -1001,5 +1107,71 @@ impl RenderDnaLinear {
         self.draw_open_reading_frames(ui.painter(), viewport);
         self.draw_features(ui.painter(), detail);
         self.draw_restriction_enzyme_sites(ui.painter(), viewport, detail);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gb_io::seq::{FeatureKind, Location};
+
+    fn make_test_feature(location: Location) -> Feature {
+        Feature {
+            kind: FeatureKind::from("mRNA"),
+            location,
+            qualifiers: vec![("label".into(), Some("tp73 transcript".to_string()))],
+        }
+    }
+
+    fn test_renderer_with_feature(feature: Feature, sequence_len: usize) -> RenderDnaLinear {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(sequence_len)).expect("valid DNA");
+        dna.features_mut().push(feature);
+        let dna = Arc::new(RwLock::new(dna));
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        let mut renderer = RenderDnaLinear::new(dna, display);
+        renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
+        renderer
+    }
+
+    #[test]
+    fn multipart_join_creates_exon_rects_and_intron_connectors() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(220, 280),
+            Location::simple_range(360, 410),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_rects.len(), 3);
+        assert_eq!(fp.intron_connectors.len(), 2);
+        assert!(fp.exon_rects[0].width() > 0.0);
+        assert!(fp.exon_rects[1].left() > fp.exon_rects[0].right());
+    }
+
+    #[test]
+    fn complementary_multipart_feature_is_positioned_on_reverse_lane() {
+        let feature = make_test_feature(Location::Complement(Box::new(Location::Join(vec![
+            Location::simple_range(120, 180),
+            Location::simple_range(240, 310),
+        ]))));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert!(fp.is_reverse);
+        assert_eq!(fp.exon_rects.len(), 2);
+        assert_eq!(fp.intron_connectors.len(), 1);
+        let baseline = renderer.baseline_y();
+        assert!(fp.rect.center().y > baseline);
     }
 }

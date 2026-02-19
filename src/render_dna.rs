@@ -110,6 +110,19 @@ impl RenderDna {
         }
     }
 
+    pub fn get_hovered_feature_id(&self) -> Option<usize> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_feature_number()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.hovered_feature_number()),
+        }
+    }
+
     pub fn select_feature(&self, feature_number: Option<usize>) {
         match self {
             RenderDna::Circular(renderer) => {

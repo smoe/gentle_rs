@@ -19,9 +19,9 @@ Resource update capability status:
 
 Reference genome capability status:
 
-- `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`)
-- `gentle_js`: supported via `apply_operation`
-- `gentle_lua`: supported via `apply_operation`
+- `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`, `ExtractGenomeGene`)
+- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
 ## Build and run
 
@@ -109,6 +109,19 @@ Exit methods:
 9. `sync_jaspar(input, output)`
    - Parses JASPAR PFM text and writes motif resource JSON snapshot.
    - `output` is optional (`null`/`""` uses default runtime resource path).
+10. `list_reference_genomes(catalog_path)`
+    - Lists genome IDs from the genome catalog.
+    - `catalog_path` is optional (`null`/`""` uses default catalog).
+11. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+    - Checks whether a genome cache is prepared and indexed.
+12. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+    - Lists indexed genes from prepared genome cache.
+13. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
+    - Convenience wrapper around engine `PrepareGenome`.
+14. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+    - Convenience wrapper around engine `ExtractGenomeRegion`.
+15. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+    - Convenience wrapper around engine `ExtractGenomeGene`.
 
 ### JavaScript example
 
@@ -161,6 +174,18 @@ Exit methods:
 9. `sync_jaspar(input, output)`
    - Parses JASPAR PFM text and writes motif resource JSON snapshot.
    - `output` is optional.
+10. `list_reference_genomes(catalog_path)`
+    - Lists genome IDs from the genome catalog.
+11. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+    - Checks whether a genome cache is prepared and indexed.
+12. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+    - Lists indexed genes from prepared genome cache.
+13. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
+    - Convenience wrapper around engine `PrepareGenome`.
+14. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+    - Convenience wrapper around engine `ExtractGenomeRegion`.
+15. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+    - Convenience wrapper around engine `ExtractGenomeGene`.
 
 ### Lua example
 
@@ -207,12 +232,26 @@ cargo run --bin gentle_cli -- load-project project.gentle.json
 cargo run --bin gentle_cli -- render-svg pgex linear pgex.linear.svg
 cargo run --bin gentle_cli -- render-svg pgex circular pgex.circular.svg
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
+cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg
+cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg --ladders "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","catalog_path":"catalog.json"}}'
+cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
+cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
+cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
+cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes --filter TP53 --limit 20
+cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 113" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 113" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- helpers list
+cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
+cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
+cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter "^bla$" --limit 20
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -223,8 +262,8 @@ Global CLI options:
 - `--progress` or `--progress-stderr`: print live progress events to `stderr`
 - `--progress-stdout`: print live progress events to `stdout`
 
-Current progress events include TFBS annotation updates with per-motif and total
-percentages.
+Current progress events include TFBS annotation updates and genome-prepare
+updates (download/index phases).
 When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
 
 `state-summary` output includes:
@@ -253,6 +292,12 @@ Rendering export commands:
   - Calls engine operation `RenderSequenceSvg`.
 - `render-lineage-svg OUTPUT.svg`
   - Calls engine operation `RenderLineageSvg`.
+- `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+  - Calls engine operation `RenderPoolGelSvg`.
+  - `IDS` is a comma-separated sequence-id list.
+  - Optional `--ladders` overrides auto ladder selection.
+  - If `--ladders` is omitted, engine auto-selects one or two ladders based on
+    pool bp range.
 
 Resource sync commands:
 
@@ -267,6 +312,36 @@ Resource sync commands:
   - Default output: `data/resources/jaspar.motifs.json`.
   - `ExtractAnchoredRegion` can resolve TF motifs by ID/name from this local registry.
   - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
+
+Genome convenience commands:
+
+- `genomes list [--catalog PATH]`
+  - Lists available genomes in the catalog.
+- `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+  - Shows whether the genome cache is prepared/indexed.
+- `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]`
+  - Lists indexed genes from prepared cache (paged by `--limit`/`--offset`).
+- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+  - Runs engine `PrepareGenome`.
+- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - Runs engine `ExtractGenomeRegion`.
+- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - Runs engine `ExtractGenomeGene`.
+
+Helper convenience commands:
+
+- `helpers list [--catalog PATH]`
+  - Same behavior as `genomes list`, but defaults to `assets/helper_genomes.json`.
+- `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes status`, with helper-catalog default.
+- `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]`
+  - Same behavior as `genomes genes`, with helper-catalog default.
+- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes prepare`, with helper-catalog default.
+- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes extract-region`, with helper-catalog default.
+- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes extract-gene`, with helper-catalog default.
 
 Recommended suffixes:
 
@@ -423,6 +498,18 @@ Render lineage SVG (engine operation):
 {"RenderLineageSvg":{"path":"lineage.svg"}}
 ```
 
+Render pool gel SVG with ladder selection (engine operation):
+
+```json
+{"RenderPoolGelSvg":{"inputs":["frag_1","frag_2","frag_3"],"path":"digest.gel.svg","ladders":["NEB 100bp DNA Ladder","NEB 1kb DNA Ladder"]}}
+```
+
+Render pool gel SVG with automatic ladder selection:
+
+```json
+{"RenderPoolGelSvg":{"inputs":["frag_1","frag_2","frag_3"],"path":"digest.auto.gel.svg","ladders":null}}
+```
+
 Prepare a whole reference genome once (download/copy sequence + annotation and
 build local FASTA index):
 
@@ -437,15 +524,29 @@ coordinates):
 {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 113","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ```
 
+Extract by gene query (name/id) from the prepared gene index:
+
+```json
+{"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 113","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+```
+
 Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
   location.
+- A catalog entry can either define explicit URLs (`sequence_remote` /
+  `annotations_remote`) or define `ncbi_assembly_accession` +
+  `ncbi_assembly_name` to derive direct NCBI GenBank/RefSeq FTP downloads.
+- Helper/vector entries can also define `genbank_accession`; when explicit
+  URLs are absent, GENtle derives direct NCBI EFetch sources
+  (`rettype=fasta` + `rettype=gbwithparts`) for one-time prepare/index.
 - `ExtractGenomeRegion` expects the genome to have been prepared already.
+- `ExtractGenomeGene` also expects prepared cache and gene index.
 - If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix
   differences (`1` vs `chr1`).
+- For `ExtractGenomeGene`, `occurrence` is 1-based among matching records.
 
 Available `target` values:
 
@@ -470,8 +571,6 @@ Save as GenBank:
 ### Current limitations in the new operation layer
 
 - `import-pool` is currently a CLI utility command and not yet an engine operation.
-- `gentle_cli` does not yet expose dedicated `genomes ...` convenience
-  subcommands; genome workflows currently use `op`/`workflow` JSON.
 
 ## Error behavior
 
