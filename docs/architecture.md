@@ -284,6 +284,7 @@ Notes from current code:
 - GUI now exposes dedicated controls for `PrepareGenome` and
   `ExtractGenomeRegion` from the main-window menu as separate dialogs:
   `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
+  `Prepare Reference Genome...` is rendered in its own viewport window.
 - GUI now exposes a third reference-genome dialog, `Prepared References...`,
   to inspect prepared installations (paths, readiness flags, source types,
   and checksum fingerprints).

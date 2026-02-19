@@ -416,22 +416,34 @@ impl GenomeCatalog {
         let fasta_index_path = install_dir.join("sequence.fa.fai");
         let gene_index_path = install_dir.join("genes.json");
 
-        materialize_source_with_progress(&sequence_source, &sequence_path, |done, total| {
+        if non_empty_regular_file_exists(&sequence_path) {
+            let bytes = fs::metadata(&sequence_path).map(|meta| meta.len()).unwrap_or(0);
             on_progress(PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
-                phase: "download_sequence".to_string(),
-                item: sequence_source.clone(),
-                bytes_done: done,
-                bytes_total: total,
-                percent: total.and_then(|t| {
-                    if t == 0 {
-                        None
-                    } else {
-                        Some((done as f64 / t as f64) * 100.0)
-                    }
-                }),
+                phase: "reuse_sequence".to_string(),
+                item: canonical_or_display(&sequence_path),
+                bytes_done: bytes,
+                bytes_total: Some(bytes),
+                percent: Some(100.0),
             });
-        })?;
+        } else {
+            materialize_source_with_progress(&sequence_source, &sequence_path, |done, total| {
+                on_progress(PrepareGenomeProgress {
+                    genome_id: genome_id.to_string(),
+                    phase: "download_sequence".to_string(),
+                    item: sequence_source.clone(),
+                    bytes_done: done,
+                    bytes_total: total,
+                    percent: total.and_then(|t| {
+                        if t == 0 {
+                            None
+                        } else {
+                            Some((done as f64 / t as f64) * 100.0)
+                        }
+                    }),
+                });
+            })?;
+        }
         materialize_source_with_progress(&annotation_source, &annotation_path, |done, total| {
             on_progress(PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
@@ -1736,6 +1748,12 @@ where
     Ok(())
 }
 
+fn non_empty_regular_file_exists(path: &Path) -> bool {
+    fs::metadata(path)
+        .map(|meta| meta.is_file() && meta.len() > 0)
+        .unwrap_or(false)
+}
+
 fn build_fasta_index_with_progress<F>(
     fasta_path: &Path,
     index_path: &Path,
@@ -2776,6 +2794,59 @@ mod tests {
 
         let err = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap_err();
         assert!(err.contains("annotation"));
+    }
+
+    #[test]
+    fn test_prepare_reuses_downloaded_sequence_when_annotation_path_is_invalid() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta_gz = root.join("toy.fa.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\n");
+
+        let cache_dir = root.join("cache");
+        let missing_annotation = root.join("missing_annotation.gtf");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_remote": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            missing_annotation.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let mut first_phases: Vec<String> = vec![];
+        let first_err = catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                first_phases.push(progress.phase);
+            })
+            .unwrap_err();
+        assert!(first_err.contains("missing_annotation.gtf"));
+        assert!(first_phases.iter().any(|phase| phase == "download_sequence"));
+
+        let sequence_path = cache_dir.join("toygenome").join("sequence.fa");
+        assert!(sequence_path.exists());
+
+        let mut second_phases: Vec<String> = vec![];
+        let second_err = catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                second_phases.push(progress.phase);
+            })
+            .unwrap_err();
+        assert!(second_err.contains("missing_annotation.gtf"));
+        assert!(!second_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
+        assert!(second_phases.iter().any(|phase| phase == "reuse_sequence"));
     }
 
     #[test]
