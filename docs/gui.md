@@ -359,8 +359,9 @@ TFBS display reduction (no recomputation needed):
 
 ## Reference Genomes (Main Menu)
 
-Reference-genome workflow is split into two separate dialogs (masks) in the
-main project window menu:
+Reference-genome workflow is split into separate dialogs (masks) launched from
+the main project window menu. `Prepare Reference Genome...` opens as its own
+standalone window/viewport (not embedded in the project canvas):
 
 - `File -> Prepare Reference Genome...` (or `Genome -> Prepare Reference Genome...`)
 - `File -> Prepared References...` (or `Genome -> Prepared References...`)
@@ -377,6 +378,9 @@ Recommended flow:
    - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
    - this runs in background, shows live progress, and builds local FASTA index
+   - if a previous attempt already downloaded `sequence.fa` but annotation
+     resolution fails (for example wrong GTF path), the next retry reuses the
+     local FASTA instead of downloading it again
 2. Extract a region when needed:
    - open `Retrieve Genome Sequence...`
    - select the same `genome` from dropdown

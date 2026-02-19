@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
@@ -43,6 +43,13 @@ const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+const GENOME_PREPARE_STEP_LABELS: [&str; 5] = [
+    "Resolve/download sequence",
+    "Resolve/download annotation",
+    "Build FASTA index",
+    "Build gene index",
+    "Finalize installation",
+];
 
 pub fn request_open_help_from_native_menu() {
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
@@ -222,6 +229,10 @@ impl Default for GENtleApp {
 impl GENtleApp {
     fn help_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Help Viewport")
+    }
+
+    fn prepare_genome_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Prepare Genome Viewport")
     }
 
     fn configuration_viewport_id() -> ViewportId {
@@ -1564,127 +1575,151 @@ impl GENtleApp {
         }
     }
 
+    fn render_reference_genome_prepare_contents(&mut self, ui: &mut Ui) {
+        self.refresh_genome_catalog_list();
+        ui.label("Download and index a reference genome once.");
+        ui.horizontal(|ui| {
+            ui.label("catalog");
+            ui.text_edit_singleline(&mut self.genome_catalog_path);
+            if ui.button("Browse...").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+                {
+                    self.genome_catalog_path = path.display().to_string();
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("cache_dir");
+            ui.text_edit_singleline(&mut self.genome_cache_dir);
+            if ui.button("Browse...").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.genome_cache_dir = path.display().to_string();
+                }
+            }
+        });
+        if !self.genome_catalog_error.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                format!("Catalog error: {}", self.genome_catalog_error),
+            );
+        }
+        let preparable_genomes = match self.unprepared_genomes_for_prepare_dialog() {
+            Ok(names) => names,
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Prepared-state check error: {e}"),
+                );
+                vec![]
+            }
+        };
+        let selection_changed =
+            Self::choose_genome_from_catalog(ui, &mut self.genome_id, &preparable_genomes);
+        if selection_changed {
+            self.invalidate_genome_genes();
+        }
+        match self.selected_genome_source_plan() {
+            Ok(Some(plan)) => {
+                ui.small(format!(
+                    "sources: sequence={} | annotation={}",
+                    plan.sequence_source_type, plan.annotation_source_type
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Source-plan error: {e}"),
+                );
+            }
+        }
+        if preparable_genomes.is_empty() {
+            ui.label("All genomes in this catalog are already prepared.");
+        }
+        let selected_preparable = preparable_genomes.iter().any(|n| n == &self.genome_id);
+        if !self.genome_id.trim().is_empty() && !selected_preparable {
+            ui.label("Selected genome is already prepared and cannot be selected here.");
+        }
+        let running = self.genome_prepare_task.is_some();
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(
+                    !running && selected_preparable,
+                    egui::Button::new("Prepare Genome"),
+                )
+                .clicked()
+            {
+                self.start_prepare_reference_genome();
+            }
+            if ui.button("Close").clicked() {
+                self.show_reference_genome_prepare_dialog = false;
+            }
+        });
+        if let Some(progress) = &self.genome_prepare_progress {
+            let fraction = progress
+                .percent
+                .map(|p| (p / 100.0) as f32)
+                .or_else(|| {
+                    progress.bytes_total.and_then(|total| {
+                        if total == 0 {
+                            None
+                        } else {
+                            Some((progress.bytes_done as f32 / total as f32).clamp(0.0, 1.0))
+                        }
+                    })
+                })
+                .unwrap_or(0.0);
+            ui.add(
+                egui::ProgressBar::new(fraction)
+                    .show_percentage()
+                    .text(format!("{}: {}", progress.phase, progress.item)),
+            );
+            let bytes_total = progress
+                .bytes_total
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| "?".to_string());
+            ui.label(format!("bytes: {} / {}", progress.bytes_done, bytes_total));
+        }
+        if !self.genome_prepare_status.is_empty() {
+            ui.separator();
+            ui.monospace(&self.genome_prepare_status);
+        }
+    }
+
     fn render_reference_genome_prepare_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_reference_genome_prepare_dialog {
             return;
         }
-        self.refresh_genome_catalog_list();
-        let mut open = self.show_reference_genome_prepare_dialog;
-        egui::Window::new("Prepare Reference Genome")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Download and index a reference genome once.");
-                ui.horizontal(|ui| {
-                    ui.label("catalog");
-                    ui.text_edit_singleline(&mut self.genome_catalog_path);
-                    if ui.button("Browse...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("JSON", &["json"])
-                            .pick_file()
-                        {
-                            self.genome_catalog_path = path.display().to_string();
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("cache_dir");
-                    ui.text_edit_singleline(&mut self.genome_cache_dir);
-                    if ui.button("Browse...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.genome_cache_dir = path.display().to_string();
-                        }
-                    }
-                });
-                if !self.genome_catalog_error.is_empty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(190, 70, 70),
-                        format!("Catalog error: {}", self.genome_catalog_error),
-                    );
-                }
-                let preparable_genomes = match self.unprepared_genomes_for_prepare_dialog() {
-                    Ok(names) => names,
-                    Err(e) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 70, 70),
-                            format!("Prepared-state check error: {e}"),
-                        );
-                        vec![]
-                    }
-                };
-                let selection_changed =
-                    Self::choose_genome_from_catalog(ui, &mut self.genome_id, &preparable_genomes);
-                if selection_changed {
-                    self.invalidate_genome_genes();
-                }
-                match self.selected_genome_source_plan() {
-                    Ok(Some(plan)) => {
-                        ui.small(format!(
-                            "sources: sequence={} | annotation={}",
-                            plan.sequence_source_type, plan.annotation_source_type
-                        ));
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 70, 70),
-                            format!("Source-plan error: {e}"),
-                        );
-                    }
-                }
-                if preparable_genomes.is_empty() {
-                    ui.label("All genomes in this catalog are already prepared.");
-                }
-                let selected_preparable = preparable_genomes.iter().any(|n| n == &self.genome_id);
-                if !self.genome_id.trim().is_empty() && !selected_preparable {
-                    ui.label("Selected genome is already prepared and cannot be selected here.");
-                }
-                let running = self.genome_prepare_task.is_some();
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            !running && selected_preparable,
-                            egui::Button::new("Prepare Genome"),
-                        )
-                        .clicked()
-                    {
-                        self.start_prepare_reference_genome();
-                    }
-                });
-                if let Some(progress) = &self.genome_prepare_progress {
-                    let fraction = progress
-                        .percent
-                        .map(|p| (p / 100.0) as f32)
-                        .or_else(|| {
-                            progress.bytes_total.and_then(|total| {
-                                if total == 0 {
-                                    None
-                                } else {
-                                    Some(
-                                        (progress.bytes_done as f32 / total as f32).clamp(0.0, 1.0),
-                                    )
-                                }
-                            })
-                        })
-                        .unwrap_or(0.0);
-                    ui.add(
-                        egui::ProgressBar::new(fraction)
-                            .show_percentage()
-                            .text(format!("{}: {}", progress.phase, progress.item)),
-                    );
-                    let bytes_total = progress
-                        .bytes_total
-                        .map(|b| b.to_string())
-                        .unwrap_or_else(|| "?".to_string());
-                    ui.label(format!("bytes: {} / {}", progress.bytes_done, bytes_total));
-                }
-                if !self.genome_prepare_status.is_empty() {
-                    ui.separator();
-                    ui.monospace(&self.genome_prepare_status);
-                }
+
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Prepare Reference Genome")
+            .with_inner_size([760.0, 560.0])
+            .with_min_inner_size([520.0, 360.0]);
+        ctx.show_viewport_immediate(Self::prepare_genome_viewport_id(), builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_reference_genome_prepare_dialog;
+                egui::Window::new("Prepare Reference Genome")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(760.0, 560.0))
+                    .show(ctx, |ui| {
+                        self.render_reference_genome_prepare_contents(ui);
+                    });
+                self.show_reference_genome_prepare_dialog = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.render_reference_genome_prepare_contents(ui);
             });
-        self.show_reference_genome_prepare_dialog = open;
+
+            if ctx.input(|i| i.viewport().close_requested()) {
+                self.show_reference_genome_prepare_dialog = false;
+            }
+        });
     }
 
     fn render_reference_genome_retrieve_dialog(&mut self, ctx: &egui::Context) {
