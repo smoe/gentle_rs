@@ -57,7 +57,7 @@ impl SyntheticMoleculeType {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DNAoverhang {
     pub forward_3: DNAstring,
     pub forward_5: DNAstring,
@@ -96,6 +96,68 @@ impl fmt::Display for DNAoverhang {
         write!(f, "{}\n{}", line1, line2)
     }
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SequenceEqualityError {
+    BiotypeMismatch {
+        left: Option<String>,
+        right: Option<String>,
+    },
+    TopologyMismatch {
+        left_circular: bool,
+        right_circular: bool,
+    },
+    OverhangMismatch {
+        left: DNAoverhang,
+        right: DNAoverhang,
+    },
+    LengthMismatch {
+        left: usize,
+        right: usize,
+    },
+    BaseMismatch {
+        zero_based_position: usize,
+        left: u8,
+        right: u8,
+    },
+}
+
+impl fmt::Display for SequenceEqualityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SequenceEqualityError::BiotypeMismatch { left, right } => write!(
+                f,
+                "Molecule/biotype mismatch (left={:?}, right={:?})",
+                left, right
+            ),
+            SequenceEqualityError::TopologyMismatch {
+                left_circular,
+                right_circular,
+            } => write!(
+                f,
+                "Topology mismatch (left_circular={}, right_circular={})",
+                left_circular, right_circular
+            ),
+            SequenceEqualityError::OverhangMismatch { left, right } => {
+                write!(f, "Overhang mismatch (left='{}', right='{}')", left, right)
+            }
+            SequenceEqualityError::LengthMismatch { left, right } => {
+                write!(f, "Length mismatch (left={}, right={})", left, right)
+            }
+            SequenceEqualityError::BaseMismatch {
+                zero_based_position,
+                left,
+                right,
+            } => write!(
+                f,
+                "Base mismatch at position {} (left='{}', right='{}')",
+                zero_based_position, *left as char, *right as char
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SequenceEqualityError {}
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -509,6 +571,56 @@ impl DNAsequence {
         &self.overhang
     }
 
+    pub fn assert_sequence_equality(&self, other: &Self) -> Result<(), SequenceEqualityError> {
+        let left_biotype = self.molecule_type().map(ToString::to_string);
+        let right_biotype = other.molecule_type().map(ToString::to_string);
+        if left_biotype != right_biotype {
+            return Err(SequenceEqualityError::BiotypeMismatch {
+                left: left_biotype,
+                right: right_biotype,
+            });
+        }
+
+        if self.is_circular() != other.is_circular() {
+            return Err(SequenceEqualityError::TopologyMismatch {
+                left_circular: self.is_circular(),
+                right_circular: other.is_circular(),
+            });
+        }
+
+        if self.overhang != other.overhang {
+            return Err(SequenceEqualityError::OverhangMismatch {
+                left: self.overhang.clone(),
+                right: other.overhang.clone(),
+            });
+        }
+
+        let left = self.forward();
+        let right = other.forward();
+
+        if left.len() != right.len() {
+            return Err(SequenceEqualityError::LengthMismatch {
+                left: left.len(),
+                right: right.len(),
+            });
+        }
+
+        if let Some((zero_based_position, (left, right))) = left
+            .iter()
+            .zip(right.iter())
+            .enumerate()
+            .find(|(_, (l, r))| l != r)
+        {
+            return Err(SequenceEqualityError::BaseMismatch {
+                zero_based_position,
+                left: *left,
+                right: *right,
+            });
+        }
+
+        Ok(())
+    }
+
     pub fn is_circular(&self) -> bool {
         self.seq.topology == Topology::Circular
     }
@@ -831,6 +943,41 @@ mod tests {
         assert_eq!(dna.overhang().reverse_5, b"CTAG".to_vec());
         assert_eq!(dna.overhang().forward_3, b"".to_vec());
         assert_eq!(dna.overhang().reverse_3, b"".to_vec());
+    }
+
+    #[test]
+    fn test_sequence_equality_success_for_identical_synthetic_sequence() {
+        let record = fasta::Record::with_attrs(
+            "oligo_ds",
+            Some("molecule=dsdna f5=gatc r5=ctag topology=linear"),
+            b"ATGCATGC",
+        );
+        let left = DNAsequence::from_fasta_record(&record);
+        let right = DNAsequence::from_fasta_record(&record);
+        assert_eq!(left.assert_sequence_equality(&right), Ok(()));
+    }
+
+    #[test]
+    fn test_sequence_equality_reports_biotype_mismatch() {
+        let dsdna = DNAsequence::from_fasta_record(&fasta::Record::with_attrs(
+            "ds",
+            Some("molecule=dsdna"),
+            b"ATGC",
+        ));
+        let ssdna = DNAsequence::from_fasta_record(&fasta::Record::with_attrs(
+            "ss",
+            Some("molecule=ssdna"),
+            b"ATGC",
+        ));
+
+        let err = dsdna.assert_sequence_equality(&ssdna).unwrap_err();
+        assert_eq!(
+            err,
+            SequenceEqualityError::BiotypeMismatch {
+                left: Some("dsDNA".to_string()),
+                right: Some("ssDNA".to_string())
+            }
+        );
     }
 
     #[test]

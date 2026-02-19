@@ -33,6 +33,13 @@ pub enum ShellCommand {
         output: String,
         ladders: Option<Vec<String>>,
     },
+    LaddersList {
+        name_filter: Option<String>,
+    },
+    LaddersExport {
+        output: String,
+        name_filter: Option<String>,
+    },
     ExportPool {
         inputs: Vec<String>,
         output: String,
@@ -52,6 +59,10 @@ pub enum ShellCommand {
         output: Option<String>,
     },
     ReferenceList {
+        helper_mode: bool,
+        catalog_path: Option<String>,
+    },
+    ReferenceValidateCatalog {
         helper_mode: bool,
         catalog_path: Option<String>,
     },
@@ -169,6 +180,25 @@ impl ShellCommand {
                     inputs.len()
                 )
             }
+            Self::LaddersList { name_filter } => {
+                let filter = name_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                format!("inspect DNA ladders (filter={filter})")
+            }
+            Self::LaddersExport {
+                output,
+                name_filter,
+            } => {
+                let filter = name_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                format!("export DNA ladders to '{output}' (filter={filter})")
+            }
             Self::ExportPool {
                 inputs,
                 output,
@@ -215,6 +245,16 @@ impl ShellCommand {
                     .clone()
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 format!("list {label} from catalog '{catalog}'")
+            }
+            Self::ReferenceValidateCatalog {
+                helper_mode,
+                catalog_path,
+            } => {
+                let label = if *helper_mode { "helpers" } else { "genomes" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                format!("validate {label} catalog '{catalog}'")
             }
             Self::ReferenceStatus {
                 helper_mode,
@@ -337,17 +377,21 @@ save-project PATH\n\
 render-svg SEQ_ID linear|circular OUTPUT.svg\n\
 render-lineage-svg OUTPUT.svg\n\
 render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\
+ladders list [--filter TEXT]\n\
+ladders export OUTPUT.json [--filter TEXT]\n\
 export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n\
 import-pool INPUT.pool.gentle.json [PREFIX]\n\
 resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]\n\
 resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]\n\
 genomes list [--catalog PATH]\n\
+genomes validate-catalog [--catalog PATH]\n\
 genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
 genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
 genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers list [--catalog PATH]\n\
+helpers validate-catalog [--catalog PATH]\n\
 helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
 helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
 helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
@@ -561,6 +605,26 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 }
             }
             Ok(ShellCommand::ReferenceList {
+                helper_mode,
+                catalog_path,
+            })
+        }
+        "validate-catalog" => {
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} validate-catalog"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceValidateCatalog {
                 helper_mode,
                 catalog_path,
             })
@@ -825,7 +889,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, status, genes, prepare, extract-region, extract-gene)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, extract-region, extract-gene)"
         )),
     }
 }
@@ -923,6 +987,65 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 output,
                 ladders,
             })
+        }
+        "ladders" => {
+            if tokens.len() < 2 {
+                return Err("ladders requires a subcommand: list or export".to_string());
+            }
+            match tokens[1].as_str() {
+                "list" => {
+                    let mut name_filter: Option<String> = None;
+                    let mut idx = 2usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--filter" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --filter".to_string());
+                                }
+                                name_filter = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!("Unknown argument '{other}' for ladders list"));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::LaddersList { name_filter })
+                }
+                "export" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "ladders export requires: OUTPUT.json [--filter TEXT]".to_string()
+                        );
+                    }
+                    let output = tokens[2].clone();
+                    let mut name_filter: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--filter" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --filter".to_string());
+                                }
+                                name_filter = Some(tokens[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown argument '{other}' for ladders export"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::LaddersExport {
+                        output,
+                        name_filter,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown ladders subcommand '{other}' (expected list or export)"
+                )),
+            }
         }
         "export-pool" => {
             if tokens.len() < 3 {
@@ -1200,6 +1323,26 @@ pub fn execute_shell_command(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::LaddersList { name_filter } => ShellRunResult {
+            state_changed: false,
+            output: serde_json::to_value(GentleEngine::inspect_dna_ladders(name_filter.as_deref()))
+                .map_err(|e| format!("Could not serialize DNA ladders catalog: {e}"))?,
+        },
+        ShellCommand::LaddersExport {
+            output,
+            name_filter,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExportDnaLadders {
+                    path: output.clone(),
+                    name_filter: name_filter.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::ExportPool {
             inputs,
             output,
@@ -1305,6 +1448,29 @@ pub fn execute_shell_command(
                 output: json!({
                     "catalog_path": effective_catalog,
                     "genome_count": genomes.len(),
+                    "genomes": genomes,
+                }),
+            }
+        }
+        ShellCommand::ReferenceValidateCatalog {
+            helper_mode,
+            catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
+                .map_err(|e| e.to_string())?;
+            for genome_id in &genomes {
+                GentleEngine::describe_reference_genome_sources(resolved_catalog, genome_id, None)
+                    .map_err(|e| e.to_string())?;
+            }
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "valid": true,
+                    "genome_count": genomes.len(),
+                    "validated_sources": genomes.len(),
                     "genomes": genomes,
                 }),
             }
@@ -1500,6 +1666,8 @@ pub fn execute_shell_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn parse_workflow_payload_keeps_whitespace() {
@@ -1527,6 +1695,33 @@ mod tests {
                 assert_eq!(inputs, vec!["a".to_string(), "b".to_string()]);
                 assert_eq!(output, "out.svg".to_string());
                 assert_eq!(ladders, Some(vec!["1kb".to_string(), "100bp".to_string()]));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_ladders_list_with_filter() {
+        let cmd = parse_shell_line("ladders list --filter NEB").expect("parse command");
+        match cmd {
+            ShellCommand::LaddersList { name_filter } => {
+                assert_eq!(name_filter, Some("NEB".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_ladders_export_with_filter() {
+        let cmd =
+            parse_shell_line("ladders export ladders.json --filter ruler").expect("parse command");
+        match cmd {
+            ShellCommand::LaddersExport {
+                output,
+                name_filter,
+            } => {
+                assert_eq!(output, "ladders.json".to_string());
+                assert_eq!(name_filter, Some("ruler".to_string()));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -1613,5 +1808,61 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_genomes_validate_catalog() {
+        let cmd = parse_shell_line("genomes validate-catalog --catalog assets/genomes.json")
+            .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceValidateCatalog {
+                helper_mode,
+                catalog_path,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(catalog_path, Some("assets/genomes.json".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_genomes_validate_catalog_reports_valid() {
+        let td = tempdir().expect("tempdir");
+        let fasta = td.path().join("toy.fa");
+        let gtf = td.path().join("toy.gtf");
+        let cache = td.path().join("cache");
+        fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .expect("write gtf");
+        let catalog = td.path().join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache.display()
+        );
+        fs::write(&catalog, catalog_json).expect("write catalog");
+        let mut engine = GentleEngine::new();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceValidateCatalog {
+                helper_mode: false,
+                catalog_path: Some(catalog.to_string_lossy().to_string()),
+            },
+        )
+        .expect("execute validate-catalog");
+        assert!(!out.state_changed);
+        assert_eq!(out.output["valid"].as_bool(), Some(true));
+        assert_eq!(out.output["genome_count"].as_u64(), Some(1));
     }
 }

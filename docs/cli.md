@@ -95,32 +95,38 @@ Exit methods:
    - Returns shared-engine capabilities.
 5. `state_summary(state)`
    - Returns normalized sequence/container/display summary.
-6. `apply_operation(state, op)`
+6. `inspect_dna_ladders(name_filter)`
+   - Returns built-in ladder catalog as structured JSON.
+   - `name_filter` is optional (`null`/`""` means all ladders).
+7. `export_dna_ladders(path, name_filter)`
+   - Writes ladder catalog JSON to `path`.
+   - Optional `name_filter` limits exported ladders by case-insensitive name match.
+8. `apply_operation(state, op)`
    - Applies one engine operation to a project state.
    - `op` may be a JS object or JSON string.
    - Returns `{ state, result }`.
-7. `apply_workflow(state, workflow)`
+9. `apply_workflow(state, workflow)`
    - Applies a workflow to a project state.
    - `workflow` may be a JS object or JSON string.
    - Returns `{ state, results }`.
-8. `sync_rebase(input, output, commercial_only)`
+10. `sync_rebase(input, output, commercial_only)`
    - Parses REBASE/Bairoch input and writes a REBASE resource JSON snapshot.
    - `output` is optional (`null`/`""` uses default runtime resource path).
-9. `sync_jaspar(input, output)`
+11. `sync_jaspar(input, output)`
    - Parses JASPAR PFM text and writes motif resource JSON snapshot.
    - `output` is optional (`null`/`""` uses default runtime resource path).
-10. `list_reference_genomes(catalog_path)`
+12. `list_reference_genomes(catalog_path)`
     - Lists genome IDs from the genome catalog.
     - `catalog_path` is optional (`null`/`""` uses default catalog).
-11. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+13. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-12. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+14. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-13. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
+15. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-14. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+16. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-15. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+17. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 
 ### JavaScript example
@@ -162,29 +168,33 @@ Exit methods:
    - Returns shared-engine capabilities.
 5. `state_summary(project)`
    - Returns normalized sequence/container/display summary.
-6. `apply_operation(project, op)`
+6. `inspect_dna_ladders([name_filter])`
+   - Returns built-in ladder catalog as structured table.
+7. `export_dna_ladders(output_json, [name_filter])`
+   - Writes ladder catalog JSON to disk.
+8. `apply_operation(project, op)`
    - Applies one engine operation; `op` can be Lua table or JSON string.
    - Returns table with `state` and `result`.
-7. `apply_workflow(project, workflow)`
+9. `apply_workflow(project, workflow)`
    - Applies workflow; `workflow` can be Lua table or JSON string.
    - Returns table with `state` and `results`.
-8. `sync_rebase(input, output, commercial_only)`
+10. `sync_rebase(input, output, commercial_only)`
    - Parses REBASE/Bairoch input and writes a REBASE resource JSON snapshot.
    - `output` and `commercial_only` are optional.
-9. `sync_jaspar(input, output)`
+11. `sync_jaspar(input, output)`
    - Parses JASPAR PFM text and writes motif resource JSON snapshot.
    - `output` is optional.
-10. `list_reference_genomes(catalog_path)`
+12. `list_reference_genomes(catalog_path)`
     - Lists genome IDs from the genome catalog.
-11. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+13. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-12. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+14. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-13. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
+15. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-14. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+16. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-15. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+17. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 
 ### Lua example
@@ -252,6 +262,10 @@ cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg --ladders "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"
+cargo run --bin gentle_cli -- ladders list
+cargo run --bin gentle_cli -- ladders list --filter NEB
+cargo run --bin gentle_cli -- ladders export dna_ladders.snapshot.json
+cargo run --bin gentle_cli -- ladders export dna_ladders.neb.json --filter NEB
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
@@ -261,12 +275,14 @@ cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
+cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 113" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 113" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- helpers list
+cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
@@ -309,17 +325,21 @@ Shared shell command:
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
     - `render-lineage-svg OUTPUT.svg`
     - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+    - `ladders list [--filter TEXT]`
+    - `ladders export OUTPUT.json [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `genomes list [--catalog PATH]`
+    - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
+    - `helpers validate-catalog [--catalog PATH]`
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
     - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -352,6 +372,15 @@ Rendering export commands:
   - If `--ladders` is omitted, engine auto-selects one or two ladders based on
     pool bp range.
 
+DNA ladder catalog commands:
+
+- `ladders list [--filter TEXT]`
+  - Returns engine-inspected ladder catalog (`schema`, `ladder_count`, `ladders`).
+  - Optional `--filter` keeps only ladders whose names contain `TEXT` (case-insensitive).
+- `ladders export OUTPUT.json [--filter TEXT]`
+  - Calls engine operation `ExportDnaLadders`.
+  - Writes structured ladder catalog JSON to disk.
+
 Resource sync commands:
 
 - `resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]`
@@ -370,6 +399,9 @@ Genome convenience commands:
 
 - `genomes list [--catalog PATH]`
   - Lists available genomes in the catalog.
+- `genomes validate-catalog [--catalog PATH]`
+  - Verifies catalog JSON schema/entry rules and that each entry resolves usable
+    sequence/annotation source definitions.
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Shows whether the genome cache is prepared/indexed.
   - Also reports resolved source details: `sequence_source_type`,
@@ -389,6 +421,8 @@ Helper convenience commands:
 
 - `helpers list [--catalog PATH]`
   - Same behavior as `genomes list`, but defaults to `assets/helper_genomes.json`.
+- `helpers validate-catalog [--catalog PATH]`
+  - Same behavior as `genomes validate-catalog`, with helper-catalog default.
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes status`, with helper-catalog default.
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
@@ -542,6 +576,13 @@ Export selected pool members (engine operation):
 {"ExportPool":{"inputs":["frag_1","frag_2"],"path":"digest.pool.gentle.json","pool_id":"digest_1","human_id":"BamHI+EcoRI digest"}}
 ```
 
+Export built-in DNA ladder catalog (engine operation):
+
+```json
+{"ExportDnaLadders":{"path":"dna_ladders.snapshot.json","name_filter":null}}
+{"ExportDnaLadders":{"path":"dna_ladders.neb.json","name_filter":"NEB"}}
+```
+
 Render sequence SVG (engine operation):
 
 ```json
@@ -591,6 +632,8 @@ Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
   location.
+- HTTP-based source downloads are resumable (Range requests with retry/backoff),
+  and completed installs persist SHA-1 checksums for sequence/annotation files.
 - A catalog entry can either define explicit URLs (`sequence_remote` /
   `annotations_remote`) or define `ncbi_assembly_accession` +
   `ncbi_assembly_name` to derive direct NCBI GenBank/RefSeq FTP downloads.
@@ -599,6 +642,9 @@ Notes:
   (`rettype=fasta` + `rettype=gbwithparts`) for one-time prepare/index.
 - `ExtractGenomeRegion` expects the genome to have been prepared already.
 - `ExtractGenomeGene` also expects prepared cache and gene index.
+- `ExtractGenomeRegion` and `ExtractGenomeGene` append extraction provenance
+  records into `ProjectState.metadata["provenance"]["genome_extractions"]`
+  (genome id, coordinates/query, source descriptors, and checksums when present).
 - If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix

@@ -1,9 +1,10 @@
 use crate::feature_location::feature_is_reverse;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -58,6 +59,10 @@ struct GenomeInstallManifest {
     sequence_source_type: Option<String>,
     #[serde(default)]
     annotation_source_type: Option<String>,
+    #[serde(default)]
+    sequence_sha1: Option<String>,
+    #[serde(default)]
+    annotation_sha1: Option<String>,
     sequence_path: String,
     annotation_path: String,
     fasta_index_path: String,
@@ -76,6 +81,29 @@ pub struct PrepareGenomeReport {
     pub annotation_source: Option<String>,
     pub sequence_source_type: Option<String>,
     pub annotation_source_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparedGenomeInspection {
+    pub genome_id: String,
+    pub install_dir: String,
+    pub manifest_path: String,
+    pub sequence_source_type: String,
+    pub annotation_source_type: String,
+    pub sequence_source: String,
+    pub annotation_source: String,
+    pub sequence_path: String,
+    pub annotation_path: String,
+    pub fasta_index_path: String,
+    pub gene_index_path: String,
+    pub sequence_sha1: Option<String>,
+    pub annotation_sha1: Option<String>,
+    pub sequence_present: bool,
+    pub annotation_present: bool,
+    pub fasta_index_ready: bool,
+    pub gene_index_ready: bool,
+    pub total_size_bytes: u64,
+    pub installed_at_unix_ms: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +238,69 @@ impl GenomeCatalog {
         Ok(gene_index_path.exists())
     }
 
+    pub fn inspect_prepared_genome(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Option<PreparedGenomeInspection>, String> {
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            return Ok(None);
+        }
+        let manifest = Self::load_manifest(&manifest_path)?;
+        let gene_index_path = manifest
+            .gene_index_path
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| install_dir.join("genes.json"));
+        let sequence_path = PathBuf::from(&manifest.sequence_path);
+        let annotation_path = PathBuf::from(&manifest.annotation_path);
+        let fasta_index_path = PathBuf::from(&manifest.fasta_index_path);
+
+        let sequence_present = sequence_path.exists();
+        let annotation_present = annotation_path.exists();
+        let fasta_index_ready = fasta_index_path.exists();
+        let gene_index_ready = gene_index_path.exists();
+        let total_size_bytes = [
+            &sequence_path,
+            &annotation_path,
+            &fasta_index_path,
+            &gene_index_path,
+        ]
+        .into_iter()
+        .filter_map(|path| fs::metadata(path).ok())
+        .map(|meta| meta.len())
+        .sum::<u64>();
+
+        Ok(Some(PreparedGenomeInspection {
+            genome_id: genome_id.to_string(),
+            install_dir: canonical_or_display(&install_dir),
+            manifest_path: canonical_or_display(&manifest_path),
+            sequence_source_type: manifest.sequence_source_type.clone().unwrap_or_else(|| {
+                classify_source_type_label(&manifest.sequence_source).to_string()
+            }),
+            annotation_source_type: manifest.annotation_source_type.clone().unwrap_or_else(|| {
+                classify_source_type_label(&manifest.annotation_source).to_string()
+            }),
+            sequence_source: manifest.sequence_source.clone(),
+            annotation_source: manifest.annotation_source.clone(),
+            sequence_path: manifest.sequence_path.clone(),
+            annotation_path: manifest.annotation_path.clone(),
+            fasta_index_path: manifest.fasta_index_path.clone(),
+            gene_index_path: canonical_or_display(&gene_index_path),
+            sequence_sha1: manifest.sequence_sha1.clone(),
+            annotation_sha1: manifest.annotation_sha1.clone(),
+            sequence_present,
+            annotation_present,
+            fasta_index_ready,
+            gene_index_ready,
+            total_size_bytes,
+            installed_at_unix_ms: manifest.installed_at_unix_ms,
+        }))
+    }
+
     pub fn prepare_genome_once(&self, genome_id: &str) -> Result<PrepareGenomeReport, String> {
         self.prepare_genome_once_with_cache(genome_id, None)
     }
@@ -242,6 +333,7 @@ impl GenomeCatalog {
         if manifest_path.exists() {
             let mut manifest = Self::load_manifest(&manifest_path)?;
             Self::validate_manifest_files(&manifest)?;
+            let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
             let gene_index_path = manifest
                 .gene_index_path
                 .as_ref()
@@ -269,6 +361,8 @@ impl GenomeCatalog {
                     },
                 )?;
                 manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
+                Self::write_manifest(&manifest_path, &manifest)?;
+            } else if checksum_changed {
                 Self::write_manifest(&manifest_path, &manifest)?;
             }
             on_progress(PrepareGenomeProgress {
@@ -397,6 +491,8 @@ impl GenomeCatalog {
             annotation_source_type: Some(
                 source_type_label(annotation_resolution.source_type).to_string(),
             ),
+            sequence_sha1: Some(compute_file_sha1(&sequence_path)?),
+            annotation_sha1: Some(compute_file_sha1(&annotation_path)?),
             sequence_path: canonical_or_display(&sequence_path),
             annotation_path: canonical_or_display(&annotation_path),
             fasta_index_path: canonical_or_display(&fasta_index_path),
@@ -675,6 +771,72 @@ fn canonical_or_display(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+fn compute_file_sha1(path: &Path) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|e| {
+        format!(
+            "Could not open '{}' to compute checksum: {e}",
+            path.display()
+        )
+    })?;
+    let mut hasher = Sha1::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| {
+            format!(
+                "Could not read '{}' while computing checksum: {e}",
+                path.display()
+            )
+        })?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn ensure_manifest_file_checksum(
+    slot: &mut Option<String>,
+    path: &Path,
+    label: &str,
+) -> Result<bool, String> {
+    let actual = compute_file_sha1(path)?;
+    match slot {
+        Some(expected) => {
+            let expected_norm = expected.trim().to_ascii_lowercase();
+            if expected_norm != actual {
+                return Err(format!(
+                    "Integrity check failed for {} file '{}': expected sha1 {}, got {}",
+                    label,
+                    path.display(),
+                    expected,
+                    actual
+                ));
+            }
+            Ok(false)
+        }
+        None => {
+            *slot = Some(actual);
+            Ok(true)
+        }
+    }
+}
+
+fn ensure_manifest_checksums(manifest: &mut GenomeInstallManifest) -> Result<bool, String> {
+    let mut changed = false;
+    changed |= ensure_manifest_file_checksum(
+        &mut manifest.sequence_sha1,
+        Path::new(&manifest.sequence_path),
+        "sequence",
+    )?;
+    changed |= ensure_manifest_file_checksum(
+        &mut manifest.annotation_sha1,
+        Path::new(&manifest.annotation_path),
+        "annotation",
+    )?;
+    Ok(changed)
 }
 
 fn sanitize_for_path(s: &str) -> String {
@@ -1164,6 +1326,277 @@ fn fetch_http_source_with_retry(source: &str) -> Result<reqwest::blocking::Respo
     ))
 }
 
+fn parse_content_range_header(value: &str) -> Option<(u64, Option<u64>)> {
+    let rest = value.trim().strip_prefix("bytes ")?;
+    let (range, total) = rest.split_once('/')?;
+    let (start, _end) = range.split_once('-')?;
+    let start = start.trim().parse::<u64>().ok()?;
+    let total = {
+        let trimmed = total.trim();
+        if trimmed == "*" {
+            None
+        } else {
+            Some(trimmed.parse::<u64>().ok()?)
+        }
+    };
+    Some((start, total))
+}
+
+fn append_path_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut out: OsString = path.as_os_str().to_os_string();
+    out.push(suffix);
+    PathBuf::from(out)
+}
+
+fn download_http_source_with_resume<F>(
+    source: &str,
+    download_path: &Path,
+    on_progress: &mut F,
+) -> Result<Option<u64>, String>
+where
+    F: FnMut(u64, Option<u64>),
+{
+    if let Some(parent) = download_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Could not create download directory '{}': {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let client = build_http_client()?;
+    let source_hint = if source.to_ascii_lowercase().contains("ncbi.nlm.nih.gov") {
+        " (NCBI source)"
+    } else {
+        ""
+    };
+    let mut resume_from = fs::metadata(download_path)
+        .ok()
+        .map(|m| m.len())
+        .unwrap_or(0);
+    let mut last_error: Option<String> = None;
+
+    for attempt in 1..=HTTP_RETRY_ATTEMPTS {
+        let mut request = client.get(source);
+        if resume_from > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+        }
+        let mut response = match request.send() {
+            Ok(response) => response,
+            Err(err) => {
+                let retryable = is_retryable_http_error(&err);
+                let msg = format!(
+                    "request failed at offset {} (attempt {}/{}): {}",
+                    resume_from, attempt, HTTP_RETRY_ATTEMPTS, err
+                );
+                last_error = Some(msg.clone());
+                if retryable && attempt < HTTP_RETRY_ATTEMPTS {
+                    let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    continue;
+                }
+                return Err(format!(
+                    "Could not download '{}'{}: {}{}",
+                    source,
+                    source_hint,
+                    msg,
+                    if retryable {
+                        " (retries exhausted)"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+        };
+
+        let status = response.status();
+        if !(status.is_success() || status == reqwest::StatusCode::PARTIAL_CONTENT) {
+            let retryable = is_retryable_http_status(status);
+            let msg = format!(
+                "HTTP {} at offset {} (attempt {}/{})",
+                status.as_u16(),
+                resume_from,
+                attempt,
+                HTTP_RETRY_ATTEMPTS
+            );
+            last_error = Some(msg.clone());
+            if retryable && attempt < HTTP_RETRY_ATTEMPTS {
+                let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                thread::sleep(Duration::from_millis(delay_ms));
+                continue;
+            }
+            return Err(format!(
+                "Could not download '{}'{}: {}{}",
+                source,
+                source_hint,
+                msg,
+                if retryable {
+                    " (retries exhausted)"
+                } else {
+                    ""
+                }
+            ));
+        }
+
+        let mut append = resume_from > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
+        let mut base_done = if append { resume_from } else { 0 };
+        let overall_total: Option<u64> = if append {
+            let parsed_range = response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_content_range_header);
+            if let Some((range_start, range_total)) = parsed_range {
+                if range_start != resume_from {
+                    // Server resumed from unexpected offset. Fall back to restart.
+                    append = false;
+                    base_done = 0;
+                    response.content_length()
+                } else {
+                    range_total.or_else(|| {
+                        response
+                            .content_length()
+                            .map(|v| range_start.saturating_add(v))
+                    })
+                }
+            } else {
+                response
+                    .content_length()
+                    .map(|v| base_done.saturating_add(v))
+            }
+        } else {
+            response.content_length()
+        };
+
+        let mut writer = if append {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(download_path)
+                .map_err(|e| {
+                    format!(
+                        "Could not open partial download '{}' for append: {e}",
+                        download_path.display()
+                    )
+                })?
+        } else {
+            OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(download_path)
+                .map_err(|e| {
+                    format!(
+                        "Could not create download file '{}': {e}",
+                        download_path.display()
+                    )
+                })?
+        };
+
+        on_progress(base_done, overall_total);
+        let mut transferred: u64 = 0;
+        let mut copy_error: Option<String> = None;
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            match response.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if let Err(e) = writer.write_all(&buf[..n]) {
+                        copy_error = Some(format!(
+                            "Could not write partial download '{}': {e}",
+                            download_path.display()
+                        ));
+                        break;
+                    }
+                    transferred = transferred.saturating_add(n as u64);
+                    on_progress(base_done.saturating_add(transferred), overall_total);
+                }
+                Err(e) => {
+                    copy_error = Some(format!("Could not read HTTP response body: {e}"));
+                    break;
+                }
+            }
+        }
+        if let Err(e) = writer.flush() {
+            copy_error = Some(format!(
+                "Could not flush partial download '{}': {e}",
+                download_path.display()
+            ));
+        }
+        let final_done = fs::metadata(download_path)
+            .ok()
+            .map(|m| m.len())
+            .unwrap_or_else(|| base_done.saturating_add(transferred));
+
+        if let Some(err) = copy_error {
+            let msg = format!(
+                "{} (offset {} attempt {}/{})",
+                err, final_done, attempt, HTTP_RETRY_ATTEMPTS
+            );
+            last_error = Some(msg.clone());
+            if attempt < HTTP_RETRY_ATTEMPTS {
+                resume_from = final_done;
+                let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                thread::sleep(Duration::from_millis(delay_ms));
+                continue;
+            }
+            return Err(format!(
+                "Could not download '{}'{}: {} (retries exhausted)",
+                source, source_hint, msg
+            ));
+        }
+
+        if let Some(total) = overall_total {
+            if final_done < total {
+                let msg = format!(
+                    "incomplete download for '{}' (got {} of {} bytes at attempt {}/{})",
+                    source, final_done, total, attempt, HTTP_RETRY_ATTEMPTS
+                );
+                last_error = Some(msg.clone());
+                if attempt < HTTP_RETRY_ATTEMPTS {
+                    resume_from = final_done;
+                    let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    continue;
+                }
+                return Err(format!(
+                    "Could not download '{}'{}: {} (retries exhausted)",
+                    source, source_hint, msg
+                ));
+            }
+            if final_done > total {
+                let msg = format!(
+                    "download size mismatch for '{}' (got {} bytes, expected {})",
+                    source, final_done, total
+                );
+                last_error = Some(msg.clone());
+                if attempt < HTTP_RETRY_ATTEMPTS {
+                    resume_from = 0;
+                    let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    continue;
+                }
+                return Err(format!(
+                    "Could not download '{}'{}: {}",
+                    source, source_hint, msg
+                ));
+            }
+            on_progress(total, Some(total));
+            return Ok(Some(total));
+        }
+
+        on_progress(final_done, Some(final_done));
+        return Ok(Some(final_done));
+    }
+
+    Err(format!(
+        "Could not download '{}'{}: {}",
+        source,
+        source_hint,
+        last_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
+}
+
 struct ProgressReader<R, F> {
     inner: R,
     callback: F,
@@ -1205,9 +1638,62 @@ where
             )
         })?;
     }
-    let mut tmp_os: OsString = destination.as_os_str().to_os_string();
-    tmp_os.push(".part");
-    let tmp_path = PathBuf::from(tmp_os);
+    let tmp_path = append_path_suffix(destination, ".part");
+
+    if is_http_source(source) {
+        if is_gzip_source(source) {
+            let compressed_path = append_path_suffix(destination, ".download.part");
+            let compressed_total =
+                download_http_source_with_resume(source, &compressed_path, &mut on_progress)?;
+            let compressed_size = compressed_total
+                .or_else(|| fs::metadata(&compressed_path).ok().map(|m| m.len()))
+                .unwrap_or(0);
+            on_progress(compressed_size, compressed_total.or(Some(compressed_size)));
+            let mut writer = BufWriter::new(
+                File::create(&tmp_path)
+                    .map_err(|e| format!("Could not create '{}': {e}", tmp_path.display()))?,
+            );
+            let mut decoder = GzDecoder::new(BufReader::new(
+                File::open(&compressed_path).map_err(|e| {
+                    format!(
+                        "Could not open downloaded gzip '{}' for decode: {e}",
+                        compressed_path.display()
+                    )
+                })?,
+            ));
+            if let Err(e) = std::io::copy(&mut decoder, &mut writer)
+                .map_err(|e| format!("Could not decompress '{source}': {e}"))
+            {
+                let _ = fs::remove_file(&tmp_path);
+                return Err(e);
+            }
+            writer
+                .flush()
+                .map_err(|e| format!("Could not flush '{}': {e}", tmp_path.display()))?;
+            fs::rename(&tmp_path, destination).map_err(|e| {
+                format!(
+                    "Could not finalize destination '{}': {e}",
+                    destination.display()
+                )
+            })?;
+            let _ = fs::remove_file(&compressed_path);
+            return Ok(());
+        }
+
+        let downloaded_total =
+            download_http_source_with_resume(source, &tmp_path, &mut on_progress)?;
+        let done = downloaded_total
+            .or_else(|| fs::metadata(&tmp_path).ok().map(|m| m.len()))
+            .unwrap_or(0);
+        on_progress(done, downloaded_total.or(Some(done)));
+        fs::rename(&tmp_path, destination).map_err(|e| {
+            format!(
+                "Could not finalize destination '{}': {e}",
+                destination.display()
+            )
+        })?;
+        return Ok(());
+    }
 
     let SourceReader {
         reader,
@@ -2213,10 +2699,39 @@ mod tests {
         let manifest =
             GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
                 .unwrap();
+        assert!(manifest
+            .sequence_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
+        assert!(manifest
+            .annotation_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
         let gene_index_path = manifest
             .gene_index_path
             .expect("gene index path should be set");
         assert!(Path::new(&gene_index_path).exists());
+
+        let inspection = catalog
+            .inspect_prepared_genome("ToyGenome", None)
+            .unwrap()
+            .expect("inspection should exist");
+        assert!(inspection.sequence_present);
+        assert!(inspection.annotation_present);
+        assert!(inspection.fasta_index_ready);
+        assert!(inspection.gene_index_ready);
+        assert!(inspection
+            .sequence_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
+        assert!(inspection
+            .annotation_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
 
         let second = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(second.reused_existing);

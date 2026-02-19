@@ -21,7 +21,8 @@ use crate::{
     enzymes,
     genomes::{
         GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
-        DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        PreparedGenomeInspection, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs,
@@ -61,6 +62,7 @@ pub struct GENtleApp {
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
+    show_reference_genome_inspector_dialog: bool,
     genome_catalog_path: String,
     genome_cache_dir: String,
     genome_id: String,
@@ -128,6 +130,7 @@ impl Default for GENtleApp {
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
+            show_reference_genome_inspector_dialog: false,
             genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
             genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
             genome_id: "Human GRCh38 Ensembl 113".to_string(),
@@ -571,6 +574,10 @@ impl GENtleApp {
         self.show_reference_genome_retrieve_dialog = true;
     }
 
+    fn open_reference_genome_inspector_dialog(&mut self) {
+        self.show_reference_genome_inspector_dialog = true;
+    }
+
     fn open_helper_genome_prepare_dialog(&mut self) {
         self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
         self.genome_cache_dir = "data/helper_genomes".to_string();
@@ -804,6 +811,55 @@ impl GENtleApp {
         format!(
             "{prefix}\ncreated: {created_text}\nwarnings: {warnings_text}\nmessages: {messages_text}"
         )
+    }
+
+    fn collect_prepared_genome_inspections(
+        &self,
+    ) -> Result<(Vec<PreparedGenomeInspection>, Vec<String>), String> {
+        let catalog_path = self.genome_catalog_path_resolved();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
+        let cache_dir = self.genome_cache_dir_opt();
+        let mut inspections: Vec<PreparedGenomeInspection> = vec![];
+        let mut errors: Vec<String> = vec![];
+        for genome_id in catalog.list_genomes() {
+            match catalog.inspect_prepared_genome(&genome_id, cache_dir.as_deref()) {
+                Ok(Some(inspection)) => inspections.push(inspection),
+                Ok(None) => {}
+                Err(e) => errors.push(format!("{genome_id}: {e}")),
+            }
+        }
+        inspections.sort_by(|a, b| a.genome_id.cmp(&b.genome_id));
+        Ok((inspections, errors))
+    }
+
+    fn format_bytes_compact(bytes: u64) -> String {
+        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+        let mut value = bytes as f64;
+        let mut unit = 0usize;
+        while value >= 1024.0 && unit + 1 < UNITS.len() {
+            value /= 1024.0;
+            unit += 1;
+        }
+        if unit == 0 {
+            format!("{bytes} {}", UNITS[unit])
+        } else {
+            format!("{value:.2} {}", UNITS[unit])
+        }
+    }
+
+    fn format_short_sha1(value: &Option<String>) -> String {
+        value
+            .as_ref()
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(|v| {
+                if v.len() > 12 {
+                    v[..12].to_string()
+                } else {
+                    v.to_string()
+                }
+            })
+            .unwrap_or_else(|| "-".to_string())
     }
 
     fn start_prepare_reference_genome(&mut self) {
@@ -1575,6 +1631,155 @@ impl GENtleApp {
         self.show_reference_genome_retrieve_dialog = open;
     }
 
+    fn render_reference_genome_inspector_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_reference_genome_inspector_dialog {
+            return;
+        }
+        self.refresh_genome_catalog_list();
+        let mut open = self.show_reference_genome_inspector_dialog;
+        egui::Window::new("Prepared Genome References")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.label("Inspect prepared references and installation integrity metadata.");
+                ui.horizontal(|ui| {
+                    ui.label("catalog");
+                    ui.text_edit_singleline(&mut self.genome_catalog_path);
+                    if ui.button("Browse...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .pick_file()
+                        {
+                            self.genome_catalog_path = path.display().to_string();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("cache_dir");
+                    ui.text_edit_singleline(&mut self.genome_cache_dir);
+                    if ui.button("Browse...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            self.genome_cache_dir = path.display().to_string();
+                        }
+                    }
+                });
+                if !self.genome_catalog_error.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Catalog error: {}", self.genome_catalog_error),
+                    );
+                }
+                match self.collect_prepared_genome_inspections() {
+                    Ok((inspections, errors)) => {
+                        let total_size: u64 = inspections.iter().map(|r| r.total_size_bytes).sum();
+                        ui.label(format!(
+                            "Prepared references: {} | total size: {}",
+                            inspections.len(),
+                            Self::format_bytes_compact(total_size)
+                        ));
+                        if inspections.is_empty() {
+                            ui.label("No prepared references found for this catalog/cache.");
+                        } else {
+                            egui::ScrollArea::vertical()
+                                .max_height(320.0)
+                                .show(ui, |ui| {
+                                    egui::Grid::new("prepared_genome_inspector_grid")
+                                        .striped(true)
+                                        .num_columns(8)
+                                        .show(ui, |ui| {
+                                            ui.strong("Genome");
+                                            ui.strong("Size");
+                                            ui.strong("Ready");
+                                            ui.strong("Sources");
+                                            ui.strong("SHA1 seq/ann");
+                                            ui.strong("Installed");
+                                            ui.strong("Path");
+                                            ui.strong("");
+                                            ui.end_row();
+                                            for inspection in &inspections {
+                                                ui.label(&inspection.genome_id);
+                                                ui.label(Self::format_bytes_compact(
+                                                    inspection.total_size_bytes,
+                                                ));
+                                                ui.label(format!(
+                                                    "seq:{} ann:{} fai:{} gene:{}",
+                                                    if inspection.sequence_present {
+                                                        "y"
+                                                    } else {
+                                                        "n"
+                                                    },
+                                                    if inspection.annotation_present {
+                                                        "y"
+                                                    } else {
+                                                        "n"
+                                                    },
+                                                    if inspection.fasta_index_ready {
+                                                        "y"
+                                                    } else {
+                                                        "n"
+                                                    },
+                                                    if inspection.gene_index_ready {
+                                                        "y"
+                                                    } else {
+                                                        "n"
+                                                    }
+                                                ));
+                                                ui.label(format!(
+                                                    "{}/{}",
+                                                    inspection.sequence_source_type,
+                                                    inspection.annotation_source_type
+                                                ));
+                                                ui.label(format!(
+                                                    "{}/{}",
+                                                    Self::format_short_sha1(
+                                                        &inspection.sequence_sha1
+                                                    ),
+                                                    Self::format_short_sha1(
+                                                        &inspection.annotation_sha1
+                                                    )
+                                                ));
+                                                ui.label(
+                                                    inspection.installed_at_unix_ms.to_string(),
+                                                );
+                                                let path_label = inspection.install_dir.clone();
+                                                ui.label(
+                                                    egui::RichText::new(path_label)
+                                                        .monospace()
+                                                        .small(),
+                                                );
+                                                if ui.small_button("Retrieve").clicked() {
+                                                    self.genome_id = inspection.genome_id.clone();
+                                                    self.invalidate_genome_genes();
+                                                    self.open_reference_genome_retrieve_dialog();
+                                                }
+                                                ui.end_row();
+                                            }
+                                        });
+                                });
+                        }
+                        if !errors.is_empty() {
+                            ui.separator();
+                            ui.colored_label(
+                                egui::Color32::from_rgb(190, 70, 70),
+                                "Inspection errors:",
+                            );
+                            for err in errors {
+                                ui.colored_label(egui::Color32::from_rgb(190, 70, 70), err);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Inspector error: {e}"),
+                        );
+                    }
+                }
+            });
+        self.show_reference_genome_inspector_dialog = open;
+    }
+
     fn refresh_project_restriction_enzymes(&mut self, resource_path: &str) -> Result<usize> {
         let enzymes = enzymes::load_restriction_enzymes_from_path(resource_path)?;
         let mut engine = self.engine.write().unwrap();
@@ -1731,6 +1936,10 @@ impl GENtleApp {
                     self.open_reference_genome_prepare_dialog();
                     ui.close_menu();
                 }
+                if ui.button("Prepared References...").clicked() {
+                    self.open_reference_genome_inspector_dialog();
+                    ui.close_menu();
+                }
                 if ui.button("Retrieve Genome Sequence...").clicked() {
                     self.open_reference_genome_retrieve_dialog();
                     ui.close_menu();
@@ -1763,6 +1972,10 @@ impl GENtleApp {
             ui.menu_button("Genome", |ui| {
                 if ui.button("Prepare Reference Genome...").clicked() {
                     self.open_reference_genome_prepare_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Prepared References...").clicked() {
+                    self.open_reference_genome_inspector_dialog();
                     ui.close_menu();
                 }
                 if ui.button("Retrieve Genome Sequence...").clicked() {
@@ -2673,6 +2886,15 @@ impl GENtleApp {
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "auto".to_string())
             ),
+            Operation::ExportDnaLadders { path, name_filter } => format!(
+                "Export DNA ladders: path={}, filter={}",
+                path,
+                name_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-")
+            ),
             Operation::ExportPool {
                 inputs,
                 path,
@@ -2803,6 +3025,7 @@ impl eframe::App for GENtleApp {
             });
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
+            self.render_reference_genome_inspector_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);
             self.render_unsaved_changes_dialog(ctx);
