@@ -144,6 +144,7 @@ pub struct DnaDisplay {
     show_gene_features: bool,
     show_mrna_features: bool,
     show_tfbs: bool,
+    regulatory_tracks_near_baseline: bool,
     hidden_feature_kinds: BTreeSet<String>,
     tfbs_display_criteria: TfbsDisplayCriteria,
     show_gc_contents: bool,
@@ -238,6 +239,17 @@ impl DnaDisplay {
     pub fn set_show_tfbs(&mut self, value: bool) {
         if self.show_tfbs != value {
             self.show_tfbs = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn regulatory_tracks_near_baseline(&self) -> bool {
+        self.regulatory_tracks_near_baseline
+    }
+
+    pub fn set_regulatory_tracks_near_baseline(&mut self, value: bool) {
+        if self.regulatory_tracks_near_baseline != value {
+            self.regulatory_tracks_near_baseline = value;
             self.mark_layout_dirty();
         }
     }
@@ -414,6 +426,7 @@ impl Default for DnaDisplay {
             show_gene_features: true,
             show_mrna_features: true,
             show_tfbs: false,
+            regulatory_tracks_near_baseline: false,
             hidden_feature_kinds: BTreeSet::new(),
             tfbs_display_criteria: TfbsDisplayCriteria::default(),
             show_gc_contents: true,

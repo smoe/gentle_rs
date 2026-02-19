@@ -1,7 +1,10 @@
 use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
-    engine::{Engine, GentleEngine, Operation, ProjectState, RenderSvgMode, Workflow},
+    engine::{
+        Engine, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, Operation, ProjectState,
+        RenderSvgMode, Workflow,
+    },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync,
 };
@@ -137,6 +140,18 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    ReferenceBlastTrack {
+        helper_mode: bool,
+        genome_id: String,
+        query_sequence: String,
+        target_seq_id: String,
+        max_hits: usize,
+        task: Option<String>,
+        track_name: Option<String>,
+        clear_existing: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     TracksImportBed {
         seq_id: String,
         path: String,
@@ -152,6 +167,18 @@ pub enum ShellCommand {
         min_score: Option<f64>,
         max_score: Option<f64>,
         clear_existing: bool,
+    },
+    TracksTrackedList,
+    TracksTrackedAdd {
+        subscription: GenomeTrackSubscription,
+    },
+    TracksTrackedRemove {
+        index: usize,
+    },
+    TracksTrackedClear,
+    TracksTrackedApply {
+        index: Option<usize>,
+        only_new_anchors: bool,
     },
     Op {
         payload: String,
@@ -461,6 +488,35 @@ impl ShellCommand {
                     query_sequence.len()
                 )
             }
+            Self::ReferenceBlastTrack {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                target_seq_id,
+                max_hits,
+                task,
+                track_name,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+                format!(
+                    "blast query (len={}) against {label} '{genome_id}' and import hits to '{}' (max_hits={max_hits}, task='{}', track_name='{}', clear_existing={}, catalog='{}', cache='{}')",
+                    query_sequence.len(),
+                    target_seq_id,
+                    task,
+                    track_name.clone().unwrap_or_else(|| "blast_hits".to_string()),
+                    clear_existing,
+                    catalog,
+                    cache
+                )
+            }
             Self::TracksImportBed {
                 seq_id,
                 path,
@@ -503,6 +559,42 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
             ),
+            Self::TracksTrackedList => "list tracked genome signal files".to_string(),
+            Self::TracksTrackedAdd { subscription } => format!(
+                "add tracked {} file '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
+                subscription.source.label(),
+                subscription.path,
+                subscription
+                    .track_name
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                subscription
+                    .min_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                subscription
+                    .max_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                subscription.clear_existing
+            ),
+            Self::TracksTrackedRemove { index } => {
+                format!("remove tracked genome signal file at index {}", index)
+            }
+            Self::TracksTrackedClear => "clear all tracked genome signal files".to_string(),
+            Self::TracksTrackedApply {
+                index,
+                only_new_anchors,
+            } => match index {
+                Some(idx) => format!(
+                    "apply tracked genome signal file index {} to all anchored sequences (only_new_anchors={})",
+                    idx, only_new_anchors
+                ),
+                None => format!(
+                    "apply tracked genome signal files (only_new_anchors={})",
+                    only_new_anchors
+                ),
+            },
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -516,8 +608,13 @@ impl ShellCommand {
                 | Self::ReferencePrepare { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
+                | Self::ReferenceBlastTrack { .. }
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
+                | Self::TracksTrackedAdd { .. }
+                | Self::TracksTrackedRemove { .. }
+                | Self::TracksTrackedClear
+                | Self::TracksTrackedApply { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
         )
@@ -555,6 +652,7 @@ genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
 genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
 genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
 genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n\
+genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers list [--catalog PATH]\n\
@@ -563,10 +661,17 @@ helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
 helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
 helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
 helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n\
+helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
+tracks tracked list\n\
+tracks tracked add PATH [--source auto|bed|bigwig] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
+tracks tracked remove INDEX\n\
+tracks tracked clear\n\
+tracks tracked apply [--index N] [--only-new-anchors]\n\
+tracks tracked sync\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
 IDS is comma-separated sequence IDs"
@@ -1101,6 +1206,84 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 cache_dir,
             })
         }
+        "blast-track" => {
+            if tokens.len() < 5 {
+                return Err(format!(
+                    "{label} blast-track requires GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let query_sequence = tokens[3].clone();
+            let target_seq_id = tokens[4].clone();
+            let mut max_hits: usize = 25;
+            let mut task: Option<String> = None;
+            let mut track_name: Option<String> = None;
+            let mut clear_existing = false;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--max-hits" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--max-hits", label)?;
+                        max_hits = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-hits value '{raw}': {e}"))?;
+                        if max_hits == 0 {
+                            return Err("--max-hits must be >= 1".to_string());
+                        }
+                    }
+                    "--task" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--task", label)?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        match normalized.as_str() {
+                            "blastn-short" | "blastn" => task = Some(normalized),
+                            _ => {
+                                return Err(format!(
+                                    "Unsupported --task value '{}'; expected blastn-short or blastn",
+                                    raw
+                                ))
+                            }
+                        }
+                    }
+                    "--track-name" => {
+                        track_name =
+                            Some(parse_option_path(tokens, &mut idx, "--track-name", label)?)
+                    }
+                    "--clear-existing" => {
+                        clear_existing = true;
+                        idx += 1;
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} blast-track"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceBlastTrack {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                target_seq_id,
+                max_hits,
+                task,
+                track_name,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            })
+        }
         "extract-region" => {
             if tokens.len() < 6 {
                 return Err(format!(
@@ -1220,7 +1403,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, extract-region, extract-gene)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-track, extract-region, extract-gene)"
         )),
     }
 }
@@ -1684,8 +1867,178 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         clear_existing,
                     })
                 }
+                "tracked" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "tracks tracked requires a subcommand: list, add, remove, clear, apply, sync".to_string(),
+                        );
+                    }
+                    match tokens[2].as_str() {
+                        "list" => {
+                            if tokens.len() > 3 {
+                                return Err("tracks tracked list takes no options".to_string());
+                            }
+                            Ok(ShellCommand::TracksTrackedList)
+                        }
+                        "add" => {
+                            if tokens.len() < 4 {
+                                return Err(
+                                    "tracks tracked add requires PATH [--source auto|bed|bigwig] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]".to_string(),
+                                );
+                            }
+                            let path = tokens[3].clone();
+                            let mut source: Option<GenomeTrackSource> = None;
+                            let mut track_name: Option<String> = None;
+                            let mut min_score: Option<f64> = None;
+                            let mut max_score: Option<f64> = None;
+                            let mut clear_existing = false;
+                            let mut idx = 4usize;
+                            while idx < tokens.len() {
+                                match tokens[idx].as_str() {
+                                    "--source" => {
+                                        let raw = parse_option_path(
+                                            tokens,
+                                            &mut idx,
+                                            "--source",
+                                            "tracks tracked add",
+                                        )?;
+                                        let normalized = raw.trim().to_ascii_lowercase();
+                                        source = Some(match normalized.as_str() {
+                                            "auto" => GenomeTrackSource::from_path(&path),
+                                            "bed" => GenomeTrackSource::Bed,
+                                            "bigwig" | "bw" => GenomeTrackSource::BigWig,
+                                            _ => {
+                                                return Err(format!(
+                                                    "Unsupported --source value '{}'; expected auto|bed|bigwig",
+                                                    raw
+                                                ))
+                                            }
+                                        });
+                                    }
+                                    "--name" => {
+                                        track_name = Some(parse_option_path(
+                                            tokens,
+                                            &mut idx,
+                                            "--name",
+                                            "tracks tracked add",
+                                        )?);
+                                    }
+                                    "--min-score" => {
+                                        let raw = parse_option_path(
+                                            tokens,
+                                            &mut idx,
+                                            "--min-score",
+                                            "tracks tracked add",
+                                        )?;
+                                        min_score = Some(raw.parse::<f64>().map_err(|e| {
+                                            format!("Invalid --min-score value '{raw}': {e}")
+                                        })?);
+                                    }
+                                    "--max-score" => {
+                                        let raw = parse_option_path(
+                                            tokens,
+                                            &mut idx,
+                                            "--max-score",
+                                            "tracks tracked add",
+                                        )?;
+                                        max_score = Some(raw.parse::<f64>().map_err(|e| {
+                                            format!("Invalid --max-score value '{raw}': {e}")
+                                        })?);
+                                    }
+                                    "--clear-existing" => {
+                                        clear_existing = true;
+                                        idx += 1;
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Unknown option '{other}' for tracks tracked add"
+                                        ));
+                                    }
+                                }
+                            }
+                            if min_score
+                                .zip(max_score)
+                                .map(|(min, max)| min > max)
+                                .unwrap_or(false)
+                            {
+                                return Err("--min-score must be <= --max-score".to_string());
+                            }
+                            let subscription = GenomeTrackSubscription {
+                                source: source.unwrap_or_else(|| GenomeTrackSource::from_path(&path)),
+                                path,
+                                track_name,
+                                min_score,
+                                max_score,
+                                clear_existing,
+                            };
+                            Ok(ShellCommand::TracksTrackedAdd { subscription })
+                        }
+                        "remove" => {
+                            if tokens.len() != 4 {
+                                return Err(
+                                    "tracks tracked remove requires INDEX".to_string(),
+                                );
+                            }
+                            let index = tokens[3]
+                                .parse::<usize>()
+                                .map_err(|e| format!("Invalid INDEX '{}': {e}", tokens[3]))?;
+                            Ok(ShellCommand::TracksTrackedRemove { index })
+                        }
+                        "clear" => {
+                            if tokens.len() > 3 {
+                                return Err("tracks tracked clear takes no options".to_string());
+                            }
+                            Ok(ShellCommand::TracksTrackedClear)
+                        }
+                        "apply" => {
+                            let mut index: Option<usize> = None;
+                            let mut only_new_anchors = false;
+                            let mut idx = 3usize;
+                            while idx < tokens.len() {
+                                match tokens[idx].as_str() {
+                                    "--index" => {
+                                        let raw = parse_option_path(
+                                            tokens,
+                                            &mut idx,
+                                            "--index",
+                                            "tracks tracked apply",
+                                        )?;
+                                        index = Some(raw.parse::<usize>().map_err(|e| {
+                                            format!("Invalid --index value '{raw}': {e}")
+                                        })?);
+                                    }
+                                    "--only-new-anchors" => {
+                                        only_new_anchors = true;
+                                        idx += 1;
+                                    }
+                                    other => {
+                                        return Err(format!(
+                                            "Unknown option '{other}' for tracks tracked apply"
+                                        ));
+                                    }
+                                }
+                            }
+                            Ok(ShellCommand::TracksTrackedApply {
+                                index,
+                                only_new_anchors,
+                            })
+                        }
+                        "sync" => {
+                            if tokens.len() > 3 {
+                                return Err("tracks tracked sync takes no options".to_string());
+                            }
+                            Ok(ShellCommand::TracksTrackedApply {
+                                index: None,
+                                only_new_anchors: true,
+                            })
+                        }
+                        other => Err(format!(
+                            "Unknown tracks tracked subcommand '{other}' (expected list, add, remove, clear, apply, sync)"
+                        )),
+                    }
+                }
                 other => Err(format!(
-                    "Unknown tracks subcommand '{other}' (expected import-bed or import-bigwig)"
+                    "Unknown tracks subcommand '{other}' (expected import-bed, import-bigwig, or tracked)"
                 )),
             }
         }
@@ -2229,6 +2582,75 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::ReferenceBlastTrack {
+            helper_mode,
+            genome_id,
+            query_sequence,
+            target_seq_id,
+            max_hits,
+            task,
+            track_name,
+            clear_existing,
+            catalog_path,
+            cache_dir,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = if *helper_mode {
+                GentleEngine::blast_helper_genome(
+                    genome_id,
+                    query_sequence,
+                    *max_hits,
+                    task.as_deref(),
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::blast_reference_genome(
+                    resolved_catalog,
+                    genome_id,
+                    query_sequence,
+                    *max_hits,
+                    task.as_deref(),
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let hit_inputs = report
+                .hits
+                .iter()
+                .map(|hit| crate::engine::BlastHitFeatureInput {
+                    subject_id: hit.subject_id.clone(),
+                    query_start_1based: hit.query_start,
+                    query_end_1based: hit.query_end,
+                    subject_start_1based: hit.subject_start,
+                    subject_end_1based: hit.subject_end,
+                    identity_percent: hit.identity_percent,
+                    bit_score: hit.bit_score,
+                    evalue: hit.evalue,
+                    query_coverage_percent: hit.query_coverage_percent,
+                })
+                .collect::<Vec<_>>();
+            let op_result = engine
+                .apply(Operation::ImportBlastHitsTrack {
+                    seq_id: target_seq_id.clone(),
+                    hits: hit_inputs,
+                    track_name: track_name.clone(),
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "report": report,
+                    "result": op_result
+                }),
+            }
+        }
         ShellCommand::ReferenceExtractRegion {
             helper_mode,
             genome_id,
@@ -2331,6 +2753,76 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed,
                 output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::TracksTrackedList => {
+            let subscriptions = engine.list_genome_track_subscriptions();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "subscriptions": subscriptions,
+                    "count": subscriptions.len()
+                }),
+            }
+        }
+        ShellCommand::TracksTrackedAdd { subscription } => {
+            let inserted = engine
+                .add_genome_track_subscription(subscription.clone())
+                .map_err(|e| e.to_string())?;
+            let subscriptions = engine.list_genome_track_subscriptions();
+            ShellRunResult {
+                state_changed: inserted,
+                output: json!({
+                    "inserted": inserted,
+                    "subscription": subscription,
+                    "subscriptions": subscriptions,
+                    "count": subscriptions.len()
+                }),
+            }
+        }
+        ShellCommand::TracksTrackedRemove { index } => {
+            let removed = engine
+                .remove_genome_track_subscription(*index)
+                .map_err(|e| e.to_string())?;
+            let subscriptions = engine.list_genome_track_subscriptions();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "removed": removed,
+                    "subscriptions": subscriptions,
+                    "count": subscriptions.len()
+                }),
+            }
+        }
+        ShellCommand::TracksTrackedClear => {
+            engine.clear_genome_track_subscriptions();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "cleared": true,
+                    "subscriptions": [],
+                    "count": 0
+                }),
+            }
+        }
+        ShellCommand::TracksTrackedApply {
+            index,
+            only_new_anchors,
+        } => {
+            let report = match index {
+                Some(idx) => engine
+                    .apply_tracked_genome_track_subscription(*idx)
+                    .map_err(|e| e.to_string())?,
+                None => engine
+                    .sync_tracked_genome_track_subscriptions(*only_new_anchors)
+                    .map_err(|e| e.to_string())?,
+            };
+            let state_changed = report.applied_imports > 0;
+            ShellRunResult {
+                state_changed,
+                output: json!({
+                    "report": report
+                }),
             }
         }
         ShellCommand::Op { payload } => {
@@ -2568,6 +3060,69 @@ mod tests {
     }
 
     #[test]
+    fn parse_genomes_blast_track_with_options() {
+        let cmd = parse_shell_line(
+            "genomes blast-track ToyGenome ACGTACGT query_seq --max-hits 8 --task blastn --track-name Hits --clear-existing --catalog c.json --cache-dir cache",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlastTrack {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                target_seq_id,
+                max_hits,
+                task,
+                track_name,
+                clear_existing,
+                catalog_path,
+                cache_dir,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome");
+                assert_eq!(query_sequence, "ACGTACGT");
+                assert_eq!(target_seq_id, "query_seq");
+                assert_eq!(max_hits, 8);
+                assert_eq!(task.as_deref(), Some("blastn"));
+                assert_eq!(track_name.as_deref(), Some("Hits"));
+                assert!(clear_existing);
+                assert_eq!(catalog_path.as_deref(), Some("c.json"));
+                assert_eq!(cache_dir.as_deref(), Some("cache"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_helpers_blast_track_defaults() {
+        let cmd =
+            parse_shell_line("helpers blast-track pUC19 ACGTAG target_seq").expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlastTrack {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                target_seq_id,
+                max_hits,
+                task,
+                track_name,
+                clear_existing,
+                ..
+            } => {
+                assert!(helper_mode);
+                assert_eq!(genome_id, "pUC19");
+                assert_eq!(query_sequence, "ACGTAG");
+                assert_eq!(target_seq_id, "target_seq");
+                assert_eq!(max_hits, 25);
+                assert!(task.is_none());
+                assert!(track_name.is_none());
+                assert!(!clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_tracks_import_bed() {
         let cmd = parse_shell_line(
             "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
@@ -2617,6 +3172,84 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_tracks_tracked_add_with_options() {
+        let cmd = parse_shell_line(
+            "tracks tracked add test_files/data/signal.bw --source bed --name ChIP --min-score 0.5 --max-score 2.5 --clear-existing",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::TracksTrackedAdd { subscription } => {
+                assert_eq!(subscription.source, GenomeTrackSource::Bed);
+                assert_eq!(subscription.path, "test_files/data/signal.bw");
+                assert_eq!(subscription.track_name.as_deref(), Some("ChIP"));
+                assert_eq!(subscription.min_score, Some(0.5));
+                assert_eq!(subscription.max_score, Some(2.5));
+                assert!(subscription.clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_tracks_tracked_apply_with_index() {
+        let cmd = parse_shell_line("tracks tracked apply --index 3 --only-new-anchors")
+            .expect("parse command");
+        match cmd {
+            ShellCommand::TracksTrackedApply {
+                index,
+                only_new_anchors,
+            } => {
+                assert_eq!(index, Some(3));
+                assert!(only_new_anchors);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_tracks_tracked_sync_alias() {
+        let cmd = parse_shell_line("tracks tracked sync").expect("parse command");
+        match cmd {
+            ShellCommand::TracksTrackedApply {
+                index,
+                only_new_anchors,
+            } => {
+                assert_eq!(index, None);
+                assert!(only_new_anchors);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_tracks_tracked_add_and_list() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let subscription = GenomeTrackSubscription {
+            source: GenomeTrackSource::Bed,
+            path: "test_files/data/peaks.bed.gz".to_string(),
+            track_name: Some("ChIP".to_string()),
+            min_score: Some(1.0),
+            max_score: Some(10.0),
+            clear_existing: true,
+        };
+        let add = execute_shell_command(
+            &mut engine,
+            &ShellCommand::TracksTrackedAdd {
+                subscription: subscription.clone(),
+            },
+        )
+        .expect("execute tracked add");
+        assert!(add.state_changed);
+        assert_eq!(add.output["inserted"].as_bool(), Some(true));
+        assert_eq!(add.output["count"].as_u64(), Some(1));
+
+        let list = execute_shell_command(&mut engine, &ShellCommand::TracksTrackedList)
+            .expect("execute tracked list");
+        assert!(!list.state_changed);
+        assert_eq!(list.output["count"].as_u64(), Some(1));
     }
 
     #[test]

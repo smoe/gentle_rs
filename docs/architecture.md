@@ -44,6 +44,8 @@ Strategic aims:
 4. Support optional, explicit screenshot artifact generation for documentation
    and progress communication without weakening default safety boundaries
    (compile-time feature gate + explicit runtime opt-in).
+5. Provide context-sensitive hover descriptions for actionable GUI buttons so
+   control intent is explicit and shared button references are unambiguous.
 
 ## 2. Core architecture rule
 
@@ -113,13 +115,15 @@ They only translate user input into engine operations and display results.
 - Genome signal-track import baseline:
   - engine operation `ImportGenomeBedTrack` (BED/BED.GZ)
   - engine operation `ImportGenomeBigWigTrack` (BigWig via `bigWigToBedGraph` conversion)
+  - engine operation `ImportBlastHitsTrack` (materialize BLAST alignments as feature tracks)
   - stranded anchor-aware coordinate remapping for genome-anchored sequences
   - generated signal features normalized with shared qualifiers
     (`gentle_track_source`, `gentle_generated`)
-  - GUI track-import dialog supports both BED and BigWig via file-extension
-    detection (`.bed`/`.bed.gz` and `.bw`/`.bigwig`)
-  - optional tracked signal-file subscriptions persisted in state metadata and
-    auto-reapplied to newly anchored extracted sequences
+  - GUI track-import dialog supports BED and BigWig with explicit source
+    override (`auto|bed|bigwig`) plus extension detection
+  - tracked signal-file subscriptions are engine-managed (persisted in
+    `ProjectState.metadata`) and can be auto-reapplied to newly anchored
+    extracted sequences
 - TFBS runtime guardrails:
   - `AnnotateTfbs.max_hits` supports safe caps
   - default cap is `500` accepted hits per operation
@@ -158,6 +162,7 @@ They only translate user input into engine operations and display results.
   - `ExtractGenomeGene`
   - `ImportGenomeBedTrack`
   - `ImportGenomeBigWigTrack`
+  - `ImportBlastHitsTrack`
   - `DigestContainer`
   - `MergeContainersById`
   - `LigationContainer`
@@ -196,12 +201,16 @@ They only translate user input into engine operations and display results.
 - Dense regulatory features (TFBS/`regulatory*`) are lane-packed into a
   dedicated upper group in linear mode; coordinate-only fallback labels are
   suppressed for unlabeled regulatory features
+- Linear map toolbar provides a placement toggle for regulatory tracks
+  (`REG@TOP` / `REG@DNA`) and keeps this setting synchronized into shared
+  display state used by GUI and SVG export
 - Circular renderer now supports multipart feature locations (`Join`, `Order`,
   nested `Complement`/`External`): exon-like segments are rendered separately
   with intron arches between them
 - Circular intron arches have feature-aware styling (notably emphasized for
   mRNA) with hover/selection accenting for readability
-- Added button tooltips
+- Added context-sensitive button tooltips (toolbar + menu actions), with
+  target state of full actionable-button coverage
 - Added linear overlays for ORF/GC/methylation/ticks
 - Main lineage view supports both table/graph and a container list with open
   actions (sequence/pool)
@@ -277,6 +286,7 @@ Legend:
 | `ExtractGenomeGene` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ImportGenomeBedTrack` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ImportGenomeBigWigTrack` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ImportBlastHitsTrack` | Wired | Wired | Exposed | Exposed | Implemented |
 | `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
 | `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
 | `LigationContainer` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -345,12 +355,15 @@ Notes from current code:
   dispatch routes these trees through the same shared parser/executor used by
   GUI Shell.
 - Shared `tracks` command tree now includes both `import-bed` and
-  `import-bigwig` (BigWig converted through `bigWigToBedGraph` before import).
-- GUI track import persists optional subscription rules
-  (`ProjectState.metadata["genome_bed_track_subscriptions"]`) and can
-  auto-sync tracked BED/BigWig sources onto newly created anchored sequences.
+  `import-bigwig` (BigWig converted through `bigWigToBedGraph` before import),
+  plus tracked-source management (`tracks tracked list/add/remove/clear/apply/sync`).
+- Tracked-source subscription state is managed through engine methods
+  (storage remains `ProjectState.metadata["genome_bed_track_subscriptions"]`)
+  and can auto-sync tracked BED/BigWig sources onto newly created anchored
+  sequences.
 - Shared shell/CLI reference commands now include `genomes blast` and
-  `helpers blast` for BLAST query execution against prepared/indexed catalogs.
+  `helpers blast`, plus `genomes blast-track` / `helpers blast-track` to
+  materialize BLAST hits directly into project features.
 - Shared shell/CLI `genomes status` and `helpers status` now include resolved
   source type reporting (`sequence_source_type`, `annotation_source_type`) in
   addition to prepared/not-prepared state.
@@ -626,9 +639,6 @@ If work is interrupted, resume in this order:
 - View model contract is not yet formalized
 - Some rendering/import/export utilities are still adapter-level contracts
   instead of engine operations
-- GUI signal-track dialog currently relies on file-extension detection for
-  BED-vs-BigWig routing; explicit source-type override controls are not yet
-  exposed
 - `import-pool` remains a shared shell/CLI utility contract (no dedicated
   engine operation yet)
 - No dedicated engine operation yet for exporting a full run/process as a
@@ -675,7 +685,7 @@ If work is interrupted, resume in this order:
   `bigWigToBedGraph` conversion and shared shell/adapter exposure:
   accepted and implemented
 - Add tracked genome-signal subscriptions with auto-sync for newly anchored
-  sequences in GUI state metadata:
+  sequences via engine-managed subscription metadata:
   accepted and implemented
 - Prevent idle redraw churn by deduplicating window-title viewport commands in
   GUI update loop: accepted and implemented

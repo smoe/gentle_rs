@@ -251,6 +251,8 @@ Current linear map conventions are:
 - Regulatory features (for example TFBS / `regulatory_region`) are grouped into
   dedicated upper lanes above forward-strand coding features to keep dense loci
   readable
+- `REG@TOP` / `REG@DNA` toggle in the map toolbar switches regulatory-feature
+  placement between dedicated top lanes and near-baseline/GC-strip lanes
 - Directional features use arrow-shaped ends
 - Feature labels are lane-packed to reduce overlap
 - Coordinate fallback labels are suppressed for unlabeled regulatory features

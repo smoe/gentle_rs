@@ -326,6 +326,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     }
 
     if display.show_features {
+        let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
         let features = collect_features(dna, display);
         let mut lane_top_by_idx: Vec<usize> = vec![0; features.len()];
         let mut lane_bottom_by_idx: Vec<usize> = vec![0; features.len()];
@@ -411,7 +412,10 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 + (top_lane_ends.len().saturating_sub(1) as f32) * FEATURE_LANE_GAP
                 + FEATURE_BLOCK_HEIGHT * 0.5
         };
-        let regulatory_group_gap = if !top_lane_ends.is_empty() && !regulatory_top_lane_ends.is_empty() {
+        let regulatory_group_gap = if !regulatory_tracks_near_baseline
+            && !top_lane_ends.is_empty()
+            && !regulatory_top_lane_ends.is_empty()
+        {
             REGULATORY_GROUP_GAP
         } else {
             0.0
@@ -422,11 +426,15 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
             let (y, block_height) = if f.is_regulatory {
                 let lane = lane_regulatory_top_by_idx[idx];
-                let y = baseline
-                    - top_regular_extent
-                    - regulatory_group_gap
-                    - REGULATORY_SIDE_MARGIN
-                    - lane as f32 * REGULATORY_LANE_GAP;
+                let y = if regulatory_tracks_near_baseline {
+                    baseline - REGULATORY_SIDE_MARGIN - lane as f32 * REGULATORY_LANE_GAP
+                } else {
+                    baseline
+                        - top_regular_extent
+                        - regulatory_group_gap
+                        - REGULATORY_SIDE_MARGIN
+                        - lane as f32 * REGULATORY_LANE_GAP
+                };
                 (y, REGULATORY_BLOCK_HEIGHT)
             } else if f.is_reverse {
                 let lane = lane_bottom_by_idx[idx];

@@ -399,6 +399,7 @@ impl RenderDnaLinear {
             show_mrna_features,
             show_tfbs,
             tfbs_display_criteria,
+            regulatory_tracks_near_baseline,
             hidden_feature_kinds,
         ) = self
             .display
@@ -410,6 +411,7 @@ impl RenderDnaLinear {
                     display.show_mrna_features(),
                     display.show_tfbs(),
                     display.tfbs_display_criteria(),
+                    display.regulatory_tracks_near_baseline(),
                     display.hidden_feature_kinds().clone(),
                 )
             })
@@ -419,6 +421,7 @@ impl RenderDnaLinear {
                 true,
                 false,
                 TfbsDisplayCriteria::default(),
+                false,
                 BTreeSet::new(),
             ));
         let features = self
@@ -615,14 +618,24 @@ impl RenderDnaLinear {
         let top_regular_natural_extent = Self::side_extent(top_lane_count, default_style);
         let regulatory_top_natural_extent =
             Self::side_extent(regulatory_top_lane_count, regulatory_top_default_style);
-        let regulatory_group_gap_natural = if top_lane_count > 0 && regulatory_top_lane_count > 0 {
+        let regulatory_group_gap_natural = if !regulatory_tracks_near_baseline
+            && top_lane_count > 0
+            && regulatory_top_lane_count > 0
+        {
             REGULATORY_GROUP_GAP
         } else {
             0.0
         };
-        let top_natural_extent =
-            (top_regular_natural_extent + regulatory_group_gap_natural + regulatory_top_natural_extent)
-                .max(BASELINE_SIDE_MIN_EXTENT);
+        let top_natural_extent = if regulatory_tracks_near_baseline {
+            top_regular_natural_extent
+                .max(regulatory_top_natural_extent)
+                .max(BASELINE_SIDE_MIN_EXTENT)
+        } else {
+            (top_regular_natural_extent
+                + regulatory_group_gap_natural
+                + regulatory_top_natural_extent)
+                .max(BASELINE_SIDE_MIN_EXTENT)
+        };
         let bottom_natural_extent =
             Self::side_extent(bottom_lane_count, default_style).max(BASELINE_SIDE_MIN_EXTENT);
         let natural_total = (top_natural_extent + bottom_natural_extent).max(1.0);
@@ -642,8 +655,16 @@ impl RenderDnaLinear {
         } else {
             1.0
         };
-        let top_target_regular_extent = top_regular_natural_extent * top_scale;
-        let top_target_regulatory_extent = regulatory_top_natural_extent * top_scale;
+        let top_target_regular_extent = if regulatory_tracks_near_baseline {
+            top_target_extent
+        } else {
+            top_regular_natural_extent * top_scale
+        };
+        let top_target_regulatory_extent = if regulatory_tracks_near_baseline {
+            top_target_extent
+        } else {
+            regulatory_top_natural_extent * top_scale
+        };
         let regulatory_group_gap = regulatory_group_gap_natural * top_scale;
 
         let top_style = Self::fit_side_style(top_lane_count, top_target_regular_extent);
@@ -681,7 +702,11 @@ impl RenderDnaLinear {
                     self.baseline_y() + side_style.margin + side_style.gap * feature_lane as f32
                 }
                 LaneSide::RegulatoryTop => {
-                    let regulatory_origin = self.baseline_y() - top_regular_extent - regulatory_group_gap;
+                    let regulatory_origin = if regulatory_tracks_near_baseline {
+                        self.baseline_y()
+                    } else {
+                        self.baseline_y() - top_regular_extent - regulatory_group_gap
+                    };
                     regulatory_origin - side_style.margin - side_style.gap * feature_lane as f32
                 }
             };

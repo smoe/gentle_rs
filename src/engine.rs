@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::hash_map::DefaultHasher,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     env,
     error::Error,
     fmt,
@@ -41,8 +41,11 @@ pub type NodeId = String;
 pub type ContainerId = String;
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
+pub const GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY: &str = "genome_bed_track_subscriptions";
+const GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY: &str = "genome_track_autosync_known_anchors";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
+const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
@@ -72,6 +75,7 @@ pub struct DisplaySettings {
     pub show_gene_features: bool,
     pub show_mrna_features: bool,
     pub show_tfbs: bool,
+    pub regulatory_tracks_near_baseline: bool,
     pub tfbs_display_use_llr_bits: bool,
     pub tfbs_display_min_llr_bits: f64,
     pub tfbs_display_use_llr_quantile: bool,
@@ -98,6 +102,7 @@ impl Default for DisplaySettings {
             show_gene_features: true,
             show_mrna_features: true,
             show_tfbs: false,
+            regulatory_tracks_near_baseline: false,
             tfbs_display_use_llr_bits: true,
             tfbs_display_min_llr_bits: 0.0,
             tfbs_display_use_llr_quantile: true,
@@ -304,6 +309,79 @@ pub enum AnchoredRegionAnchor {
     },
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GenomeTrackSource {
+    #[default]
+    Bed,
+    BigWig,
+}
+
+impl GenomeTrackSource {
+    pub fn from_path(path: &str) -> Self {
+        let lower = path.trim().to_ascii_lowercase();
+        if lower.ends_with(".bw") || lower.ends_with(".bigwig") {
+            Self::BigWig
+        } else {
+            Self::Bed
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Bed => "BED",
+            Self::BigWig => "BigWig",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GenomeTrackSubscription {
+    pub source: GenomeTrackSource,
+    pub path: String,
+    pub track_name: Option<String>,
+    pub min_score: Option<f64>,
+    pub max_score: Option<f64>,
+    pub clear_existing: bool,
+}
+
+impl Default for GenomeTrackSubscription {
+    fn default() -> Self {
+        Self {
+            source: GenomeTrackSource::Bed,
+            path: String::new(),
+            track_name: None,
+            min_score: None,
+            max_score: None,
+            clear_existing: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GenomeTrackSyncReport {
+    pub subscriptions_considered: usize,
+    pub target_sequences: usize,
+    pub applied_imports: usize,
+    pub failed_imports: usize,
+    pub warnings_count: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlastHitFeatureInput {
+    pub subject_id: String,
+    pub query_start_1based: usize,
+    pub query_end_1based: usize,
+    pub subject_start_1based: usize,
+    pub subject_end_1based: usize,
+    pub identity_percent: f64,
+    pub bit_score: f64,
+    pub evalue: f64,
+    pub query_coverage_percent: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
     LoadFile {
@@ -384,6 +462,12 @@ pub enum Operation {
         track_name: Option<String>,
         min_score: Option<f64>,
         max_score: Option<f64>,
+        clear_existing: Option<bool>,
+    },
+    ImportBlastHitsTrack {
+        seq_id: SeqId,
+        hits: Vec<BlastHitFeatureInput>,
+        track_name: Option<String>,
         clear_existing: Option<bool>,
     },
     DigestContainer {
@@ -836,6 +920,171 @@ impl GentleEngine {
         ))
     }
 
+    pub fn list_genome_track_subscriptions(&self) -> Vec<GenomeTrackSubscription> {
+        Self::read_track_subscriptions_from_metadata(
+            self.state
+                .metadata
+                .get(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY),
+        )
+    }
+
+    pub fn add_genome_track_subscription(
+        &mut self,
+        subscription: GenomeTrackSubscription,
+    ) -> Result<bool, EngineError> {
+        let normalized = Self::normalize_genome_track_subscription(subscription)?;
+        let mut subscriptions = self.list_genome_track_subscriptions();
+        if subscriptions.iter().any(|existing| existing == &normalized) {
+            return Ok(false);
+        }
+        subscriptions.push(normalized);
+        Self::sort_track_subscriptions(&mut subscriptions);
+        self.write_track_subscriptions_to_metadata(&subscriptions)?;
+        Ok(true)
+    }
+
+    pub fn remove_genome_track_subscription(
+        &mut self,
+        index: usize,
+    ) -> Result<GenomeTrackSubscription, EngineError> {
+        let mut subscriptions = self.list_genome_track_subscriptions();
+        if index >= subscriptions.len() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Track subscription index {} is out of bounds (len={})",
+                    index,
+                    subscriptions.len()
+                ),
+            });
+        }
+        let removed = subscriptions.remove(index);
+        self.write_track_subscriptions_to_metadata(&subscriptions)?;
+        Ok(removed)
+    }
+
+    pub fn clear_genome_track_subscriptions(&mut self) {
+        self.state
+            .metadata
+            .remove(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY);
+        self.state
+            .metadata
+            .remove(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY);
+    }
+
+    pub fn import_genome_track_to_all_anchored(
+        &mut self,
+        subscription: GenomeTrackSubscription,
+        track_subscription: bool,
+    ) -> Result<GenomeTrackSyncReport, EngineError> {
+        let normalized = Self::normalize_genome_track_subscription(subscription)?;
+        let seq_ids = self.list_sequences_with_genome_anchor();
+        if seq_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message:
+                    "No genome-anchored sequence is available. Extract a genome region or gene first."
+                        .to_string(),
+            });
+        }
+        let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &normalized);
+        report.subscriptions_considered = 1;
+        report.target_sequences = seq_ids.len();
+        if track_subscription {
+            let _ = self.add_genome_track_subscription(normalized)?;
+            let known: BTreeSet<String> = seq_ids.iter().cloned().collect();
+            self.write_known_track_anchor_ids(&known);
+        }
+        Ok(report)
+    }
+
+    pub fn apply_tracked_genome_track_subscription(
+        &mut self,
+        index: usize,
+    ) -> Result<GenomeTrackSyncReport, EngineError> {
+        let subscriptions = self.list_genome_track_subscriptions();
+        let Some(subscription) = subscriptions.get(index).cloned() else {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Track subscription index {} is out of bounds (len={})",
+                    index,
+                    subscriptions.len()
+                ),
+            });
+        };
+        let seq_ids = self.list_sequences_with_genome_anchor();
+        if seq_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message:
+                    "No genome-anchored sequence is available. Extract a genome region or gene first."
+                        .to_string(),
+            });
+        }
+        let mut report = self.apply_track_subscription_to_seq_ids(&seq_ids, &subscription);
+        report.subscriptions_considered = 1;
+        report.target_sequences = seq_ids.len();
+        let known: BTreeSet<String> = seq_ids.iter().cloned().collect();
+        self.write_known_track_anchor_ids(&known);
+        Ok(report)
+    }
+
+    pub fn sync_tracked_genome_track_subscriptions(
+        &mut self,
+        only_new_anchors: bool,
+    ) -> Result<GenomeTrackSyncReport, EngineError> {
+        let subscriptions = self.list_genome_track_subscriptions();
+        let current_anchors = self.list_sequences_with_genome_anchor();
+        let current_set: BTreeSet<String> = current_anchors.iter().cloned().collect();
+        let target_seq_ids: Vec<String> = if only_new_anchors {
+            let known = self.read_known_track_anchor_ids();
+            current_set.difference(&known).cloned().collect()
+        } else {
+            current_anchors.clone()
+        };
+
+        if subscriptions.is_empty() || target_seq_ids.is_empty() {
+            self.write_known_track_anchor_ids(&current_set);
+            return Ok(GenomeTrackSyncReport {
+                subscriptions_considered: subscriptions.len(),
+                target_sequences: target_seq_ids.len(),
+                ..GenomeTrackSyncReport::default()
+            });
+        }
+
+        let mut report = GenomeTrackSyncReport {
+            subscriptions_considered: subscriptions.len(),
+            target_sequences: target_seq_ids.len(),
+            ..GenomeTrackSyncReport::default()
+        };
+        for seq_id in &target_seq_ids {
+            for subscription in &subscriptions {
+                let op = Self::track_subscription_to_operation(seq_id, subscription);
+                match self.apply(op) {
+                    Ok(op_result) => {
+                        report.applied_imports += 1;
+                        report.warnings_count += op_result.warnings.len();
+                    }
+                    Err(e) => {
+                        report.failed_imports += 1;
+                        if report.errors.len() < 20 {
+                            report.errors.push(format!(
+                                "{} '{}' @ {}: {}",
+                                subscription.source.label(),
+                                subscription.path,
+                                seq_id,
+                                e.message
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        self.write_known_track_anchor_ids(&current_set);
+        Ok(report)
+    }
+
     pub fn capabilities() -> Capabilities {
         Capabilities {
             protocol_version: "v1".to_string(),
@@ -854,6 +1103,7 @@ impl GentleEngine {
                 "ExtractGenomeGene".to_string(),
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
+                "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
                 "LigationContainer".to_string(),
@@ -1506,6 +1756,167 @@ impl GentleEngine {
         )
     }
 
+    fn normalize_genome_track_subscription(
+        mut subscription: GenomeTrackSubscription,
+    ) -> Result<GenomeTrackSubscription, EngineError> {
+        subscription.path = subscription.path.trim().to_string();
+        if subscription.path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Track path cannot be empty".to_string(),
+            });
+        }
+        if subscription
+            .min_score
+            .zip(subscription.max_score)
+            .map(|(min, max)| min > max)
+            .unwrap_or(false)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Track subscription requires min_score <= max_score".to_string(),
+            });
+        }
+        subscription.track_name = subscription
+            .track_name
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        Ok(subscription)
+    }
+
+    fn sort_track_subscriptions(subscriptions: &mut Vec<GenomeTrackSubscription>) {
+        subscriptions.sort_by(|a, b| {
+            a.source
+                .label()
+                .cmp(b.source.label())
+                .then(a.path.cmp(&b.path))
+                .then(
+                    a.track_name
+                        .clone()
+                        .unwrap_or_default()
+                        .cmp(&b.track_name.clone().unwrap_or_default()),
+                )
+        });
+    }
+
+    fn read_track_subscriptions_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> Vec<GenomeTrackSubscription> {
+        let mut subscriptions = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<Vec<GenomeTrackSubscription>>(v).ok())
+            .unwrap_or_default();
+        subscriptions.retain(|subscription| !subscription.path.trim().is_empty());
+        Self::sort_track_subscriptions(&mut subscriptions);
+        subscriptions
+    }
+
+    fn write_track_subscriptions_to_metadata(
+        &mut self,
+        subscriptions: &[GenomeTrackSubscription],
+    ) -> Result<(), EngineError> {
+        if subscriptions.is_empty() {
+            self.state
+                .metadata
+                .remove(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY);
+            return Ok(());
+        }
+        let value = serde_json::to_value(subscriptions).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize genome track subscriptions: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn read_known_track_anchor_ids(&self) -> BTreeSet<String> {
+        self.state
+            .metadata
+            .get(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY)
+            .and_then(|v| v.as_array())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+                    .collect::<BTreeSet<_>>()
+            })
+            .unwrap_or_default()
+    }
+
+    fn write_known_track_anchor_ids(&mut self, anchors: &BTreeSet<String>) {
+        let values = anchors
+            .iter()
+            .map(|v| serde_json::Value::String(v.clone()))
+            .collect::<Vec<_>>();
+        self.state.metadata.insert(
+            GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY.to_string(),
+            serde_json::Value::Array(values),
+        );
+    }
+
+    fn track_subscription_to_operation(
+        seq_id: &str,
+        subscription: &GenomeTrackSubscription,
+    ) -> Operation {
+        match subscription.source {
+            GenomeTrackSource::Bed => Operation::ImportGenomeBedTrack {
+                seq_id: seq_id.to_string(),
+                path: subscription.path.clone(),
+                track_name: subscription.track_name.clone(),
+                min_score: subscription.min_score,
+                max_score: subscription.max_score,
+                clear_existing: Some(subscription.clear_existing),
+            },
+            GenomeTrackSource::BigWig => Operation::ImportGenomeBigWigTrack {
+                seq_id: seq_id.to_string(),
+                path: subscription.path.clone(),
+                track_name: subscription.track_name.clone(),
+                min_score: subscription.min_score,
+                max_score: subscription.max_score,
+                clear_existing: Some(subscription.clear_existing),
+            },
+        }
+    }
+
+    fn apply_track_subscription_to_seq_ids(
+        &mut self,
+        seq_ids: &[String],
+        subscription: &GenomeTrackSubscription,
+    ) -> GenomeTrackSyncReport {
+        let mut report = GenomeTrackSyncReport {
+            subscriptions_considered: 1,
+            target_sequences: seq_ids.len(),
+            ..GenomeTrackSyncReport::default()
+        };
+        for seq_id in seq_ids {
+            let op = Self::track_subscription_to_operation(seq_id, subscription);
+            match self.apply(op) {
+                Ok(op_result) => {
+                    report.applied_imports += 1;
+                    report.warnings_count += op_result.warnings.len();
+                }
+                Err(e) => {
+                    report.failed_imports += 1;
+                    if report.errors.len() < 20 {
+                        report.errors.push(format!(
+                            "{} '{}' @ {}: {}",
+                            subscription.source.label(),
+                            subscription.path,
+                            seq_id,
+                            e.message
+                        ));
+                    }
+                }
+            }
+        }
+        report
+    }
+
     fn latest_genome_anchor_for_seq(
         &self,
         seq_id: &str,
@@ -1612,6 +2023,12 @@ impl GentleEngine {
             .any(|v| v.eq_ignore_ascii_case(GENOME_BIGWIG_TRACK_GENERATED_TAG))
     }
 
+    fn is_generated_blast_hit_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|v| v.eq_ignore_ascii_case(BLAST_HIT_TRACK_GENERATED_TAG))
+    }
+
     fn is_generated_genome_signal_feature(feature: &gb_io::seq::Feature) -> bool {
         Self::is_generated_genome_bed_feature(feature)
             || Self::is_generated_genome_bigwig_feature(feature)
@@ -1619,6 +2036,10 @@ impl GentleEngine {
 
     fn remove_generated_genome_signal_features(features: &mut Vec<gb_io::seq::Feature>) {
         features.retain(|f| !Self::is_generated_genome_signal_feature(f));
+    }
+
+    fn remove_generated_blast_hit_features(features: &mut Vec<gb_io::seq::Feature>) {
+        features.retain(|f| !Self::is_generated_blast_hit_feature(f));
     }
 
     fn open_text_reader(path: &str) -> Result<Box<dyn BufRead>, EngineError> {
@@ -1835,6 +2256,91 @@ impl GentleEngine {
             GENOME_BED_TRACK_GENERATED_TAG,
             "BED",
         )
+    }
+
+    fn build_blast_hit_feature(
+        hit: &BlastHitFeatureInput,
+        track_name: &str,
+        local_start_0based: usize,
+        local_end_0based_exclusive: usize,
+        local_strand: Option<char>,
+    ) -> gb_io::seq::Feature {
+        let label = format!(
+            "{}:{}:{}-{}",
+            track_name, hit.subject_id, hit.query_start_1based, hit.query_end_1based
+        );
+        let mut qualifiers = vec![
+            ("label".into(), Some(label)),
+            (
+                "note".into(),
+                Some(format!(
+                    "BLAST hit '{}' query={}..{} subject={}..{} identity={:.2}% bitscore={:.2} evalue={:.3e}",
+                    hit.subject_id,
+                    hit.query_start_1based,
+                    hit.query_end_1based,
+                    hit.subject_start_1based,
+                    hit.subject_end_1based,
+                    hit.identity_percent,
+                    hit.bit_score,
+                    hit.evalue
+                )),
+            ),
+            ("gentle_track_source".into(), Some("BLAST".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(BLAST_HIT_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("gentle_track_name".into(), Some(track_name.to_string())),
+            ("blast_subject_id".into(), Some(hit.subject_id.clone())),
+            (
+                "blast_query_start_1based".into(),
+                Some(hit.query_start_1based.to_string()),
+            ),
+            (
+                "blast_query_end_1based".into(),
+                Some(hit.query_end_1based.to_string()),
+            ),
+            (
+                "blast_subject_start_1based".into(),
+                Some(hit.subject_start_1based.to_string()),
+            ),
+            (
+                "blast_subject_end_1based".into(),
+                Some(hit.subject_end_1based.to_string()),
+            ),
+            (
+                "blast_identity_percent".into(),
+                Some(format!("{:.6}", hit.identity_percent)),
+            ),
+            ("score".into(), Some(format!("{:.6}", hit.bit_score))),
+            (
+                "blast_bit_score".into(),
+                Some(format!("{:.6}", hit.bit_score)),
+            ),
+            ("blast_evalue".into(), Some(format!("{:.3e}", hit.evalue))),
+        ];
+        if let Some(qcov) = hit.query_coverage_percent {
+            qualifiers.push(("blast_qcov_percent".into(), Some(format!("{qcov:.4}"))));
+        }
+        if let Some(strand) = local_strand {
+            qualifiers.push(("strand".into(), Some(strand.to_string())));
+        }
+
+        let base_location = gb_io::seq::Location::simple_range(
+            local_start_0based as i64,
+            local_end_0based_exclusive as i64,
+        );
+        let location = if local_strand == Some('-') {
+            gb_io::seq::Location::Complement(Box::new(base_location))
+        } else {
+            base_location
+        };
+
+        gb_io::seq::Feature {
+            kind: gb_io::FeatureKind::from("regulatory_region"),
+            location,
+            qualifiers,
+        }
     }
 
     fn import_genome_bed_track(
@@ -2488,6 +2994,7 @@ impl GentleEngine {
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
             Operation::ImportGenomeBedTrack { .. } => Some("Imported BED track".to_string()),
             Operation::ImportGenomeBigWigTrack { .. } => Some("Imported BigWig track".to_string()),
+            Operation::ImportBlastHitsTrack { .. } => Some("Imported BLAST hit track".to_string()),
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -4514,6 +5021,132 @@ impl GentleEngine {
                         report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
                     ));
                 }
+            }
+            Operation::ImportBlastHitsTrack {
+                seq_id,
+                hits,
+                track_name,
+                clear_existing,
+            } => {
+                if hits.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportBlastHitsTrack requires at least one hit".to_string(),
+                    });
+                }
+                let selected_track_name = track_name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("blast_hits")
+                    .to_string();
+                let clear_existing = clear_existing.unwrap_or(false);
+
+                let _ = self.ensure_lineage_node(&seq_id);
+                let dna = self
+                    .state
+                    .sequences
+                    .get_mut(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let seq_len = dna.len();
+                if seq_len == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Sequence '{}' is empty and cannot receive BLAST hit features",
+                            seq_id
+                        ),
+                    });
+                }
+
+                let mut removed_count = 0usize;
+                if clear_existing {
+                    let before = dna.features().len();
+                    Self::remove_generated_blast_hit_features(dna.features_mut());
+                    removed_count = before.saturating_sub(dna.features().len());
+                }
+
+                let mut imported_count = 0usize;
+                let mut skipped_count = 0usize;
+                for (idx, hit) in hits.iter().enumerate() {
+                    let start = hit.query_start_1based.min(hit.query_end_1based);
+                    let end = hit.query_start_1based.max(hit.query_end_1based);
+                    if start == 0 || end == 0 {
+                        skipped_count += 1;
+                        if result.warnings.len() < 20 {
+                            result.warnings.push(format!(
+                                "BLAST hit {} skipped because query coordinates are invalid: {}..{}",
+                                idx + 1,
+                                hit.query_start_1based,
+                                hit.query_end_1based
+                            ));
+                        }
+                        continue;
+                    }
+                    if start > seq_len {
+                        skipped_count += 1;
+                        if result.warnings.len() < 20 {
+                            result.warnings.push(format!(
+                                "BLAST hit {} skipped because query start {} is outside sequence length {}",
+                                idx + 1,
+                                start,
+                                seq_len
+                            ));
+                        }
+                        continue;
+                    }
+                    let end_clamped = end.min(seq_len);
+                    if end_clamped < start {
+                        skipped_count += 1;
+                        continue;
+                    }
+                    if end_clamped < end && result.warnings.len() < 20 {
+                        result.warnings.push(format!(
+                            "BLAST hit {} query range {}..{} was clamped to {}..{} for sequence length {}",
+                            idx + 1,
+                            start,
+                            end,
+                            start,
+                            end_clamped,
+                            seq_len
+                        ));
+                    }
+                    let local_start_0based = start.saturating_sub(1);
+                    let local_end_0based_exclusive = end_clamped;
+                    let local_strand =
+                        if hit.subject_start_1based == 0 || hit.subject_end_1based == 0 {
+                            None
+                        } else if hit.subject_start_1based <= hit.subject_end_1based {
+                            Some('+')
+                        } else {
+                            Some('-')
+                        };
+                    let feature = Self::build_blast_hit_feature(
+                        hit,
+                        &selected_track_name,
+                        local_start_0based,
+                        local_end_0based_exclusive,
+                        local_strand,
+                    );
+                    dna.features_mut().push(feature);
+                    imported_count += 1;
+                }
+
+                if imported_count > 0 || removed_count > 0 {
+                    result.changed_seq_ids.push(seq_id.clone());
+                }
+                result.messages.push(format!(
+                    "Imported {} BLAST hit feature(s) into '{}' as track '{}' (input_hits={}, skipped={}, cleared_existing={})",
+                    imported_count,
+                    seq_id,
+                    selected_track_name,
+                    hits.len(),
+                    skipped_count,
+                    removed_count
+                ));
             }
             Operation::Digest {
                 input,
@@ -8810,6 +9443,239 @@ ORIGIN
         assert_eq!(
             extract_region.created_seq_ids,
             vec!["helper_head".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_sync_tracked_genome_track_subscriptions_only_applies_to_new_anchors() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("anch1".to_string(), seq("ACGTACGTACGT"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "anch1",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "ExtractGenomeRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": "synthetic",
+                        "cache_dir": null,
+                        "chromosome": "chr1",
+                        "start_1based": 1,
+                        "end_1based": 12,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "+",
+                        "sequence_source_type": null,
+                        "annotation_source_type": null,
+                        "sequence_source": null,
+                        "annotation_source": null,
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let td = tempdir().unwrap();
+        let bed_path = td.path().join("tracked.bed");
+        std::fs::write(&bed_path, "chr1\t0\t4\tpeak1\t100\t+\n").unwrap();
+
+        let inserted = engine
+            .add_genome_track_subscription(GenomeTrackSubscription {
+                source: GenomeTrackSource::Bed,
+                path: bed_path.to_string_lossy().to_string(),
+                track_name: Some("tracked".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: true,
+            })
+            .unwrap();
+        assert!(inserted);
+
+        let first = engine
+            .sync_tracked_genome_track_subscriptions(false)
+            .unwrap();
+        assert_eq!(first.target_sequences, 1);
+        assert_eq!(first.applied_imports, 1);
+        assert_eq!(first.failed_imports, 0);
+
+        let anch1_features_after_first = engine
+            .state()
+            .sequences
+            .get("anch1")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_bed_feature(f))
+            .count();
+        assert_eq!(anch1_features_after_first, 1);
+
+        engine
+            .state_mut()
+            .sequences
+            .insert("anch2".to_string(), seq("ACGTACGTACGT"));
+        let provenance = engine
+            .state_mut()
+            .metadata
+            .get_mut(PROVENANCE_METADATA_KEY)
+            .and_then(|v| v.as_object_mut())
+            .unwrap();
+        let records = provenance
+            .get_mut(GENOME_EXTRACTIONS_METADATA_KEY)
+            .and_then(|v| v.as_array_mut())
+            .unwrap();
+        records.push(serde_json::json!({
+            "seq_id": "anch2",
+            "recorded_at_unix_ms": 2,
+            "operation": "ExtractGenomeRegion",
+            "genome_id": "ToyGenome",
+            "catalog_path": "synthetic",
+            "cache_dir": null,
+            "chromosome": "chr1",
+            "start_1based": 1,
+            "end_1based": 12,
+            "gene_query": null,
+            "occurrence": null,
+            "gene_id": null,
+            "gene_name": null,
+            "strand": null,
+            "anchor_strand": "+",
+            "sequence_source_type": null,
+            "annotation_source_type": null,
+            "sequence_source": null,
+            "annotation_source": null,
+            "sequence_sha1": null,
+            "annotation_sha1": null
+        }));
+
+        let second = engine
+            .sync_tracked_genome_track_subscriptions(true)
+            .unwrap();
+        assert_eq!(second.target_sequences, 1);
+        assert_eq!(second.applied_imports, 1);
+        assert_eq!(second.failed_imports, 0);
+
+        let anch1_features_after_second = engine
+            .state()
+            .sequences
+            .get("anch1")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_bed_feature(f))
+            .count();
+        assert_eq!(anch1_features_after_second, 1);
+        let anch2_features = engine
+            .state()
+            .sequences
+            .get("anch2")
+            .unwrap()
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_bed_feature(f))
+            .count();
+        assert_eq!(anch2_features, 1);
+    }
+
+    #[test]
+    fn test_import_blast_hits_track_operation_adds_features_and_clears_previous() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("query".to_string(), seq("ACGTACGTACGTACGTACGTACGTACGT"));
+        let mut engine = GentleEngine::from_state(state);
+
+        let first = engine
+            .apply(Operation::ImportBlastHitsTrack {
+                seq_id: "query".to_string(),
+                hits: vec![
+                    BlastHitFeatureInput {
+                        subject_id: "chr1".to_string(),
+                        query_start_1based: 1,
+                        query_end_1based: 8,
+                        subject_start_1based: 100,
+                        subject_end_1based: 107,
+                        identity_percent: 99.5,
+                        bit_score: 42.0,
+                        evalue: 1e-8,
+                        query_coverage_percent: Some(100.0),
+                    },
+                    BlastHitFeatureInput {
+                        subject_id: "chr2".to_string(),
+                        query_start_1based: 20,
+                        query_end_1based: 40,
+                        subject_start_1based: 500,
+                        subject_end_1based: 480,
+                        identity_percent: 95.0,
+                        bit_score: 33.0,
+                        evalue: 1e-4,
+                        query_coverage_percent: Some(75.0),
+                    },
+                ],
+                track_name: Some("blast_hits_demo".to_string()),
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(first.changed_seq_ids.contains(&"query".to_string()));
+        assert!(first.warnings.iter().any(|w| w.contains("was clamped")));
+
+        let dna = engine.state().sequences.get("query").unwrap();
+        let blast_features: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_blast_hit_feature(f))
+            .collect();
+        assert_eq!(blast_features.len(), 2);
+        assert!(blast_features.iter().any(|f| {
+            f.qualifier_values("blast_subject_id".into())
+                .any(|v| v == "chr1")
+        }));
+        assert!(blast_features.iter().any(|f| {
+            f.qualifier_values("blast_subject_id".into())
+                .any(|v| v == "chr2")
+        }));
+
+        let second = engine
+            .apply(Operation::ImportBlastHitsTrack {
+                seq_id: "query".to_string(),
+                hits: vec![BlastHitFeatureInput {
+                    subject_id: "chr3".to_string(),
+                    query_start_1based: 5,
+                    query_end_1based: 12,
+                    subject_start_1based: 1000,
+                    subject_end_1based: 1007,
+                    identity_percent: 98.0,
+                    bit_score: 50.0,
+                    evalue: 1e-12,
+                    query_coverage_percent: Some(90.0),
+                }],
+                track_name: Some("blast_hits_demo".to_string()),
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(second.changed_seq_ids.contains(&"query".to_string()));
+
+        let dna = engine.state().sequences.get("query").unwrap();
+        let blast_features_after_clear: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_blast_hit_feature(f))
+            .collect();
+        assert_eq!(blast_features_after_clear.len(), 1);
+        assert_eq!(
+            blast_features_after_clear[0]
+                .qualifier_values("blast_subject_id".into())
+                .next()
+                .unwrap_or_default(),
+            "chr3"
         );
     }
 }

@@ -42,7 +42,7 @@
   "Saccharomyces cerevisiae S288c Ensembl 115": {
     "description": "Saccharomyces cerevisiae S288c Ensembl 115",
     "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.116.gtf.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.115.gtf.gz",
     "cache_dir": "data/genomes"
   },
   "LocalProject": {
