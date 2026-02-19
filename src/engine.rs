@@ -3,8 +3,8 @@ use crate::{
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
     genomes::{
-        GenomeCatalog, GenomeGeneRecord, PrepareGenomeProgress, PrepareGenomeReport,
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
+        PrepareGenomeReport, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -712,12 +712,44 @@ impl GentleEngine {
         Ok(catalog.list_genomes())
     }
 
+    pub fn describe_reference_genome_sources(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeSourcePlan, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .source_plan(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not resolve source plan for genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
     pub fn list_helper_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {
         let chosen = catalog_path
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
         Self::list_reference_genomes(Some(chosen))
+    }
+
+    pub fn describe_helper_genome_sources(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeSourcePlan, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::describe_reference_genome_sources(Some(chosen), genome_id, cache_dir)
     }
 
     pub fn is_reference_genome_prepared(
@@ -826,15 +858,22 @@ impl GentleEngine {
         } else {
             "downloaded and installed"
         };
+        let sequence_type = report.sequence_source_type.as_deref().unwrap_or("unknown");
+        let annotation_type = report
+            .annotation_source_type
+            .as_deref()
+            .unwrap_or("unknown");
         format!(
-            "Prepared genome '{}' ({status}). cache='{}' sequence='{}', annotation='{}'",
+            "Prepared genome '{}' ({status}). cache='{}' sequence='{}' [{}], annotation='{}' [{}]",
             genome_id,
             cache_dir
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
                 .unwrap_or("catalog/default"),
             report.sequence_path,
-            report.annotation_path
+            sequence_type,
+            report.annotation_path,
+            annotation_type
         )
     }
 
@@ -4531,6 +4570,7 @@ impl Engine for GentleEngine {
 mod tests {
     use super::*;
     use flate2::{write::GzEncoder, Compression};
+    use std::env;
     use std::fs;
     use std::io::Write;
     use std::path::Path;
@@ -4549,6 +4589,28 @@ mod tests {
 
     fn file_url(path: &Path) -> String {
         format!("file://{}", path.display())
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = env::var(key).ok();
+            env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => env::set_var(self.key, value),
+                None => env::remove_var(self.key),
+            }
+        }
     }
 
     #[test]
@@ -5480,6 +5542,54 @@ mod tests {
     }
 
     #[test]
+    fn test_load_file_operation_fasta_synthetic_oligo_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oligo.fa");
+        std::fs::write(&path, ">oligo1 molecule=ssdna\nATGCATGC\n").unwrap();
+
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::LoadFile {
+                path: path.display().to_string(),
+                as_id: Some("oligo".to_string()),
+            })
+            .unwrap();
+        assert_eq!(res.created_seq_ids, vec!["oligo".to_string()]);
+
+        let dna = engine
+            .state()
+            .sequences
+            .get("oligo")
+            .expect("oligo sequence should exist");
+        assert_eq!(dna.molecule_type(), Some("ssDNA"));
+        assert!(dna.overhang().is_blunt());
+    }
+
+    #[test]
+    fn test_load_file_operation_fasta_dsdna_with_overhang_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sticky.fa");
+        std::fs::write(&path, ">sticky molecule=dsdna f5=GATC r5=CTAG\nATGCATGC\n").unwrap();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::LoadFile {
+                path: path.display().to_string(),
+                as_id: Some("sticky".to_string()),
+            })
+            .unwrap();
+
+        let dna = engine
+            .state()
+            .sequences
+            .get("sticky")
+            .expect("sticky sequence should exist");
+        assert_eq!(dna.molecule_type(), Some("dsDNA"));
+        assert_eq!(dna.overhang().forward_5, b"GATC".to_vec());
+        assert_eq!(dna.overhang().reverse_5, b"CTAG".to_vec());
+    }
+
+    #[test]
     fn test_save_file_operation_genbank() {
         let mut state = ProjectState::default();
         state.sequences.insert("s".to_string(), seq("ATGCCA"));
@@ -6234,5 +6344,105 @@ mod tests {
         assert_eq!(extract_gene.created_seq_ids, vec!["toy_gene".to_string()]);
         let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
         assert_eq!(loaded_gene.get_forward_string(), "ACGTACGTACGT");
+    }
+
+    #[test]
+    fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
+        let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let mock_dir = root.join("mock");
+        fs::create_dir_all(&mock_dir).unwrap();
+        fs::copy("test_files/pGEX_3X.fa", mock_dir.join("L09137.fasta")).unwrap();
+        fs::copy("test_files/pGEX-3X.gb", mock_dir.join("L09137.gbwithparts")).unwrap();
+
+        let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
+        let _efetch_env = EnvVarGuard::set("GENTLE_NCBI_EFETCH_URL", &efetch_template);
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("helper_catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "Helper pUC19": {{
+    "description": "helper vector from GenBank accession",
+    "genbank_accession": "L09137",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        let prep = engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "Helper pUC19".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(prep
+            .messages
+            .iter()
+            .any(|m| m.contains("[genbank_accession]")));
+
+        let plan = GentleEngine::describe_reference_genome_sources(
+            Some(&catalog_path_str),
+            "Helper pUC19",
+            None,
+        )
+        .unwrap();
+        assert_eq!(plan.sequence_source_type, "genbank_accession");
+        assert_eq!(plan.annotation_source_type, "genbank_accession");
+
+        let genes = GentleEngine::list_reference_genome_genes(
+            Some(&catalog_path_str),
+            "Helper pUC19",
+            None,
+        )
+        .unwrap();
+        assert!(!genes.is_empty());
+        assert!(genes.iter().any(|g| {
+            g.gene_name
+                .as_ref()
+                .map(|v| v.eq_ignore_ascii_case("bla"))
+                .unwrap_or(false)
+                || g.gene_id
+                    .as_ref()
+                    .map(|v| v.eq_ignore_ascii_case("bla"))
+                    .unwrap_or(false)
+        }));
+
+        let extract_gene = engine
+            .apply(Operation::ExtractGenomeGene {
+                genome_id: "Helper pUC19".to_string(),
+                gene_query: "bla".to_string(),
+                occurrence: Some(1),
+                output_id: Some("helper_bla".to_string()),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(extract_gene.created_seq_ids, vec!["helper_bla".to_string()]);
+        let seq = engine.state().sequences.get("helper_bla").unwrap();
+        assert!(seq.len() > 0);
+
+        let extract_region = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "Helper pUC19".to_string(),
+                chromosome: "U13852.1".to_string(),
+                start_1based: 1,
+                end_1based: 40,
+                output_id: Some("helper_head".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(
+            extract_region.created_seq_ids,
+            vec!["helper_head".to_string()]
+        );
     }
 }

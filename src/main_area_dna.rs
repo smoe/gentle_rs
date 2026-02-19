@@ -7,7 +7,7 @@ use crate::{
         OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
         TfbsProgress, Workflow,
     },
-    engine_shell::{execute_shell_command, parse_shell_line, shell_help_text},
+    engine_shell::{execute_shell_command, parse_shell_line},
     icons::*,
     pool_gel::build_pool_gel_layout,
     render_dna::RenderDna,
@@ -184,6 +184,19 @@ fn default_tfbs_quantile() -> f64 {
 const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
 const UI_SIZE_MIN_PX: f32 = 1.0;
 const UI_SIZE_MAX_PX: f32 = 4096.0;
+const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
+    ("Auto", ""),
+    ("NEB 100bp + 1kb", "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"),
+    (
+        "MassRuler Low + High",
+        "MassRuler Low Range,MassRuler High Range",
+    ),
+    ("GeneRuler 50bp + Mix", "GeneRuler 50bp,GeneRuler Mix"),
+    (
+        "GeneRuler 100bp+ + Mix",
+        "GeneRuler 100bp DNA Ladder Plus,GeneRuler Mix",
+    ),
+];
 
 #[derive(Clone, Debug)]
 enum TfbsTaskMessage {
@@ -902,6 +915,16 @@ impl MainAreaDna {
                 self.show_engine_ops = !self.show_engine_ops;
                 self.save_engine_ops_state();
             }
+            if ui
+                .button("Shell")
+                .on_hover_text(
+                    "Open GENtle shell (shared command parser/executor with gentle_cli shell)",
+                )
+                .clicked()
+            {
+                self.show_shell = !self.show_shell;
+                self.save_engine_ops_state();
+            }
         });
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
@@ -1382,6 +1405,19 @@ impl MainAreaDna {
                     }
                 });
                 ui.horizontal(|ui| {
+                    let selected_preset = Self::pool_gel_ladder_preset_label(&self.pool_gel_ladders);
+                    egui::ComboBox::from_id_salt("pool_gel_ladder_preset")
+                        .selected_text(selected_preset.clone())
+                        .show_ui(ui, |ui| {
+                            for (label, value) in POOL_GEL_LADDER_PRESETS {
+                                if ui
+                                    .selectable_label(selected_preset == label, label)
+                                    .clicked()
+                                {
+                                    self.pool_gel_ladders = value.to_string();
+                                }
+                            }
+                        });
                     ui.label("gel ladders");
                     ui.text_edit_singleline(&mut self.pool_gel_ladders)
                         .on_hover_text("Optional comma-separated ladder names; leave blank for auto");
@@ -1868,6 +1904,97 @@ impl MainAreaDna {
                 self.save_engine_ops_state();
             });
         }
+
+        if self.show_shell {
+            ui.separator();
+            self.render_shell_panel(ui);
+        }
+    }
+
+    fn run_shell_command(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let line = self.shell_command_text.trim().to_string();
+        if line.is_empty() {
+            self.op_status = "Shell command is empty".to_string();
+            return;
+        }
+        let command = match parse_shell_line(&line) {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                self.op_status = format!("shell parse error: {e}");
+                self.shell_preview_text.clear();
+                return;
+            }
+        };
+        self.shell_preview_text = command.preview();
+
+        let outcome = {
+            let mut guard = engine.write().expect("Engine lock poisoned");
+            execute_shell_command(&mut guard, &command)
+        };
+        match outcome {
+            Ok(run) => {
+                let output = serde_json::to_string_pretty(&run.output).unwrap_or_else(|e| {
+                    format!("{{\"error\":\"Could not format shell output: {e}\"}}")
+                });
+                if !self.shell_output_text.is_empty() {
+                    self.shell_output_text.push('\n');
+                }
+                self.shell_output_text
+                    .push_str(&format!("$ {line}\n{output}\n"));
+                self.op_status = format!("shell ok: {}", command.preview());
+                self.sync_from_engine_display();
+                self.save_engine_ops_state();
+            }
+            Err(e) => {
+                if !self.shell_output_text.is_empty() {
+                    self.shell_output_text.push('\n');
+                }
+                self.shell_output_text
+                    .push_str(&format!("$ {line}\nERROR: {e}\n"));
+                self.op_status = format!("shell error: {e}");
+            }
+        }
+    }
+
+    fn render_shell_panel(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing("GENtle Shell", |ui| {
+            ui.label("Runs the same shared shell parser/executor as `gentle_cli shell`.");
+            ui.monospace("Type `help` to list supported commands.");
+
+            let preview = parse_shell_line(self.shell_command_text.trim())
+                .map(|cmd| cmd.preview())
+                .unwrap_or_else(|e| format!("Parse error: {e}"));
+            self.shell_preview_text = preview;
+
+            let command_edit = ui.text_edit_singleline(&mut self.shell_command_text);
+            if command_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                self.run_shell_command();
+            }
+
+            ui.horizontal(|ui| {
+                if ui.button("Run").clicked() {
+                    self.run_shell_command();
+                }
+                if ui.button("Help").clicked() {
+                    self.shell_command_text = "help".to_string();
+                    self.run_shell_command();
+                }
+                if ui.button("Clear Output").clicked() {
+                    self.shell_output_text.clear();
+                }
+            });
+
+            ui.monospace(format!("preview: {}", self.shell_preview_text));
+            ui.add(
+                egui::TextEdit::multiline(&mut self.shell_output_text)
+                    .desired_rows(10)
+                    .code_editor(),
+            );
+        });
     }
 
     fn set_display_visibility(&self, target: DisplayTarget, visible: bool) {
@@ -2584,6 +2711,30 @@ impl MainAreaDna {
             .collect()
     }
 
+    fn normalized_ids(text: &str) -> Vec<String> {
+        let mut ids = Self::parse_ids(text)
+            .into_iter()
+            .map(|id| id.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
+    fn pool_gel_ladder_preset_label(text: &str) -> String {
+        let current = Self::normalized_ids(text);
+        for (label, preset) in POOL_GEL_LADDER_PRESETS {
+            if current == Self::normalized_ids(preset) {
+                return label.to_string();
+            }
+        }
+        if current.is_empty() {
+            "Auto".to_string()
+        } else {
+            "Custom".to_string()
+        }
+    }
+
     fn collect_tfbs_motifs(&self) -> Vec<String> {
         if self.tfbs_use_all_motifs {
             tf_motifs::all_motif_ids()
@@ -2643,6 +2794,8 @@ impl MainAreaDna {
             .tfbs_display_criteria();
         EngineOpsUiState {
             show_engine_ops: self.show_engine_ops,
+            show_shell: self.show_shell,
+            shell_command_text: self.shell_command_text.clone(),
             digest_enzymes_text: self.digest_enzymes_text.clone(),
             digest_prefix_text: self.digest_prefix_text.clone(),
             merge_inputs_text: self.merge_inputs_text.clone(),
@@ -2727,6 +2880,8 @@ impl MainAreaDna {
 
     fn apply_engine_ops_state(&mut self, s: EngineOpsUiState) {
         self.show_engine_ops = s.show_engine_ops;
+        self.show_shell = s.show_shell;
+        self.shell_command_text = s.shell_command_text;
         self.digest_enzymes_text = s.digest_enzymes_text;
         self.digest_prefix_text = s.digest_prefix_text;
         self.merge_inputs_text = s.merge_inputs_text;

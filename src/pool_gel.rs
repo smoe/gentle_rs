@@ -1,4 +1,4 @@
-use crate::DNA_MARKERS;
+use crate::DNA_LADDERS;
 use std::collections::{BTreeMap, BTreeSet};
 use svg::node::element::{Line, Rectangle, Text};
 use svg::Document;
@@ -52,7 +52,7 @@ fn normalize_ladder_name(name: &str) -> String {
 }
 
 fn resolve_ladder_names(requested: &[String], min_bp: usize, max_bp: usize) -> Vec<String> {
-    let names = DNA_MARKERS.names_sorted();
+    let names = DNA_LADDERS.names_sorted();
     if names.is_empty() {
         return vec![];
     }
@@ -89,7 +89,7 @@ fn resolve_ladder_names(requested: &[String], min_bp: usize, max_bp: usize) -> V
         }
     }
 
-    DNA_MARKERS.choose_for_range(min_bp, max_bp, 2)
+    DNA_LADDERS.choose_for_range(min_bp, max_bp, 2)
 }
 
 pub fn build_pool_gel_layout(
@@ -124,10 +124,10 @@ pub fn build_pool_gel_layout(
     let mut all_band_bps: Vec<usize> = valid_members.iter().map(|(_, bp)| *bp).collect();
 
     for ladder_name in &selected_ladders {
-        let Some(ladder) = DNA_MARKERS.get(ladder_name) else {
+        let Some(ladder) = DNA_LADDERS.get(ladder_name) else {
             continue;
         };
-        let mut parts = ladder.parts().clone();
+        let mut parts = ladder.bands().clone();
         parts.sort_by(|a, b| b.length_bp.total_cmp(&a.length_bp));
         let max_strength = parts
             .iter()
@@ -391,6 +391,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_build_pool_gel_layout_auto_ladders() {
@@ -418,5 +419,40 @@ mod tests {
         let svg = export_pool_gel_svg(&layout);
         assert!(svg.contains("<svg"));
         assert!(svg.contains("Pool Gel Preview"));
+    }
+
+    #[test]
+    fn snapshot_pool_gel_svg() {
+        let members = vec![
+            ("frag_a".to_string(), 350),
+            ("frag_b".to_string(), 820),
+            ("frag_c".to_string(), 1650),
+        ];
+        let ladders = vec![
+            "NEB 100bp DNA Ladder".to_string(),
+            "NEB 1kb DNA Ladder".to_string(),
+        ];
+        let layout = build_pool_gel_layout(&members, &ladders).unwrap();
+        let svg = export_pool_gel_svg(&layout);
+        let expected = include_str!("../tests/snapshots/pool_gel/minimal.svg");
+        assert_eq!(svg, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn write_pool_gel_snapshot() {
+        let members = vec![
+            ("frag_a".to_string(), 350),
+            ("frag_b".to_string(), 820),
+            ("frag_c".to_string(), 1650),
+        ];
+        let ladders = vec![
+            "NEB 100bp DNA Ladder".to_string(),
+            "NEB 1kb DNA Ladder".to_string(),
+        ];
+        let layout = build_pool_gel_layout(&members, &ladders).unwrap();
+        let svg = export_pool_gel_svg(&layout);
+        fs::create_dir_all("tests/snapshots/pool_gel").unwrap();
+        fs::write("tests/snapshots/pool_gel/minimal.svg", svg).unwrap();
     }
 }
