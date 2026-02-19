@@ -20,8 +20,8 @@ use crate::{
     },
     enzymes,
     genomes::{
-        GenomeCatalog, GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CACHE_DIR,
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
+        DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs,
@@ -747,6 +747,18 @@ impl GENtleApp {
         Ok(names)
     }
 
+    fn selected_genome_source_plan(&self) -> Result<Option<GenomeSourcePlan>, String> {
+        let genome_id = self.genome_id.trim();
+        if genome_id.is_empty() {
+            return Ok(None);
+        }
+        let catalog_path = self.genome_catalog_path_resolved();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
+        let cache_dir = self.genome_cache_dir_opt();
+        let plan = catalog.source_plan(genome_id, cache_dir.as_deref())?;
+        Ok(Some(plan))
+    }
+
     fn choose_genome_from_catalog(ui: &mut Ui, genome_id: &mut String, names: &[String]) -> bool {
         let mut changed = false;
         let selected_text = if names.iter().any(|name| name == genome_id) {
@@ -1229,6 +1241,21 @@ impl GENtleApp {
                 if selection_changed {
                     self.invalidate_genome_genes();
                 }
+                match self.selected_genome_source_plan() {
+                    Ok(Some(plan)) => {
+                        ui.small(format!(
+                            "sources: sequence={} | annotation={}",
+                            plan.sequence_source_type, plan.annotation_source_type
+                        ));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Source-plan error: {e}"),
+                        );
+                    }
+                }
                 if preparable_genomes.is_empty() {
                     ui.label("All genomes in this catalog are already prepared.");
                 }
@@ -1340,6 +1367,21 @@ impl GENtleApp {
                     Self::choose_genome_from_catalog(ui, &mut self.genome_id, &prepared_genomes);
                 if selection_changed {
                     self.invalidate_genome_genes();
+                }
+                match self.selected_genome_source_plan() {
+                    Ok(Some(plan)) => {
+                        ui.small(format!(
+                            "sources: sequence={} | annotation={}",
+                            plan.sequence_source_type, plan.annotation_source_type
+                        ));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(190, 70, 70),
+                            format!("Source-plan error: {e}"),
+                        );
+                    }
                 }
                 if prepared_genomes.is_empty() {
                     ui.label(

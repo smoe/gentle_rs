@@ -20,6 +20,43 @@ use std::{
 
 type DNAstring = Vec<u8>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SyntheticMoleculeType {
+    DsDna,
+    SsDna,
+    Rna,
+}
+
+impl SyntheticMoleculeType {
+    fn parse(raw: &str) -> Option<Self> {
+        let normalized = raw
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['_', '-'], "")
+            .replace(' ', "");
+        match normalized.as_str() {
+            "dsdna" | "dna" | "doublestrandeddna" | "double" | "ds" => Some(Self::DsDna),
+            "ssdna" | "singlestrandeddna" | "single" | "ssdnaoligo" => Some(Self::SsDna),
+            "rna" | "ssrna" | "singlestrandedrna" | "transcript" | "mrna" | "cdna" => {
+                Some(Self::Rna)
+            }
+            _ => None,
+        }
+    }
+
+    fn molecule_type_value(self) -> &'static str {
+        match self {
+            Self::DsDna => "dsDNA",
+            Self::SsDna => "ssDNA",
+            Self::Rna => "RNA",
+        }
+    }
+
+    fn supports_overhangs(self) -> bool {
+        matches!(self, Self::DsDna)
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DNAoverhang {
     pub forward_3: DNAstring,
@@ -210,9 +247,136 @@ impl DNAsequence {
         let mut ret = Self::from_u8(seq);
         ret.seq.name = Some(name);
         if let Some(desc) = record.desc() {
-            ret.seq.comments.push(desc.to_string())
+            ret.seq.comments.push(desc.to_string());
+            ret.apply_fasta_header_metadata(desc);
+        } else {
+            // FASTA records are treated as synthetic dsDNA by default.
+            ret.seq.molecule_type = Some(SyntheticMoleculeType::DsDna.molecule_type_value().into());
         }
         ret
+    }
+
+    fn strip_metadata_value(raw: &str) -> String {
+        raw.trim_matches(|c: char| {
+            c.is_ascii_whitespace() || c == '"' || c == '\'' || c == ',' || c == ';'
+        })
+        .to_string()
+    }
+
+    fn parse_fasta_header_metadata(desc: &str) -> HashMap<String, String> {
+        let mut out = HashMap::new();
+        for raw in desc.split_whitespace() {
+            let token = raw.trim_matches(|c: char| c == ',' || c == ';');
+            let (key, value) = token
+                .split_once('=')
+                .or_else(|| token.split_once(':'))
+                .unwrap_or(("", ""));
+            if key.is_empty() {
+                continue;
+            }
+            let value = Self::strip_metadata_value(value);
+            if value.is_empty() {
+                continue;
+            }
+            out.insert(key.to_ascii_lowercase(), value);
+        }
+        out
+    }
+
+    fn metadata_value<'a>(meta: &'a HashMap<String, String>, keys: &[&str]) -> Option<&'a str> {
+        for key in keys {
+            if let Some(value) = meta.get(&key.to_ascii_lowercase()) {
+                return Some(value.as_str());
+            }
+        }
+        None
+    }
+
+    fn parse_overhang_value(raw: &str) -> DNAstring {
+        let trimmed = raw.trim();
+        if trimmed.is_empty()
+            || trimmed.eq_ignore_ascii_case("none")
+            || trimmed.eq_ignore_ascii_case("blunt")
+            || trimmed == "."
+            || trimmed == "-"
+        {
+            return vec![];
+        }
+        Self::validate_dna_sequence(trimmed.as_bytes())
+    }
+
+    fn apply_fasta_header_metadata(&mut self, desc: &str) {
+        let meta = Self::parse_fasta_header_metadata(desc);
+
+        let molecule = Self::metadata_value(
+            &meta,
+            &[
+                "molecule",
+                "molecule_type",
+                "mol",
+                "mol_type",
+                "type",
+                "biotype",
+            ],
+        )
+        .and_then(SyntheticMoleculeType::parse)
+        .unwrap_or(SyntheticMoleculeType::DsDna);
+        self.seq.molecule_type = Some(molecule.molecule_type_value().to_string());
+
+        if matches!(molecule, SyntheticMoleculeType::Rna) {
+            // Normalize RNA imports to U when users provide T in FASTA.
+            for nt in &mut self.seq.seq {
+                *nt = match nt.to_ascii_uppercase() {
+                    b'T' => b'U',
+                    other => other,
+                };
+            }
+        }
+
+        if let Some(topology_raw) = Self::metadata_value(&meta, &["topology"]) {
+            self.seq.topology = if topology_raw.eq_ignore_ascii_case("circular") {
+                Topology::Circular
+            } else {
+                Topology::Linear
+            };
+        }
+
+        let mut had_overhang_field = false;
+        let mut overhang = DNAoverhang::default();
+
+        if let Some(v) = Self::metadata_value(&meta, &["forward_5", "f5", "oh_f5", "overhang_f5"]) {
+            had_overhang_field = true;
+            overhang.forward_5 = Self::parse_overhang_value(v);
+        }
+        if let Some(v) = Self::metadata_value(&meta, &["forward_3", "f3", "oh_f3", "overhang_f3"]) {
+            had_overhang_field = true;
+            overhang.forward_3 = Self::parse_overhang_value(v);
+        }
+        if let Some(v) = Self::metadata_value(&meta, &["reverse_5", "r5", "oh_r5", "overhang_r5"]) {
+            had_overhang_field = true;
+            overhang.reverse_5 = Self::parse_overhang_value(v);
+        }
+        if let Some(v) = Self::metadata_value(&meta, &["reverse_3", "r3", "oh_r3", "overhang_r3"]) {
+            had_overhang_field = true;
+            overhang.reverse_3 = Self::parse_overhang_value(v);
+        }
+
+        if had_overhang_field {
+            if molecule.supports_overhangs() {
+                if self.seq.topology == Topology::Circular {
+                    self.seq.comments.push(
+                        "Overhang metadata requested circular topology; forced linear topology"
+                            .to_string(),
+                    );
+                    self.seq.topology = Topology::Linear;
+                }
+                self.overhang = overhang;
+            } else {
+                self.seq.comments.push(
+                    "Ignored overhang metadata for non-double-stranded molecule type".to_string(),
+                );
+            }
+        }
     }
 
     fn from_u8(s: &[u8]) -> Self {
@@ -327,6 +491,10 @@ impl DNAsequence {
 
     pub fn name(&self) -> &Option<String> {
         &self.seq.name
+    }
+
+    pub fn molecule_type(&self) -> Option<&str> {
+        self.seq.molecule_type.as_deref()
     }
 
     pub fn description(&self) -> &Vec<String> {
@@ -617,6 +785,7 @@ mod tests {
         let seq = DNAsequence::from_fasta_file("test_files/pGEX_3X.fa").unwrap();
         let seq = seq.first().unwrap();
         assert_eq!(seq.name().clone().unwrap(), "U13852.1");
+        assert_eq!(seq.molecule_type(), Some("dsDNA"));
 
         let enzymes = Enzymes::default();
         let all = seq.calculate_restriction_enzyme_sites(enzymes.restriction_enzymes(), None);
@@ -630,6 +799,38 @@ mod tests {
         let dna = dna.first().unwrap();
         assert_eq!(dna.name().clone().unwrap(), "XXU13852");
         assert_eq!(dna.features().len(), 12);
+    }
+
+    #[test]
+    fn test_fasta_header_sets_ssdna_molecule_type() {
+        let record = fasta::Record::with_attrs("oligo_ss", Some("molecule=ssdna"), b"ATGCATGC");
+        let dna = DNAsequence::from_fasta_record(&record);
+        assert_eq!(dna.molecule_type(), Some("ssDNA"));
+        assert!(dna.overhang().is_blunt());
+    }
+
+    #[test]
+    fn test_fasta_header_sets_rna_and_normalizes_t_to_u() {
+        let record = fasta::Record::with_attrs("oligo_rna", Some("molecule=rna"), b"AUGTT");
+        let dna = DNAsequence::from_fasta_record(&record);
+        assert_eq!(dna.molecule_type(), Some("RNA"));
+        assert_eq!(dna.get_forward_string(), "AUGUU".to_string());
+        assert!(dna.overhang().is_blunt());
+    }
+
+    #[test]
+    fn test_fasta_header_overhangs_for_double_stranded_oligo() {
+        let record = fasta::Record::with_attrs(
+            "oligo_ds",
+            Some("molecule=dsdna f5=gatc r5=ctag topology=linear"),
+            b"ATGCATGC",
+        );
+        let dna = DNAsequence::from_fasta_record(&record);
+        assert_eq!(dna.molecule_type(), Some("dsDNA"));
+        assert_eq!(dna.overhang().forward_5, b"GATC".to_vec());
+        assert_eq!(dna.overhang().reverse_5, b"CTAG".to_vec());
+        assert_eq!(dna.overhang().forward_3, b"".to_vec());
+        assert_eq!(dna.overhang().reverse_3, b"".to_vec());
     }
 
     #[test]

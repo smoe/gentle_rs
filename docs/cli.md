@@ -207,6 +207,21 @@ Current CLI workflows rely on sequence files supported by internal loaders:
 
 - GenBank
 - FASTA
+  - default interpretation: synthetic blunt `dsDNA`
+  - optional FASTA-header metadata tokens for synthetic oligos:
+    - `molecule=ssdna` for single-stranded DNA
+    - `molecule=rna` for RNA (input `T` is normalized to `U`)
+    - `molecule=dsdna` plus optional overhangs:
+      - `forward_5=...` (alias `f5=...`)
+      - `forward_3=...` (alias `f3=...`)
+      - `reverse_5=...` (alias `r5=...`)
+      - `reverse_3=...` (alias `r3=...`)
+
+Example FASTA headers:
+
+- `>oligo_ss molecule=ssdna`
+- `>oligo_rna molecule=rna`
+- `>oligo_ds molecule=dsdna f5=GATC r5=CTAG`
 
 ## `gentle_cli` (automation/agent CLI)
 
@@ -232,6 +247,9 @@ cargo run --bin gentle_cli -- load-project project.gentle.json
 cargo run --bin gentle_cli -- render-svg pgex linear pgex.linear.svg
 cargo run --bin gentle_cli -- render-svg pgex circular pgex.circular.svg
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
+cargo run --bin gentle_cli -- shell 'help'
+cargo run --bin gentle_cli -- shell 'state-summary'
+cargo run --bin gentle_cli -- shell 'op @op.json'
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg --ladders "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
@@ -244,14 +262,14 @@ cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome",
 cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
 cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
-cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes --filter TP53 --limit 20
+cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 113" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 113" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
-cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter "^bla$" --limit 20
+cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -276,6 +294,41 @@ Project aliases:
 
 - `save-project PATH` aliases `export-state PATH`
 - `load-project PATH` aliases `import-state PATH`
+
+Shared shell command:
+
+- `shell '<command line>'`
+  - Parses and executes commands through the same shared parser/executor used by
+    the GUI `Shell` panel (`src/engine_shell.rs`).
+  - Shell-supported commands:
+    - `help`
+    - `capabilities`
+    - `state-summary`
+    - `load-project PATH`
+    - `save-project PATH`
+    - `render-svg SEQ_ID linear|circular OUTPUT.svg`
+    - `render-lineage-svg OUTPUT.svg`
+    - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+    - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
+    - `import-pool INPUT.pool.gentle.json [PREFIX]`
+    - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
+    - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
+    - `genomes list [--catalog PATH]`
+    - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+    - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
+    - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers list [--catalog PATH]`
+    - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+    - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
+    - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `op <operation-json-or-@file>`
+    - `workflow <workflow-json-or-@file>`
+  - Use single quotes around JSON payloads to preserve whitespace:
+    - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
 
 Pool exchange commands:
 
@@ -319,8 +372,12 @@ Genome convenience commands:
   - Lists available genomes in the catalog.
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Shows whether the genome cache is prepared/indexed.
-- `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]`
+  - Also reports resolved source details: `sequence_source_type`,
+    `annotation_source_type`, `sequence_source`, `annotation_source`.
+- `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
   - Lists indexed genes from prepared cache (paged by `--limit`/`--offset`).
+  - `--filter` is a case-insensitive regular expression.
+  - `--biotype` can be repeated to constrain matches to selected biotypes.
 - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `PrepareGenome`.
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -334,7 +391,7 @@ Helper convenience commands:
   - Same behavior as `genomes list`, but defaults to `assets/helper_genomes.json`.
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes status`, with helper-catalog default.
-- `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]`
+- `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
   - Same behavior as `genomes genes`, with helper-catalog default.
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes prepare`, with helper-catalog default.
@@ -570,7 +627,8 @@ Save as GenBank:
 
 ### Current limitations in the new operation layer
 
-- `import-pool` is currently a CLI utility command and not yet an engine operation.
+- `import-pool` is currently a shared shell/CLI utility command and not yet an
+  engine operation.
 
 ## Error behavior
 

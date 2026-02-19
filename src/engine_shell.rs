@@ -1,20 +1,33 @@
-use crate::engine::{Engine, GentleEngine, Operation, ProjectState, RenderSvgMode, Workflow};
+use crate::{
+    dna_sequence::DNAsequence,
+    engine::{Engine, GentleEngine, Operation, ProjectState, RenderSvgMode, Workflow},
+    genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
+    resource_sync,
+};
+use regex::{Regex, RegexBuilder};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fs;
+use std::{collections::BTreeSet, fs};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum ShellCommand {
     Help,
     Capabilities,
     StateSummary,
-    LoadProject { path: String },
-    SaveProject { path: String },
+    LoadProject {
+        path: String,
+    },
+    SaveProject {
+        path: String,
+    },
     RenderSvg {
         seq_id: String,
         mode: RenderSvgMode,
         output: String,
     },
-    RenderLineageSvg { output: String },
+    RenderLineageSvg {
+        output: String,
+    },
     RenderPoolGelSvg {
         inputs: Vec<String>,
         output: String,
@@ -25,14 +38,107 @@ pub enum ShellCommand {
         output: String,
         human_id: Option<String>,
     },
-    Op { payload: String },
-    Workflow { payload: String },
+    ImportPool {
+        input: String,
+        prefix: String,
+    },
+    ResourcesSyncRebase {
+        input: String,
+        output: Option<String>,
+        commercial_only: bool,
+    },
+    ResourcesSyncJaspar {
+        input: String,
+        output: Option<String>,
+    },
+    ReferenceList {
+        helper_mode: bool,
+        catalog_path: Option<String>,
+    },
+    ReferenceStatus {
+        helper_mode: bool,
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceGenes {
+        helper_mode: bool,
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        filter: String,
+        biotypes: Vec<String>,
+        limit: usize,
+        offset: usize,
+    },
+    ReferencePrepare {
+        helper_mode: bool,
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceExtractRegion {
+        helper_mode: bool,
+        genome_id: String,
+        chromosome: String,
+        start_1based: usize,
+        end_1based: usize,
+        output_id: Option<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceExtractGene {
+        helper_mode: bool,
+        genome_id: String,
+        gene_query: String,
+        occurrence: Option<usize>,
+        output_id: Option<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    Op {
+        payload: String,
+    },
+    Workflow {
+        payload: String,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct ShellRunResult {
     pub state_changed: bool,
     pub output: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolEnd {
+    end_type: String,
+    forward_5: String,
+    forward_3: String,
+    reverse_5: String,
+    reverse_3: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolMember {
+    seq_id: String,
+    #[serde(default)]
+    human_id: String,
+    name: Option<String>,
+    sequence: String,
+    length_bp: usize,
+    topology: String,
+    ends: PoolEnd,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PoolExport {
+    schema: String,
+    pool_id: String,
+    #[serde(default)]
+    human_id: String,
+    member_count: usize,
+    members: Vec<PoolMember>,
 }
 
 impl ShellCommand {
@@ -74,6 +180,134 @@ impl ShellCommand {
                     inputs.len()
                 )
             }
+            Self::ImportPool { input, prefix } => {
+                format!("import pool from '{input}' with prefix '{prefix}'")
+            }
+            Self::ResourcesSyncRebase {
+                input,
+                output,
+                commercial_only,
+            } => {
+                let output = output
+                    .clone()
+                    .unwrap_or_else(|| resource_sync::DEFAULT_REBASE_RESOURCE_PATH.to_string());
+                format!(
+                    "sync REBASE from '{input}' to '{output}'{}",
+                    if *commercial_only {
+                        " (commercial-only)"
+                    } else {
+                        ""
+                    }
+                )
+            }
+            Self::ResourcesSyncJaspar { input, output } => {
+                let output = output
+                    .clone()
+                    .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_RESOURCE_PATH.to_string());
+                format!("sync JASPAR from '{input}' to '{output}'")
+            }
+            Self::ReferenceList {
+                helper_mode,
+                catalog_path,
+            } => {
+                let label = if *helper_mode { "helpers" } else { "genomes" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                format!("list {label} from catalog '{catalog}'")
+            }
+            Self::ReferenceStatus {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!("check {label} '{genome_id}' status (catalog='{catalog}', cache='{cache}')")
+            }
+            Self::ReferenceGenes {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+                filter,
+                biotypes,
+                limit,
+                offset,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let biotypes = if biotypes.is_empty() {
+                    "-".to_string()
+                } else {
+                    biotypes.join(",")
+                };
+                format!(
+                    "list {label} genes for '{genome_id}' (catalog='{catalog}', cache='{cache}', filter='{filter}', biotypes='{biotypes}', limit={limit}, offset={offset})"
+                )
+            }
+            Self::ReferencePrepare {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                format!("prepare {label} '{genome_id}' (catalog='{catalog}', cache='{cache}')")
+            }
+            Self::ReferenceExtractRegion {
+                helper_mode,
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "extract {label} region {genome_id}:{chromosome}:{start_1based}-{end_1based} (output='{output}', catalog='{catalog}', cache='{cache}')"
+                )
+            }
+            Self::ReferenceExtractGene {
+                helper_mode,
+                genome_id,
+                gene_query,
+                occurrence,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let occ = occurrence
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                format!(
+                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', catalog='{catalog}', cache='{cache}')"
+                )
+            }
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -82,7 +316,13 @@ impl ShellCommand {
     pub fn is_state_mutating(&self) -> bool {
         matches!(
             self,
-            Self::LoadProject { .. } | Self::Op { .. } | Self::Workflow { .. }
+            Self::LoadProject { .. }
+                | Self::ImportPool { .. }
+                | Self::ReferencePrepare { .. }
+                | Self::ReferenceExtractRegion { .. }
+                | Self::ReferenceExtractGene { .. }
+                | Self::Op { .. }
+                | Self::Workflow { .. }
         )
     }
 }
@@ -98,6 +338,21 @@ render-svg SEQ_ID linear|circular OUTPUT.svg\n\
 render-lineage-svg OUTPUT.svg\n\
 render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\
 export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n\
+import-pool INPUT.pool.gentle.json [PREFIX]\n\
+resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]\n\
+resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]\n\
+genomes list [--catalog PATH]\n\
+genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
+genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
+genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
+genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
+genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
+helpers list [--catalog PATH]\n\
+helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
+helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
+helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
+helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
+helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
 IDS is comma-separated sequence IDs"
@@ -110,6 +365,158 @@ fn split_ids(input: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect()
+}
+
+fn unique_id(existing: &std::collections::HashMap<String, DNAsequence>, base: &str) -> String {
+    if !existing.contains_key(base) {
+        return base.to_string();
+    }
+    let mut i = 2usize;
+    loop {
+        let candidate = format!("{base}_{i}");
+        if !existing.contains_key(&candidate) {
+            return candidate;
+        }
+        i += 1;
+    }
+}
+
+fn apply_member_overhang(member: &PoolMember, dna: &mut DNAsequence) -> Result<(), String> {
+    let mut value =
+        serde_json::to_value(&*dna).map_err(|e| format!("Could not serialize sequence: {e}"))?;
+    let obj = value
+        .as_object_mut()
+        .ok_or_else(|| "Internal serialization shape error".to_string())?;
+    obj.insert(
+        "overhang".to_string(),
+        json!({
+            "forward_3": member.ends.forward_3.as_bytes(),
+            "forward_5": member.ends.forward_5.as_bytes(),
+            "reverse_3": member.ends.reverse_3.as_bytes(),
+            "reverse_5": member.ends.reverse_5.as_bytes(),
+        }),
+    );
+    let patched: DNAsequence =
+        serde_json::from_value(value).map_err(|e| format!("Could not restore overhang: {e}"))?;
+    *dna = patched;
+    Ok(())
+}
+
+fn default_catalog_path(helper_mode: bool) -> &'static str {
+    if helper_mode {
+        DEFAULT_HELPER_GENOME_CATALOG_PATH
+    } else {
+        DEFAULT_GENOME_CATALOG_PATH
+    }
+}
+
+fn operation_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> Option<String> {
+    catalog_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string())
+        .or_else(|| helper_mode.then(|| default_catalog_path(helper_mode).to_string()))
+}
+
+fn resolved_catalog_path<'a>(
+    catalog_path: &'a Option<String>,
+    helper_mode: bool,
+) -> Option<&'a str> {
+    if let Some(value) = catalog_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(value)
+    } else if helper_mode {
+        Some(default_catalog_path(helper_mode))
+    } else {
+        None
+    }
+}
+
+fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> String {
+    catalog_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| default_catalog_path(helper_mode).to_string())
+}
+
+fn compile_gene_filter_regex(filter: &str) -> Result<Option<Regex>, String> {
+    let pattern = filter.trim();
+    if pattern.is_empty() {
+        return Ok(None);
+    }
+    RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .map(Some)
+        .map_err(|e| format!("Invalid --filter regex '{}': {}", pattern, e))
+}
+
+fn genome_gene_matches_regex_filter(gene: &GenomeGeneRecord, regex: &Regex) -> bool {
+    gene.gene_name
+        .as_ref()
+        .map(|name| regex.is_match(name))
+        .unwrap_or(false)
+        || gene
+            .gene_id
+            .as_ref()
+            .map(|id| regex.is_match(id))
+            .unwrap_or(false)
+        || regex.is_match(&gene.chromosome)
+}
+
+fn collect_biotypes(genes: &[GenomeGeneRecord]) -> Vec<String> {
+    let mut biotypes: BTreeSet<String> = BTreeSet::new();
+    for gene in genes {
+        let Some(biotype) = gene.biotype.as_ref() else {
+            continue;
+        };
+        let trimmed = biotype.trim();
+        if !trimmed.is_empty() {
+            biotypes.insert(trimmed.to_string());
+        }
+    }
+    biotypes.into_iter().collect()
+}
+
+fn genome_gene_matches_filter(
+    gene: &GenomeGeneRecord,
+    filter_regex: Option<&Regex>,
+    allowed_biotypes_lower: &[String],
+) -> bool {
+    let regex_ok = filter_regex
+        .map(|re| genome_gene_matches_regex_filter(gene, re))
+        .unwrap_or(true);
+    if !regex_ok {
+        return false;
+    }
+    if allowed_biotypes_lower.is_empty() {
+        return true;
+    }
+    gene.biotype
+        .as_ref()
+        .map(|b| b.trim().to_ascii_lowercase())
+        .map(|probe| allowed_biotypes_lower.iter().any(|b| b == &probe))
+        .unwrap_or(false)
+}
+
+fn parse_option_path(
+    tokens: &[String],
+    idx: &mut usize,
+    option_name: &str,
+    context: &str,
+) -> Result<String, String> {
+    if *idx + 1 >= tokens.len() {
+        return Err(format!("Missing value after {option_name} for {context}"));
+    }
+    let value = tokens[*idx + 1].clone();
+    *idx += 2;
+    Ok(value)
 }
 
 fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
@@ -132,6 +539,295 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
 
 fn token_error(command: &str) -> String {
     format!("Invalid '{command}' usage. Try: help")
+}
+
+fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<ShellCommand, String> {
+    let label = if helper_mode { "helpers" } else { "genomes" };
+    if tokens.len() < 2 {
+        return Err(format!("{label} requires a subcommand"));
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceList {
+                helper_mode,
+                catalog_path,
+            })
+        }
+        "status" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} status requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} status"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceStatus {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "genes" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} genes requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut filter = String::new();
+            let mut biotypes: Vec<String> = vec![];
+            let mut limit: usize = 200;
+            let mut offset: usize = 0;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    "--filter" => {
+                        filter = parse_option_path(tokens, &mut idx, "--filter", label)?
+                    }
+                    "--biotype" => {
+                        let biotype = parse_option_path(tokens, &mut idx, "--biotype", label)?;
+                        let trimmed = biotype.trim();
+                        if !trimmed.is_empty() {
+                            biotypes.push(trimmed.to_string());
+                        }
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--limit", label)?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--offset" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--offset", label)?;
+                        offset = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} genes"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceGenes {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+                filter,
+                biotypes,
+                limit,
+                offset,
+            })
+        }
+        "prepare" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} prepare"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferencePrepare {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "extract-region" => {
+            if tokens.len() < 6 {
+                return Err(format!(
+                    "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let chromosome = tokens[3].clone();
+            let start_1based = tokens[4]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid START coordinate '{}': {e}", tokens[4]))?;
+            let end_1based = tokens[5]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid END coordinate '{}': {e}", tokens[5]))?;
+            let mut output_id: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 6usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            label,
+                        )?)
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} extract-region"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceExtractRegion {
+                helper_mode,
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                output_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "extract-gene" => {
+            if tokens.len() < 4 {
+                return Err(format!(
+                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let gene_query = tokens[3].clone();
+            let mut occurrence: Option<usize> = None;
+            let mut output_id: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--occurrence" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--occurrence", label)?;
+                        let value = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --occurrence value '{raw}': {e}"))?;
+                        if value == 0 {
+                            return Err("--occurrence must be >= 1".to_string());
+                        }
+                        occurrence = Some(value);
+                    }
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-id",
+                            label,
+                        )?)
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} extract-gene"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceExtractGene {
+                helper_mode,
+                genome_id,
+                gene_query,
+                occurrence,
+                output_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        other => Err(format!(
+            "Unknown {label} subcommand '{other}' (expected list, status, genes, prepare, extract-region, extract-gene)"
+        )),
+    }
 }
 
 pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
@@ -242,6 +938,96 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 human_id: tokens.get(3).cloned(),
             })
         }
+        "import-pool" => {
+            if tokens.len() > 3 {
+                return Err(token_error(cmd));
+            }
+            if tokens.len() < 2 {
+                return Err("import-pool requires: INPUT.pool.gentle.json [PREFIX]".to_string());
+            }
+            Ok(ShellCommand::ImportPool {
+                input: tokens[1].clone(),
+                prefix: tokens.get(2).cloned().unwrap_or_else(|| "pool".to_string()),
+            })
+        }
+        "resources" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "resources requires a subcommand: sync-rebase or sync-jaspar".to_string(),
+                );
+            }
+            match tokens[1].as_str() {
+                "sync-rebase" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources sync-rebase requires INPUT.withrefm_or_URL".to_string()
+                        );
+                    }
+                    let input = tokens[2].clone();
+                    let mut output: Option<String> = None;
+                    let mut commercial_only = false;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--commercial-only" => {
+                                commercial_only = true;
+                                idx += 1;
+                            }
+                            value if value.starts_with("--") => {
+                                return Err(format!(
+                                    "Unknown option '{value}' for resources sync-rebase"
+                                ));
+                            }
+                            value => {
+                                if output.is_some() {
+                                    return Err(format!(
+                                        "Unexpected extra positional argument '{value}' for resources sync-rebase"
+                                    ));
+                                }
+                                output = Some(value.to_string());
+                                idx += 1;
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::ResourcesSyncRebase {
+                        input,
+                        output,
+                        commercial_only,
+                    })
+                }
+                "sync-jaspar" => {
+                    if tokens.len() < 3 {
+                        return Err(
+                            "resources sync-jaspar requires INPUT.jaspar_or_URL".to_string()
+                        );
+                    }
+                    let input = tokens[2].clone();
+                    let mut output: Option<String> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        let value = tokens[idx].as_str();
+                        if value.starts_with("--") {
+                            return Err(format!(
+                                "Unknown option '{value}' for resources sync-jaspar"
+                            ));
+                        }
+                        if output.is_some() {
+                            return Err(format!(
+                                "Unexpected extra positional argument '{value}' for resources sync-jaspar"
+                            ));
+                        }
+                        output = Some(value.to_string());
+                        idx += 1;
+                    }
+                    Ok(ShellCommand::ResourcesSyncJaspar { input, output })
+                }
+                other => Err(format!(
+                    "Unknown resources subcommand '{other}' (expected sync-rebase or sync-jaspar)"
+                )),
+            }
+        }
+        "genomes" => parse_reference_command(tokens, false),
+        "helpers" => parse_reference_command(tokens, true),
         "op" => {
             let payload = tokens[1..].join(" ");
             if payload.trim().is_empty() {
@@ -360,7 +1146,10 @@ pub fn execute_shell_command(
             }
         }
         ShellCommand::SaveProject { path } => {
-            engine.state().save_to_path(path).map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(path)
+                .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
                 output: json!({ "message": format!("Saved project to '{path}'") }),
@@ -429,6 +1218,256 @@ pub fn execute_shell_command(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::ImportPool { input, prefix } => {
+            let text = fs::read_to_string(input)
+                .map_err(|e| format!("Could not read pool file '{input}': {e}"))?;
+            let pool: PoolExport = serde_json::from_str(&text)
+                .map_err(|e| format!("Invalid pool JSON '{input}': {e}"))?;
+            if pool.schema != "gentle.pool.v1" {
+                return Err(format!(
+                    "Unsupported pool schema '{}', expected 'gentle.pool.v1'",
+                    pool.schema
+                ));
+            }
+
+            let mut state = engine.state().clone();
+            let mut imported_ids = Vec::new();
+            for (idx, member) in pool.members.iter().enumerate() {
+                let mut dna = DNAsequence::from_sequence(&member.sequence)
+                    .map_err(|e| format!("Invalid DNA in pool member '{}': {e}", member.seq_id))?;
+                if let Some(name) = &member.name {
+                    let mut value = serde_json::to_value(&dna)
+                        .map_err(|e| format!("Could not serialize sequence: {e}"))?;
+                    if let Some(obj) = value.as_object_mut() {
+                        if let Some(seq_obj) = obj.get_mut("seq").and_then(|v| v.as_object_mut()) {
+                            seq_obj.insert("name".to_string(), json!(name));
+                        }
+                    }
+                    dna = serde_json::from_value(value)
+                        .map_err(|e| format!("Could not set sequence name: {e}"))?;
+                }
+                if member.topology.eq_ignore_ascii_case("circular") {
+                    dna.set_circular(true);
+                }
+                apply_member_overhang(member, &mut dna)?;
+                dna.update_computed_features();
+                let base = format!("{prefix}_{}", idx + 1);
+                let id = unique_id(&state.sequences, &base);
+                state.sequences.insert(id.clone(), dna);
+                imported_ids.push(id);
+            }
+            *engine = GentleEngine::from_state(state);
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "message": format!("Imported pool '{}' ({} members)", pool.pool_id, pool.member_count),
+                    "input": input,
+                    "pool_id": pool.pool_id,
+                    "member_count": pool.member_count,
+                    "imported_ids": imported_ids,
+                }),
+            }
+        }
+        ShellCommand::ResourcesSyncRebase {
+            input,
+            output,
+            commercial_only,
+        } => {
+            let report = resource_sync::sync_rebase(input, output.as_deref(), *commercial_only)?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::ResourcesSyncJaspar { input, output } => {
+            let report = resource_sync::sync_jaspar(input, output.as_deref())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::ReferenceList {
+            helper_mode,
+            catalog_path,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
+                .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "genome_count": genomes.len(),
+                    "genomes": genomes,
+                }),
+            }
+        }
+        ShellCommand::ReferenceStatus {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let prepared = GentleEngine::is_reference_genome_prepared(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let source_plan = GentleEngine::describe_reference_genome_sources(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "genome_id": genome_id,
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "prepared": prepared,
+                    "sequence_source_type": source_plan.sequence_source_type,
+                    "annotation_source_type": source_plan.annotation_source_type,
+                    "sequence_source": source_plan.sequence_source,
+                    "annotation_source": source_plan.annotation_source,
+                }),
+            }
+        }
+        ShellCommand::ReferenceGenes {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+            filter,
+            biotypes,
+            limit,
+            offset,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let genes = GentleEngine::list_reference_genome_genes(
+                resolved_catalog,
+                genome_id,
+                cache_dir.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
+            let filter_regex = compile_gene_filter_regex(filter)?;
+            let biotype_filter: Vec<String> = biotypes
+                .iter()
+                .map(|v| v.trim().to_ascii_lowercase())
+                .filter(|v| !v.is_empty())
+                .collect();
+            let available_biotypes = collect_biotypes(&genes);
+            let filtered: Vec<GenomeGeneRecord> = genes
+                .into_iter()
+                .filter(|g| genome_gene_matches_filter(g, filter_regex.as_ref(), &biotype_filter))
+                .collect();
+            let total = filtered.len();
+            let clamped_offset = (*offset).min(total);
+            let returned: Vec<GenomeGeneRecord> = filtered
+                .into_iter()
+                .skip(clamped_offset)
+                .take(*limit)
+                .collect();
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "genome_id": genome_id,
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "filter": filter,
+                    "biotype_filter": biotypes,
+                    "available_biotypes": available_biotypes,
+                    "offset": clamped_offset,
+                    "limit": limit,
+                    "total_matches": total,
+                    "returned": returned.len(),
+                    "genes": returned,
+                }),
+            }
+        }
+        ShellCommand::ReferencePrepare {
+            helper_mode,
+            genome_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::PrepareGenome {
+                    genome_id: genome_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ReferenceExtractRegion {
+            helper_mode,
+            genome_id,
+            chromosome,
+            start_1based,
+            end_1based,
+            output_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtractGenomeRegion {
+                    genome_id: genome_id.clone(),
+                    chromosome: chromosome.clone(),
+                    start_1based: *start_1based,
+                    end_1based: *end_1based,
+                    output_id: output_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ReferenceExtractGene {
+            helper_mode,
+            genome_id,
+            gene_query,
+            occurrence,
+            output_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtractGenomeGene {
+                    genome_id: genome_id.clone(),
+                    gene_query: gene_query.clone(),
+                    occurrence: *occurrence,
+                    output_id: output_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::Op { payload } => {
             let json_text = parse_json_payload(payload)?;
             let op: Operation = serde_json::from_str(&json_text)
@@ -464,7 +1503,7 @@ mod tests {
 
     #[test]
     fn parse_workflow_payload_keeps_whitespace() {
-        let cmd = parse_shell_line("workflow { \"run_id\": \"x\", \"ops\": [] }")
+        let cmd = parse_shell_line("workflow '{ \"run_id\": \"x\", \"ops\": [] }'")
             .expect("workflow command parse");
         match cmd {
             ShellCommand::Workflow { payload } => {
@@ -487,10 +1526,34 @@ mod tests {
             } => {
                 assert_eq!(inputs, vec!["a".to_string(), "b".to_string()]);
                 assert_eq!(output, "out.svg".to_string());
-                assert_eq!(
-                    ladders,
-                    Some(vec!["1kb".to_string(), "100bp".to_string()])
-                );
+                assert_eq!(ladders, Some(vec!["1kb".to_string(), "100bp".to_string()]));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_reference_genes_with_regex_and_biotypes() {
+        let cmd = parse_shell_line(
+            "helpers genes Helper --filter '^bla$' --biotype promoter --biotype cds --limit 10 --offset 3",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceGenes {
+                helper_mode,
+                genome_id,
+                filter,
+                biotypes,
+                limit,
+                offset,
+                ..
+            } => {
+                assert!(helper_mode);
+                assert_eq!(genome_id, "Helper");
+                assert_eq!(filter, "^bla$");
+                assert_eq!(biotypes, vec!["promoter".to_string(), "cds".to_string()]);
+                assert_eq!(limit, 10);
+                assert_eq!(offset, 3);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -503,5 +1566,52 @@ mod tests {
             .expect("execute state summary");
         assert!(!out.state_changed);
         assert!(out.output.get("sequence_count").is_some());
+    }
+
+    #[test]
+    fn parse_resources_sync_rebase_with_flag() {
+        let cmd = parse_shell_line(
+            "resources sync-rebase https://example.org/rebase.withrefm out.json --commercial-only",
+        )
+        .expect("parse resources sync-rebase");
+        match cmd {
+            ShellCommand::ResourcesSyncRebase {
+                input,
+                output,
+                commercial_only,
+            } => {
+                assert_eq!(input, "https://example.org/rebase.withrefm".to_string());
+                assert_eq!(output, Some("out.json".to_string()));
+                assert!(commercial_only);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_helpers_extract_gene() {
+        let cmd = parse_shell_line(
+            "helpers extract-gene pUC19 bla --occurrence 2 --output-id out --cache-dir cache",
+        )
+        .expect("parse helpers extract-gene");
+        match cmd {
+            ShellCommand::ReferenceExtractGene {
+                helper_mode,
+                genome_id,
+                gene_query,
+                occurrence,
+                output_id,
+                cache_dir,
+                ..
+            } => {
+                assert!(helper_mode);
+                assert_eq!(genome_id, "pUC19".to_string());
+                assert_eq!(gene_query, "bla".to_string());
+                assert_eq!(occurrence, Some(2));
+                assert_eq!(output_id, Some("out".to_string()));
+                assert_eq!(cache_dir, Some("cache".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 }

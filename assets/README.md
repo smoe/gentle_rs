@@ -9,7 +9,7 @@ blank.sqlite3::
 codon_catalog.csv::
 codon_tables.json::
 commonvectors.db::
-dna_markers.json::
+dna_ladders.json::
 enzymes.json::
 genomes.json::
 helper_genomes.json::
@@ -20,7 +20,7 @@ translations.csv::
 Data notes:
 
 - `enzymes.json` is restriction-enzyme data (REBASE-derived snapshot).
-- `dna_markers.json` is the built-in DNA-ladder catalog used for pool gel
+- `dna_ladders.json` is the built-in DNA-ladder catalog used for pool gel
   ladder auto-selection and rendering.
 - `jaspar.motifs.json` is a built-in JASPAR CORE motif snapshot (currently
   generated from the 2026 non-redundant JASPAR-format release).

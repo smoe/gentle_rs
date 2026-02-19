@@ -1,16 +1,31 @@
 use crate::feature_location::feature_is_reverse;
 use flate2::read::GzDecoder;
-use reqwest::blocking::get;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
+const DEFAULT_NCBI_EFETCH_ENDPOINT: &str =
+    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
+const NCBI_EFETCH_ENV_VAR: &str = "GENTLE_NCBI_EFETCH_URL";
+const HTTP_RETRY_ATTEMPTS: usize = 4;
+const HTTP_RETRY_BASE_BACKOFF_MS: u64 = 1000;
+const HTTP_CONNECT_TIMEOUT_SECS: u64 = 20;
+const HTTP_READ_TIMEOUT_SECS: u64 = 120;
+
+#[cfg(test)]
+pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
+    use std::sync::{Mutex, OnceLock};
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 /// Catalog entry describing where to fetch one genome assembly and annotation.
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -39,6 +54,10 @@ struct GenomeInstallManifest {
     genome_id: String,
     sequence_source: String,
     annotation_source: String,
+    #[serde(default)]
+    sequence_source_type: Option<String>,
+    #[serde(default)]
+    annotation_source_type: Option<String>,
     sequence_path: String,
     annotation_path: String,
     fasta_index_path: String,
@@ -53,6 +72,10 @@ pub struct PrepareGenomeReport {
     pub sequence_path: String,
     pub annotation_path: String,
     pub fasta_index_path: String,
+    pub sequence_source: Option<String>,
+    pub annotation_source: Option<String>,
+    pub sequence_source_type: Option<String>,
+    pub annotation_source_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +99,28 @@ pub struct GenomeGeneRecord {
     pub biotype: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeSourcePlan {
+    pub sequence_source: String,
+    pub annotation_source: String,
+    pub sequence_source_type: String,
+    pub annotation_source_type: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SourceType {
+    Local,
+    NcbiAssembly,
+    GenbankAccession,
+    RemoteHttp,
+}
+
+#[derive(Debug, Clone)]
+struct SourceResolution {
+    source: String,
+    source_type: SourceType,
+}
+
 #[derive(Debug, Clone)]
 struct FastaIndexEntry {
     length: u64,
@@ -96,6 +141,7 @@ impl GenomeCatalog {
             .map_err(|e| format!("Could not read genome catalog '{path}': {e}"))?;
         let entries: HashMap<String, GenomeCatalogEntry> = serde_json::from_str(&text)
             .map_err(|e| format!("Could not parse genome catalog '{path}': {e}"))?;
+        validate_catalog_entries(path, &entries)?;
         let base = Path::new(path)
             .parent()
             .map(Path::to_path_buf)
@@ -110,6 +156,35 @@ impl GenomeCatalog {
         let mut names: Vec<String> = self.entries.keys().cloned().collect();
         names.sort_unstable();
         names
+    }
+
+    pub fn source_plan(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<GenomeSourcePlan, String> {
+        let entry = self.entry(genome_id)?;
+        let sequence = self.resolve_source_with_type(
+            genome_id,
+            "sequence",
+            entry.sequence_local.as_ref(),
+            entry.sequence_remote.as_ref(),
+            entry,
+        )?;
+        let annotation = self.resolve_source_with_type(
+            genome_id,
+            "annotation",
+            entry.annotations_local.as_ref(),
+            entry.annotations_remote.as_ref(),
+            entry,
+        )?;
+        let _ = self.install_dir(genome_id, entry, cache_dir_override);
+        Ok(GenomeSourcePlan {
+            sequence_source_type: source_type_label(sequence.source_type).to_string(),
+            annotation_source_type: source_type_label(annotation.source_type).to_string(),
+            sequence_source: sequence.source,
+            annotation_source: annotation.source,
+        })
     }
 
     pub fn is_prepared(
@@ -204,29 +279,42 @@ impl GenomeCatalog {
                 bytes_total: None,
                 percent: Some(100.0),
             });
+            let sequence_source_type = manifest.sequence_source_type.clone().unwrap_or_else(|| {
+                classify_source_type_label(&manifest.sequence_source).to_string()
+            });
+            let annotation_source_type =
+                manifest.annotation_source_type.clone().unwrap_or_else(|| {
+                    classify_source_type_label(&manifest.annotation_source).to_string()
+                });
             return Ok(PrepareGenomeReport {
                 genome_id: genome_id.to_string(),
                 reused_existing: true,
                 sequence_path: manifest.sequence_path,
                 annotation_path: manifest.annotation_path,
                 fasta_index_path: manifest.fasta_index_path,
+                sequence_source: Some(manifest.sequence_source.clone()),
+                annotation_source: Some(manifest.annotation_source.clone()),
+                sequence_source_type: Some(sequence_source_type),
+                annotation_source_type: Some(annotation_source_type),
             });
         }
 
-        let sequence_source = self.resolve_source(
+        let sequence_resolution = self.resolve_source_with_type(
             genome_id,
             "sequence",
             entry.sequence_local.as_ref(),
             entry.sequence_remote.as_ref(),
             entry,
         )?;
-        let annotation_source = self.resolve_source(
+        let annotation_resolution = self.resolve_source_with_type(
             genome_id,
             "annotation",
             entry.annotations_local.as_ref(),
             entry.annotations_remote.as_ref(),
             entry,
         )?;
+        let sequence_source = sequence_resolution.source.clone();
+        let annotation_source = annotation_resolution.source.clone();
 
         let sequence_path = install_dir.join("sequence.fa");
         let annotation_ext = infer_annotation_extension(&annotation_source);
@@ -303,6 +391,12 @@ impl GenomeCatalog {
             genome_id: genome_id.to_string(),
             sequence_source,
             annotation_source,
+            sequence_source_type: Some(
+                source_type_label(sequence_resolution.source_type).to_string(),
+            ),
+            annotation_source_type: Some(
+                source_type_label(annotation_resolution.source_type).to_string(),
+            ),
             sequence_path: canonical_or_display(&sequence_path),
             annotation_path: canonical_or_display(&annotation_path),
             fasta_index_path: canonical_or_display(&fasta_index_path),
@@ -326,6 +420,10 @@ impl GenomeCatalog {
             sequence_path: manifest.sequence_path,
             annotation_path: manifest.annotation_path,
             fasta_index_path: manifest.fasta_index_path,
+            sequence_source: Some(manifest.sequence_source.clone()),
+            annotation_source: Some(manifest.annotation_source.clone()),
+            sequence_source_type: manifest.sequence_source_type.clone(),
+            annotation_source_type: manifest.annotation_source_type.clone(),
         })
     }
 
@@ -461,6 +559,7 @@ impl GenomeCatalog {
         base.join(sanitize_for_path(genome_id))
     }
 
+    #[cfg(test)]
     fn resolve_source(
         &self,
         genome_id: &str,
@@ -469,22 +568,46 @@ impl GenomeCatalog {
         remote: Option<&String>,
         entry: &GenomeCatalogEntry,
     ) -> Result<String, String> {
+        self.resolve_source_with_type(genome_id, kind, local, remote, entry)
+            .map(|r| r.source)
+    }
+
+    fn resolve_source_with_type(
+        &self,
+        genome_id: &str,
+        kind: &str,
+        local: Option<&String>,
+        remote: Option<&String>,
+        entry: &GenomeCatalogEntry,
+    ) -> Result<SourceResolution, String> {
         let mut missing_local_path: Option<PathBuf> = None;
         if let Some(local_raw) = local {
             let local_path = self.resolve_local_path(local_raw);
             if local_path.exists() {
-                return Ok(canonical_or_display(&local_path));
+                return Ok(SourceResolution {
+                    source: canonical_or_display(&local_path),
+                    source_type: SourceType::Local,
+                });
             }
             missing_local_path = Some(local_path);
         }
         if let Some(remote_src) = remote {
-            return Ok(remote_src.clone());
+            return Ok(SourceResolution {
+                source: remote_src.clone(),
+                source_type: classify_source_type(remote_src),
+            });
         }
         if let Some(ncbi_source) = resolve_ncbi_assembly_source(kind, entry)? {
-            return Ok(ncbi_source);
+            return Ok(SourceResolution {
+                source: ncbi_source,
+                source_type: SourceType::NcbiAssembly,
+            });
         }
         if let Some(genbank_source) = resolve_genbank_accession_source(kind, entry)? {
-            return Ok(genbank_source);
+            return Ok(SourceResolution {
+                source: genbank_source,
+                source_type: SourceType::GenbankAccession,
+            });
         }
         if let Some(local_path) = missing_local_path {
             return Err(format!(
@@ -634,9 +757,7 @@ fn resolve_genbank_accession_source(
             ))
         }
     };
-    Ok(Some(format!(
-        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nuccore&id={accession}&rettype={rettype}&retmode=text"
-    )))
+    Ok(Some(build_genbank_efetch_url(&accession, rettype)))
 }
 
 fn validate_genbank_accession(raw: &str) -> Result<String, String> {
@@ -644,11 +765,7 @@ fn validate_genbank_accession(raw: &str) -> Result<String, String> {
     if value.is_empty() {
         return Err("GenBank accession is empty".to_string());
     }
-    let upper = value.to_ascii_uppercase();
-    if matches!(
-        upper.as_str(),
-        "LOCAL_UNPUBLISHED" | "NOT_UPLOADED_TO_GENBANK" | "NOT_UPLOADED"
-    ) {
+    if is_unpublished_genbank_placeholder(value) {
         return Err(format!(
             "GenBank accession '{value}' is marked as unpublished/local-only and cannot be fetched remotely"
         ));
@@ -668,6 +785,37 @@ fn validate_genbank_accession(raw: &str) -> Result<String, String> {
         ));
     }
     Ok(value.to_string())
+}
+
+fn is_unpublished_genbank_placeholder(raw: &str) -> bool {
+    let upper = raw.trim().to_ascii_uppercase();
+    matches!(
+        upper.as_str(),
+        "LOCAL_UNPUBLISHED" | "NOT_UPLOADED_TO_GENBANK" | "NOT_UPLOADED"
+    )
+}
+
+fn build_genbank_efetch_url(accession: &str, rettype: &str) -> String {
+    let override_url = std::env::var(NCBI_EFETCH_ENV_VAR)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    if let Some(template) = override_url {
+        if template.contains("{accession}")
+            || template.contains("{rettype}")
+            || template.contains("{db}")
+        {
+            return template
+                .replace("{accession}", accession)
+                .replace("{rettype}", rettype)
+                .replace("{db}", "nuccore");
+        }
+        let sep = if template.contains('?') { "&" } else { "?" };
+        return format!("{template}{sep}db=nuccore&id={accession}&rettype={rettype}&retmode=text");
+    }
+    format!(
+        "{DEFAULT_NCBI_EFETCH_ENDPOINT}?db=nuccore&id={accession}&rettype={rettype}&retmode=text"
+    )
 }
 
 fn build_ncbi_assembly_ftp_base(accession: &str, assembly_name: &str) -> Result<String, String> {
@@ -729,6 +877,148 @@ fn normalize_ncbi_assembly_name(assembly_name: &str) -> String {
         .collect::<String>()
 }
 
+fn classify_source_type_label(source: &str) -> &'static str {
+    source_type_label(classify_source_type(source))
+}
+
+fn source_type_label(source_type: SourceType) -> &'static str {
+    match source_type {
+        SourceType::Local => "local",
+        SourceType::NcbiAssembly => "ncbi_assembly",
+        SourceType::GenbankAccession => "genbank_accession",
+        SourceType::RemoteHttp => "remote_http",
+    }
+}
+
+fn classify_source_type(source: &str) -> SourceType {
+    if !is_http_source(source) {
+        return SourceType::Local;
+    }
+    let lower = source.to_ascii_lowercase();
+    if lower.contains("entrez/eutils/efetch.fcgi")
+        && lower.contains("db=nuccore")
+        && lower.contains("rettype=")
+    {
+        return SourceType::GenbankAccession;
+    }
+    if lower.contains("ftp.ncbi.nlm.nih.gov/genomes/all/") && lower.contains("_genomic.") {
+        return SourceType::NcbiAssembly;
+    }
+    SourceType::RemoteHttp
+}
+
+fn has_non_empty(value: &Option<String>) -> bool {
+    value
+        .as_ref()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn validate_catalog_entries(
+    catalog_path: &str,
+    entries: &HashMap<String, GenomeCatalogEntry>,
+) -> Result<(), String> {
+    let mut errors: Vec<String> = vec![];
+    for (genome_id, entry) in entries {
+        let mut entry_errors: Vec<String> = vec![];
+        let has_assembly_accession = has_non_empty(&entry.ncbi_assembly_accession);
+        let has_assembly_name = has_non_empty(&entry.ncbi_assembly_name);
+        let has_assembly = has_assembly_accession && has_assembly_name;
+        if has_assembly_accession != has_assembly_name {
+            entry_errors.push(
+                "NCBI assembly source requires both 'ncbi_assembly_accession' and 'ncbi_assembly_name'"
+                    .to_string(),
+            );
+        }
+
+        let genbank_accession = entry
+            .genbank_accession
+            .as_ref()
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty());
+        if has_assembly && genbank_accession.is_some() {
+            entry_errors.push(
+                "Entry cannot declare both NCBI assembly fields and 'genbank_accession'"
+                    .to_string(),
+            );
+        }
+
+        let local_unpublished = entry.local_variant_unpublished.unwrap_or(false);
+        if let Some(accession) = genbank_accession {
+            if is_unpublished_genbank_placeholder(accession) {
+                if !local_unpublished {
+                    entry_errors.push(
+                        "Placeholder 'genbank_accession' requires 'local_variant_unpublished: true'"
+                            .to_string(),
+                    );
+                }
+                if has_non_empty(&entry.sequence_remote)
+                    || has_non_empty(&entry.annotations_remote)
+                    || has_assembly
+                {
+                    entry_errors.push(
+                        "Placeholder 'genbank_accession' cannot be combined with remote/assembly sources"
+                            .to_string(),
+                    );
+                }
+                if !has_non_empty(&entry.sequence_local) && !has_non_empty(&entry.annotations_local)
+                {
+                    entry_errors.push(
+                        "Placeholder 'genbank_accession' requires local sequence/annotation paths"
+                            .to_string(),
+                    );
+                }
+            } else if let Err(e) = validate_genbank_accession(accession) {
+                entry_errors.push(e);
+            } else if local_unpublished {
+                entry_errors.push(
+                    "'local_variant_unpublished: true' requires placeholder 'genbank_accession'"
+                        .to_string(),
+                );
+            }
+        } else if local_unpublished {
+            entry_errors.push(
+                "'local_variant_unpublished: true' requires placeholder 'genbank_accession'"
+                    .to_string(),
+            );
+        }
+
+        let has_sequence_source = has_non_empty(&entry.sequence_local)
+            || has_non_empty(&entry.sequence_remote)
+            || has_assembly
+            || genbank_accession.is_some();
+        let has_annotation_source = has_non_empty(&entry.annotations_local)
+            || has_non_empty(&entry.annotations_remote)
+            || has_assembly
+            || genbank_accession.is_some();
+
+        if !has_sequence_source {
+            entry_errors.push(
+                "Missing sequence source: provide sequence_local/sequence_remote or NCBI assembly/GenBank accession fields"
+                    .to_string(),
+            );
+        }
+        if !has_annotation_source {
+            entry_errors.push(
+                "Missing annotation source: provide annotations_local/annotations_remote or NCBI assembly/GenBank accession fields"
+                    .to_string(),
+            );
+        }
+
+        for err in entry_errors {
+            errors.push(format!("{genome_id}: {err}"));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Could not validate genome catalog '{catalog_path}':\n- {}",
+            errors.join("\n- ")
+        ))
+    }
+}
+
 fn infer_annotation_extension(source: &str) -> &'static str {
     let lower = source.to_ascii_lowercase();
     if lower.contains(".gbff")
@@ -764,10 +1054,7 @@ struct SourceReader {
 
 fn open_source_reader(source: &str) -> Result<SourceReader, String> {
     if is_http_source(source) {
-        let response = get(source)
-            .map_err(|e| format!("Could not fetch '{source}': {e}"))?
-            .error_for_status()
-            .map_err(|e| format!("Could not fetch '{source}': {e}"))?;
+        let response = fetch_http_source_with_retry(source)?;
         let total_bytes = response.content_length();
         return Ok(SourceReader {
             reader: Box::new(response),
@@ -786,6 +1073,95 @@ fn open_source_reader(source: &str) -> Result<SourceReader, String> {
         reader: Box::new(file),
         total_bytes,
     })
+}
+
+fn build_http_client() -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(HTTP_READ_TIMEOUT_SECS))
+        .user_agent("gentle_rs/genome_prepare")
+        .build()
+        .map_err(|e| format!("Could not construct HTTP client: {e}"))
+}
+
+fn is_retryable_http_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status.as_u16() == 429 || status.as_u16() == 408
+}
+
+fn is_retryable_http_error(err: &reqwest::Error) -> bool {
+    err.is_connect() || err.is_timeout() || err.is_request() || err.is_body()
+}
+
+fn fetch_http_source_with_retry(source: &str) -> Result<reqwest::blocking::Response, String> {
+    let client = build_http_client()?;
+    let source_hint = if source.to_ascii_lowercase().contains("ncbi.nlm.nih.gov") {
+        " (NCBI source)"
+    } else {
+        ""
+    };
+    let mut last_error: Option<String> = None;
+    for attempt in 1..=HTTP_RETRY_ATTEMPTS {
+        match client.get(source).send() {
+            Ok(response) => {
+                let status = response.status();
+                if status.is_success() {
+                    return Ok(response);
+                }
+                let retryable = is_retryable_http_status(status);
+                let msg = format!(
+                    "HTTP {} for '{}' (attempt {}/{})",
+                    status.as_u16(),
+                    source,
+                    attempt,
+                    HTTP_RETRY_ATTEMPTS
+                );
+                last_error = Some(msg.clone());
+                if retryable && attempt < HTTP_RETRY_ATTEMPTS {
+                    let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    continue;
+                }
+                return Err(format!(
+                    "Could not fetch '{}'{}: {}{}",
+                    source,
+                    source_hint,
+                    msg,
+                    if retryable {
+                        " (retries exhausted)"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+            Err(err) => {
+                let retryable = is_retryable_http_error(&err);
+                let msg = format!("{} (attempt {}/{})", err, attempt, HTTP_RETRY_ATTEMPTS);
+                last_error = Some(msg.clone());
+                if retryable && attempt < HTTP_RETRY_ATTEMPTS {
+                    let delay_ms = HTTP_RETRY_BASE_BACKOFF_MS.saturating_mul(1 << (attempt - 1));
+                    thread::sleep(Duration::from_millis(delay_ms));
+                    continue;
+                }
+                return Err(format!(
+                    "Could not fetch '{}'{}: {}{}",
+                    source,
+                    source_hint,
+                    msg,
+                    if retryable {
+                        " (retries exhausted)"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+        }
+    }
+    Err(format!(
+        "Could not fetch '{}'{}: {}",
+        source,
+        source_hint,
+        last_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
 }
 
 struct ProgressReader<R, F> {
@@ -1753,7 +2129,39 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
 mod tests {
     use super::*;
     use flate2::{write::GzEncoder, Compression};
+    use std::env;
     use tempfile::tempdir;
+
+    struct EnvVarGuard {
+        key: String,
+        original: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &str, value: &str) -> Self {
+            let original = env::var(key).ok();
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self {
+                key: key.to_string(),
+                original,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => unsafe {
+                    env::set_var(&self.key, value);
+                },
+                None => unsafe {
+                    env::remove_var(&self.key);
+                },
+            }
+        }
+    }
 
     fn write_gzip(path: &Path, text: &str) {
         let file = File::create(path).unwrap();
@@ -1851,8 +2259,7 @@ mod tests {
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
-        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
-        let err = catalog.prepare_genome_once("ToyGenome").unwrap_err();
+        let err = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap_err();
         assert!(err.contains("annotation"));
     }
 
@@ -1946,6 +2353,8 @@ mod tests {
 
     #[test]
     fn test_build_genbank_efetch_urls() {
+        let _lock = genbank_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::set(NCBI_EFETCH_ENV_VAR, DEFAULT_NCBI_EFETCH_ENDPOINT);
         let entry = GenomeCatalogEntry {
             genbank_accession: Some("L09137".to_string()),
             ..Default::default()
@@ -1967,6 +2376,32 @@ mod tests {
     }
 
     #[test]
+    fn test_source_plan_keeps_genbank_source_type_with_file_override() {
+        let _lock = genbank_env_lock().lock().unwrap();
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let mock_dir = root.join("mock");
+        fs::create_dir_all(&mock_dir).unwrap();
+        let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
+        let _env = EnvVarGuard::set(NCBI_EFETCH_ENV_VAR, &efetch_template);
+
+        let catalog_path = root.join("catalog.json");
+        let catalog = r#"{
+  "Helper": {
+    "genbank_accession": "L09137"
+  }
+}"#;
+        fs::write(&catalog_path, catalog).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let plan = catalog.source_plan("Helper", None).unwrap();
+        assert_eq!(plan.sequence_source_type, "genbank_accession");
+        assert_eq!(plan.annotation_source_type, "genbank_accession");
+        assert!(plan.sequence_source.contains("L09137.fasta"));
+        assert!(plan.annotation_source.contains("L09137.gbwithparts"));
+    }
+
+    #[test]
     fn test_genbank_accession_rejects_unpublished_placeholders() {
         let entry = GenomeCatalogEntry {
             genbank_accession: Some("LOCAL_UNPUBLISHED".to_string()),
@@ -1977,7 +2412,80 @@ mod tests {
     }
 
     #[test]
+    fn test_catalog_validation_rejects_inconsistent_helper_fields() {
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("bad_helper_catalog.json");
+        let catalog = r#"{
+  "BadHelper1": {
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "sequence_local": "local.fa.gz"
+  },
+  "BadHelper2": {
+    "genbank_accession": "L09137",
+    "ncbi_assembly_accession": "GCF_000005845.2",
+    "ncbi_assembly_name": "ASM584v2"
+  }
+}"#;
+        fs::write(&catalog_path, catalog).unwrap();
+        let err = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect_err("catalog validation should fail");
+        assert!(err.contains("BadHelper1"));
+        assert!(err.contains("local_variant_unpublished"));
+        assert!(err.contains("BadHelper2"));
+        assert!(err.contains("cannot declare both"));
+    }
+
+    #[test]
+    fn test_catalog_validation_accepts_unpublished_local_variant() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let seq = root.join("vector.fa");
+        let ann = root.join("vector.gb");
+        fs::write(&seq, ">v\nACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "LOCUS       VEC\nFEATURES             Location/Qualifiers\n",
+        )
+        .unwrap();
+        let catalog_path = root.join("helper_catalog.json");
+        let catalog = format!(
+            r#"{{
+  "Local Helper": {{
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "local_variant_unpublished": true,
+    "sequence_local": "{}",
+    "annotations_local": "{}"
+  }}
+}}"#,
+            seq.display(),
+            ann.display()
+        );
+        fs::write(&catalog_path, catalog).unwrap();
+        GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("catalog validation should accept unpublished local variant");
+    }
+
+    #[test]
+    fn test_catalog_validation_rejects_unpublished_flag_without_placeholder() {
+        let td = tempdir().unwrap();
+        let catalog_path = td.path().join("bad_helper_catalog.json");
+        let catalog = r#"{
+  "BadHelper": {
+    "genbank_accession": "L09137",
+    "local_variant_unpublished": true
+  }
+}"#;
+        fs::write(&catalog_path, catalog).unwrap();
+        let err = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect_err("catalog validation should fail");
+        assert!(err.contains("local_variant_unpublished"));
+        assert!(err.contains("placeholder"));
+    }
+
+    #[test]
     fn test_local_missing_falls_back_to_genbank_accession_source() {
+        let _lock = genbank_env_lock().lock().unwrap();
+        let _env = EnvVarGuard::set(NCBI_EFETCH_ENV_VAR, DEFAULT_NCBI_EFETCH_ENDPOINT);
         let entry = GenomeCatalogEntry {
             sequence_local: Some("missing/local.fa.gz".to_string()),
             genbank_accession: Some("L09137".to_string()),
@@ -2060,5 +2568,45 @@ mod tests {
             normalize_genbank_feature_biotype("misc_feature", &attrs).as_deref(),
             Some("promoter")
         );
+    }
+
+    #[test]
+    fn test_source_plan_reports_local_ncbi_and_genbank_types() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let local_seq = root.join("local.fa");
+        let local_ann = root.join("local.gff3");
+        fs::write(&local_seq, ">chr1\nACGT\n").unwrap();
+        fs::write(&local_ann, "##gff-version 3\n").unwrap();
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "LocalGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}"
+  }},
+  "AssemblyGenome": {{
+    "ncbi_assembly_accession": "GCF_000005845.2",
+    "ncbi_assembly_name": "ASM584v2"
+  }},
+  "GenbankGenome": {{
+    "genbank_accession": "L09137"
+  }}
+}}"#,
+            local_seq.display(),
+            local_ann.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let local = catalog.source_plan("LocalGenome", None).unwrap();
+        assert_eq!(local.sequence_source_type, "local");
+        assert_eq!(local.annotation_source_type, "local");
+        let assembly = catalog.source_plan("AssemblyGenome", None).unwrap();
+        assert_eq!(assembly.sequence_source_type, "ncbi_assembly");
+        assert_eq!(assembly.annotation_source_type, "ncbi_assembly");
+        let gb = catalog.source_plan("GenbankGenome", None).unwrap();
+        assert_eq!(gb.sequence_source_type, "genbank_accession");
+        assert_eq!(gb.annotation_source_type, "genbank_accession");
     }
 }

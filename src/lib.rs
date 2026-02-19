@@ -1,5 +1,5 @@
 use amino_acids::AminoAcids;
-use dna_marker::DNAMarkers;
+use dna_ladder::DNALadders;
 use enzymes::Enzymes;
 use lazy_static::lazy_static;
 use translations::Translations;
@@ -8,7 +8,7 @@ pub mod about;
 pub mod amino_acids;
 pub mod app;
 pub mod dna_display;
-pub mod dna_marker;
+pub mod dna_ladder;
 pub mod dna_sequence;
 pub mod engine;
 pub mod engine_shell;
@@ -53,6 +53,6 @@ lazy_static! {
     // Amino acids
     pub static ref AMINO_ACIDS : AminoAcids = AminoAcids::default();
 
-    // DNA markers
-    pub static ref DNA_MARKERS: DNAMarkers = DNAMarkers::default();
+    // DNA ladders
+    pub static ref DNA_LADDERS: DNALadders = DNALadders::default();
 }

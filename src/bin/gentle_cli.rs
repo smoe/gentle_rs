@@ -4,15 +4,20 @@ use gentle::{
         Engine, EngineStateSummary, GentleEngine, Operation, OperationProgress, ProjectState,
         RenderSvgMode, TfbsProgress, Workflow,
     },
-    engine_shell::{execute_shell_command, parse_shell_line, shell_help_text},
+    engine_shell::{execute_shell_command, parse_shell_line, parse_shell_tokens, shell_help_text},
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
 };
+use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{collections::HashMap, env, fs, path::Path};
+use std::{
+    collections::{BTreeSet, HashMap},
+    env, fs,
+    path::Path,
+};
 
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
@@ -431,7 +436,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
-  gentle_cli [--state PATH|--project PATH] shell 'op {\"kind\":\"...\"}'\n\n  \
+  gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
@@ -658,21 +663,64 @@ fn summarize_state(engine: &GentleEngine) -> EngineStateSummary {
     engine.summarize_state()
 }
 
-fn genome_gene_matches_filter(gene: &GenomeGeneRecord, filter: &str) -> bool {
-    let needle = filter.trim().to_ascii_lowercase();
-    if needle.is_empty() {
-        return true;
+fn compile_gene_filter_regex(filter: &str) -> Result<Option<Regex>, String> {
+    let pattern = filter.trim();
+    if pattern.is_empty() {
+        return Ok(None);
     }
+    RegexBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .map(Some)
+        .map_err(|e| format!("Invalid --filter regex '{}': {}", pattern, e))
+}
+
+fn genome_gene_matches_regex_filter(gene: &GenomeGeneRecord, regex: &Regex) -> bool {
     gene.gene_name
         .as_ref()
-        .map(|name| name.to_ascii_lowercase().contains(&needle))
+        .map(|name| regex.is_match(name))
         .unwrap_or(false)
         || gene
             .gene_id
             .as_ref()
-            .map(|id| id.to_ascii_lowercase().contains(&needle))
+            .map(|id| regex.is_match(id))
             .unwrap_or(false)
-        || gene.chromosome.to_ascii_lowercase().contains(&needle)
+        || regex.is_match(&gene.chromosome)
+}
+
+fn collect_biotypes(genes: &[GenomeGeneRecord]) -> Vec<String> {
+    let mut biotypes: BTreeSet<String> = BTreeSet::new();
+    for gene in genes {
+        let Some(biotype) = gene.biotype.as_ref() else {
+            continue;
+        };
+        let trimmed = biotype.trim();
+        if !trimmed.is_empty() {
+            biotypes.insert(trimmed.to_string());
+        }
+    }
+    biotypes.into_iter().collect()
+}
+
+fn genome_gene_matches_filter(
+    gene: &GenomeGeneRecord,
+    filter_regex: Option<&Regex>,
+    allowed_biotypes_lower: &[String],
+) -> bool {
+    let regex_ok = filter_regex
+        .map(|re| genome_gene_matches_regex_filter(gene, re))
+        .unwrap_or(true);
+    if !regex_ok {
+        return false;
+    }
+    if allowed_biotypes_lower.is_empty() {
+        return true;
+    }
+    gene.biotype
+        .as_ref()
+        .map(|b| b.trim().to_ascii_lowercase())
+        .map(|probe| allowed_biotypes_lower.iter().any(|b| b == &probe))
+        .unwrap_or(false)
 }
 
 fn unique_id(
@@ -747,6 +795,23 @@ fn run() -> Result<(), String> {
     }
 
     let command = &args[cmd_idx];
+
+    if matches!(
+        command.as_str(),
+        "genomes" | "helpers" | "resources" | "import-pool"
+    ) {
+        let tokens = args[cmd_idx..].to_vec();
+        let shell_command = parse_shell_tokens(&tokens)?;
+        let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+        let run = execute_shell_command(&mut engine, &shell_command)?;
+        if run.state_changed {
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+        }
+        return print_json(&run.output);
+    }
 
     match command.as_str() {
         "genomes" | "helpers" => {
@@ -848,6 +913,12 @@ fn run() -> Result<(), String> {
                         cache_dir.as_deref(),
                     )
                     .map_err(|e| e.to_string())?;
+                    let source_plan = GentleEngine::describe_reference_genome_sources(
+                        resolved_catalog,
+                        &genome_id,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
                     let effective_catalog = catalog_path
                         .clone()
                         .filter(|v| !v.trim().is_empty())
@@ -857,19 +928,24 @@ fn run() -> Result<(), String> {
                         "catalog_path": effective_catalog,
                         "cache_dir": cache_dir,
                         "prepared": prepared,
+                        "sequence_source_type": source_plan.sequence_source_type,
+                        "annotation_source_type": source_plan.annotation_source_type,
+                        "sequence_source": source_plan.sequence_source,
+                        "annotation_source": source_plan.annotation_source,
                     }))
                 }
                 "genes" => {
                     if args.len() <= cmd_idx + 2 {
                         usage();
                         return Err(format!(
-                            "{label} genes requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]"
+                            "{label} genes requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
                         ));
                     }
                     let genome_id = args[cmd_idx + 2].clone();
                     let mut catalog_path: Option<String> = None;
                     let mut cache_dir: Option<String> = None;
                     let mut filter = String::new();
+                    let mut biotype_filters: Vec<String> = vec![];
                     let mut limit: usize = 200;
                     let mut offset: usize = 0;
                     let mut idx = cmd_idx + 3;
@@ -900,6 +976,15 @@ fn run() -> Result<(), String> {
                                     ));
                                 }
                                 filter = args[idx + 1].clone();
+                                idx += 2;
+                            }
+                            "--biotype" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing NAME after --biotype for {label} genes"
+                                    ));
+                                }
+                                biotype_filters.push(args[idx + 1].clone());
                                 idx += 2;
                             }
                             "--limit" => {
@@ -945,14 +1030,23 @@ fn run() -> Result<(), String> {
                         cache_dir.as_deref(),
                     )
                     .map_err(|e| e.to_string())?;
-                    let filtered: Vec<GenomeGeneRecord> = if filter.trim().is_empty() {
-                        genes
-                    } else {
-                        genes
-                            .into_iter()
-                            .filter(|g| genome_gene_matches_filter(g, &filter))
-                            .collect()
-                    };
+                    let filter_regex = compile_gene_filter_regex(&filter)?;
+                    let available_biotypes = collect_biotypes(&genes);
+                    let allowed_biotypes_lower: Vec<String> = biotype_filters
+                        .iter()
+                        .map(|v| v.trim().to_ascii_lowercase())
+                        .filter(|v| !v.is_empty())
+                        .collect();
+                    let filtered: Vec<GenomeGeneRecord> = genes
+                        .into_iter()
+                        .filter(|g| {
+                            genome_gene_matches_filter(
+                                g,
+                                filter_regex.as_ref(),
+                                &allowed_biotypes_lower,
+                            )
+                        })
+                        .collect();
                     let total = filtered.len();
                     let offset = offset.min(total);
                     let returned: Vec<GenomeGeneRecord> =
@@ -966,6 +1060,8 @@ fn run() -> Result<(), String> {
                         "catalog_path": effective_catalog,
                         "cache_dir": cache_dir,
                         "filter": filter,
+                        "biotype_filter": biotype_filters,
+                        "available_biotypes": available_biotypes,
                         "offset": offset,
                         "limit": limit,
                         "total_matches": total,
