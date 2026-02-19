@@ -3641,6 +3641,21 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn format_tf_threshold_summary(min_llr_bits: f64, min_llr_quantile: f64) -> String {
+        let mut parts: Vec<String> = vec![];
+        if min_llr_bits.is_finite() {
+            parts.push(format!("min_llr_bits={min_llr_bits}"));
+        }
+        if min_llr_quantile > 0.0 {
+            parts.push(format!("min_llr_quantile={min_llr_quantile}"));
+        }
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!(" with {}", parts.join(", "))
+        }
+    }
+
     fn smooth_probability_matrix(matrix_counts: &[[f64; 4]]) -> Vec<[f64; 4]> {
         if matrix_counts.is_empty() {
             return vec![];
@@ -6623,7 +6638,7 @@ impl GentleEngine {
                     });
                 }
                 let default_min_llr_bits = min_llr_bits.unwrap_or(f64::NEG_INFINITY);
-                let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.95);
+                let default_min_llr_quantile = min_llr_quantile.unwrap_or(0.0);
                 Self::validate_tf_thresholds(default_min_llr_quantile)?;
 
                 let mut override_map: HashMap<String, (Option<f64>, Option<f64>)> = HashMap::new();
@@ -6661,6 +6676,7 @@ impl GentleEngine {
                     None => Some(DEFAULT_MAX_TFBS_HITS),
                 };
                 let motif_count = motifs.len();
+                let mut motifs_scanned = 0usize;
                 let mut cap_reached = false;
                 'motif_loop: for (motif_idx, token) in motifs.into_iter().enumerate() {
                     let token_key = token.trim().to_ascii_uppercase();
@@ -6703,6 +6719,7 @@ impl GentleEngine {
                         }
                     }
 
+                    motifs_scanned += 1;
                     let seq_id_for_progress = seq_id.clone();
                     let tf_id_for_progress = tf_id.clone();
                     let motif_index = motif_idx + 1;
@@ -6769,8 +6786,10 @@ impl GentleEngine {
                         }
                     }
                     result.messages.push(format!(
-                        "TF '{}' annotated {} hit(s) with min_llr_bits={} and min_llr_quantile={}",
-                        tf_id, kept, eff_bits, eff_quantile
+                        "TF '{}' annotated {} hit(s){}",
+                        tf_id,
+                        kept,
+                        Self::format_tf_threshold_summary(eff_bits, eff_quantile)
                     ));
                     on_progress(OperationProgress::Tfbs(TfbsProgress {
                         seq_id: seq_id.clone(),
@@ -6785,12 +6804,15 @@ impl GentleEngine {
                     if cap_reached {
                         if let Some(limit) = max_hits {
                             result.warnings.push(format!(
-                                "TFBS hit cap ({limit}) reached; skipping remaining motif scans"
+                                "TFBS hit cap ({limit}) reached after scanning {motifs_scanned}/{motif_count} motif(s); skipping remaining motif scans"
                             ));
                         }
                         break 'motif_loop;
                     }
                 }
+                result.messages.push(format!(
+                    "TFBS motif scan coverage: {motifs_scanned}/{motif_count} motif(s)"
+                ));
 
                 result.changed_seq_ids.push(seq_id.clone());
                 result.messages.push(format!(

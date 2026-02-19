@@ -1736,10 +1736,12 @@ impl MainAreaDna {
                 } else {
                     ui.small("Selection list is ignored while 'All known JASPAR motifs' is enabled.");
                 }
+                let llr_quantile_help = "Empirical quantile of the motif score among all scanned positions/windows for this motif on both strands of the current sequence. 0.0 disables quantile filtering; 1.0 keeps only top-scoring hits.";
                 ui.horizontal(|ui| {
                     ui.label("min llr_bits");
                     ui.text_edit_singleline(&mut self.tfbs_min_llr_bits);
-                    ui.label("min llr_quantile");
+                    ui.label("min llr_quantile")
+                        .on_hover_text(llr_quantile_help);
                     ui.text_edit_singleline(&mut self.tfbs_min_llr_quantile);
                     ui.checkbox(&mut self.tfbs_clear_existing, "Clear previous TFBS");
                 });
@@ -1748,7 +1750,8 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.tfbs_per_tf_min_llr_bits);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("per-TF min llr_quantile (TF=VALUE,...)");
+                    ui.label("per-TF min llr_quantile (TF=VALUE,...)")
+                        .on_hover_text(llr_quantile_help);
                     ui.text_edit_singleline(&mut self.tfbs_per_tf_min_llr_quantile);
                 });
                 ui.separator();
@@ -1767,7 +1770,8 @@ impl MainAreaDna {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut tfbs_display.use_llr_quantile, "llr_quantile");
+                    ui.checkbox(&mut tfbs_display.use_llr_quantile, "llr_quantile")
+                        .on_hover_text(llr_quantile_help);
                     ui.add_enabled(
                         tfbs_display.use_llr_quantile,
                         egui::DragValue::new(&mut tfbs_display.min_llr_quantile)
@@ -1789,7 +1793,8 @@ impl MainAreaDna {
                     ui.checkbox(
                         &mut tfbs_display.use_true_log_odds_quantile,
                         "true_log_odds_quantile",
-                    );
+                    )
+                    .on_hover_text(llr_quantile_help);
                     ui.add_enabled(
                         tfbs_display.use_true_log_odds_quantile,
                         egui::DragValue::new(&mut tfbs_display.min_true_log_odds_quantile)
@@ -2356,12 +2361,19 @@ impl MainAreaDna {
         } else {
             result.messages.join(" | ")
         };
+        let changed_note =
+            if result.created_seq_ids.is_empty() && !result.changed_seq_ids.is_empty() {
+                " (in-place update)"
+            } else {
+                ""
+            };
         self.op_status = format!(
-            "ok in {} ms\ncreated: {}\ncounts: {} created, {} changed\nwarnings: {}\nmessages: {}",
+            "ok in {} ms\ncreated: {}\ncounts: {} created, {} changed{}\nwarnings: {}\nmessages: {}",
             elapsed_ms,
             created,
             result.created_seq_ids.len(),
             result.changed_seq_ids.len(),
+            changed_note,
             warnings,
             messages
         );
@@ -3554,6 +3566,7 @@ impl MainAreaDna {
             .collect::<Vec<_>>();
         let mut grouped_features: HashMap<String, Vec<usize>> = HashMap::new();
         let mut label_by_id: HashMap<usize, String> = HashMap::new();
+        let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
         for (kind, id, label) in typed_features {
             grouped_features.entry(kind).or_default().push(id);
             label_by_id.insert(id, label);
@@ -3580,6 +3593,7 @@ impl MainAreaDna {
                     .size(kind_font_size)
                     .strong(),
             )
+            .id_salt(format!("feature_kind_{seq_key}_{kind}"))
             .open(if has_selected { Some(true) } else { None })
             .show(ui, |ui| {
                 for id in ids {

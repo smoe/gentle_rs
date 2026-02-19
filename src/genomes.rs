@@ -3415,13 +3415,14 @@ mod tests {
         let td = tempdir().unwrap();
         let root = td.path();
 
-        let fasta_gz = root.join("toy.fa.gz");
-        let ann_gz = root.join("toy.gtf.gz");
-        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\n");
-        write_gzip(
-            &ann_gz,
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGT\nACGT\n").unwrap();
+        fs::write(
+            &ann,
             "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
-        );
+        )
+        .unwrap();
 
         let cache_dir = root.join("cache");
         let catalog_path = root.join("catalog.json");
@@ -3429,17 +3430,21 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
     "cache_dir": "{}"
   }}
 }}"#,
-            file_url(&fasta_gz),
-            file_url(&ann_gz),
+            fasta.display(),
+            ann.display(),
             cache_dir.display()
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
 
         let mut first_phases: Vec<String> = vec![];
         let first = catalog
