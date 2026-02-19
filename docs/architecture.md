@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-18
+Last updated: 2026-02-19
 
 This document describes how GENtle is intended to work, what is already
 implemented, and what should be built next.
@@ -71,10 +71,20 @@ They only translate user input into engine operations and display results.
 - Reference genome prepare/extract baseline:
   - engine operation `PrepareGenome` (one-time local install/cache of sequence + annotation)
   - engine operation `ExtractGenomeRegion` (indexed region retrieval into project sequence state)
+  - engine operation `ExtractGenomeGene` (gene-name/id-based retrieval from indexed annotations)
   - optional `cache_dir` override passed through both operations
   - progress events for background genome preparation in GUI
-  - annotation-derived gene listing API for GUI gene-name filtering
+  - annotation-derived gene listing API for GUI gene-name filtering and gene extraction
+  - persistent `genes.json` index built during prepare for fast retrieval
   - local manifest + FASTA index persisted per prepared genome
+  - catalog support for NCBI assembly-derived downloads via
+    `ncbi_assembly_accession` + `ncbi_assembly_name` (direct GenBank/RefSeq FTP)
+  - catalog support for GenBank accession-derived helper downloads via
+    `genbank_accession` (NCBI EFetch FASTA + GenBank annotation)
+  - GenBank FEATURE normalization into indexed retrieval records (for vector
+    elements such as promoter/CDS/origin/LTR/ITR in helper workflows)
+  - additional starter helper-system catalog shipped as `assets/helper_genomes.json`
+    for local vector inventories (plasmid/lenti/adeno/AAV + yeast/E. coli hosts)
 - Built-in JASPAR motif snapshot (2026 CORE non-redundant derived) is shipped in `assets/jaspar.motifs.json`
     with runtime override at `data/resources/jaspar.motifs.json`
 - TFBS runtime guardrails:
@@ -106,6 +116,7 @@ They only translate user input into engine operations and display results.
   - `ExportPool`
   - `PrepareGenome`
   - `ExtractGenomeRegion`
+  - `ExtractGenomeGene`
   - `DigestContainer`
   - `MergeContainersById`
   - `LigationContainer`
@@ -141,10 +152,17 @@ They only translate user input into engine operations and display results.
 
 - Linear renderer rewritten
 - Added overlap management and strand-aware placement in linear mode
+- Circular renderer now supports multipart feature locations (`Join`, `Order`,
+  nested `Complement`/`External`): exon-like segments are rendered separately
+  with intron arches between them
+- Circular intron arches have feature-aware styling (notably emphasized for
+  mRNA) with hover/selection accenting for readability
 - Added button tooltips
 - Added linear overlays for ORF/GC/methylation/ticks
 - Main lineage view supports both table/graph and a container list with open
   actions (sequence/pool)
+- Pool-context Engine Ops includes ladder-aware virtual gel preview and shared
+  SVG export route
 - Engine Ops panel supports asynchronous TFBS annotation with live per-motif and
   total progress bars
 - TFBS display filtering is interactive (checkbox criteria + thresholds) and
@@ -176,8 +194,9 @@ Legend:
 | TFBS display filtering (4 criteria) | Done | Done | Done | Done | Done |
 | Sequence SVG export | Done | Done | Done | Done | Done |
 | Lineage SVG export | Done | Done | Done | Done | Done |
+| Pool gel SVG export (auto ladder selection) | Done | Done | Done | Done | Done |
 | Pool export (overhang-aware) | Done | Done | Done | Done | Done |
-| Reference genome prepare + region extraction | Done | Done | Done | Done | Done |
+| Reference genome prepare + gene/region extraction | Done | Done | Done | Done | Done |
 | State summary (seq + container) | Done | Done | Done | Done | Done |
 | Shared operation protocol | Partial | Done | Done | Done | Done |
 
@@ -202,6 +221,7 @@ Legend:
 | `ExportPool` | Wired | Wired | Exposed | Exposed | Implemented |
 | `PrepareGenome` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExtractGenomeRegion` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ExtractGenomeGene` | Wired | Wired | Exposed | Exposed | Implemented |
 | `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
 | `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
 | `LigationContainer` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -241,12 +261,25 @@ Notes from current code:
 - GUI now exposes dedicated controls for `PrepareGenome` and
   `ExtractGenomeRegion` from the main-window menu as separate dialogs:
   `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
+- GUI also exposes helper-catalog shortcuts (`Prepare Helper Genome...`,
+  `Retrieve Helper Sequence...`) that preselect helper catalog/cache defaults.
 - GUI genome selection is catalog-backed dropdown (no free-text genome id
-  entry), and retrieval provides gene-name filtering from parsed annotations.
+  entry); prepare dialogs only list unprepared entries and retrieval dialogs
+  only list prepared entries. Retrieval provides paged/top-N regex filtering
+  from parsed annotations plus direct engine-backed extraction.
 - GUI operation parity is now complete for currently implemented engine
   operations.
 - CLI exposes all implemented operations (`op`/`workflow`) and adds some
   adapter-level utilities (render and import helpers).
+- CLI includes dedicated `helpers` convenience subcommands (list/status/genes/
+  prepare/extract-region/extract-gene) that default to
+  `assets/helper_genomes.json`.
+- CLI/JS/Lua now expose dedicated reference-genome helper surfaces in addition
+  to raw operation bridges:
+  - catalog listing
+  - prepared-status checks
+  - gene-index listing
+  - prepare/extract convenience wrappers
 - REBASE/JASPAR snapshot update paths are now exposed across CLI, JS, Lua, and
   GUI (GUI through File-menu import actions).
 - JS/Lua expose generic operation/workflow bridges through `GentleEngine`

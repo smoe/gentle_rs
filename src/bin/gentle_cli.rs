@@ -4,6 +4,11 @@ use gentle::{
         Engine, EngineStateSummary, GentleEngine, Operation, OperationProgress, ProjectState,
         RenderSvgMode, TfbsProgress, Workflow,
     },
+    engine_shell::{execute_shell_command, parse_shell_line, shell_help_text},
+    genomes::{
+        GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -425,12 +430,31 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
+  gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
+  gentle_cli [--state PATH|--project PATH] shell 'op {\"kind\":\"...\"}'\n\n  \
+  gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
+  gentle_cli genomes list [--catalog PATH]\n  \
+  gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
+  gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli helpers list [--catalog PATH]\n  \
+  gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
+  gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
-  --project is an alias of --state for project.gentle.json files"
+  --project is an alias of --state for project.gentle.json files\n\n  \
+  Shell help:\n  \
+  {shell_help}"
+        ,
+        shell_help = shell_help_text()
     );
 }
 
@@ -529,6 +553,9 @@ struct ProgressPrinter {
     sink: ProgressSink,
     last_total_tenths: Option<i64>,
     last_motif_index: Option<usize>,
+    last_genome_phase: Option<String>,
+    last_genome_percent_tenths: Option<i64>,
+    last_genome_bytes_bucket: Option<u64>,
 }
 
 impl ProgressPrinter {
@@ -537,6 +564,9 @@ impl ProgressPrinter {
             sink,
             last_total_tenths: None,
             last_motif_index: None,
+            last_genome_phase: None,
+            last_genome_percent_tenths: None,
+            last_genome_bytes_bucket: None,
         }
     }
 
@@ -572,15 +602,77 @@ impl ProgressPrinter {
         }
     }
 
+    fn on_genome_prepare_progress(&mut self, p: PrepareGenomeProgress) {
+        let phase_changed = self
+            .last_genome_phase
+            .as_ref()
+            .map(|prev| prev != &p.phase)
+            .unwrap_or(true);
+        let percent_tenths = p.percent.map(|v| (v * 10.0).floor() as i64);
+        let percent_progressed = percent_tenths
+            .map(|value| {
+                self.last_genome_percent_tenths
+                    .map(|prev| value > prev)
+                    .unwrap_or(true)
+            })
+            .unwrap_or(false);
+        let bytes_bucket = p.bytes_done / (8 * 1024 * 1024);
+        let bytes_progressed = self
+            .last_genome_bytes_bucket
+            .map(|prev| bytes_bucket > prev)
+            .unwrap_or(true);
+        let done = p.phase == "ready"
+            || p.percent
+                .map(|v| (v - 100.0).abs() < f64::EPSILON)
+                .unwrap_or(false);
+        if phase_changed || percent_progressed || bytes_progressed || done {
+            self.last_genome_phase = Some(p.phase.clone());
+            if let Some(v) = percent_tenths {
+                self.last_genome_percent_tenths = Some(v);
+            }
+            self.last_genome_bytes_bucket = Some(bytes_bucket);
+            let total = p
+                .bytes_total
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "?".to_string());
+            let pct = p
+                .percent
+                .map(|v| format!("{v:.1}"))
+                .unwrap_or_else(|| "?".to_string());
+            self.print_line(&format!(
+                "progress genome id={} phase={} pct={} bytes={}/{} item={}",
+                p.genome_id, p.phase, pct, p.bytes_done, total, p.item
+            ));
+        }
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
-        if let OperationProgress::Tfbs(p) = progress {
-            self.on_tfbs_progress(p);
+        match progress {
+            OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
+            OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
         }
     }
 }
 
 fn summarize_state(engine: &GentleEngine) -> EngineStateSummary {
     engine.summarize_state()
+}
+
+fn genome_gene_matches_filter(gene: &GenomeGeneRecord, filter: &str) -> bool {
+    let needle = filter.trim().to_ascii_lowercase();
+    if needle.is_empty() {
+        return true;
+    }
+    gene.gene_name
+        .as_ref()
+        .map(|name| name.to_ascii_lowercase().contains(&needle))
+        .unwrap_or(false)
+        || gene
+            .gene_id
+            .as_ref()
+            .map(|id| id.to_ascii_lowercase().contains(&needle))
+            .unwrap_or(false)
+        || gene.chromosome.to_ascii_lowercase().contains(&needle)
 }
 
 fn unique_id(
@@ -657,6 +749,465 @@ fn run() -> Result<(), String> {
     let command = &args[cmd_idx];
 
     match command.as_str() {
+        "genomes" | "helpers" => {
+            let helper_mode = command == "helpers";
+            let default_catalog = if helper_mode {
+                DEFAULT_HELPER_GENOME_CATALOG_PATH
+            } else {
+                DEFAULT_GENOME_CATALOG_PATH
+            };
+            let label = if helper_mode { "helpers" } else { "genomes" };
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err(format!("{label} requires a subcommand"));
+            }
+            match args[cmd_idx + 1].as_str() {
+                "list" => {
+                    let mut catalog_path: Option<String> = None;
+                    let mut idx = cmd_idx + 2;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} list"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!("Unknown option '{}' for {label} list", other))
+                            }
+                        }
+                    }
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog));
+                    let genomes = GentleEngine::list_reference_genomes(resolved_catalog)
+                        .map_err(|e| e.to_string())?;
+                    let effective_catalog = catalog_path
+                        .clone()
+                        .filter(|v| !v.trim().is_empty())
+                        .unwrap_or_else(|| default_catalog.to_string());
+                    print_json(&json!({
+                        "catalog_path": effective_catalog,
+                        "genome_count": genomes.len(),
+                        "genomes": genomes,
+                    }))
+                }
+                "status" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(format!(
+                            "{label} status requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = cmd_idx + 3;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} status"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} status"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} status",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog));
+                    let prepared = GentleEngine::is_reference_genome_prepared(
+                        resolved_catalog,
+                        &genome_id,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let effective_catalog = catalog_path
+                        .clone()
+                        .filter(|v| !v.trim().is_empty())
+                        .unwrap_or_else(|| default_catalog.to_string());
+                    print_json(&json!({
+                        "genome_id": genome_id,
+                        "catalog_path": effective_catalog,
+                        "cache_dir": cache_dir,
+                        "prepared": prepared,
+                    }))
+                }
+                "genes" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(format!(
+                            "{label} genes requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut filter = String::new();
+                    let mut limit: usize = 200;
+                    let mut offset: usize = 0;
+                    let mut idx = cmd_idx + 3;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} genes"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} genes"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--filter" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing TEXT after --filter for {label} genes"
+                                    ));
+                                }
+                                filter = args[idx + 1].clone();
+                                idx += 2;
+                            }
+                            "--limit" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!("Missing N after --limit for {label} genes"));
+                                }
+                                limit = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!("Invalid --limit value '{}': {}", args[idx + 1], e)
+                                })?;
+                                if limit == 0 {
+                                    return Err("--limit must be >= 1".to_string());
+                                }
+                                idx += 2;
+                            }
+                            "--offset" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --offset for {label} genes"
+                                    ));
+                                }
+                                offset = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!("Invalid --offset value '{}': {}", args[idx + 1], e)
+                                })?;
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} genes",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+
+                    let resolved_catalog = catalog_path
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog));
+                    let genes = GentleEngine::list_reference_genome_genes(
+                        resolved_catalog,
+                        &genome_id,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let filtered: Vec<GenomeGeneRecord> = if filter.trim().is_empty() {
+                        genes
+                    } else {
+                        genes
+                            .into_iter()
+                            .filter(|g| genome_gene_matches_filter(g, &filter))
+                            .collect()
+                    };
+                    let total = filtered.len();
+                    let offset = offset.min(total);
+                    let returned: Vec<GenomeGeneRecord> =
+                        filtered.into_iter().skip(offset).take(limit).collect();
+                    let effective_catalog = catalog_path
+                        .clone()
+                        .filter(|v| !v.trim().is_empty())
+                        .unwrap_or_else(|| default_catalog.to_string());
+                    print_json(&json!({
+                        "genome_id": genome_id,
+                        "catalog_path": effective_catalog,
+                        "cache_dir": cache_dir,
+                        "filter": filter,
+                        "offset": offset,
+                        "limit": limit,
+                        "total_matches": total,
+                        "returned": returned.len(),
+                        "genes": returned,
+                    }))
+                }
+                "prepare" => {
+                    if args.len() <= cmd_idx + 2 {
+                        usage();
+                        return Err(format!(
+                            "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = cmd_idx + 3;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} prepare"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} prepare"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} prepare",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                    let op_catalog_path = catalog_path
+                        .filter(|v| !v.trim().is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog.to_string()));
+                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+                    let op = Operation::PrepareGenome {
+                        genome_id,
+                        catalog_path: op_catalog_path,
+                        cache_dir,
+                    };
+                    let result = if let Some(sink) = global.progress_sink {
+                        let mut printer = ProgressPrinter::new(sink);
+                        engine
+                            .apply_with_progress(op, |p| printer.on_progress(p))
+                            .map_err(|e| e.to_string())?
+                    } else {
+                        engine.apply(op).map_err(|e| e.to_string())?
+                    };
+                    engine
+                        .state()
+                        .save_to_path(&state_path)
+                        .map_err(|e| e.to_string())?;
+                    print_json(&result)
+                }
+                "extract-region" => {
+                    if args.len() <= cmd_idx + 6 {
+                        usage();
+                        return Err(format!(
+                            "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let chromosome = args[cmd_idx + 3].clone();
+                    let start_1based = args[cmd_idx + 4].parse::<usize>().map_err(|e| {
+                        format!("Invalid START coordinate '{}': {}", args[cmd_idx + 4], e)
+                    })?;
+                    let end_1based = args[cmd_idx + 5]
+                        .parse::<usize>()
+                        .map_err(|e| format!("Invalid END coordinate '{}': {}", args[cmd_idx + 5], e))?;
+                    let mut output_id: Option<String> = None;
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = cmd_idx + 6;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--output-id" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing ID after --output-id for {label} extract-region"
+                                    ));
+                                }
+                                output_id = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} extract-region"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} extract-region"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} extract-region",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                    let op_catalog_path = catalog_path
+                        .filter(|v| !v.trim().is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog.to_string()));
+                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+                    let result = engine
+                        .apply(Operation::ExtractGenomeRegion {
+                            genome_id,
+                            chromosome,
+                            start_1based,
+                            end_1based,
+                            output_id,
+                            catalog_path: op_catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| e.to_string())?;
+                    engine
+                        .state()
+                        .save_to_path(&state_path)
+                        .map_err(|e| e.to_string())?;
+                    print_json(&result)
+                }
+                "extract-gene" => {
+                    if args.len() <= cmd_idx + 3 {
+                        usage();
+                        return Err(format!(
+                            "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                        ));
+                    }
+                    let genome_id = args[cmd_idx + 2].clone();
+                    let gene_query = args[cmd_idx + 3].clone();
+                    let mut occurrence: Option<usize> = None;
+                    let mut output_id: Option<String> = None;
+                    let mut catalog_path: Option<String> = None;
+                    let mut cache_dir: Option<String> = None;
+                    let mut idx = cmd_idx + 4;
+                    while idx < args.len() {
+                        match args[idx].as_str() {
+                            "--occurrence" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --occurrence for {label} extract-gene"
+                                    ));
+                                }
+                                let occ = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --occurrence value '{}': {}",
+                                        args[idx + 1],
+                                        e
+                                    )
+                                })?;
+                                if occ == 0 {
+                                    return Err("--occurrence must be >= 1".to_string());
+                                }
+                                occurrence = Some(occ);
+                                idx += 2;
+                            }
+                            "--output-id" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing ID after --output-id for {label} extract-gene"
+                                    ));
+                                }
+                                output_id = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--catalog" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --catalog for {label} extract-gene"
+                                    ));
+                                }
+                                catalog_path = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            "--cache-dir" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing PATH after --cache-dir for {label} extract-gene"
+                                    ));
+                                }
+                                cache_dir = Some(args[idx + 1].clone());
+                                idx += 2;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} extract-gene",
+                                    other
+                                ))
+                            }
+                        }
+                    }
+                    let op_catalog_path = catalog_path
+                        .filter(|v| !v.trim().is_empty())
+                        .or_else(|| helper_mode.then_some(default_catalog.to_string()));
+                    let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+                    let result = engine
+                        .apply(Operation::ExtractGenomeGene {
+                            genome_id,
+                            gene_query,
+                            occurrence,
+                            output_id,
+                            catalog_path: op_catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| e.to_string())?;
+                    engine
+                        .state()
+                        .save_to_path(&state_path)
+                        .map_err(|e| e.to_string())?;
+                    print_json(&result)
+                }
+                other => Err(format!(
+                    "Unknown {label} subcommand '{}' (expected list, status, genes, prepare, extract-region, extract-gene)",
+                    other
+                )),
+            }
+        }
         "resources" => {
             if args.len() <= cmd_idx + 1 {
                 usage();
@@ -754,6 +1305,25 @@ fn run() -> Result<(), String> {
                 )),
             }
         }
+        "shell" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err(
+                    "shell requires a command string, e.g.: shell 'state-summary'".to_string(),
+                );
+            }
+            let line = args[cmd_idx + 1..].join(" ");
+            let command = parse_shell_line(&line)?;
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let run = execute_shell_command(&mut engine, &command)?;
+            if run.state_changed {
+                engine
+                    .state()
+                    .save_to_path(&state_path)
+                    .map_err(|e| e.to_string())?;
+            }
+            print_json(&run.output)
+        }
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
@@ -829,6 +1399,67 @@ fn run() -> Result<(), String> {
             let result = engine
                 .apply(Operation::RenderLineageSvg {
                     path: output.to_string(),
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "render-pool-gel-svg" => {
+            if args.len() <= cmd_idx + 2 {
+                usage();
+                return Err(
+                    "render-pool-gel-svg requires: IDS OUTPUT.svg [--ladders NAME[,NAME]]"
+                        .to_string(),
+                );
+            }
+            let ids = args[cmd_idx + 1]
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            if ids.is_empty() {
+                return Err("render-pool-gel-svg requires at least one sequence id".to_string());
+            }
+            let output = &args[cmd_idx + 2];
+            let mut ladders: Option<Vec<String>> = None;
+            let mut idx = cmd_idx + 3;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--ladders" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --ladders".to_string());
+                        }
+                        let parsed = args[idx + 1]
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>();
+                        if !parsed.is_empty() {
+                            ladders = Some(parsed);
+                        }
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                        "Unknown argument '{other}' for render-pool-gel-svg (expected --ladders)"
+                    ))
+                    }
+                }
+            }
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::RenderPoolGelSvg {
+                    inputs: ids,
+                    path: output.to_string(),
+                    ladders,
                 })
                 .map_err(|e| e.to_string())?;
             engine

@@ -1,0 +1,184 @@
+{
+  "Host Saccharomyces cerevisiae S288c Ensembl 113": {
+    "ncbi_taxonomy_id": 559292,
+    "description": "Yeast carrier host reference",
+    "genbank_accession": "GCF_000146045.2",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000146045.2/",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.113.gtf.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Host Escherichia coli K-12 MG1655 RefSeq ASM584v2": {
+    "ncbi_taxonomy_id": 562,
+    "description": "E. coli carrier host reference (RefSeq assembly)",
+    "genbank_accession": "GCF_000005845.2",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_000005845.2/",
+    "sequence_remote": "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz",
+    "annotations_remote": "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.gff.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+
+  "Plasmid pUC19 (local)": {
+    "description": "High-copy E. coli cloning backbone (AmpR, MCS)",
+    "genbank_accession": "L09137",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/L09137",
+    "sequence_local": "/lab/resources/vectors/pUC19.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pUC19.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pBR322 (local)": {
+    "description": "Classical E. coli cloning backbone (AmpR/TetR)",
+    "genbank_accession": "J01749",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/J01749",
+    "sequence_local": "/lab/resources/vectors/pBR322.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pBR322.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pET-28a(+) (local)": {
+    "description": "E. coli protein-expression backbone (T7 promoter, KanR)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pET-28a_plus.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pET-28a_plus.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Plasmid pGEX-6P-1 (local)": {
+    "description": "E. coli GST-fusion expression backbone (AmpR)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pGEX-6P-1.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pGEX-6P-1.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Yeast shuttle pYES2 (local)": {
+    "description": "S. cerevisiae/E. coli shuttle expression backbone (URA3, 2u origin)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pYES2.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pYES2.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Yeast shuttle pRS426 (local)": {
+    "description": "S. cerevisiae/E. coli shuttle cloning backbone (URA3, 2u origin)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pRS426.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pRS426.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Yeast shuttle pESC-URA (local)": {
+    "description": "Dual-gene yeast expression shuttle backbone",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pESC-URA.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pESC-URA.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+
+  "Lentivirus transfer pLenti-CMV-Puro (local)": {
+    "description": "Lentiviral transfer vector backbone (example; replace with lab-specific backbone)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pLenti-CMV-Puro.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pLenti-CMV-Puro.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Lentivirus packaging psPAX2 (local)": {
+    "description": "Lentiviral packaging plasmid (gag/pol/rev/tat)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/psPAX2.fa.gz",
+    "annotations_local": "/lab/resources/vectors/psPAX2.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Lentivirus envelope pMD2.G (local)": {
+    "description": "Lentiviral envelope plasmid (VSV-G)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pMD2.G.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pMD2.G.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Lentivirus packaging pMDLg-pRRE (local)": {
+    "description": "3rd-generation lentiviral gag-pol packaging plasmid",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pMDLg-pRRE.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pMDLg-pRRE.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Lentivirus packaging pRSV-Rev (local)": {
+    "description": "3rd-generation lentiviral Rev packaging plasmid",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pRSV-Rev.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pRSV-Rev.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+
+  "Adenovirus shuttle pShuttle-CMV (local)": {
+    "description": "Adenoviral shuttle vector backbone",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pShuttle-CMV.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pShuttle-CMV.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Adenovirus backbone pAdEasy-1 (local)": {
+    "description": "Adenoviral backbone vector",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pAdEasy-1.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pAdEasy-1.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "Adenovirus reporter pAdTrack-CMV (local)": {
+    "description": "Adenoviral shuttle/reporter vector backbone",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pAdTrack-CMV.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pAdTrack-CMV.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+
+  "AAV transfer pAAV-MCS (local)": {
+    "description": "AAV transfer backbone (replace with lab-specific transfer vector)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pAAV-MCS.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pAAV-MCS.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "AAV packaging pAAV-RC (local)": {
+    "description": "AAV packaging plasmid with rep/cap",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pAAV-RC.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pAAV-RC.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
+  "AAV helper pHelper (local)": {
+    "description": "AAV helper plasmid providing adenoviral helper functions",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pHelper.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pHelper.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  }
+}

@@ -9,6 +9,15 @@ use crate::{
 use deno_core::*;
 use serde::Serialize;
 
+fn empty_to_none(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
 #[derive(Serialize)]
 struct OperationApplyResponse {
     state: ProjectState,
@@ -19,6 +28,11 @@ struct OperationApplyResponse {
 struct WorkflowApplyResponse {
     state: ProjectState,
     results: Vec<crate::engine::OpResult>,
+}
+
+#[derive(Serialize)]
+struct GenomePreparedResponse {
+    prepared: bool,
 }
 
 #[op2]
@@ -114,6 +128,46 @@ fn state_summary(
 
 #[op2]
 #[serde]
+fn list_reference_genomes(
+    #[string] catalog_path: &str,
+) -> Result<Vec<String>, deno_core::anyhow::Error> {
+    GentleEngine::list_reference_genomes(empty_to_none(catalog_path))
+        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+}
+
+#[op2]
+#[serde]
+fn is_reference_genome_prepared(
+    #[string] genome_id: &str,
+    #[string] catalog_path: &str,
+    #[string] cache_dir: &str,
+) -> Result<GenomePreparedResponse, deno_core::anyhow::Error> {
+    let prepared = GentleEngine::is_reference_genome_prepared(
+        empty_to_none(catalog_path),
+        genome_id,
+        empty_to_none(cache_dir),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))?;
+    Ok(GenomePreparedResponse { prepared })
+}
+
+#[op2]
+#[serde]
+fn list_reference_genome_genes(
+    #[string] genome_id: &str,
+    #[string] catalog_path: &str,
+    #[string] cache_dir: &str,
+) -> Result<Vec<crate::genomes::GenomeGeneRecord>, deno_core::anyhow::Error> {
+    GentleEngine::list_reference_genome_genes(
+        empty_to_none(catalog_path),
+        genome_id,
+        empty_to_none(cache_dir),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+}
+
+#[op2]
+#[serde]
 fn apply_operation(
     #[serde] state: ProjectState,
     #[string] op_json: &str,
@@ -155,6 +209,9 @@ impl JavaScriptInterface {
         const SAVE_PROJECT: OpDecl = save_project();
         const CAPABILITIES: OpDecl = capabilities();
         const STATE_SUMMARY: OpDecl = state_summary();
+        const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
+        const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
+        const LIST_REFERENCE_GENOME_GENES: OpDecl = list_reference_genome_genes();
         const APPLY_OPERATION: OpDecl = apply_operation();
         const APPLY_WORKFLOW: OpDecl = apply_workflow();
         const SYNC_REBASE_RESOURCE: OpDecl = sync_rebase_resource();
@@ -168,6 +225,9 @@ impl JavaScriptInterface {
                 SAVE_PROJECT,
                 CAPABILITIES,
                 STATE_SUMMARY,
+                LIST_REFERENCE_GENOMES,
+                IS_REFERENCE_GENOME_PREPARED,
+                LIST_REFERENCE_GENOME_GENES,
                 APPLY_OPERATION,
                 APPLY_WORKFLOW,
                 SYNC_REBASE_RESOURCE,
@@ -189,6 +249,16 @@ impl JavaScriptInterface {
           	function save_project(state,path) {return Deno.core.ops.save_project(state,path)}
           	function capabilities() {return Deno.core.ops.capabilities()}
           	function state_summary(state) {return Deno.core.ops.state_summary(state)}
+          	function list_reference_genomes(catalog_path) {
+          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
+          	}
+          	function is_reference_genome_prepared(genome_id, catalog_path, cache_dir) {
+          		const status = Deno.core.ops.is_reference_genome_prepared(genome_id, catalog_path ?? "", cache_dir ?? "");
+          		return !!status.prepared;
+          	}
+          	function list_reference_genome_genes(genome_id, catalog_path, cache_dir) {
+          		return Deno.core.ops.list_reference_genome_genes(genome_id, catalog_path ?? "", cache_dir ?? "");
+          	}
           	function apply_operation(state, op) {
           		const payload = (typeof op === "string") ? op : JSON.stringify(op);
           		return Deno.core.ops.apply_operation(state, payload);
@@ -212,6 +282,57 @@ impl JavaScriptInterface {
           			}
           		};
           		return apply_operation(state, op);
+          	}
+          	function prepare_genome(state, genome_id, catalog_path, cache_dir) {
+          		return apply_operation(state, {
+          			PrepareGenome: {
+          				genome_id: genome_id,
+          				catalog_path: catalog_path ?? null,
+          				cache_dir: cache_dir ?? null
+          			}
+          		});
+          	}
+          	function extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir) {
+          		return apply_operation(state, {
+          			ExtractGenomeRegion: {
+          				genome_id: genome_id,
+          				chromosome: chromosome,
+          				start_1based: start_1based,
+          				end_1based: end_1based,
+          				output_id: output_id ?? null,
+          				catalog_path: catalog_path ?? null,
+          				cache_dir: cache_dir ?? null
+          			}
+          		});
+          	}
+          	function extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir) {
+          		return apply_operation(state, {
+          			ExtractGenomeGene: {
+          				genome_id: genome_id,
+          				gene_query: gene_query,
+          				occurrence: occurrence ?? null,
+          				output_id: output_id ?? null,
+          				catalog_path: catalog_path ?? null,
+          				cache_dir: cache_dir ?? null
+          			}
+          		});
+          	}
+          	function render_pool_gel_svg(state, inputs, path, ladders) {
+          		const seqIds = (Array.isArray(inputs) ? inputs : String(inputs).split(","))
+          			.map(s => String(s).trim())
+          			.filter(Boolean);
+          		const ladderIds = (ladders == null)
+          			? null
+          			: (Array.isArray(ladders) ? ladders : String(ladders).split(","))
+          				.map(s => String(s).trim())
+          				.filter(Boolean);
+          		return apply_operation(state, {
+          			RenderPoolGelSvg: {
+          				inputs: seqIds,
+          				path: path,
+          				ladders: (ladderIds && ladderIds.length > 0) ? ladderIds : null
+          			}
+          		});
           	}
         "#
         .to_string();

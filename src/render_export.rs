@@ -1,7 +1,8 @@
 use crate::{
-    dna_sequence::DNAsequence, engine::DisplaySettings, restriction_enzyme::RestrictionEnzymeKey,
+    dna_sequence::DNAsequence, engine::DisplaySettings, feature_location::feature_is_reverse,
+    restriction_enzyme::RestrictionEnzymeKey,
 };
-use gb_io::seq::{Feature, Location};
+use gb_io::seq::Feature;
 use std::collections::HashMap;
 use svg::node::element::path::Data;
 use svg::node::element::{Circle, Line, Path, Rectangle, Text};
@@ -20,37 +21,6 @@ struct FeatureVm {
     color: &'static str,
     is_reverse: bool,
     is_pointy: bool,
-}
-
-fn collect_location_strands(location: &Location, reverse: bool, strands: &mut Vec<bool>) {
-    match location {
-        Location::Range(_, _) | Location::Between(_, _) => strands.push(reverse),
-        Location::Complement(inner) => collect_location_strands(inner, !reverse, strands),
-        Location::Join(parts)
-        | Location::Order(parts)
-        | Location::Bond(parts)
-        | Location::OneOf(parts) => {
-            for part in parts {
-                collect_location_strands(part, reverse, strands);
-            }
-        }
-        Location::External(_, maybe_loc) => {
-            if let Some(loc) = maybe_loc {
-                collect_location_strands(loc, reverse, strands);
-            }
-        }
-        Location::Gap(_) => {}
-    }
-}
-
-fn feature_is_reverse(feature: &Feature) -> bool {
-    let mut strands = Vec::new();
-    collect_location_strands(&feature.location, false, &mut strands);
-    if strands.is_empty() {
-        false
-    } else {
-        strands.iter().filter(|v| **v).count() > strands.len() / 2
-    }
 }
 
 fn feature_name(feature: &Feature) -> String {

@@ -2,10 +2,14 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
-    genomes::{GenomeCatalog, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH},
+    genomes::{
+        GenomeCatalog, GenomeGeneRecord, PrepareGenomeProgress, PrepareGenomeReport,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+    },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
+    pool_gel::{build_pool_gel_layout, export_pool_gel_svg},
     render_export::{export_circular_svg, export_linear_svg},
     restriction_enzyme::RestrictionEnzyme,
     tf_motifs,
@@ -305,6 +309,11 @@ pub enum Operation {
     RenderLineageSvg {
         path: String,
     },
+    RenderPoolGelSvg {
+        inputs: Vec<SeqId>,
+        path: String,
+        ladders: Option<Vec<String>>,
+    },
     ExportPool {
         inputs: Vec<SeqId>,
         path: String,
@@ -321,6 +330,14 @@ pub enum Operation {
         chromosome: String,
         start_1based: usize,
         end_1based: usize,
+        output_id: Option<SeqId>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ExtractGenomeGene {
+        genome_id: String,
+        gene_query: String,
+        occurrence: Option<usize>,
         output_id: Option<SeqId>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
@@ -640,9 +657,11 @@ impl GentleEngine {
                 "SaveFile".to_string(),
                 "RenderSequenceSvg".to_string(),
                 "RenderLineageSvg".to_string(),
+                "RenderPoolGelSvg".to_string(),
                 "ExportPool".to_string(),
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
+                "ExtractGenomeGene".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
                 "LigationContainer".to_string(),
@@ -671,6 +690,152 @@ impl GentleEngine {
             supported_export_formats: vec!["GenBank".to_string(), "Fasta".to_string()],
             deterministic_operation_log: true,
         }
+    }
+
+    fn open_reference_genome_catalog(
+        catalog_path: Option<&str>,
+    ) -> Result<(GenomeCatalog, String), EngineError> {
+        let catalog_path = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_GENOME_CATALOG_PATH)
+            .to_string();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not open genome catalog '{catalog_path}': {e}"),
+        })?;
+        Ok((catalog, catalog_path))
+    }
+
+    pub fn list_reference_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        Ok(catalog.list_genomes())
+    }
+
+    pub fn list_helper_genomes(catalog_path: Option<&str>) -> Result<Vec<String>, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::list_reference_genomes(Some(chosen))
+    }
+
+    pub fn is_reference_genome_prepared(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<bool, EngineError> {
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .is_prepared(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not check prepared status for genome '{}': {}",
+                    genome_id, e
+                ),
+            })
+    }
+
+    pub fn is_helper_genome_prepared(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<bool, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::is_reference_genome_prepared(Some(chosen), genome_id, cache_dir)
+    }
+
+    pub fn list_reference_genome_genes(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<Vec<GenomeGeneRecord>, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .list_gene_regions(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not list genes for genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn list_helper_genome_features(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<Vec<GenomeGeneRecord>, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::list_reference_genome_genes(Some(chosen), genome_id, cache_dir)
+    }
+
+    pub fn prepare_reference_genome_once(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress),
+    ) -> Result<PrepareGenomeReport, EngineError> {
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .prepare_genome_once_with_progress(
+                genome_id,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                on_progress,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not prepare genome '{genome_id}': {e}"),
+            })
+    }
+
+    pub fn prepare_helper_genome_once(
+        genome_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress),
+    ) -> Result<PrepareGenomeReport, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::prepare_reference_genome_once(genome_id, Some(chosen), cache_dir, on_progress)
+    }
+
+    pub fn format_prepare_genome_message(
+        genome_id: &str,
+        cache_dir: Option<&str>,
+        report: &PrepareGenomeReport,
+    ) -> String {
+        let status = if report.reused_existing {
+            "reused existing local cache"
+        } else {
+            "downloaded and installed"
+        };
+        format!(
+            "Prepared genome '{}' ({status}). cache='{}' sequence='{}', annotation='{}'",
+            genome_id,
+            cache_dir
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or("catalog/default"),
+            report.sequence_path,
+            report.annotation_path
+        )
     }
 
     pub fn operation_log(&self) -> &[OperationRecord] {
@@ -744,6 +909,67 @@ impl GentleEngine {
         } else {
             trimmed.to_string()
         }
+    }
+
+    fn genome_gene_matches_exact(record: &GenomeGeneRecord, query: &str) -> bool {
+        record
+            .gene_name
+            .as_ref()
+            .map(|v| v.eq_ignore_ascii_case(query))
+            .unwrap_or(false)
+            || record
+                .gene_id
+                .as_ref()
+                .map(|v| v.eq_ignore_ascii_case(query))
+                .unwrap_or(false)
+    }
+
+    fn genome_gene_matches_contains(record: &GenomeGeneRecord, query_lower: &str) -> bool {
+        record
+            .gene_name
+            .as_ref()
+            .map(|v| v.to_ascii_lowercase().contains(query_lower))
+            .unwrap_or(false)
+            || record
+                .gene_id
+                .as_ref()
+                .map(|v| v.to_ascii_lowercase().contains(query_lower))
+                .unwrap_or(false)
+    }
+
+    fn genome_gene_display_label(record: &GenomeGeneRecord) -> String {
+        let label = record
+            .gene_name
+            .as_ref()
+            .or(record.gene_id.as_ref())
+            .cloned()
+            .unwrap_or_else(|| "unnamed_gene".to_string());
+        format!(
+            "{}:{}-{} ({})",
+            record.chromosome, record.start_1based, record.end_1based, label
+        )
+    }
+
+    fn import_genome_slice_sequence(
+        &mut self,
+        result: &mut OpResult,
+        sequence: String,
+        default_id: String,
+    ) -> Result<SeqId, EngineError> {
+        let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not construct DNA sequence from genome slice: {e}"),
+        })?;
+        Self::prepare_sequence(&mut dna);
+        let seq_id = self.unique_seq_id(&default_id);
+        self.state.sequences.insert(seq_id.clone(), dna);
+        self.add_lineage_node(
+            &seq_id,
+            SequenceOrigin::ImportedGenomic,
+            Some(&result.op_id),
+        );
+        result.created_seq_ids.push(seq_id.clone());
+        Ok(seq_id)
     }
 
     fn now_unix_ms() -> u128 {
@@ -915,6 +1141,7 @@ impl GentleEngine {
             Operation::ExtractRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
+            Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -2326,6 +2553,58 @@ impl GentleEngine {
                     .messages
                     .push(format!("Wrote lineage SVG to '{}'", path));
             }
+            Operation::RenderPoolGelSvg {
+                inputs,
+                path,
+                ladders,
+            } => {
+                if inputs.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "RenderPoolGelSvg requires at least one input sequence id"
+                            .to_string(),
+                    });
+                }
+                let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
+                for seq_id in &inputs {
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(seq_id)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{seq_id}' not found"),
+                        })?;
+                    members.push((seq_id.clone(), dna.len()));
+                }
+                let ladder_names = ladders
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty())
+                    .collect::<Vec<_>>();
+                let layout =
+                    build_pool_gel_layout(&members, &ladder_names).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: e,
+                    })?;
+                let svg = export_pool_gel_svg(&layout);
+                std::fs::write(&path, svg).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not write SVG output '{path}': {e}"),
+                })?;
+                let ladders_used = if layout.selected_ladders.is_empty() {
+                    "auto".to_string()
+                } else {
+                    layout.selected_ladders.join(" + ")
+                };
+                result.messages.push(format!(
+                    "Wrote pool gel SVG for {} sequence(s) to '{}' (ladders: {})",
+                    members.len(),
+                    path,
+                    ladders_used
+                ));
+            }
             Operation::ExportPool {
                 inputs,
                 path,
@@ -2344,36 +2623,16 @@ impl GentleEngine {
                 catalog_path,
                 cache_dir,
             } => {
-                let catalog_path =
-                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
-                let catalog =
-                    GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!("Could not open genome catalog '{catalog_path}': {e}"),
-                    })?;
-                let report = catalog
-                    .prepare_genome_once_with_progress(
-                        &genome_id,
-                        cache_dir.as_deref(),
-                        &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
-                    )
-                    .map_err(|e| EngineError {
-                        code: ErrorCode::Io,
-                        message: format!("Could not prepare genome '{genome_id}': {e}"),
-                    })?;
-                let status = if report.reused_existing {
-                    "reused existing local cache"
-                } else {
-                    "downloaded and installed"
-                };
-                result.messages.push(format!(
-                    "Prepared genome '{}' ({status}). cache='{}' sequence='{}', annotation='{}'",
-                    genome_id,
-                    cache_dir
-                        .clone()
-                        .unwrap_or_else(|| "catalog/default".to_string()),
-                    report.sequence_path,
-                    report.annotation_path
+                let report = Self::prepare_reference_genome_once(
+                    &genome_id,
+                    catalog_path.as_deref(),
+                    cache_dir.as_deref(),
+                    &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
+                )?;
+                result.messages.push(Self::format_prepare_genome_message(
+                    &genome_id,
+                    cache_dir.as_deref(),
+                    &report,
                 ));
             }
             Operation::ExtractGenomeRegion {
@@ -2407,11 +2666,6 @@ impl GentleEngine {
                             chromosome, start_1based, end_1based, genome_id, e
                         ),
                     })?;
-                let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!("Could not construct DNA sequence from genome slice: {e}"),
-                })?;
-                Self::prepare_sequence(&mut dna);
                 let default_id = format!(
                     "{}_{}_{}_{}",
                     Self::normalize_id_token(&genome_id),
@@ -2420,17 +2674,133 @@ impl GentleEngine {
                     end_1based
                 );
                 let base = output_id.unwrap_or(default_id);
-                let seq_id = self.unique_seq_id(&base);
-                self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(
-                    &seq_id,
-                    SequenceOrigin::ImportedGenomic,
-                    Some(&result.op_id),
-                );
-                result.created_seq_ids.push(seq_id.clone());
+                let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
                 result.messages.push(format!(
                     "Extracted genome region {}:{}-{} from '{}' as '{}'",
                     chromosome, start_1based, end_1based, genome_id, seq_id
+                ));
+            }
+            Operation::ExtractGenomeGene {
+                genome_id,
+                gene_query,
+                occurrence,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let query = gene_query.trim();
+                if query.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Gene query cannot be empty".to_string(),
+                    });
+                }
+                let catalog_path =
+                    catalog_path.unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let catalog =
+                    GenomeCatalog::from_json_file(&catalog_path).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Could not open genome catalog '{catalog_path}': {e}"),
+                    })?;
+                let genes = catalog
+                    .list_gene_regions(&genome_id, cache_dir.as_deref())
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not load gene index for genome '{}': {}",
+                            genome_id, e
+                        ),
+                    })?;
+                let mut exact_matches: Vec<&GenomeGeneRecord> = genes
+                    .iter()
+                    .filter(|record| Self::genome_gene_matches_exact(record, query))
+                    .collect();
+                let used_fuzzy = if exact_matches.is_empty() {
+                    let query_lower = query.to_ascii_lowercase();
+                    exact_matches = genes
+                        .iter()
+                        .filter(|record| Self::genome_gene_matches_contains(record, &query_lower))
+                        .collect();
+                    true
+                } else {
+                    false
+                };
+                if exact_matches.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("No genes in '{}' match query '{}'", genome_id, query),
+                    });
+                }
+                let requested_occurrence = occurrence;
+                let occurrence = requested_occurrence.unwrap_or(1);
+                if occurrence == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Gene occurrence must be >= 1".to_string(),
+                    });
+                }
+                if exact_matches.len() > 1 && requested_occurrence.is_none() {
+                    result.warnings.push(format!(
+                        "Gene query '{}' matched {} records in '{}'; using first match (set occurrence for another match).",
+                        query,
+                        exact_matches.len(),
+                        genome_id
+                    ));
+                }
+                let Some(selected_gene) = exact_matches.get(occurrence - 1) else {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Gene query '{}' matched {} records, but occurrence {} was requested",
+                            query,
+                            exact_matches.len(),
+                            occurrence
+                        ),
+                    });
+                };
+                let sequence = catalog
+                    .get_sequence_region_with_cache(
+                        &genome_id,
+                        &selected_gene.chromosome,
+                        selected_gene.start_1based,
+                        selected_gene.end_1based,
+                        cache_dir.as_deref(),
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not load gene region {}:{}-{} from '{}': {}",
+                            selected_gene.chromosome,
+                            selected_gene.start_1based,
+                            selected_gene.end_1based,
+                            genome_id,
+                            e
+                        ),
+                    })?;
+                let gene_label = selected_gene
+                    .gene_name
+                    .as_ref()
+                    .or(selected_gene.gene_id.as_ref())
+                    .cloned()
+                    .unwrap_or_else(|| query.to_string());
+                let default_id = format!(
+                    "{}_{}_{}_{}",
+                    Self::normalize_id_token(&genome_id),
+                    Self::normalize_id_token(&gene_label),
+                    selected_gene.start_1based,
+                    selected_gene.end_1based
+                );
+                let base = output_id.unwrap_or(default_id);
+                let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
+                result.messages.push(format!(
+                    "Extracted genome gene '{}' [{} match, occurrence {}] as '{}' from '{}' ({})",
+                    query,
+                    match_mode,
+                    occurrence,
+                    seq_id,
+                    genome_id,
+                    Self::genome_gene_display_label(selected_gene)
                 ));
             }
             Operation::Digest {
@@ -5417,6 +5787,53 @@ mod tests {
     }
 
     #[test]
+    fn test_render_pool_gel_svg_operation() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("a".to_string(), seq(&"ATGC".repeat(80)));
+        state
+            .sequences
+            .insert("b".to_string(), seq(&"ATGC".repeat(150)));
+        state
+            .sequences
+            .insert("c".to_string(), seq(&"ATGC".repeat(260)));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pool.gel.svg");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::RenderPoolGelSvg {
+                inputs: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                path: path_text.clone(),
+                ladders: None,
+            })
+            .unwrap();
+        assert!(res.messages.iter().any(|m| m.contains("pool gel SVG")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("<svg"));
+        assert!(text.contains("Pool Gel Preview"));
+    }
+
+    #[test]
+    fn test_render_pool_gel_svg_operation_missing_input_fails() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("a".to_string(), seq("ATGC"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("pool.gel.svg");
+        let path_text = path.display().to_string();
+        let err = engine
+            .apply(Operation::RenderPoolGelSvg {
+                inputs: vec!["missing".to_string()],
+                path: path_text,
+                ladders: None,
+            })
+            .unwrap_err();
+        assert!(err.message.contains("not found"));
+    }
+
+    #[test]
     fn test_export_pool_operation() {
         let mut state = ProjectState::default();
         state.sequences.insert("a".to_string(), seq("ATGC"));
@@ -5746,7 +6163,7 @@ mod tests {
         write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
         write_gzip(
             &ann_gz,
-            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\";\n",
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
         );
         let cache_dir = root.join("cache");
         let catalog_path = root.join("catalog.json");
@@ -5777,6 +6194,17 @@ mod tests {
             .messages
             .iter()
             .any(|m| m.contains("Prepared genome 'ToyGenome'")));
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        let catalog_names = GentleEngine::list_reference_genomes(Some(&catalog_path_str)).unwrap();
+        assert!(catalog_names.contains(&"ToyGenome".to_string()));
+        let prepared =
+            GentleEngine::is_reference_genome_prepared(Some(&catalog_path_str), "ToyGenome", None)
+                .unwrap();
+        assert!(prepared);
+        let listed_genes =
+            GentleEngine::list_reference_genome_genes(Some(&catalog_path_str), "ToyGenome", None)
+                .unwrap();
+        assert_eq!(listed_genes.len(), 1);
 
         let extract = engine
             .apply(Operation::ExtractGenomeRegion {
@@ -5785,12 +6213,26 @@ mod tests {
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("toy_slice".to_string()),
-                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
             .unwrap();
         assert_eq!(extract.created_seq_ids, vec!["toy_slice".to_string()]);
         let loaded = engine.state().sequences.get("toy_slice").unwrap();
         assert_eq!(loaded.get_forward_string(), "GTACGTAC");
+
+        let extract_gene = engine
+            .apply(Operation::ExtractGenomeGene {
+                genome_id: "ToyGenome".to_string(),
+                gene_query: "MYGENE".to_string(),
+                occurrence: None,
+                output_id: Some("toy_gene".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(extract_gene.created_seq_ids, vec!["toy_gene".to_string()]);
+        let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
+        assert_eq!(loaded_gene.get_forward_string(), "ACGTACGTACGT");
     }
 }

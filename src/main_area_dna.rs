@@ -7,7 +7,9 @@ use crate::{
         OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
         TfbsProgress, Workflow,
     },
+    engine_shell::{execute_shell_command, parse_shell_line, shell_help_text},
     icons::*,
+    pool_gel::build_pool_gel_layout,
     render_dna::RenderDna,
     render_sequence::RenderSequence,
     tf_motifs,
@@ -26,6 +28,10 @@ use std::{
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct EngineOpsUiState {
     show_engine_ops: bool,
+    #[serde(default)]
+    show_shell: bool,
+    #[serde(default)]
+    shell_command_text: String,
     digest_enzymes_text: String,
     digest_prefix_text: String,
     merge_inputs_text: String,
@@ -159,6 +165,8 @@ struct EngineOpsUiState {
     export_pool_id: String,
     #[serde(default)]
     export_pool_human_id: String,
+    #[serde(default)]
+    pool_gel_ladders: String,
 }
 
 fn default_true() -> bool {
@@ -172,6 +180,10 @@ fn default_zero_f64() -> f64 {
 fn default_tfbs_quantile() -> f64 {
     0.95
 }
+
+const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
+const UI_SIZE_MIN_PX: f32 = 1.0;
+const UI_SIZE_MAX_PX: f32 = 4096.0;
 
 #[derive(Clone, Debug)]
 enum TfbsTaskMessage {
@@ -197,6 +209,10 @@ pub struct MainAreaDna {
     show_sequence: bool, // TODO move to DnaDisplay
     show_map: bool,      // TODO move to DnaDisplay
     show_engine_ops: bool,
+    show_shell: bool,
+    shell_command_text: String,
+    shell_preview_text: String,
+    shell_output_text: String,
     digest_enzymes_text: String,
     digest_prefix_text: String,
     merge_inputs_text: String,
@@ -272,9 +288,31 @@ pub struct MainAreaDna {
     export_pool_inputs_text: String,
     export_pool_id: String,
     export_pool_human_id: String,
+    pool_gel_ladders: String,
 }
 
 impl MainAreaDna {
+    fn sanitize_widget_size(size: Vec2) -> Vec2 {
+        let sanitize = |value: f32| -> f32 {
+            if value.is_finite() {
+                value.clamp(UI_SIZE_MIN_PX, UI_SIZE_MAX_PX)
+            } else {
+                TOP_PANEL_ICON_SIZE_PX
+            }
+        };
+        Vec2::new(sanitize(size.x), sanitize(size.y))
+    }
+
+    fn top_panel_icon_size(ui: &egui::Ui) -> Vec2 {
+        let suggested = ui.spacing().interact_size.y;
+        let edge = if suggested.is_finite() {
+            suggested.clamp(UI_SIZE_MIN_PX, TOP_PANEL_ICON_SIZE_PX)
+        } else {
+            TOP_PANEL_ICON_SIZE_PX
+        };
+        Self::sanitize_widget_size(Vec2::new(edge, edge))
+    }
+
     fn feature_kinds_for_toggle_buttons(&self) -> Vec<String> {
         let mut kinds = BTreeSet::new();
         if let Ok(dna) = self.dna.read() {
@@ -306,6 +344,10 @@ impl MainAreaDna {
             show_sequence: true,
             show_map: true,
             show_engine_ops: false,
+            show_shell: false,
+            shell_command_text: "state-summary".to_string(),
+            shell_preview_text: String::new(),
+            shell_output_text: String::new(),
             digest_enzymes_text: "BamHI,EcoRI".to_string(),
             digest_prefix_text: "digest".to_string(),
             merge_inputs_text: seq_id_for_defaults.clone().unwrap_or_default(),
@@ -381,6 +423,7 @@ impl MainAreaDna {
             export_pool_inputs_text: seq_id_for_defaults.clone().unwrap_or_default(),
             export_pool_id: String::new(),
             export_pool_human_id: String::new(),
+            pool_gel_ladders: String::new(),
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -392,7 +435,8 @@ impl MainAreaDna {
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
-        self.last_created_seq_ids = pool_seq_ids;
+        self.last_created_seq_ids = pool_seq_ids.clone();
+        self.export_pool_inputs_text = pool_seq_ids.join(", ");
         self.show_engine_ops = true;
         self.op_status = "Opened from lineage pool node".to_string();
     }
@@ -464,10 +508,11 @@ impl MainAreaDna {
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
+            let icon_size = Self::top_panel_icon_size(ui);
             let button = egui::ImageButton::new(
                 ICON_CIRCULAR_LINEAR
                     .clone()
-                    .fit_to_exact_size(Vec2::new(20.0, 20.0))
+                    .fit_to_exact_size(icon_size)
                     .rounding(5.0),
             );
             let response = ui
@@ -505,8 +550,13 @@ impl MainAreaDna {
                 }
             }
 
-            let button = egui::ImageButton::new(ICON_SHOW_SEQUENCE.clone().rounding(5.0))
-                .selected(self.show_sequence);
+            let button = egui::ImageButton::new(
+                ICON_SHOW_SEQUENCE
+                    .clone()
+                    .fit_to_exact_size(icon_size)
+                    .rounding(5.0),
+            )
+            .selected(self.show_sequence);
             let response = ui
                 .add(button)
                 .on_hover_text("Show or hide the sequence text panel");
@@ -515,8 +565,13 @@ impl MainAreaDna {
                 self.set_display_visibility(DisplayTarget::SequencePanel, self.show_sequence);
             };
 
-            let button =
-                egui::ImageButton::new(ICON_SHOW_MAP.clone().rounding(5.0)).selected(self.show_map);
+            let button = egui::ImageButton::new(
+                ICON_SHOW_MAP
+                    .clone()
+                    .fit_to_exact_size(icon_size)
+                    .rounding(5.0),
+            )
+            .selected(self.show_map);
             let response = ui
                 .add(button)
                 .on_hover_text("Show or hide the DNA map panel");
@@ -680,8 +735,13 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_restriction_enzyme_sites();
-            let button = egui::ImageButton::new(ICON_RESTRICTION_ENZYMES.clone().rounding(5.0))
-                .selected(re_active);
+            let button = egui::ImageButton::new(
+                ICON_RESTRICTION_ENZYMES
+                    .clone()
+                    .fit_to_exact_size(icon_size)
+                    .rounding(5.0),
+            )
+            .selected(re_active);
             let response = ui
                 .add(button)
                 .on_hover_text("Show or hide restriction enzyme cut sites");
@@ -702,8 +762,13 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_gc_contents();
-            let button =
-                egui::ImageButton::new(ICON_GC_CONTENT.clone().rounding(5.0)).selected(gc_active);
+            let button = egui::ImageButton::new(
+                ICON_GC_CONTENT
+                    .clone()
+                    .fit_to_exact_size(icon_size)
+                    .rounding(5.0),
+            )
+            .selected(gc_active);
             let response = ui
                 .add(button)
                 .on_hover_text("Show or hide GC-content visualization");
@@ -724,8 +789,13 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_open_reading_frames();
-            let button = egui::ImageButton::new(ICON_OPEN_READING_FRAMES.clone().rounding(5.0))
-                .selected(orf_active);
+            let button = egui::ImageButton::new(
+                ICON_OPEN_READING_FRAMES
+                    .clone()
+                    .fit_to_exact_size(icon_size)
+                    .rounding(5.0),
+            )
+            .selected(orf_active);
             let response = ui
                 .add(button)
                 .on_hover_text("Show or hide predicted open reading frames (ORFs)");
@@ -746,8 +816,13 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_methylation_sites();
-            let button = egui::ImageButton::new(ICON_METHYLATION_SITES.clone().rounding(5.0))
-                .selected(methylation_active);
+            let button = egui::ImageButton::new(
+                ICON_METHYLATION_SITES
+                    .clone()
+                    .fit_to_exact_size(icon_size)
+                    .rounding(5.0),
+            )
+            .selected(methylation_active);
             let response = ui
                 .add(button)
                 .on_hover_text("Show or hide methylation-site markers");
@@ -1306,6 +1381,14 @@ impl MainAreaDna {
                         self.export_pool_to_file();
                     }
                 });
+                ui.horizontal(|ui| {
+                    ui.label("gel ladders");
+                    ui.text_edit_singleline(&mut self.pool_gel_ladders)
+                        .on_hover_text("Optional comma-separated ladder names; leave blank for auto");
+                    if ui.button("Export Pool Gel SVG").clicked() {
+                        self.export_pool_gel_svg();
+                    }
+                });
 
                 ui.separator();
                 ui.label("Anchored region extraction (promoter-like)");
@@ -1776,6 +1859,8 @@ impl MainAreaDna {
                 if self.last_created_seq_ids.len() > 1 {
                     ui.separator();
                     self.render_pool_distribution(ui);
+                    ui.separator();
+                    self.render_pool_gel_preview(ui);
                 }
 
                             });
@@ -2021,8 +2106,8 @@ impl MainAreaDna {
     }
 
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
-        self.last_created_seq_ids = result.created_seq_ids.clone();
-        if !self.last_created_seq_ids.is_empty() {
+        if !result.created_seq_ids.is_empty() {
+            self.last_created_seq_ids = result.created_seq_ids.clone();
             self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");
         }
         if let Some(engine) = self.engine.clone() {
@@ -2459,6 +2544,38 @@ impl MainAreaDna {
         });
     }
 
+    fn export_pool_gel_svg(&mut self) {
+        if self.engine.is_none() {
+            self.op_status = "No engine attached".to_string();
+            return;
+        }
+        let inputs = Self::parse_ids(&self.export_pool_inputs_text);
+        if inputs.is_empty() {
+            self.op_status =
+                "Provide at least one sequence id in 'inputs' for pool gel export".to_string();
+            return;
+        }
+        let path = rfd::FileDialog::new()
+            .set_file_name("pool.gel.svg")
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Export canceled".to_string();
+            return;
+        };
+        let path = path.display().to_string();
+        let ladders = Self::parse_ids(&self.pool_gel_ladders);
+        self.apply_operation_with_feedback(Operation::RenderPoolGelSvg {
+            inputs,
+            path,
+            ladders: if ladders.is_empty() {
+                None
+            } else {
+                Some(ladders)
+            },
+        });
+    }
+
     fn parse_ids(text: &str) -> Vec<String> {
         text.split(',')
             .map(|s| s.trim())
@@ -2604,6 +2721,7 @@ impl MainAreaDna {
             export_pool_inputs_text: self.export_pool_inputs_text.clone(),
             export_pool_id: self.export_pool_id.clone(),
             export_pool_human_id: self.export_pool_human_id.clone(),
+            pool_gel_ladders: self.pool_gel_ladders.clone(),
         }
     }
 
@@ -2679,6 +2797,7 @@ impl MainAreaDna {
         self.export_pool_inputs_text = s.export_pool_inputs_text;
         self.export_pool_id = s.export_pool_id;
         self.export_pool_human_id = s.export_pool_human_id;
+        self.pool_gel_ladders = s.pool_gel_ladders;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -2759,16 +2878,28 @@ impl MainAreaDna {
         }
     }
 
-    fn render_pool_distribution(&self, ui: &mut egui::Ui) {
+    fn current_pool_members(&self) -> Vec<(String, usize)> {
         let Some(engine) = &self.engine else {
-            return;
+            return vec![];
         };
         let state = engine.read().expect("Engine lock poisoned");
-        let mut lengths: Vec<usize> = self
-            .last_created_seq_ids
+        self.last_created_seq_ids
             .iter()
-            .filter_map(|id| state.state().sequences.get(id))
-            .map(|dna| dna.len())
+            .filter_map(|id| {
+                state
+                    .state()
+                    .sequences
+                    .get(id)
+                    .map(|dna| (id.clone(), dna.len()))
+            })
+            .collect()
+    }
+
+    fn render_pool_distribution(&self, ui: &mut egui::Ui) {
+        let mut lengths: Vec<usize> = self
+            .current_pool_members()
+            .into_iter()
+            .map(|(_, bp)| bp)
             .collect();
         if lengths.is_empty() {
             return;
@@ -2807,6 +2938,142 @@ impl MainAreaDna {
             let hi = lo + bucket_size.saturating_sub(1);
             let bar = "#".repeat(count.min(40));
             ui.monospace(format!("{:>6}-{:>6} bp | {:>3} {}", lo, hi, count, bar));
+        }
+    }
+
+    fn render_pool_gel_preview(&self, ui: &mut egui::Ui) {
+        let members = self.current_pool_members();
+        if members.is_empty() {
+            return;
+        }
+        let ladders = Self::parse_ids(&self.pool_gel_ladders);
+        let layout = match build_pool_gel_layout(&members, &ladders) {
+            Ok(layout) => layout,
+            Err(e) => {
+                ui.colored_label(egui::Color32::from_rgb(180, 40, 40), e);
+                return;
+            }
+        };
+        let ladder_text = if layout.selected_ladders.is_empty() {
+            "auto".to_string()
+        } else {
+            layout.selected_ladders.join(" + ")
+        };
+        ui.monospace(format!(
+            "Pool gel: ladders={} | range={}..{} bp",
+            ladder_text, layout.range_min_bp, layout.range_max_bp
+        ));
+        let desired_h = 320.0;
+        let desired_w = ui.available_width().max(460.0);
+        let (rect, _response) =
+            ui.allocate_exact_size(Vec2::new(desired_w, desired_h), egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+
+        painter.rect_filled(rect, 8.0, egui::Color32::from_rgb(246, 248, 251));
+        let gel_rect = egui::Rect::from_min_max(
+            rect.min + Vec2::new(14.0, 18.0),
+            rect.max - Vec2::new(180.0, 32.0),
+        );
+        painter.rect_filled(gel_rect, 8.0, egui::Color32::from_rgb(18, 20, 24));
+
+        let lane_count = layout.lanes.len().max(1);
+        let lane_gap = gel_rect.width() / (lane_count as f32 + 1.0);
+        let mut ticks = BTreeSet::new();
+        for lane in layout.lanes.iter().filter(|l| l.is_ladder) {
+            for band in &lane.bands {
+                ticks.insert(band.bp);
+            }
+        }
+        if ticks.is_empty() {
+            ticks.insert(layout.range_min_bp);
+            ticks.insert(layout.range_max_bp);
+        }
+        let mut accepted_ticks: Vec<usize> = vec![];
+        let mut last_y: Option<f32> = None;
+        for bp in ticks.iter().rev() {
+            let y = layout.y_for_bp(*bp, gel_rect.top(), gel_rect.bottom());
+            if last_y.map(|v| (v - y).abs() >= 14.0).unwrap_or(true) {
+                accepted_ticks.push(*bp);
+                last_y = Some(y);
+            }
+            if accepted_ticks.len() >= 16 {
+                break;
+            }
+        }
+        for bp in accepted_ticks {
+            let y = layout.y_for_bp(bp, gel_rect.top(), gel_rect.bottom());
+            painter.line_segment(
+                [
+                    egui::pos2(gel_rect.left(), y),
+                    egui::pos2(gel_rect.right(), y),
+                ],
+                egui::Stroke::new(1.0, egui::Color32::from_rgb(42, 46, 53)),
+            );
+            painter.text(
+                egui::pos2(gel_rect.right() + 8.0, y),
+                egui::Align2::LEFT_CENTER,
+                format!("{bp} bp"),
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(60, 72, 90),
+            );
+        }
+
+        for (lane_idx, lane) in layout.lanes.iter().enumerate() {
+            let x = gel_rect.left() + lane_gap * (lane_idx as f32 + 1.0);
+            let lane_rect = egui::Rect::from_center_size(
+                egui::pos2(x, gel_rect.center().y),
+                Vec2::new(72.0, gel_rect.height() - 8.0),
+            );
+            painter.rect_filled(
+                lane_rect,
+                6.0,
+                if lane.is_ladder {
+                    egui::Color32::from_rgb(27, 33, 42)
+                } else {
+                    egui::Color32::from_rgb(30, 38, 50)
+                },
+            );
+            for band in &lane.bands {
+                let y = layout.y_for_bp(band.bp, gel_rect.top() + 4.0, gel_rect.bottom() - 4.0);
+                let width = if lane.is_ladder {
+                    30.0 + 18.0 * band.intensity
+                } else {
+                    36.0 + 26.0 * band.intensity
+                };
+                let band_rect = egui::Rect::from_center_size(
+                    egui::pos2(x, y),
+                    Vec2::new(width, if lane.is_ladder { 3.5 } else { 4.5 }),
+                );
+                painter.rect_filled(
+                    band_rect,
+                    2.0,
+                    if lane.is_ladder {
+                        egui::Color32::from_rgb(232, 236, 242)
+                    } else {
+                        egui::Color32::from_rgb(245, 158, 11)
+                    },
+                );
+                if !lane.is_ladder {
+                    let mut label = format!("{} bp", band.bp);
+                    if band.count > 1 {
+                        label.push_str(&format!(" (x{})", band.count));
+                    }
+                    painter.text(
+                        egui::pos2(gel_rect.right() + 72.0, y),
+                        egui::Align2::LEFT_CENTER,
+                        label,
+                        egui::FontId::monospace(10.0),
+                        egui::Color32::from_rgb(17, 24, 39),
+                    );
+                }
+            }
+            painter.text(
+                egui::pos2(x, gel_rect.bottom() + 14.0),
+                egui::Align2::CENTER_TOP,
+                lane.name.clone(),
+                egui::FontId::monospace(10.5),
+                egui::Color32::from_rgb(15, 23, 42),
+            );
         }
     }
 
@@ -2924,29 +3191,36 @@ impl MainAreaDna {
             let Some(ids) = grouped_features.get(kind) else {
                 continue;
             };
-            ui.collapsing(
+            let has_selected = selected_id
+                .map(|selected| ids.iter().any(|id| *id == selected))
+                .unwrap_or(false);
+            egui::CollapsingHeader::new(
                 egui::RichText::new(kind.as_str())
                     .size(kind_font_size)
                     .strong(),
-                |ui| {
-                    for id in ids {
-                        let name = match label_by_id.get(id) {
-                            Some(name) => name,
-                            None => continue,
-                        };
-                        let selected = selected_id == Some(*id);
-                        ui.horizontal(|ui| {
-                            let button = egui::Button::new(
-                                egui::RichText::new(name).size(feature_font_size),
-                            )
-                            .selected(selected);
-                            if ui.add(button).clicked() {
-                                clicked_feature = Some(*id);
-                            }
-                        });
-                    }
-                },
-            );
+            )
+            .open(if has_selected { Some(true) } else { None })
+            .show(ui, |ui| {
+                for id in ids {
+                    let name = match label_by_id.get(id) {
+                        Some(name) => name,
+                        None => continue,
+                    };
+                    let selected = selected_id == Some(*id);
+                    ui.horizontal(|ui| {
+                        let button =
+                            egui::Button::new(egui::RichText::new(name).size(feature_font_size))
+                                .selected(selected);
+                        let response = ui.add(button);
+                        if selected {
+                            response.scroll_to_me(Some(egui::Align::Center));
+                        }
+                        if response.clicked() {
+                            clicked_feature = Some(*id);
+                        }
+                    });
+                }
+            });
         }
         if let Some(id) = clicked_feature {
             self.focus_feature(id);
@@ -3038,6 +3312,33 @@ impl MainAreaDna {
             if response.hovered() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_hover(pointer_state);
+
+                if let Some(feature_id) = self.map_dna.get_hovered_feature_id() {
+                    let hover_text = self.dna.read().ok().and_then(|dna| {
+                        let feature = dna.features().get(feature_id)?;
+                        let name = {
+                            let label = RenderDna::feature_name(feature);
+                            if label.trim().is_empty() {
+                                feature.kind.to_string()
+                            } else {
+                                label
+                            }
+                        };
+                        let range = feature
+                            .location
+                            .find_bounds()
+                            .ok()
+                            .map(|(from, to)| format!("{from}..{to}"))
+                            .unwrap_or_else(|| "-".to_string());
+                        Some((name, feature.kind.to_string(), range))
+                    });
+                    if let Some((name, kind, range)) = hover_text {
+                        response.clone().on_hover_ui_at_pointer(|ui| {
+                            ui.strong(name);
+                            ui.monospace(format!("{kind} | {range}"));
+                        });
+                    }
+                }
 
                 if !self.is_circular() {
                     let scroll = ctx.input(|i| i.raw_scroll_delta);

@@ -460,3 +460,58 @@ pub fn sync_jaspar(input: &str, output: Option<&str>) -> Result<SyncReport, Stri
         resource: "jaspar".to_string(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_rebase_edge_fixture_and_extracts_cut_geometry() {
+        let text = include_str!("../test_files/data/rebase.edge.withrefm");
+        let enzymes = parse_rebase_withrefm(text, false);
+        assert_eq!(enzymes.len(), 3);
+
+        let bsa_i = enzymes.iter().find(|e| e.name == "BsaI").expect("BsaI");
+        assert_eq!(bsa_i.sequence, "GGTCTC");
+        assert_eq!(bsa_i.cut, 1);
+        assert_eq!(bsa_i.overlap, 4);
+        assert_eq!(bsa_i.commercial, Some(true));
+
+        let eco_ri = enzymes.iter().find(|e| e.name == "EcoRI").expect("EcoRI");
+        assert_eq!(eco_ri.sequence, "GAATTC");
+        assert_eq!(eco_ri.cut, 1);
+        assert_eq!(eco_ri.overlap, 0);
+    }
+
+    #[test]
+    fn rebase_commercial_filter_keeps_only_supplier_enzymes() {
+        let text = include_str!("../test_files/data/rebase.edge.withrefm");
+        let enzymes = parse_rebase_withrefm(text, true);
+        let names = enzymes.iter().map(|e| e.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(names, vec!["BsaI", "EcoRI"]);
+    }
+
+    #[test]
+    fn parses_jaspar_edge_fixture_with_consensus() {
+        let text = include_str!("../test_files/data/jaspar.edge.pfm");
+        let motifs = parse_jaspar_motifs(text).expect("parse motifs");
+        assert_eq!(motifs.len(), 2);
+        assert_eq!(motifs[0].id, "MA0001.1");
+        assert_eq!(motifs[0].consensus_iupac, "ACGT");
+        assert_eq!(motifs[1].id, "MA0002.1");
+        assert_eq!(motifs[1].consensus_iupac, "AACC");
+    }
+
+    #[test]
+    fn jaspar_rejects_unequal_rows() {
+        let broken = "\
+>MA9999.1 BROKEN
+A [1 0 0]
+C [0 1]
+G [0 0 1]
+T [0 0 0]
+";
+        let err = parse_jaspar_motifs(broken).expect_err("should fail");
+        assert!(err.contains("equal length"), "unexpected error: {err}");
+    }
+}

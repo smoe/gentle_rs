@@ -4,7 +4,14 @@
     "description": "Human GRCh38 Ensembl 113",
     "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
     "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/homo_sapiens/Homo_sapiens.GRCh38.113.gtf.gz",
-    "cache_dir": "/tmp"
+    "cache_dir": "data/genomes"
+  },
+  "Human GRCh38 NCBI RefSeq GCF_000001405.40": {
+    "ncbi_taxonomy_id": 9606,
+    "description": "Human GRCh38 from NCBI RefSeq assembly (derived from assembly accession/name)",
+    "ncbi_assembly_accession": "GCF_000001405.40",
+    "ncbi_assembly_name": "GRCh38.p14",
+    "cache_dir": "data/genomes"
   },
   "Saccharomyces cerevisiae S288c Ensembl 113": {
     "description": "Saccharomyces cerevisiae S288c Ensembl 113",

@@ -53,6 +53,19 @@ impl LuaInterface {
             "  - apply_operation(project, op): Applies an operation (Lua table or JSON string)"
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
+        println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
+        println!(
+            "  - is_reference_genome_prepared(genome_id, [catalog_path], [cache_dir]): Prepared check"
+        );
+        println!(
+            "  - list_reference_genome_genes(genome_id, [catalog_path], [cache_dir]): Lists indexed genes"
+        );
+        println!(
+            "  - prepare_genome(project, genome_id, [catalog_path], [cache_dir]): Engine op helper"
+        );
+        println!("  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper");
+        println!("  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir]): Engine op helper");
+        println!("  - render_pool_gel_svg(project, ids_csv, output_svg, [ladders_csv]): Engine op helper");
         println!("  - sync_rebase(input, [output], [commercial_only]): Sync REBASE data");
         println!("  - sync_jaspar(input, [output]): Sync JASPAR motif data");
         println!("A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites");
@@ -80,6 +93,52 @@ impl LuaInterface {
         let report = resource_sync::sync_jaspar(&input, output).map_err(|e| Self::err(&e))?;
         tf_motifs::reload();
         Ok(report)
+    }
+
+    fn list_reference_genomes(catalog_path: Option<String>) -> LuaResult<Vec<String>> {
+        let catalog_path = catalog_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        GentleEngine::list_reference_genomes(catalog_path).map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn is_reference_genome_prepared(
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    ) -> LuaResult<bool> {
+        GentleEngine::is_reference_genome_prepared(
+            catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+            &genome_id,
+            cache_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+        )
+        .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_reference_genome_genes(
+        genome_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    ) -> LuaResult<Vec<crate::genomes::GenomeGeneRecord>> {
+        GentleEngine::list_reference_genome_genes(
+            catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+            &genome_id,
+            cache_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+        )
+        .map_err(|e| Self::err(&e.to_string()))
     }
 
     // fn restriction_enzyme_digest(seq: DNAsequence, enzymes: String) -> LuaResult<Vec<DNAsequence>> {
@@ -161,6 +220,36 @@ impl LuaInterface {
         )?;
 
         self.lua.globals().set(
+            "list_reference_genomes",
+            self.lua
+                .create_function(|lua, catalog_path: Option<String>| {
+                    let genomes = Self::list_reference_genomes(catalog_path)?;
+                    lua.to_value(&genomes)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "is_reference_genome_prepared",
+            self.lua.create_function(
+                |lua, (genome_id, catalog_path, cache_dir): (String, Option<String>, Option<String>)| {
+                    let prepared =
+                        Self::is_reference_genome_prepared(genome_id, catalog_path, cache_dir)?;
+                    lua.to_value(&prepared)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "list_reference_genome_genes",
+            self.lua.create_function(
+                |lua, (genome_id, catalog_path, cache_dir): (String, Option<String>, Option<String>)| {
+                    let genes = Self::list_reference_genome_genes(genome_id, catalog_path, cache_dir)?;
+                    lua.to_value(&genes)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
             "apply_operation",
             self.lua
                 .create_function(|lua, (state, op): (Value, Value)| {
@@ -181,6 +270,177 @@ impl LuaInterface {
                     };
                     lua.to_value(&response)
                 })?,
+        )?;
+
+        self.lua.globals().set(
+            "prepare_genome",
+            self.lua.create_function(
+                |lua,
+                 (state, genome_id, catalog_path, cache_dir): (
+                    Value,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::PrepareGenome {
+                            genome_id,
+                            catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "extract_genome_region",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    genome_id,
+                    chromosome,
+                    start_1based,
+                    end_1based,
+                    output_id,
+                    catalog_path,
+                    cache_dir,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    usize,
+                    usize,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::ExtractGenomeRegion {
+                            genome_id,
+                            chromosome,
+                            start_1based,
+                            end_1based,
+                            output_id,
+                            catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "extract_genome_gene",
+            self.lua.create_function(
+                |lua, (state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir): (Value, String, String, Option<usize>, Option<String>, Option<String>, Option<String>)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::ExtractGenomeGene {
+                            genome_id,
+                            gene_query,
+                            occurrence,
+                            output_id,
+                            catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "render_pool_gel_svg",
+            self.lua.create_function(
+                |lua,
+                 (state, ids_csv, output_svg, ladders_csv): (
+                    Value,
+                    String,
+                    String,
+                    Option<String>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let inputs = ids_csv
+                        .split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>();
+                    if inputs.is_empty() {
+                        return Err(Self::err(
+                            "render_pool_gel_svg requires at least one sequence id",
+                        ));
+                    }
+                    let ladders = ladders_csv
+                        .as_deref()
+                        .map(|s| {
+                            s.split(',')
+                                .map(|v| v.trim())
+                                .filter(|v| !v.is_empty())
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|v| !v.is_empty());
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::RenderPoolGelSvg {
+                            inputs,
+                            path: output_svg,
+                            ladders,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
         )?;
 
         self.lua.globals().set(
