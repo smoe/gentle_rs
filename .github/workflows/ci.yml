@@ -45,6 +45,9 @@ jobs:
       - name: Engine tests
         run: cargo test -q "engine::tests::"
 
+      - name: Genome catalog regression test
+        run: cargo test -q genomes::tests::test_repo_assets_genome_catalog_is_valid
+
       - name: Render snapshot tests
         run: cargo test -q render_export::tests::snapshot_
 

@@ -71,6 +71,7 @@ impl LuaInterface {
         );
         println!("  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper");
         println!("  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir]): Engine op helper");
+        println!("  - import_genome_bed_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BED/BED.GZ overlay helper");
         println!("  - render_pool_gel_svg(project, ids_csv, output_svg, [ladders_csv]): Engine op helper");
         println!("  - sync_rebase(input, [output], [commercial_only]): Sync REBASE data");
         println!("  - sync_jaspar(input, [output]): Sync JASPAR motif data");
@@ -479,6 +480,46 @@ impl LuaInterface {
                             output_id,
                             catalog_path,
                             cache_dir,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "import_genome_bed_track",
+            self.lua.create_function(
+                |lua,
+                 (state, seq_id, path, track_name, min_score, max_score, clear_existing): (
+                    Value,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<f64>,
+                    Option<f64>,
+                    Option<bool>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::ImportGenomeBedTrack {
+                            seq_id,
+                            path,
+                            track_name,
+                            min_score,
+                            max_score,
+                            clear_existing,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]

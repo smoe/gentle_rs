@@ -33,4 +33,8 @@ impl WindowDna {
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
         self.main_area.set_pool_context(pool_seq_ids);
     }
+
+    pub fn refresh_from_engine_settings(&mut self) {
+        self.main_area.refresh_from_engine_settings();
+    }
 }

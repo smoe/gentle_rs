@@ -16,6 +16,7 @@ use crate::{
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
     tf_motifs, DNA_LADDERS, RNA_LADDERS,
 };
+use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
@@ -25,7 +26,7 @@ use std::{
     fmt,
     fs::File,
     hash::{Hash, Hasher},
-    io::Write,
+    io::{BufRead, BufReader, Write},
     path::Path,
     time::Instant,
 };
@@ -37,6 +38,7 @@ pub type NodeId = String;
 pub type ContainerId = String;
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
+const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DisplayTarget {
@@ -361,6 +363,14 @@ pub enum Operation {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    ImportGenomeBedTrack {
+        seq_id: SeqId,
+        path: String,
+        track_name: Option<String>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: Option<bool>,
+    },
     DigestContainer {
         container_id: ContainerId,
         enzymes: Vec<String>,
@@ -626,6 +636,38 @@ pub struct GenomeExtractionProvenance {
     pub annotation_sha1: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct GenomeSequenceAnchor {
+    genome_id: String,
+    chromosome: String,
+    start_1based: usize,
+    end_1based: usize,
+}
+
+#[derive(Debug, Clone)]
+struct BedRecord {
+    chromosome: String,
+    start_0based: usize,
+    end_0based: usize,
+    name: Option<String>,
+    score: Option<f64>,
+    strand: Option<char>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct GenomeBedTrackImportReport {
+    track_name: String,
+    parsed_records: usize,
+    imported_features: usize,
+    skipped_records: usize,
+    skipped_invalid: usize,
+    skipped_wrong_chromosome: usize,
+    skipped_non_overlap: usize,
+    skipped_missing_score: usize,
+    skipped_outside_score_range: usize,
+    warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workflow {
     pub run_id: RunId,
@@ -758,6 +800,15 @@ impl GentleEngine {
         &mut self.state
     }
 
+    pub fn list_sequences_with_genome_anchor(&self) -> Vec<String> {
+        let mut seq_ids: Vec<String> = self.state.sequences.keys().cloned().collect();
+        seq_ids.sort_unstable();
+        seq_ids
+            .into_iter()
+            .filter(|seq_id| self.latest_genome_anchor_for_seq(seq_id).is_ok())
+            .collect()
+    }
+
     pub fn capabilities() -> Capabilities {
         Capabilities {
             protocol_version: "v1".to_string(),
@@ -774,6 +825,7 @@ impl GentleEngine {
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
                 "ExtractGenomeGene".to_string(),
+                "ImportGenomeBedTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
                 "LigationContainer".to_string(),
@@ -1366,6 +1418,365 @@ impl GentleEngine {
         )
     }
 
+    fn latest_genome_anchor_for_seq(
+        &self,
+        seq_id: &str,
+    ) -> Result<GenomeSequenceAnchor, EngineError> {
+        let Some(provenance) = self.state.metadata.get(PROVENANCE_METADATA_KEY) else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Sequence '{seq_id}' has no genome anchor provenance (missing metadata '{}')",
+                    PROVENANCE_METADATA_KEY
+                ),
+            });
+        };
+        let Some(entries) = provenance
+            .get(GENOME_EXTRACTIONS_METADATA_KEY)
+            .and_then(|v| v.as_array())
+        else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Sequence '{seq_id}' has no genome anchor provenance (missing '{}')",
+                    GENOME_EXTRACTIONS_METADATA_KEY
+                ),
+            });
+        };
+
+        let mut latest: Option<GenomeSequenceAnchor> = None;
+        let mut latest_recorded_at = 0u128;
+
+        for entry in entries {
+            let Some(entry_seq_id) = entry.get("seq_id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if entry_seq_id != seq_id {
+                continue;
+            }
+            let Some(chromosome) = entry.get("chromosome").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(start_1based) = entry.get("start_1based").and_then(|v| v.as_u64()) else {
+                continue;
+            };
+            let Some(end_1based) = entry.get("end_1based").and_then(|v| v.as_u64()) else {
+                continue;
+            };
+            if start_1based == 0 || end_1based < start_1based {
+                continue;
+            }
+            let recorded_at = entry
+                .get("recorded_at_unix_ms")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u128)
+                .unwrap_or(0);
+            if latest.is_none() || recorded_at >= latest_recorded_at {
+                latest_recorded_at = recorded_at;
+                latest = Some(GenomeSequenceAnchor {
+                    genome_id: entry
+                        .get("genome_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
+                    chromosome: chromosome.to_string(),
+                    start_1based: start_1based as usize,
+                    end_1based: end_1based as usize,
+                });
+            }
+        }
+
+        latest.ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene first"
+            ),
+        })
+    }
+
+    fn chromosomes_match(left: &str, right: &str) -> bool {
+        let normalize = |raw: &str| -> String {
+            let trimmed = raw.trim();
+            let lower = trimmed.to_ascii_lowercase();
+            lower
+                .strip_prefix("chr")
+                .map(|v| v.to_string())
+                .unwrap_or(lower)
+        };
+        normalize(left) == normalize(right)
+    }
+
+    fn is_generated_genome_bed_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
+    }
+
+    fn remove_generated_genome_bed_features(features: &mut Vec<gb_io::seq::Feature>) {
+        features.retain(|f| !Self::is_generated_genome_bed_feature(f));
+    }
+
+    fn open_text_reader(path: &str) -> Result<Box<dyn BufRead>, EngineError> {
+        let file = std::fs::File::open(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not open BED file '{path}': {e}"),
+        })?;
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".gz") {
+            let decoder = GzDecoder::new(BufReader::new(file));
+            Ok(Box::new(BufReader::new(decoder)))
+        } else {
+            Ok(Box::new(BufReader::new(file)))
+        }
+    }
+
+    fn default_track_name(path: &str) -> String {
+        let file_name = Path::new(path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("bed_track");
+        let without_gz = file_name
+            .strip_suffix(".gz")
+            .or_else(|| file_name.strip_suffix(".GZ"))
+            .unwrap_or(file_name);
+        let without_bed = without_gz
+            .strip_suffix(".bed")
+            .or_else(|| without_gz.strip_suffix(".BED"))
+            .unwrap_or(without_gz);
+        if without_bed.trim().is_empty() {
+            "bed_track".to_string()
+        } else {
+            without_bed.to_string()
+        }
+    }
+
+    fn parse_bed_record(line: &str) -> Result<BedRecord, String> {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 3 {
+            return Err("BED record needs at least 3 columns (chrom, start, end)".to_string());
+        }
+        let chromosome = fields[0].trim();
+        if chromosome.is_empty() {
+            return Err("BED chromosome is empty".to_string());
+        }
+        let start_0based = fields[1]
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid BED start '{}': {e}", fields[1]))?;
+        let end_0based = fields[2]
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid BED end '{}': {e}", fields[2]))?;
+        if end_0based <= start_0based {
+            return Err(format!(
+                "Invalid BED interval {}:{}-{} (end must be > start)",
+                chromosome, start_0based, end_0based
+            ));
+        }
+        let name = fields
+            .get(3)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| v.to_string());
+        let score = fields
+            .get(4)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| {
+                v.parse::<f64>()
+                    .map_err(|e| format!("Invalid BED score '{}': {e}", v))
+            })
+            .transpose()?;
+        let strand = fields
+            .get(5)
+            .and_then(|v| v.trim().chars().next())
+            .filter(|c| matches!(c, '+' | '-'));
+
+        Ok(BedRecord {
+            chromosome: chromosome.to_string(),
+            start_0based,
+            end_0based,
+            name,
+            score,
+            strand,
+        })
+    }
+
+    fn build_genome_bed_feature(
+        record: &BedRecord,
+        track_name: &str,
+        path: &str,
+        local_start_0based: usize,
+        local_end_0based_exclusive: usize,
+    ) -> gb_io::seq::Feature {
+        let label = record
+            .name
+            .as_ref()
+            .filter(|v| !v.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| {
+                format!(
+                    "{}:{}:{}-{}",
+                    track_name, record.chromosome, record.start_0based, record.end_0based
+                )
+            });
+        let mut qualifiers = vec![
+            ("label".into(), Some(label.clone())),
+            (
+                "note".into(),
+                Some(format!(
+                    "BED track '{}' from '{}' [{}:{}-{}]",
+                    track_name, path, record.chromosome, record.start_0based, record.end_0based
+                )),
+            ),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_BED_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("gentle_track_name".into(), Some(track_name.to_string())),
+            ("gentle_track_file".into(), Some(path.to_string())),
+            ("chromosome".into(), Some(record.chromosome.clone())),
+            (
+                "bed_start_0based".into(),
+                Some(record.start_0based.to_string()),
+            ),
+            ("bed_end_0based".into(), Some(record.end_0based.to_string())),
+        ];
+        if let Some(score) = record.score {
+            qualifiers.push(("score".into(), Some(format!("{score:.6}"))));
+        }
+        if let Some(strand) = record.strand {
+            qualifiers.push(("strand".into(), Some(strand.to_string())));
+        }
+
+        let base_location = gb_io::seq::Location::simple_range(
+            local_start_0based as i64,
+            local_end_0based_exclusive as i64,
+        );
+        let location = if record.strand == Some('-') {
+            gb_io::seq::Location::Complement(Box::new(base_location))
+        } else {
+            base_location
+        };
+
+        gb_io::seq::Feature {
+            kind: gb_io::FeatureKind::from("regulatory_region"),
+            location,
+            qualifiers,
+        }
+    }
+
+    fn import_genome_bed_track(
+        dna: &mut DNAsequence,
+        anchor: &GenomeSequenceAnchor,
+        path: &str,
+        track_name: Option<&str>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: bool,
+    ) -> Result<GenomeBedTrackImportReport, EngineError> {
+        let selected_track_name = track_name
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| Self::default_track_name(path));
+
+        if clear_existing {
+            Self::remove_generated_genome_bed_features(dna.features_mut());
+        }
+
+        let mut report = GenomeBedTrackImportReport {
+            track_name: selected_track_name.clone(),
+            ..Default::default()
+        };
+        let mut reader = Self::open_text_reader(path)?;
+        let mut line = String::new();
+        let mut line_no = 0usize;
+
+        while {
+            line.clear();
+            reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read BED file '{path}': {e}"),
+            })? > 0
+        } {
+            line_no += 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with('#')
+                || trimmed.to_ascii_lowercase().starts_with("track ")
+                || trimmed.to_ascii_lowercase().starts_with("browser ")
+            {
+                continue;
+            }
+            report.parsed_records += 1;
+
+            let record = match Self::parse_bed_record(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    report.skipped_records += 1;
+                    report.skipped_invalid += 1;
+                    if report.warnings.len() < 20 {
+                        report
+                            .warnings
+                            .push(format!("BED line {} skipped: {}", line_no, e));
+                    }
+                    continue;
+                }
+            };
+
+            if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
+                report.skipped_records += 1;
+                report.skipped_wrong_chromosome += 1;
+                continue;
+            }
+
+            let bed_start_1based = record.start_0based.saturating_add(1);
+            let bed_end_1based = record.end_0based;
+            if bed_end_1based < anchor.start_1based || bed_start_1based > anchor.end_1based {
+                report.skipped_records += 1;
+                report.skipped_non_overlap += 1;
+                continue;
+            }
+            let overlap_start_1based = bed_start_1based.max(anchor.start_1based);
+            let overlap_end_1based = bed_end_1based.min(anchor.end_1based);
+            if overlap_end_1based < overlap_start_1based {
+                report.skipped_records += 1;
+                report.skipped_non_overlap += 1;
+                continue;
+            }
+
+            if min_score.is_some() || max_score.is_some() {
+                let Some(score) = record.score else {
+                    report.skipped_records += 1;
+                    report.skipped_missing_score += 1;
+                    continue;
+                };
+                if min_score.map(|v| score < v).unwrap_or(false)
+                    || max_score.map(|v| score > v).unwrap_or(false)
+                {
+                    report.skipped_records += 1;
+                    report.skipped_outside_score_range += 1;
+                    continue;
+                }
+            }
+
+            let local_start_0based = overlap_start_1based - anchor.start_1based;
+            let local_end_0based_exclusive = overlap_end_1based - anchor.start_1based + 1;
+            let feature = Self::build_genome_bed_feature(
+                &record,
+                &selected_track_name,
+                path,
+                local_start_0based,
+                local_end_0based_exclusive,
+            );
+            dna.features_mut().push(feature);
+            report.imported_features += 1;
+        }
+
+        Ok(report)
+    }
+
     fn classify_import_origin(path: &str, dna: &DNAsequence) -> SequenceOrigin {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".fa")
@@ -1529,6 +1940,7 @@ impl GentleEngine {
             Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
+            Operation::ImportGenomeBedTrack { .. } => Some("Imported BED track".to_string()),
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -3344,6 +3756,80 @@ impl GentleEngine {
                     genome_id,
                     Self::genome_gene_display_label(selected_gene)
                 ));
+            }
+            Operation::ImportGenomeBedTrack {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => {
+                if path.trim().is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportGenomeBedTrack requires a non-empty BED path".to_string(),
+                    });
+                }
+                if min_score
+                    .zip(max_score)
+                    .map(|(min, max)| min > max)
+                    .unwrap_or(false)
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportGenomeBedTrack requires min_score <= max_score".to_string(),
+                    });
+                }
+
+                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                let _ = self.ensure_lineage_node(&seq_id);
+                let dna = self
+                    .state
+                    .sequences
+                    .get_mut(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+
+                let report = Self::import_genome_bed_track(
+                    dna,
+                    &anchor,
+                    &path,
+                    track_name.as_deref(),
+                    min_score,
+                    max_score,
+                    clear_existing.unwrap_or(false),
+                )?;
+
+                result.changed_seq_ids.push(seq_id.clone());
+                result.warnings.extend(report.warnings);
+                result.messages.push(format!(
+                    "Imported {} BED feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{}, parsed={}, skipped={})",
+                    report.imported_features,
+                    seq_id,
+                    path,
+                    report.track_name,
+                    anchor.genome_id,
+                    anchor.chromosome,
+                    anchor.start_1based,
+                    anchor.end_1based,
+                    report.parsed_records,
+                    report.skipped_records
+                ));
+                if report.skipped_missing_score > 0 {
+                    result.warnings.push(format!(
+                        "{} BED record(s) were skipped because score filters were set but the BED score column was missing",
+                        report.skipped_missing_score
+                    ));
+                }
+                if report.skipped_outside_score_range > 0 {
+                    result.messages.push(format!(
+                        "{} BED record(s) were outside score filter bounds",
+                        report.skipped_outside_score_range
+                    ));
+                }
             }
             Operation::Digest {
                 input,
@@ -7152,6 +7638,126 @@ exit 2
                     .map(|v| !v.is_empty())
                     .unwrap_or(false)
         }));
+    }
+
+    #[test]
+    fn test_import_genome_bed_track_supports_plain_and_gzip() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        );
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("toy_slice".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let bed_path = root.join("signals.bed");
+        fs::write(
+            &bed_path,
+            "track name=toy\nchr1\t1\t4\tpeak_a\t42\t+\nchr1\t5\t12\tpeak_b\t7\t-\nchr2\t1\t4\twrong_chr\t50\t+\nchr1\tbad\t9\tbroken\n",
+        )
+        .unwrap();
+        let plain = engine
+            .apply(Operation::ImportGenomeBedTrack {
+                seq_id: "toy_slice".to_string(),
+                path: bed_path.to_string_lossy().to_string(),
+                track_name: Some("chipseq_plain".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(plain.changed_seq_ids.contains(&"toy_slice".to_string()));
+        assert!(plain.warnings.iter().any(|w| w.contains("BED line")));
+
+        let dna_plain = engine.state().sequences.get("toy_slice").unwrap();
+        let generated_plain: Vec<_> = dna_plain
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
+            })
+            .collect();
+        assert_eq!(generated_plain.len(), 2);
+        assert!(generated_plain.iter().any(|f| {
+            f.qualifier_values("label".into())
+                .next()
+                .map(|v| v.contains("peak_a"))
+                .unwrap_or(false)
+        }));
+
+        let bed_gz = root.join("signals.bed.gz");
+        write_gzip(
+            &bed_gz,
+            "chr1\t1\t4\tpeak_a\t42\t+\nchr1\t5\t12\tpeak_b\t.\t-\n",
+        );
+        let gz = engine
+            .apply(Operation::ImportGenomeBedTrack {
+                seq_id: "toy_slice".to_string(),
+                path: bed_gz.to_string_lossy().to_string(),
+                track_name: Some("chipseq_gz".to_string()),
+                min_score: Some(10.0),
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(gz.changed_seq_ids.contains(&"toy_slice".to_string()));
+        assert!(gz.warnings.iter().any(|w| w.contains("score column")));
+
+        let dna_gz = engine.state().sequences.get("toy_slice").unwrap();
+        let generated_gz: Vec<_> = dna_gz
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
+            })
+            .collect();
+        assert_eq!(generated_gz.len(), 1);
+        assert!(generated_gz[0]
+            .qualifier_values("label".into())
+            .next()
+            .map(|v| v.contains("peak_a"))
+            .unwrap_or(false));
     }
 
     #[test]

@@ -77,6 +77,16 @@ Current draft operations:
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)
 
+Adapter utility contracts (current, non-engine operations):
+
+- `screenshot-window OUTPUT.png`
+  - gated by startup opt-in flag `--allow-screenshots`
+  - adapter-level action (CLI/shared shell/GUI bridge), intentionally outside
+    deterministic biology operations
+  - capture target: active/topmost GENtle window only
+  - caller must provide output path/filename
+  - full-screen and non-GENtle-window capture are rejected by contract
+
 Planned operation refinements:
 
 - `MergeContainers { inputs, output_prefix? }`
@@ -164,6 +174,39 @@ RNA ladder catalog semantics:
   - `ExportRnaLadders { path, name_filter? }`
   - Writes the same structured payload to JSON at `path`.
   - Optional `name_filter` applies case-insensitive name matching before export.
+
+Screenshot artifact semantics (adapter contract):
+
+- Guardrail:
+  - command is rejected unless process was started with `--allow-screenshots`.
+- Command surface:
+  - direct CLI: `gentle_cli --allow-screenshots screenshot-window OUTPUT.png`
+  - shared shell (CLI and GUI shell panel): `screenshot-window OUTPUT.png`
+- Scope and safety:
+  - captures only the active/topmost GENtle window
+  - window lookup is native AppKit in-process (no AppleScript automation path)
+  - command is primarily intended for GUI shell contexts with an active window
+  - rejects full-desktop capture and non-GENtle targets
+  - rejects request if no eligible active GENtle window is available
+  - current backend support is macOS (`screencapture`); non-macOS returns
+    unsupported
+- Output:
+  - writes an image file at caller-provided `OUTPUT` path (custom filename
+    supported)
+  - recommended default image format is inferred from extension (e.g. `.png`)
+- Result payload shape:
+
+```json
+{
+  "schema": "gentle.screenshot.v1",
+  "path": "docs/images/gui-main.png",
+  "window_title": "GENtle - pGEX-3X",
+  "captured_at_unix_ms": 1768860000000,
+  "pixel_width": 1680,
+  "pixel_height": 1020,
+  "backend": "macos.screencapture"
+}
+```
 
 `Pcr` semantics (current):
 

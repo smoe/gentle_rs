@@ -3124,4 +3124,32 @@ mod tests {
         assert_eq!(gb.sequence_source_type, "genbank_accession");
         assert_eq!(gb.annotation_source_type, "genbank_accession");
     }
+
+    #[test]
+    fn test_repo_assets_genome_catalog_is_valid() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let catalog_path = root.join("assets").join("genomes.json");
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let genomes = catalog.list_genomes();
+        for expected in [
+            "Human GRCh38 Ensembl 113",
+            "Human GRCh38 Ensembl 116",
+            "Human GRCh38 NCBI RefSeq GCF_000001405.40",
+            "Mouse GRCm39 Ensembl 116",
+            "Rat GRCr8 Ensembl 116",
+            "Saccharomyces cerevisiae S288c Ensembl 113",
+            "Saccharomyces cerevisiae S288c Ensembl 116",
+            "LocalProject",
+        ] {
+            assert!(
+                genomes.iter().any(|id| id == expected),
+                "Expected catalog entry '{expected}' missing in assets/genomes.json"
+            );
+        }
+
+        let local = catalog.source_plan("LocalProject", None).unwrap();
+        assert_eq!(local.sequence_source_type, "local");
+        assert_eq!(local.annotation_source_type, "local");
+    }
 }

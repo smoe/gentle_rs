@@ -7,9 +7,36 @@ This page documents the current graphical interface of GENtle.
 ```bash
 cargo run --bin gentle
 cargo run --bin gentle -- path/to/project.gentle.json
+cargo run --bin gentle -- --allow-screenshots
 ```
 
 The GUI opens an empty project unless a project path is passed on startup.
+
+## Configuration Window
+
+GENtle provides a project-level configuration window (not per-sequence).
+It opens in an independent window/viewport, separate from the main project window.
+
+Access:
+
+- Main window menu: `File -> Configuration...` or `Settings -> Configuration...`
+- macOS app menu: `GENtle -> GENtle Settings...`
+- Shortcut: `Cmd+,`
+
+Tabs:
+
+- `External Applications`
+  - Configure external executable override for `rnapkin` (`GENTLE_RNAPKIN_BIN`).
+  - Validate executable availability/version from within the UI (`rnapkin --version` check).
+- `Graphics`
+  - Configure project-level display visibility defaults (panels, feature layers, overlays).
+  - Applies to sequence windows through the shared engine display state.
+  - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
+
+Persistence:
+
+- Configuration is persisted in an app settings file at `~/.gentle_gui_settings.json`.
+- Saved settings are restored on app startup.
 
 ## Main window layout
 
@@ -115,6 +142,7 @@ Supported commands:
 - `state-summary`
 - `load-project PATH`
 - `save-project PATH`
+- `screenshot-window OUTPUT.png`
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
 - `render-rna-svg SEQ_ID OUTPUT.svg`
 - `rna-info SEQ_ID`
@@ -140,8 +168,19 @@ Supported commands:
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
+
+Screenshot command (shared shell, implemented):
+
+- `screenshot-window OUTPUT.png`
+  - guarded by startup opt-in flag `--allow-screenshots`
+  - captures active/topmost GENtle window only
+  - window lookup uses native AppKit in-process path (no AppleScript bridge)
+  - saves to caller-provided output filename/path
+  - current backend support: macOS (`screencapture`); other platforms currently
+    return unsupported
 
 ## About GENtle
 
@@ -358,14 +397,21 @@ Recommended flow:
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
    - use `Retrieve` directly from an inspected row
+4. Overlay ChIP-seq/CUT&RUN BED peaks onto an extracted sequence:
+   - open `Genome -> Import BED Track...`
+   - select a genome-anchored sequence (created by genome extract ops)
+   - choose a BED file (`.bed` or `.bed.gz`)
+   - optionally set track name and score filters
+   - click `Import BED Track`
 
 Equivalent workflow JSON (still supported via workflow runner):
 
 ```json
 [
-  {"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 113","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
-  {"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 113","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
-  {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 113","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+  {"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
+  {"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 116","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
+  {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 116","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
+  {"ImportGenomeBedTrack":{"seq_id":"grch38_tp53","path":"data/chipseq/peaks.bed.gz","track_name":"H3K27ac","min_score":10.0,"max_score":null,"clear_existing":false}}
 ]
 ```
 
@@ -375,6 +421,10 @@ Notes:
 - `cache_dir` can be selected via folder picker; persistent project-local
   storage is recommended over `/tmp`.
 - If `catalog` is empty, engine uses default `assets/genomes.json`.
+- Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
+  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Saccharomyces cerevisiae
+  S288c (Ensembl 113 and 116), and `LocalProject` (backed by
+  `test_files/AB011549.2.fa` + `test_files/AB011549.2.gb`).
 - A curated starter catalog for local helper systems is available at
   `assets/helper_genomes.json` (plasmid/lentivirus/adenovirus/AAV plus yeast/E. coli host references).
 - Catalog entries may specify `ncbi_assembly_accession` + `ncbi_assembly_name`
@@ -385,6 +435,9 @@ Notes:
   non-assembly records). If explicit URLs are absent, GENtle derives NCBI EFetch
   sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
   indexes extracted feature records for search/retrieval.
+- BED track import accepts both plain and gzipped BED files (`.bed` / `.bed.gz`).
+- BED track import requires a genome-anchored sequence (`ExtractGenomeRegion` or
+  `ExtractGenomeGene`) to map genomic coordinates into local sequence coordinates.
 - Prepare/Retrieve dialogs show resolved source types for the selected entry
   (`local`, `ncbi_assembly`, `genbank_accession`, `remote_http`).
 - Retrieval fields are enabled only after the selected genome is prepared.

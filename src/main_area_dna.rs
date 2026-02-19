@@ -7,7 +7,7 @@ use crate::{
         OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
         TfbsProgress, Workflow,
     },
-    engine_shell::{execute_shell_command, parse_shell_line},
+    engine_shell::{execute_shell_command_with_options, parse_shell_line, ShellExecutionOptions},
     icons::*,
     pool_gel::build_pool_gel_layout,
     render_dna::RenderDna,
@@ -461,6 +461,11 @@ impl MainAreaDna {
         self.export_pool_inputs_text = pool_seq_ids.join(", ");
         self.show_engine_ops = true;
         self.op_status = "Opened from lineage pool node".to_string();
+    }
+
+    pub fn refresh_from_engine_settings(&mut self) {
+        self.sync_from_engine_display();
+        self.update_dna_map();
     }
 
     fn latest_container_for_active_seq(&self) -> Option<String> {
@@ -1955,7 +1960,8 @@ impl MainAreaDna {
 
         let outcome = {
             let mut guard = engine.write().expect("Engine lock poisoned");
-            execute_shell_command(&mut guard, &command)
+            let options = ShellExecutionOptions::from_env();
+            execute_shell_command_with_options(&mut guard, &command, &options)
         };
         match outcome {
             Ok(run) => {

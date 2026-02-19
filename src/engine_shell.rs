@@ -5,10 +5,14 @@ use crate::{
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync,
 };
+#[cfg(target_os = "macos")]
+use objc2_app_kit::NSApplication;
+#[cfg(target_os = "macos")]
+use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::BTreeSet, fs};
+use std::{collections::BTreeSet, fs, path::Path, process::Command};
 
 #[derive(Debug, Clone)]
 pub enum ShellCommand {
@@ -20,6 +24,9 @@ pub enum ShellCommand {
     },
     SaveProject {
         path: String,
+    },
+    ScreenshotWindow {
+        output: String,
     },
     RenderSvg {
         seq_id: String,
@@ -117,6 +124,14 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    TracksImportBed {
+        seq_id: String,
+        path: String,
+        track_name: Option<String>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: bool,
+    },
     Op {
         payload: String,
     },
@@ -129,6 +144,33 @@ pub enum ShellCommand {
 pub struct ShellRunResult {
     pub state_changed: bool,
     pub output: Value,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ShellExecutionOptions {
+    pub allow_screenshots: bool,
+}
+
+impl ShellExecutionOptions {
+    pub fn from_env() -> Self {
+        let raw = std::env::var("GENTLE_ALLOW_SCREENSHOTS").unwrap_or_default();
+        let allow_screenshots = matches!(
+            raw.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        );
+        Self { allow_screenshots }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScreenshotReport {
+    schema: String,
+    path: String,
+    window_title: String,
+    captured_at_unix_ms: u128,
+    pixel_width: u32,
+    pixel_height: u32,
+    backend: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,6 +212,9 @@ impl ShellCommand {
             Self::StateSummary => "show sequence/container state summary".to_string(),
             Self::LoadProject { path } => format!("load project state from '{path}'"),
             Self::SaveProject { path } => format!("save current project state to '{path}'"),
+            Self::ScreenshotWindow { output } => {
+                format!("capture active GENtle window screenshot to '{output}'")
+            }
             Self::RenderSvg {
                 seq_id,
                 mode,
@@ -374,6 +419,27 @@ impl ShellCommand {
                     "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', catalog='{catalog}', cache='{cache}')"
                 )
             }
+            Self::TracksImportBed {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => format!(
+                "import BED track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
+                path,
+                track_name
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                min_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                max_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                clear_existing
+            ),
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -387,6 +453,7 @@ impl ShellCommand {
                 | Self::ReferencePrepare { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
+                | Self::TracksImportBed { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
         )
@@ -400,6 +467,7 @@ capabilities\n\
 state-summary\n\
 load-project PATH\n\
 save-project PATH\n\
+screenshot-window OUTPUT.png\n\
 render-svg SEQ_ID linear|circular OUTPUT.svg\n\
 render-rna-svg SEQ_ID OUTPUT.svg\n\
 rna-info SEQ_ID\n\
@@ -425,6 +493,7 @@ helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--
 helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
+tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
 IDS is comma-separated sequence IDs"
@@ -604,6 +673,88 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
 fn parse_ladder_molecule(value: &str) -> Result<LadderMolecule, String> {
     LadderMolecule::parse(value)
         .ok_or_else(|| format!("Unknown ladder molecule '{value}', expected 'dna' or 'rna'"))
+}
+
+fn now_unix_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn ensure_parent_dir(path: &str) -> Result<(), String> {
+    let parent = Path::new(path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| Path::new(".").to_path_buf());
+    fs::create_dir_all(parent)
+        .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
+}
+
+#[cfg(target_os = "macos")]
+fn active_window_info_from_appkit() -> Result<(u64, String), String> {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return Err("Screenshot capture requires the macOS main thread".to_string());
+    };
+    let app = NSApplication::sharedApplication(mtm);
+    let Some(window) = app.keyWindow().or_else(|| unsafe { app.mainWindow() }) else {
+        return Err(
+            "No active GENtle window in this process; run from GUI shell with the target window focused"
+                .to_string(),
+        );
+    };
+    let raw_window_id = unsafe { window.windowNumber() };
+    if raw_window_id <= 0 {
+        return Err(format!(
+            "Active GENtle window reported invalid window number {raw_window_id}"
+        ));
+    }
+    let window_id = u64::try_from(raw_window_id)
+        .map_err(|_| format!("Could not convert window number {raw_window_id} to u64"))?;
+    let title = window.title().to_string();
+    let window_title = if title.trim().is_empty() {
+        "<untitled>".to_string()
+    } else {
+        title.trim().to_string()
+    };
+    Ok((window_id, window_title))
+}
+
+#[cfg(target_os = "macos")]
+fn capture_active_window_screenshot(output: &str) -> Result<ScreenshotReport, String> {
+    ensure_parent_dir(output)?;
+    let (window_id, window_title) = active_window_info_from_appkit()?;
+
+    let status = Command::new("screencapture")
+        .arg("-x")
+        .arg("-l")
+        .arg(window_id.to_string())
+        .arg(output)
+        .status()
+        .map_err(|e| format!("Could not run macOS screencapture command: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "macOS screencapture failed with status {:?}",
+            status.code()
+        ));
+    }
+    let (pixel_width, pixel_height) = image::image_dimensions(output)
+        .map_err(|e| format!("Screenshot written but dimensions could not be read: {e}"))?;
+
+    Ok(ScreenshotReport {
+        schema: "gentle.screenshot.v1".to_string(),
+        path: output.to_string(),
+        window_title,
+        captured_at_unix_ms: now_unix_ms(),
+        pixel_width,
+        pixel_height,
+        backend: "macos.screencapture".to_string(),
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn capture_active_window_screenshot(_output: &str) -> Result<ScreenshotReport, String> {
+    Err("screenshot-window is currently supported only on macOS".to_string())
 }
 
 fn parse_json_payload(raw: &str) -> Result<String, String> {
@@ -966,6 +1117,18 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 Err(token_error(cmd))
             }
         }
+        "screenshot-window" => {
+            if tokens.len() != 2 {
+                return Err(token_error(cmd));
+            }
+            let output = tokens[1].trim();
+            if output.is_empty() {
+                return Err("screenshot-window requires OUTPUT path".to_string());
+            }
+            Ok(ShellCommand::ScreenshotWindow {
+                output: output.to_string(),
+            })
+        }
         "render-svg" => {
             if tokens.len() != 4 {
                 return Err(token_error(cmd));
@@ -1219,6 +1382,88 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 )),
             }
         }
+        "tracks" => {
+            if tokens.len() < 2 {
+                return Err("tracks requires a subcommand: import-bed".to_string());
+            }
+            match tokens[1].as_str() {
+                "import-bed" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "tracks import-bed requires SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]".to_string()
+                        );
+                    }
+                    let seq_id = tokens[2].clone();
+                    let path = tokens[3].clone();
+                    let mut track_name: Option<String> = None;
+                    let mut min_score: Option<f64> = None;
+                    let mut max_score: Option<f64> = None;
+                    let mut clear_existing = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--name" => {
+                                track_name = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--name",
+                                    "tracks import-bed",
+                                )?);
+                            }
+                            "--min-score" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--min-score",
+                                    "tracks import-bed",
+                                )?;
+                                min_score = Some(raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --min-score value '{raw}': {e}")
+                                })?);
+                            }
+                            "--max-score" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--max-score",
+                                    "tracks import-bed",
+                                )?;
+                                max_score = Some(raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --max-score value '{raw}': {e}")
+                                })?);
+                            }
+                            "--clear-existing" => {
+                                clear_existing = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for tracks import-bed"
+                                ));
+                            }
+                        }
+                    }
+                    if min_score
+                        .zip(max_score)
+                        .map(|(min, max)| min > max)
+                        .unwrap_or(false)
+                    {
+                        return Err("--min-score must be <= --max-score".to_string());
+                    }
+                    Ok(ShellCommand::TracksImportBed {
+                        seq_id,
+                        path,
+                        track_name,
+                        min_score,
+                        max_score,
+                        clear_existing,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown tracks subcommand '{other}' (expected import-bed)"
+                )),
+            }
+        }
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
         "op" => {
@@ -1312,6 +1557,14 @@ pub fn execute_shell_command(
     engine: &mut GentleEngine,
     command: &ShellCommand,
 ) -> Result<ShellRunResult, String> {
+    execute_shell_command_with_options(engine, command, &ShellExecutionOptions::default())
+}
+
+pub fn execute_shell_command_with_options(
+    engine: &mut GentleEngine,
+    command: &ShellCommand,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
     let result = match command {
         ShellCommand::Help => ShellRunResult {
             state_changed: false,
@@ -1346,6 +1599,19 @@ pub fn execute_shell_command(
             ShellRunResult {
                 state_changed: false,
                 output: json!({ "message": format!("Saved project to '{path}'") }),
+            }
+        }
+        ShellCommand::ScreenshotWindow { output } => {
+            if !options.allow_screenshots {
+                return Err(
+                    "screenshot capture is disabled; restart with --allow-screenshots".to_string(),
+                );
+            }
+            let report = capture_active_window_screenshot(output)?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize screenshot report: {e}"))?,
             }
         }
         ShellCommand::RenderSvg {
@@ -1746,6 +2012,31 @@ pub fn execute_shell_command(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::TracksImportBed {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportGenomeBedTrack {
+                    seq_id: seq_id.clone(),
+                    path: path.clone(),
+                    track_name: track_name.clone(),
+                    min_score: *min_score,
+                    max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::Op { payload } => {
             let json_text = parse_json_payload(payload)?;
             let op: Operation = serde_json::from_str(&json_text)
@@ -1819,6 +2110,18 @@ mod tests {
             ShellCommand::RenderRnaSvg { seq_id, output } => {
                 assert_eq!(seq_id, "rna_seq".to_string());
                 assert_eq!(output, "rna.svg".to_string());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_screenshot_window() {
+        let cmd =
+            parse_shell_line("screenshot-window docs/images/main.png").expect("parse command");
+        match cmd {
+            ShellCommand::ScreenshotWindow { output } => {
+                assert_eq!(output, "docs/images/main.png".to_string());
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -1911,12 +2214,51 @@ mod tests {
     }
 
     #[test]
+    fn parse_tracks_import_bed() {
+        let cmd = parse_shell_line(
+            "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::TracksImportBed {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => {
+                assert_eq!(seq_id, "toy_slice".to_string());
+                assert_eq!(path, "test_files/data/peaks.bed.gz".to_string());
+                assert_eq!(track_name, Some("ChIP".to_string()));
+                assert_eq!(min_score, Some(5.0));
+                assert_eq!(max_score, Some(50.0));
+                assert!(clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn execute_state_summary_returns_json() {
         let mut engine = GentleEngine::from_state(ProjectState::default());
         let out = execute_shell_command(&mut engine, &ShellCommand::StateSummary)
             .expect("execute state summary");
         assert!(!out.state_changed);
         assert!(out.output.get("sequence_count").is_some());
+    }
+
+    #[test]
+    fn execute_screenshot_requires_allow_flag() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ScreenshotWindow {
+                output: "out.png".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("--allow-screenshots"));
     }
 
     #[test]

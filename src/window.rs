@@ -29,4 +29,10 @@ impl Window {
             Self::Dna(window) => window.set_pool_context(pool_seq_ids),
         }
     }
+
+    pub fn refresh_from_engine_settings(&mut self) {
+        match self {
+            Self::Dna(window) => window.refresh_from_engine_settings(),
+        }
+    }
 }

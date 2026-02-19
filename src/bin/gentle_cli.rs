@@ -4,7 +4,10 @@ use gentle::{
         Engine, EngineStateSummary, GentleEngine, Operation, OperationProgress, ProjectState,
         RenderSvgMode, TfbsProgress, Workflow,
     },
-    engine_shell::{execute_shell_command, parse_shell_line, parse_shell_tokens, shell_help_text},
+    engine_shell::{
+        execute_shell_command_with_options, parse_shell_line, parse_shell_tokens, shell_help_text,
+        ShellExecutionOptions,
+    },
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH,
@@ -424,7 +427,7 @@ fn usage() {
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
-  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] [--allow-screenshots] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'\n  \
   gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'\n  \
@@ -440,6 +443,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--allow-screenshots] screenshot-window OUTPUT.png\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
@@ -458,6 +462,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -525,11 +530,13 @@ struct GlobalCliArgs {
     state_path: String,
     cmd_idx: usize,
     progress_sink: Option<ProgressSink>,
+    allow_screenshots: bool,
 }
 
 fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
     let mut state_path = DEFAULT_STATE_PATH.to_string();
     let mut progress_sink: Option<ProgressSink> = None;
+    let mut allow_screenshots = false;
     let mut idx = 1usize;
 
     while idx < args.len() {
@@ -549,6 +556,10 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
                 progress_sink = Some(ProgressSink::Stdout);
                 idx += 1;
             }
+            "--allow-screenshots" => {
+                allow_screenshots = true;
+                idx += 1;
+            }
             _ => break,
         }
     }
@@ -557,6 +568,7 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
         state_path,
         cmd_idx: idx,
         progress_sink,
+        allow_screenshots,
     })
 }
 
@@ -795,6 +807,9 @@ fn run() -> Result<(), String> {
     let global = parse_global_args(&args)?;
     let state_path = global.state_path.clone();
     let cmd_idx = global.cmd_idx;
+    let shell_options = ShellExecutionOptions {
+        allow_screenshots: global.allow_screenshots,
+    };
     if args.len() <= cmd_idx {
         usage();
         return Err("Missing command".to_string());
@@ -804,12 +819,18 @@ fn run() -> Result<(), String> {
 
     if matches!(
         command.as_str(),
-        "genomes" | "helpers" | "resources" | "import-pool" | "ladders"
+        "genomes"
+            | "helpers"
+            | "resources"
+            | "import-pool"
+            | "ladders"
+            | "tracks"
+            | "screenshot-window"
     ) {
         let tokens = args[cmd_idx..].to_vec();
         let shell_command = parse_shell_tokens(&tokens)?;
         let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-        let run = execute_shell_command(&mut engine, &shell_command)?;
+        let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
         if run.state_changed {
             engine
                 .state()
@@ -1417,7 +1438,7 @@ fn run() -> Result<(), String> {
             let line = args[cmd_idx + 1..].join(" ");
             let command = parse_shell_line(&line)?;
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let run = execute_shell_command(&mut engine, &command)?;
+            let run = execute_shell_command_with_options(&mut engine, &command, &shell_options)?;
             if run.state_changed {
                 engine
                     .state()
@@ -1804,6 +1825,7 @@ T [ 0 0 0 10 ]
         let parsed = parse_global_args(&args).unwrap();
         assert_eq!(parsed.state_path, "x.json");
         assert_eq!(parsed.progress_sink, Some(ProgressSink::Stdout));
+        assert!(!parsed.allow_screenshots);
         assert_eq!(parsed.cmd_idx, 4);
     }
 
@@ -1817,6 +1839,7 @@ T [ 0 0 0 10 ]
         let parsed = parse_global_args(&args).unwrap();
         assert_eq!(parsed.state_path, DEFAULT_STATE_PATH);
         assert_eq!(parsed.progress_sink, Some(ProgressSink::Stderr));
+        assert!(!parsed.allow_screenshots);
         assert_eq!(parsed.cmd_idx, 2);
     }
 
@@ -1830,6 +1853,22 @@ T [ 0 0 0 10 ]
         ];
         let parsed = parse_global_args(&args).unwrap();
         assert_eq!(parsed.state_path, "project.gentle.json");
+        assert!(!parsed.allow_screenshots);
         assert_eq!(parsed.cmd_idx, 3);
+    }
+
+    #[test]
+    fn test_parse_global_args_allow_screenshots() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "--allow-screenshots".to_string(),
+            "screenshot-window".to_string(),
+            "out.png".to_string(),
+        ];
+        let parsed = parse_global_args(&args).unwrap();
+        assert_eq!(parsed.state_path, DEFAULT_STATE_PATH);
+        assert_eq!(parsed.progress_sink, None);
+        assert!(parsed.allow_screenshots);
+        assert_eq!(parsed.cmd_idx, 2);
     }
 }

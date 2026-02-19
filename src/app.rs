@@ -2,8 +2,10 @@ use std::{
     collections::HashMap,
     env, fs,
     hash::{Hash, Hasher},
+    io::ErrorKind,
     panic::{catch_unwind, AssertUnwindSafe},
     path::{Path, PathBuf},
+    process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, RwLock,
@@ -15,8 +17,8 @@ use crate::{
     about,
     dna_sequence::{self, DNAsequence},
     engine::{
-        DisplayTarget, Engine, EngineError, ErrorCode, GentleEngine, OpResult, Operation,
-        ProjectState,
+        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GentleEngine, OpResult,
+        Operation, ProjectState,
     },
     enzymes,
     genomes::{
@@ -34,13 +36,36 @@ use eframe::egui::{self, menu, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2,
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
+use serde::{Deserialize, Serialize};
 
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
+const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 pub fn request_open_help_from_native_menu() {
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_settings_from_native_menu() {
+    NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct PersistedConfiguration {
+    rnapkin_executable: String,
+    graphics_defaults: DisplaySettings,
+}
+
+impl Default for PersistedConfiguration {
+    fn default() -> Self {
+        Self {
+            rnapkin_executable: String::new(),
+            graphics_defaults: DisplaySettings::default(),
+        }
+    }
 }
 
 pub struct GENtleApp {
@@ -56,6 +81,14 @@ pub struct GENtleApp {
     help_markdown_cache: CommonMarkCache,
     help_gui_markdown: String,
     help_cli_markdown: String,
+    show_configuration_dialog: bool,
+    configuration_tab: ConfigurationTab,
+    configuration_rnapkin_executable: String,
+    configuration_rnapkin_validation_ok: Option<bool>,
+    configuration_rnapkin_validation_message: String,
+    configuration_graphics: DisplaySettings,
+    configuration_graphics_dirty: bool,
+    configuration_status: String,
     current_project_path: Option<String>,
     lineage_graph_view: bool,
     clean_state_fingerprint: u64,
@@ -84,6 +117,14 @@ pub struct GENtleApp {
     genome_end_1based: String,
     genome_output_id: String,
     genome_retrieve_status: String,
+    show_genome_bed_track_dialog: bool,
+    genome_track_seq_id: String,
+    genome_track_path: String,
+    genome_track_name: String,
+    genome_track_min_score: String,
+    genome_track_max_score: String,
+    genome_track_clear_existing: bool,
+    genome_track_status: String,
 }
 
 #[derive(Clone, Copy)]
@@ -97,6 +138,12 @@ enum ProjectAction {
 enum HelpDoc {
     Gui,
     Cli,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConfigurationTab {
+    ExternalApplications,
+    Graphics,
 }
 
 struct GenomePrepareTask {
@@ -124,6 +171,14 @@ impl Default for GENtleApp {
             help_markdown_cache: CommonMarkCache::default(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
+            show_configuration_dialog: false,
+            configuration_tab: ConfigurationTab::ExternalApplications,
+            configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
+            configuration_rnapkin_validation_ok: None,
+            configuration_rnapkin_validation_message: String::new(),
+            configuration_graphics: DisplaySettings::default(),
+            configuration_graphics_dirty: false,
+            configuration_status: String::new(),
             current_project_path: None,
             lineage_graph_view: false,
             clean_state_fingerprint: 0,
@@ -152,6 +207,14 @@ impl Default for GENtleApp {
             genome_end_1based: "1000".to_string(),
             genome_output_id: String::new(),
             genome_retrieve_status: String::new(),
+            show_genome_bed_track_dialog: false,
+            genome_track_seq_id: String::new(),
+            genome_track_path: String::new(),
+            genome_track_name: String::new(),
+            genome_track_min_score: String::new(),
+            genome_track_max_score: String::new(),
+            genome_track_clear_existing: false,
+            genome_track_status: String::new(),
         }
     }
 }
@@ -159,6 +222,92 @@ impl Default for GENtleApp {
 impl GENtleApp {
     fn help_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Help Viewport")
+    }
+
+    fn configuration_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Configuration Viewport")
+    }
+
+    fn configuration_store_path() -> PathBuf {
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join(APP_CONFIGURATION_FILE_NAME)
+    }
+
+    fn read_persisted_configuration_from_disk() -> Option<PersistedConfiguration> {
+        let path = Self::configuration_store_path();
+        let text = fs::read_to_string(&path).ok()?;
+        serde_json::from_str::<PersistedConfiguration>(&text).ok()
+    }
+
+    fn write_persisted_configuration_to_disk(&self) -> std::result::Result<(), String> {
+        let path = Self::configuration_store_path();
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    format!(
+                        "Could not create configuration directory '{}': {e}",
+                        parent.display()
+                    )
+                })?;
+            }
+        }
+        let payload = PersistedConfiguration {
+            rnapkin_executable: self.configuration_rnapkin_executable.trim().to_string(),
+            graphics_defaults: self.configuration_graphics.clone(),
+        };
+        let json = serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Could not serialize GUI configuration: {e}"))?;
+        fs::write(&path, json).map_err(|e| {
+            format!(
+                "Could not write GUI configuration '{}': {e}",
+                path.display()
+            )
+        })
+    }
+
+    fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
+        target.show_sequence_panel = source.show_sequence_panel;
+        target.show_map_panel = source.show_map_panel;
+        target.show_cds_features = source.show_cds_features;
+        target.show_gene_features = source.show_gene_features;
+        target.show_mrna_features = source.show_mrna_features;
+        target.show_tfbs = source.show_tfbs;
+        target.show_restriction_enzymes = source.show_restriction_enzymes;
+        target.show_gc_contents = source.show_gc_contents;
+        target.show_open_reading_frames = source.show_open_reading_frames;
+        target.show_methylation_sites = source.show_methylation_sites;
+    }
+
+    fn apply_configuration_graphics_to_engine_state(&mut self) {
+        let mut guard = self.engine.write().expect("Engine lock poisoned");
+        let display = &mut guard.state_mut().display;
+        Self::apply_graphics_settings_to_display(&self.configuration_graphics, display);
+        self.configuration_graphics_dirty = false;
+    }
+
+    fn load_persisted_configuration(&mut self, apply_graphics_to_current_project: bool) {
+        let Some(saved) = Self::read_persisted_configuration_from_disk() else {
+            return;
+        };
+        self.configuration_rnapkin_executable = saved.rnapkin_executable.trim().to_string();
+        if self.configuration_rnapkin_executable.is_empty() {
+            env::remove_var("GENTLE_RNAPKIN_BIN");
+        } else {
+            env::set_var(
+                "GENTLE_RNAPKIN_BIN",
+                self.configuration_rnapkin_executable.clone(),
+            );
+        }
+        self.configuration_graphics = saved.graphics_defaults;
+        self.configuration_graphics_dirty = false;
+        self.configuration_rnapkin_validation_ok = None;
+        self.configuration_rnapkin_validation_message.clear();
+
+        if apply_graphics_to_current_project {
+            self.apply_configuration_graphics_to_engine_state();
+        }
     }
 
     fn resolve_runtime_doc_path(path: &str) -> Option<PathBuf> {
@@ -353,6 +502,83 @@ impl GENtleApp {
         }
     }
 
+    fn consume_native_settings_request(&mut self) {
+        if NATIVE_SETTINGS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.open_configuration_dialog();
+        }
+    }
+
+    fn resolved_rnapkin_executable(&self) -> String {
+        let configured = self.configuration_rnapkin_executable.trim();
+        if configured.is_empty() {
+            "rnapkin".to_string()
+        } else {
+            configured.to_string()
+        }
+    }
+
+    fn clear_rnapkin_validation(&mut self) {
+        self.configuration_rnapkin_validation_ok = None;
+        self.configuration_rnapkin_validation_message.clear();
+    }
+
+    fn validate_rnapkin_executable(&mut self) {
+        let executable = self.resolved_rnapkin_executable();
+        match Command::new(&executable).arg("--version").output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                let first_non_empty = stdout
+                    .lines()
+                    .chain(stderr.lines())
+                    .find(|line| !line.trim().is_empty())
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "No version output".to_string());
+                if output.status.success() {
+                    self.configuration_rnapkin_validation_ok = Some(true);
+                    self.configuration_rnapkin_validation_message = format!(
+                        "rnapkin validation succeeded using '{}': {}",
+                        executable, first_non_empty
+                    );
+                } else {
+                    self.configuration_rnapkin_validation_ok = Some(false);
+                    self.configuration_rnapkin_validation_message = format!(
+                        "rnapkin validation failed using '{}' (status {:?}): {}",
+                        executable,
+                        output.status.code(),
+                        first_non_empty
+                    );
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                self.configuration_rnapkin_validation_ok = Some(false);
+                self.configuration_rnapkin_validation_message =
+                    format!("rnapkin executable '{}' not found", executable);
+            }
+            Err(e) => {
+                self.configuration_rnapkin_validation_ok = Some(false);
+                self.configuration_rnapkin_validation_message =
+                    format!("Could not execute '{}': {}", executable, e);
+            }
+        }
+    }
+
+    fn sync_configuration_from_runtime(&mut self) {
+        self.configuration_rnapkin_executable = env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default();
+        if let Ok(engine) = self.engine.read() {
+            self.configuration_graphics = engine.state().display.clone();
+            self.configuration_graphics_dirty = false;
+        }
+        self.clear_rnapkin_validation();
+    }
+
+    fn open_configuration_dialog(&mut self) {
+        self.sync_configuration_from_runtime();
+        self.configuration_tab = ConfigurationTab::ExternalApplications;
+        self.show_configuration_dialog = true;
+        self.configuration_status.clear();
+    }
+
     fn open_help_doc(&mut self, doc: HelpDoc) {
         self.refresh_help_docs();
         self.help_doc = doc;
@@ -376,6 +602,7 @@ impl GENtleApp {
     pub fn new() -> Self {
         let mut app = Self::default();
         app.refresh_help_docs();
+        app.load_persisted_configuration(true);
         app.mark_clean_snapshot();
         app
     }
@@ -508,6 +735,7 @@ impl GENtleApp {
 
     fn reset_to_empty_project(&mut self) {
         self.engine = Arc::new(RwLock::new(GentleEngine::new()));
+        self.apply_configuration_graphics_to_engine_state();
         self.current_project_path = None;
         self.new_windows.clear();
         self.windows.clear();
@@ -578,6 +806,10 @@ impl GENtleApp {
         self.show_reference_genome_inspector_dialog = true;
     }
 
+    fn open_genome_bed_track_dialog(&mut self) {
+        self.show_genome_bed_track_dialog = true;
+    }
+
     fn open_helper_genome_prepare_dialog(&mut self) {
         self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
         self.genome_cache_dir = "data/helper_genomes".to_string();
@@ -612,6 +844,95 @@ impl GENtleApp {
             None
         } else {
             Some(trimmed.to_string())
+        }
+    }
+
+    fn anchored_sequence_ids_for_tracks(&self) -> Vec<String> {
+        self.engine
+            .read()
+            .unwrap()
+            .list_sequences_with_genome_anchor()
+    }
+
+    fn parse_optional_score_field(raw: &str, label: &str) -> Result<Option<f64>> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            Ok(None)
+        } else {
+            trimmed
+                .parse::<f64>()
+                .map(Some)
+                .map_err(|e| anyhow!("Invalid {label} value '{trimmed}': {e}"))
+        }
+    }
+
+    fn import_genome_bed_track(&mut self) {
+        let seq_id = self.genome_track_seq_id.trim().to_string();
+        if seq_id.is_empty() {
+            self.genome_track_status =
+                "Select a genome-anchored sequence before importing BED".to_string();
+            return;
+        }
+        let path = self.genome_track_path.trim().to_string();
+        if path.is_empty() {
+            self.genome_track_status = "BED path cannot be empty".to_string();
+            return;
+        }
+        let min_score =
+            match Self::parse_optional_score_field(&self.genome_track_min_score, "min score") {
+                Ok(v) => v,
+                Err(e) => {
+                    self.genome_track_status = format!("Import BED failed: {e}");
+                    return;
+                }
+            };
+        let max_score =
+            match Self::parse_optional_score_field(&self.genome_track_max_score, "max score") {
+                Ok(v) => v,
+                Err(e) => {
+                    self.genome_track_status = format!("Import BED failed: {e}");
+                    return;
+                }
+            };
+        if min_score
+            .zip(max_score)
+            .map(|(min, max)| min > max)
+            .unwrap_or(false)
+        {
+            self.genome_track_status =
+                "Import BED failed: min score must be <= max score".to_string();
+            return;
+        }
+        let track_name = {
+            let trimmed = self.genome_track_name.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        };
+
+        let op = Operation::ImportGenomeBedTrack {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing: Some(self.genome_track_clear_existing),
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(r) => {
+                self.genome_track_status = Self::format_op_result_status(
+                    "Import BED track: ok",
+                    &r.created_seq_ids,
+                    &r.warnings,
+                    &r.messages,
+                );
+            }
+            Err(e) => {
+                self.genome_track_status = format!("Import BED track failed: {}", e.message);
+            }
         }
     }
 
@@ -1780,6 +2101,104 @@ impl GENtleApp {
         self.show_reference_genome_inspector_dialog = open;
     }
 
+    fn render_genome_bed_track_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_genome_bed_track_dialog {
+            return;
+        }
+        let anchored_seq_ids = self.anchored_sequence_ids_for_tracks();
+        if !anchored_seq_ids.is_empty() && !anchored_seq_ids.contains(&self.genome_track_seq_id) {
+            self.genome_track_seq_id = anchored_seq_ids[0].clone();
+        }
+
+        let mut open = self.show_genome_bed_track_dialog;
+        egui::Window::new("Import BED Track")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.label("Map BED intervals onto a genome-anchored sequence.");
+                ui.small("Supports .bed and .bed.gz input files.");
+
+                if anchored_seq_ids.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "No genome-anchored sequence is available. Extract a genome region or gene first.",
+                    );
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label("sequence");
+                        egui::ComboBox::from_id_salt("genome_track_seq_id_combo")
+                            .selected_text(
+                                if self.genome_track_seq_id.trim().is_empty() {
+                                    "<select sequence>"
+                                } else {
+                                    self.genome_track_seq_id.as_str()
+                                },
+                            )
+                            .show_ui(ui, |ui| {
+                                for seq_id in &anchored_seq_ids {
+                                    ui.selectable_value(
+                                        &mut self.genome_track_seq_id,
+                                        seq_id.clone(),
+                                        seq_id,
+                                    );
+                                }
+                            });
+                    });
+                }
+
+                ui.horizontal(|ui| {
+                    ui.label("bed_path");
+                    ui.text_edit_singleline(&mut self.genome_track_path);
+                    if ui.button("Browse...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("BED", &["bed", "gz"])
+                            .pick_file()
+                        {
+                            self.genome_track_path = path.display().to_string();
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("track_name");
+                    ui.text_edit_singleline(&mut self.genome_track_name);
+                    ui.small("(optional)");
+                });
+                ui.horizontal(|ui| {
+                    ui.label("min_score");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.genome_track_min_score)
+                            .desired_width(90.0),
+                    );
+                    ui.label("max_score");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.genome_track_max_score)
+                            .desired_width(90.0),
+                    );
+                });
+                ui.checkbox(
+                    &mut self.genome_track_clear_existing,
+                    "Clear existing imported BED track features first",
+                );
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            !anchored_seq_ids.is_empty(),
+                            egui::Button::new("Import BED Track"),
+                        )
+                        .clicked()
+                    {
+                        self.import_genome_bed_track();
+                    }
+                });
+                if !self.genome_track_status.is_empty() {
+                    ui.separator();
+                    ui.monospace(&self.genome_track_status);
+                }
+            });
+        self.show_genome_bed_track_dialog = open;
+    }
+
     fn refresh_project_restriction_enzymes(&mut self, resource_path: &str) -> Result<usize> {
         let enzymes = enzymes::load_restriction_enzymes_from_path(resource_path)?;
         let mut engine = self.engine.write().unwrap();
@@ -1932,6 +2351,12 @@ impl GENtleApp {
                     self.prompt_open_sequence();
                     ui.close_menu();
                 }
+                ui.separator();
+                if ui.button("Configuration...").clicked() {
+                    self.open_configuration_dialog();
+                    ui.close_menu();
+                }
+                ui.separator();
                 if ui.button("Prepare Reference Genome...").clicked() {
                     self.open_reference_genome_prepare_dialog();
                     ui.close_menu();
@@ -1942,6 +2367,10 @@ impl GENtleApp {
                 }
                 if ui.button("Retrieve Genome Sequence...").clicked() {
                     self.open_reference_genome_retrieve_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Import BED Track...").clicked() {
+                    self.open_genome_bed_track_dialog();
                     ui.close_menu();
                 }
                 if ui.button("Prepare Helper Genome...").clicked() {
@@ -1969,6 +2398,12 @@ impl GENtleApp {
                     ui.close_menu();
                 }
             });
+            ui.menu_button("Settings", |ui| {
+                if ui.button("Configuration...").clicked() {
+                    self.open_configuration_dialog();
+                    ui.close_menu();
+                }
+            });
             ui.menu_button("Genome", |ui| {
                 if ui.button("Prepare Reference Genome...").clicked() {
                     self.open_reference_genome_prepare_dialog();
@@ -1980,6 +2415,10 @@ impl GENtleApp {
                 }
                 if ui.button("Retrieve Genome Sequence...").clicked() {
                     self.open_reference_genome_retrieve_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Import BED Track...").clicked() {
+                    self.open_genome_bed_track_dialog();
                     ui.close_menu();
                 }
                 ui.separator();
@@ -2491,6 +2930,298 @@ impl GENtleApp {
         }
     }
 
+    fn apply_configuration_external_apps(&mut self) {
+        let value = self.configuration_rnapkin_executable.trim().to_string();
+        if value.is_empty() {
+            env::remove_var("GENTLE_RNAPKIN_BIN");
+            self.configuration_status =
+                "External app settings applied (rnapkin override cleared; PATH lookup active)"
+                    .to_string();
+        } else {
+            env::set_var("GENTLE_RNAPKIN_BIN", &value);
+            self.configuration_status = format!(
+                "External app settings applied (rnapkin override: {})",
+                value
+            );
+        }
+        self.validate_rnapkin_executable();
+        match self.write_persisted_configuration_to_disk() {
+            Ok(()) => {
+                self.configuration_status
+                    .push_str(" | persisted to app settings");
+            }
+            Err(e) => {
+                self.configuration_status
+                    .push_str(&format!(" | persistence failed: {e}"));
+            }
+        }
+    }
+
+    fn apply_configuration_graphics(&mut self) {
+        self.apply_configuration_graphics_to_engine_state();
+        self.configuration_status =
+            "Graphics settings applied globally to the project display state".to_string();
+        match self.write_persisted_configuration_to_disk() {
+            Ok(()) => {
+                self.configuration_status
+                    .push_str(" | persisted to app settings");
+            }
+            Err(e) => {
+                self.configuration_status
+                    .push_str(&format!(" | persistence failed: {e}"));
+            }
+        }
+    }
+
+    fn reset_configuration_graphics_to_defaults(&mut self) {
+        let defaults = DisplaySettings::default();
+        self.configuration_graphics.show_sequence_panel = defaults.show_sequence_panel;
+        self.configuration_graphics.show_map_panel = defaults.show_map_panel;
+        self.configuration_graphics.show_cds_features = defaults.show_cds_features;
+        self.configuration_graphics.show_gene_features = defaults.show_gene_features;
+        self.configuration_graphics.show_mrna_features = defaults.show_mrna_features;
+        self.configuration_graphics.show_tfbs = defaults.show_tfbs;
+        self.configuration_graphics.show_restriction_enzymes = defaults.show_restriction_enzymes;
+        self.configuration_graphics.show_gc_contents = defaults.show_gc_contents;
+        self.configuration_graphics.show_open_reading_frames = defaults.show_open_reading_frames;
+        self.configuration_graphics.show_methylation_sites = defaults.show_methylation_sites;
+        self.configuration_graphics_dirty = true;
+    }
+
+    fn refresh_open_sequence_windows(&mut self, ctx: &egui::Context) -> usize {
+        let mut refreshed = 0usize;
+        for window in self.windows.values() {
+            if let Ok(mut guard) = window.write() {
+                guard.refresh_from_engine_settings();
+                refreshed += 1;
+            }
+        }
+        ctx.request_repaint();
+        refreshed
+    }
+
+    fn render_configuration_external_tab(&mut self, ui: &mut Ui) {
+        ui.label("Configure external application integration used by shared engine features.");
+        ui.separator();
+        ui.label("rnapkin executable override");
+        let edit_response = ui.add(
+            egui::TextEdit::singleline(&mut self.configuration_rnapkin_executable)
+                .hint_text("Leave empty to use PATH lookup for 'rnapkin'"),
+        );
+        if edit_response.changed() {
+            self.clear_rnapkin_validation();
+        }
+        let active = env::var("GENTLE_RNAPKIN_BIN")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "PATH lookup: rnapkin".to_string());
+        ui.monospace(format!("Active resolution: {active}"));
+        ui.horizontal(|ui| {
+            if ui.button("Use PATH").clicked() {
+                self.configuration_rnapkin_executable.clear();
+                self.clear_rnapkin_validation();
+            }
+            if ui.button("Validate rnapkin").clicked() {
+                self.validate_rnapkin_executable();
+            }
+            if ui.button("Apply External Settings").clicked() {
+                self.apply_configuration_external_apps();
+            }
+        });
+        if let Some(ok) = self.configuration_rnapkin_validation_ok {
+            let color = if ok {
+                egui::Color32::from_rgb(20, 140, 45)
+            } else {
+                egui::Color32::from_rgb(180, 50, 50)
+            };
+            ui.colored_label(color, self.configuration_rnapkin_validation_message.clone());
+        } else if !self
+            .configuration_rnapkin_validation_message
+            .trim()
+            .is_empty()
+        {
+            ui.monospace(self.configuration_rnapkin_validation_message.clone());
+        }
+    }
+
+    fn render_configuration_graphics_tab(&mut self, ui: &mut Ui) {
+        ui.label("Configure project-level graphics visibility defaults.");
+        ui.separator();
+        let mut changed = false;
+
+        ui.heading("Panels");
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_sequence_panel,
+                "Show sequence panel",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_map_panel,
+                "Show map panel",
+            )
+            .changed();
+
+        ui.separator();
+        ui.heading("Feature Layers");
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_cds_features,
+                "Show CDS features",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_gene_features,
+                "Show gene features",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_mrna_features,
+                "Show mRNA features",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_tfbs,
+                "Show TFBS features",
+            )
+            .changed();
+
+        ui.separator();
+        ui.heading("Overlays");
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_restriction_enzymes,
+                "Show restriction enzymes",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_gc_contents,
+                "Show GC contents",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_open_reading_frames,
+                "Show ORFs",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_methylation_sites,
+                "Show methylation sites",
+            )
+            .changed();
+
+        if changed {
+            self.configuration_graphics_dirty = true;
+        }
+
+        ui.horizontal(|ui| {
+            if ui.button("Reset Defaults").clicked() {
+                self.reset_configuration_graphics_to_defaults();
+            }
+            if ui
+                .add_enabled(
+                    self.configuration_graphics_dirty,
+                    egui::Button::new("Apply Graphics Settings"),
+                )
+                .clicked()
+            {
+                self.apply_configuration_graphics();
+            }
+            if ui.button("Apply + Refresh Open Windows").clicked() {
+                self.apply_configuration_graphics();
+                let refreshed = self.refresh_open_sequence_windows(ui.ctx());
+                self.configuration_status.push_str(&format!(
+                    " | refreshed {} open sequence window(s)",
+                    refreshed
+                ));
+            }
+            if ui.button("Reload Current").clicked() {
+                self.sync_configuration_from_runtime();
+                self.configuration_status =
+                    "Reloaded graphics settings from current project".to_string();
+            }
+        });
+    }
+
+    fn render_configuration_contents(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .selectable_label(
+                    self.configuration_tab == ConfigurationTab::ExternalApplications,
+                    "External Applications",
+                )
+                .clicked()
+            {
+                self.configuration_tab = ConfigurationTab::ExternalApplications;
+            }
+            if ui
+                .selectable_label(
+                    self.configuration_tab == ConfigurationTab::Graphics,
+                    "Graphics",
+                )
+                .clicked()
+            {
+                self.configuration_tab = ConfigurationTab::Graphics;
+            }
+            ui.separator();
+            if ui.button("Close").clicked() {
+                self.show_configuration_dialog = false;
+            }
+        });
+        ui.separator();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| match self.configuration_tab {
+                ConfigurationTab::ExternalApplications => {
+                    self.render_configuration_external_tab(ui);
+                }
+                ConfigurationTab::Graphics => {
+                    self.render_configuration_graphics_tab(ui);
+                }
+            });
+        if !self.configuration_status.trim().is_empty() {
+            ui.separator();
+            ui.monospace(self.configuration_status.clone());
+        }
+    }
+
+    fn render_configuration_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_configuration_dialog {
+            return;
+        }
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Configuration")
+            .with_inner_size([720.0, 540.0])
+            .with_min_inner_size([460.0, 320.0]);
+        ctx.show_viewport_immediate(Self::configuration_viewport_id(), builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_configuration_dialog;
+                egui::Window::new("Configuration")
+                    .open(&mut open)
+                    .resizable(true)
+                    .default_size(Vec2::new(720.0, 540.0))
+                    .show(ctx, |ui| self.render_configuration_contents(ui));
+                self.show_configuration_dialog = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.render_configuration_contents(ui);
+            });
+
+            if ctx.input(|i| i.viewport().close_requested()) {
+                self.show_configuration_dialog = false;
+            }
+        });
+    }
+
     fn render_unsaved_changes_dialog(&mut self, ctx: &egui::Context) {
         if self.pending_project_action.is_none() {
             return;
@@ -2965,6 +3696,22 @@ impl GENtleApp {
                 catalog_path.clone().unwrap_or_else(|| "-".to_string()),
                 cache_dir.clone().unwrap_or_else(|| "-".to_string())
             ),
+            Operation::ImportGenomeBedTrack {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => format!(
+                "Import genome BED track: seq_id={}, path={}, track_name={}, min_score={:?}, max_score={:?}, clear_existing={}",
+                seq_id,
+                path,
+                track_name.clone().unwrap_or_else(|| "-".to_string()),
+                min_score,
+                max_score,
+                clear_existing.unwrap_or(false)
+            ),
         }
     }
 }
@@ -2977,7 +3724,9 @@ impl eframe::App for GENtleApp {
                 self.update_has_run_before = true;
             }
             about::install_native_help_menu_bridge();
+            about::install_native_settings_menu_bridge();
             self.consume_native_help_request();
+            self.consume_native_settings_request();
             let dirty_marker = if self.is_project_dirty() { " *" } else { "" };
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
                 "GENtle - {}{} (v{})",
@@ -2994,9 +3743,12 @@ impl eframe::App for GENtleApp {
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::G);
             let open_prepare_genome =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::P);
+            let open_import_bed_track =
+                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
             let save_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
             let close_project =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
+            let open_configuration = KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma);
             if ctx.input_mut(|i| i.consume_shortcut(&new_project)) {
                 self.request_project_action(ProjectAction::New);
             }
@@ -3012,11 +3764,17 @@ impl eframe::App for GENtleApp {
             if ctx.input_mut(|i| i.consume_shortcut(&open_prepare_genome)) {
                 self.open_reference_genome_prepare_dialog();
             }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_import_bed_track)) {
+                self.open_genome_bed_track_dialog();
+            }
             if ctx.input_mut(|i| i.consume_shortcut(&save_project)) {
                 let _ = self.save_current_project();
             }
             if ctx.input_mut(|i| i.consume_shortcut(&close_project)) {
                 self.request_project_action(ProjectAction::Close);
+            }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_configuration)) {
+                self.open_configuration_dialog();
             }
 
             self.poll_prepare_reference_genome_task(ctx);
@@ -3038,6 +3796,8 @@ impl eframe::App for GENtleApp {
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
+            self.render_genome_bed_track_dialog(ctx);
+            self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);
             self.render_unsaved_changes_dialog(ctx);
