@@ -1,10 +1,10 @@
 // Various constants and DNA-related functions
 
-use crate::dna_marker::DNAMarkers;
+use crate::dna_ladder::DNALadders;
 
 #[derive(Clone, Debug)]
 pub struct Facility {
-    pub dna_markers: DNAMarkers,
+    pub dna_ladders: DNALadders,
 }
 
 impl Default for Facility {
@@ -16,12 +16,12 @@ impl Default for Facility {
 impl Facility {
     pub fn new() -> Self {
         Self {
-            dna_markers: DNAMarkers::default(),
+            dna_ladders: DNALadders::default(),
         }
     }
 
     #[inline(always)]
-    pub fn dna_markers(&self) -> &DNAMarkers {
-        &self.dna_markers
+    pub fn dna_ladders(&self) -> &DNALadders {
+        &self.dna_ladders
     }
 }

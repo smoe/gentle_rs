@@ -52,6 +52,7 @@ They only translate user input into engine operations and display results.
 ### Already in place
 
 - New shared engine module: `src/engine.rs`
+- New shared shell command layer: `src/engine_shell.rs`
 - New automation CLI: `src/bin/gentle_cli.rs`
 - Protocol draft doc: `docs/protocol.md`
 - CLI docs updated: `docs/cli.md`
@@ -85,6 +86,10 @@ They only translate user input into engine operations and display results.
     elements such as promoter/CDS/origin/LTR/ITR in helper workflows)
   - additional starter helper-system catalog shipped as `assets/helper_genomes.json`
     for local vector inventories (plasmid/lenti/adeno/AAV + yeast/E. coli hosts)
+  - catalog validation hardening for inconsistent source declarations
+    (assembly vs GenBank fields, unpublished placeholders, missing source fields)
+  - HTTP download hardening for genome preparation (timeouts, retry/backoff on
+    transient status/network errors, clearer fetch error reporting)
 - Built-in JASPAR motif snapshot (2026 CORE non-redundant derived) is shipped in `assets/jaspar.motifs.json`
     with runtime override at `data/resources/jaspar.motifs.json`
 - TFBS runtime guardrails:
@@ -163,6 +168,8 @@ They only translate user input into engine operations and display results.
   actions (sequence/pool)
 - Pool-context Engine Ops includes ladder-aware virtual gel preview and shared
   SVG export route
+- GUI DNA window now includes `Shell` panel backed by shared shell command
+  parsing/execution (same command semantics as `gentle_cli shell`)
 - Engine Ops panel supports asynchronous TFBS annotation with live per-motif and
   total progress bars
 - TFBS display filtering is interactive (checkbox criteria + thresholds) and
@@ -265,12 +272,21 @@ Notes from current code:
   `Retrieve Helper Sequence...`) that preselect helper catalog/cache defaults.
 - GUI genome selection is catalog-backed dropdown (no free-text genome id
   entry); prepare dialogs only list unprepared entries and retrieval dialogs
-  only list prepared entries. Retrieval provides paged/top-N regex filtering
-  from parsed annotations plus direct engine-backed extraction.
+  only list prepared entries. Retrieval provides paged/top-N regex filtering,
+  biotype checkbox filtering from parsed annotations, and direct engine-backed
+  extraction.
 - GUI operation parity is now complete for currently implemented engine
   operations.
 - CLI exposes all implemented operations (`op`/`workflow`) and adds some
   adapter-level utilities (render and import helpers).
+- CLI now exposes a shared shell command path (`gentle_cli shell ...`) that
+  reuses `src/engine_shell.rs` (also used by GUI `Shell` panel).
+- Shared shell command coverage now includes `genomes`, `helpers`,
+  `resources`, and `import-pool`, and `gentle_cli` top-level dispatch routes
+  these trees through the same shared parser/executor used by GUI Shell.
+- Shared shell/CLI `genomes status` and `helpers status` now include resolved
+  source type reporting (`sequence_source_type`, `annotation_source_type`) in
+  addition to prepared/not-prepared state.
 - CLI includes dedicated `helpers` convenience subcommands (list/status/genes/
   prepare/extract-region/extract-gene) that default to
   `assets/helper_genomes.json`.
@@ -384,6 +400,7 @@ Practical rule:
 - Stable JSON interface for scripted and AI-driven workflows
 - State import/export and summary
 - Capabilities reporting
+- Shared shell command path (`shell`) aligned with GUI Shell panel
 
 ## 6. Protocol-first direction
 
@@ -490,6 +507,8 @@ If work is interrupted, resume in this order:
 - View model contract is not yet formalized
 - Some rendering/import/export utilities are still adapter-level contracts
   instead of engine operations
+- `import-pool` remains a shared shell/CLI utility contract (no dedicated
+  engine operation yet)
 
 ## 12. Decision log (concise)
 

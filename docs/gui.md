@@ -63,8 +63,53 @@ The top toolbar in each DNA window provides these controls (left to right):
 12. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
+13. Engine Ops
+   - Shows/hides strict operation controls for explicit engine workflows.
+14. Shell
+   - Shows/hides the in-window GENtle Shell panel.
+   - Uses the same shared command parser/executor as `gentle_cli shell`.
 
 Hovering any button shows a tooltip in the UI.
+
+## GENtle Shell (GUI)
+
+The DNA-window toolbar includes a `Shell` button that opens a command panel.
+
+Behavior:
+
+- Uses shared command parsing/execution (`src/engine_shell.rs`).
+- Same command set as CLI `gentle_cli shell`.
+- Shows a command preview before execution.
+- Maintains command output history in the panel.
+
+Supported commands:
+
+- `help`
+- `capabilities`
+- `state-summary`
+- `load-project PATH`
+- `save-project PATH`
+- `render-svg SEQ_ID linear|circular OUTPUT.svg`
+- `render-lineage-svg OUTPUT.svg`
+- `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+- `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
+- `import-pool INPUT.pool.gentle.json [PREFIX]`
+- `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
+- `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
+- `genomes list [--catalog PATH]`
+- `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+- `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
+- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `helpers list [--catalog PATH]`
+- `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+- `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
+- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `op <operation-json-or-@file>`
+- `workflow <workflow-json-or-@file>`
 
 ## About GENtle
 
@@ -154,14 +199,15 @@ preview:
 
 Ladder source:
 
-- built-in ladder catalog: `assets/dna_markers.json` (derived from historical
-  GENtle marker data)
+- built-in ladder catalog: `assets/dna_ladders.json` (derived from historical
+  GENtle ladder data; upstream legacy files used "marker" naming)
 - historical references:
   - `https://github.com/GENtle-persons/gentle-m/blob/main/src/marker.txt`
   - `http://en.wikibooks.org/wiki/GENtle/DNA_markers`
 
 Controls:
 
+- `ladder preset`: quick selection for common ladder pairs (or Auto)
 - `gel ladders`: optional comma-separated ladder names
   - if empty, ladder selection is automatic
 - `Export Pool Gel SVG`: writes the current ladder + pool band view to SVG via
@@ -300,6 +346,8 @@ Notes:
   non-assembly records). If explicit URLs are absent, GENtle derives NCBI EFetch
   sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
   indexes extracted feature records for search/retrieval.
+- Prepare/Retrieve dialogs show resolved source types for the selected entry
+  (`local`, `ncbi_assembly`, `genbank_accession`, `remote_http`).
 - Retrieval fields are enabled only after the selected genome is prepared.
 - During preparation, a persistent `genes.json` index is built in the genome
   cache to keep retrieval responsive.
@@ -311,6 +359,11 @@ Notes:
 
 Engine Ops panel input state is persisted in project metadata per active
 sequence id. This includes panel visibility and operation-form inputs.
+
+The same persistence payload now also stores:
+
+- shell panel visibility
+- last shell command text
 
 Metadata key format:
 
@@ -352,6 +405,21 @@ Supported in the current flow:
 
 - GenBank files (`.gb`, `.gbk` and similar)
 - FASTA files (`.fa`, `.fasta`)
+  - default interpretation: synthetic blunt `dsDNA`
+  - optional FASTA-header metadata tokens for synthetic oligos:
+    - `molecule=ssdna` for single-stranded DNA
+    - `molecule=rna` for RNA (input `T` is normalized to `U`)
+    - `molecule=dsdna` plus optional overhangs:
+      - `forward_5=...` (alias `f5=...`)
+      - `forward_3=...` (alias `f3=...`)
+      - `reverse_5=...` (alias `r5=...`)
+      - `reverse_3=...` (alias `r3=...`)
+
+Example FASTA headers:
+
+- `>oligo_ss molecule=ssdna`
+- `>oligo_rna molecule=rna`
+- `>oligo_ds molecule=dsdna f5=GATC r5=CTAG`
 
 ## Notes and limitations
 
