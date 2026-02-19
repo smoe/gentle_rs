@@ -13,7 +13,8 @@ use crate::{
     pool_gel::{build_pool_gel_layout, export_pool_gel_svg},
     render_export::{export_circular_svg, export_linear_svg},
     restriction_enzyme::RestrictionEnzyme,
-    tf_motifs, DNA_LADDERS,
+    rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
+    tf_motifs, DNA_LADDERS, RNA_LADDERS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -310,6 +311,10 @@ pub enum Operation {
         mode: RenderSvgMode,
         path: String,
     },
+    RenderRnaStructureSvg {
+        seq_id: SeqId,
+        path: String,
+    },
     RenderLineageSvg {
         path: String,
     },
@@ -319,6 +324,11 @@ pub enum Operation {
         ladders: Option<Vec<String>>,
     },
     ExportDnaLadders {
+        path: String,
+        #[serde(default)]
+        name_filter: Option<String>,
+    },
+    ExportRnaLadders {
         path: String,
         #[serde(default)]
         name_filter: Option<String>,
@@ -560,6 +570,39 @@ pub struct DnaLadderExportReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderBandInfo {
+    pub length_nt: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_strength: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loading_hint: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_nt: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_nt: Option<usize>,
+    pub band_count: usize,
+    pub bands: Vec<RnaLadderBandInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderCatalog {
+    pub schema: String,
+    pub ladder_count: usize,
+    pub ladders: Vec<RnaLadderInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaLadderExportReport {
+    pub path: String,
+    pub ladder_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeExtractionProvenance {
     pub seq_id: SeqId,
     pub recorded_at_unix_ms: u128,
@@ -722,9 +765,11 @@ impl GentleEngine {
                 "LoadFile".to_string(),
                 "SaveFile".to_string(),
                 "RenderSequenceSvg".to_string(),
+                "RenderRnaStructureSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
                 "ExportDnaLadders".to_string(),
+                "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
@@ -779,7 +824,7 @@ impl GentleEngine {
                 .bands()
                 .iter()
                 .map(|band| DnaLadderBandInfo {
-                    length_bp: band.length_bp,
+                    length_bp: band.length_bp(),
                     relative_strength: band.relative_strength,
                 })
                 .collect::<Vec<_>>();
@@ -817,6 +862,120 @@ impl GentleEngine {
             path: path.to_string(),
             ladder_count: catalog.ladder_count,
         })
+    }
+
+    pub fn inspect_rna_ladders(name_filter: Option<&str>) -> RnaLadderCatalog {
+        let filter = name_filter
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_ascii_lowercase());
+
+        let mut ladders: Vec<RnaLadderInfo> = vec![];
+        for name in RNA_LADDERS.names_sorted() {
+            if let Some(filter_text) = &filter {
+                if !name.to_ascii_lowercase().contains(filter_text) {
+                    continue;
+                }
+            }
+            let Some(ladder) = RNA_LADDERS.get(&name) else {
+                continue;
+            };
+            let bands = ladder
+                .bands()
+                .iter()
+                .map(|band| RnaLadderBandInfo {
+                    length_nt: band.length_nt(),
+                    relative_strength: band.relative_strength,
+                })
+                .collect::<Vec<_>>();
+            ladders.push(RnaLadderInfo {
+                name,
+                loading_hint: ladder.loading_hint(),
+                min_nt: ladder.min_nt(),
+                max_nt: ladder.max_nt(),
+                band_count: bands.len(),
+                bands,
+            });
+        }
+
+        RnaLadderCatalog {
+            schema: "gentle.rna_ladders.v1".to_string(),
+            ladder_count: ladders.len(),
+            ladders,
+        }
+    }
+
+    pub fn export_rna_ladders(
+        path: &str,
+        name_filter: Option<&str>,
+    ) -> Result<RnaLadderExportReport, EngineError> {
+        let catalog = Self::inspect_rna_ladders(name_filter);
+        let text = serde_json::to_string_pretty(&catalog).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize RNA ladders JSON: {e}"),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA ladders file '{path}': {e}"),
+        })?;
+        Ok(RnaLadderExportReport {
+            path: path.to_string(),
+            ladder_count: catalog.ladder_count,
+        })
+    }
+
+    fn map_rna_structure_error(err: RnaStructureError) -> EngineError {
+        match err {
+            RnaStructureError::UnsupportedBiotype { .. } | RnaStructureError::EmptySequence => {
+                EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: err.to_string(),
+                }
+            }
+            RnaStructureError::ToolNotFound { .. } => EngineError {
+                code: ErrorCode::Unsupported,
+                message: err.to_string(),
+            },
+            RnaStructureError::ToolFailed { .. } => EngineError {
+                code: ErrorCode::Internal,
+                message: err.to_string(),
+            },
+            RnaStructureError::Io { .. } => EngineError {
+                code: ErrorCode::Io,
+                message: err.to_string(),
+            },
+        }
+    }
+
+    pub fn inspect_rna_structure(
+        &self,
+        seq_id: &str,
+    ) -> Result<RnaStructureTextReport, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        rna_structure::inspect_text(dna).map_err(Self::map_rna_structure_error)
+    }
+
+    pub fn render_rna_structure_svg_to_path(
+        &self,
+        seq_id: &str,
+        path: &str,
+    ) -> Result<RnaStructureSvgReport, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        rna_structure::render_svg(dna, path).map_err(Self::map_rna_structure_error)
     }
 
     fn open_reference_genome_catalog(
@@ -2825,6 +2984,13 @@ impl GentleEngine {
                     mode, seq_id, path
                 ));
             }
+            Operation::RenderRnaStructureSvg { seq_id, path } => {
+                let report = self.render_rna_structure_svg_to_path(&seq_id, &path)?;
+                result.messages.push(format!(
+                    "Wrote RNA structure SVG for '{}' to '{}' using {}",
+                    seq_id, path, report.tool
+                ));
+            }
             Operation::RenderLineageSvg { path } => {
                 let svg = export_lineage_svg(&self.state);
                 std::fs::write(&path, svg).map_err(|e| EngineError {
@@ -2896,6 +3062,18 @@ impl GentleEngine {
                     .unwrap_or("-");
                 result.messages.push(format!(
                     "Wrote DNA ladders catalog ({} ladder(s), filter={}) to '{}'",
+                    report.ladder_count, filter_text, report.path
+                ));
+            }
+            Operation::ExportRnaLadders { path, name_filter } => {
+                let report = Self::export_rna_ladders(&path, name_filter.as_deref())?;
+                let filter_text = name_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                result.messages.push(format!(
+                    "Wrote RNA ladders catalog ({} ladder(s), filter={}) to '{}'",
                     report.ladder_count, filter_text, report.path
                 ));
             }
@@ -4899,6 +5077,8 @@ mod tests {
     use std::env;
     use std::fs;
     use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use tempfile::tempdir;
 
@@ -4948,6 +5128,42 @@ mod tests {
         let mut encoder = GzEncoder::new(file, Compression::default());
         encoder.write_all(text.as_bytes()).unwrap();
         encoder.finish().unwrap();
+    }
+
+    #[cfg(unix)]
+    fn install_fake_rnapkin(path: &Path) -> String {
+        let script_path = path.join("fake_rnapkin.sh");
+        let script = r#"#!/bin/sh
+if [ "$1" = "-v" ] && [ "$2" = "-p" ]; then
+  seq="$3"
+  echo "rnapkin textual report"
+  echo "sequence_length=${#seq}"
+  echo "points:"
+  echo "0.0 0.0"
+  echo "1.0 1.0"
+  exit 0
+fi
+
+if [ "$#" -eq 2 ]; then
+  seq="$1"
+  out="$2"
+  cat > "$out" <<EOF
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80"><text x="10" y="40">$seq</text></svg>
+EOF
+  echo "wrote $out" >&2
+  exit 0
+fi
+
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+        std::fs::write(&script_path, script).expect("write fake rnapkin");
+        let mut perms = std::fs::metadata(&script_path)
+            .expect("metadata fake rnapkin")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script_path, perms).expect("chmod fake rnapkin");
+        script_path.display().to_string()
     }
 
     fn file_url(path: &Path) -> String {
@@ -5979,6 +6195,69 @@ mod tests {
         assert_fasta_roundtrip(expected);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_inspect_rna_structure_returns_rnapkin_textual_output() {
+        let td = tempdir().unwrap();
+        let fake_rnapkin = install_fake_rnapkin(td.path());
+        let _bin_guard = EnvVarGuard::set("GENTLE_RNAPKIN_BIN", &fake_rnapkin);
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("rna".to_string(), synth_oligo("molecule=rna", b"AUGCAU"));
+        let engine = GentleEngine::from_state(state);
+        let report = engine.inspect_rna_structure("rna").unwrap();
+
+        assert_eq!(report.tool, "rnapkin");
+        assert!(report.stdout.contains("rnapkin textual report"));
+        assert!(report.stdout.contains("points:"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_render_rna_structure_svg_operation() {
+        let td = tempdir().unwrap();
+        let fake_rnapkin = install_fake_rnapkin(td.path());
+        let _bin_guard = EnvVarGuard::set("GENTLE_RNAPKIN_BIN", &fake_rnapkin);
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("rna".to_string(), synth_oligo("molecule=rna", b"AUGCAU"));
+        let mut engine = GentleEngine::from_state(state);
+        let output = td.path().join("rna.structure.svg");
+        let output_text = output.display().to_string();
+
+        let res = engine
+            .apply(Operation::RenderRnaStructureSvg {
+                seq_id: "rna".to_string(),
+                path: output_text.clone(),
+            })
+            .unwrap();
+
+        assert!(res.messages.iter().any(|m| m.contains("RNA structure SVG")));
+        let svg = std::fs::read_to_string(output_text).unwrap();
+        assert!(svg.contains("<svg"));
+    }
+
+    #[test]
+    fn test_render_rna_structure_svg_requires_rna_biotype() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("dna".to_string(), seq("ATGCATGC"));
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let output = tmp.path().with_extension("svg");
+        let err = engine
+            .apply(Operation::RenderRnaStructureSvg {
+                seq_id: "dna".to_string(),
+                path: output.display().to_string(),
+            })
+            .unwrap_err();
+        assert!(matches!(err.code, ErrorCode::InvalidInput));
+        assert!(err.message.to_ascii_lowercase().contains("rna"));
+    }
+
     #[test]
     fn test_save_file_operation_genbank() {
         let mut state = ProjectState::default();
@@ -6390,6 +6669,44 @@ mod tests {
         let text = std::fs::read_to_string(path_text).unwrap();
         let catalog: DnaLadderCatalog = serde_json::from_str(&text).unwrap();
         assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
+        assert!(catalog.ladder_count > 0);
+        assert!(catalog
+            .ladders
+            .iter()
+            .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb")));
+    }
+
+    #[test]
+    fn test_inspect_rna_ladders() {
+        let catalog = GentleEngine::inspect_rna_ladders(None);
+        assert_eq!(catalog.schema, "gentle.rna_ladders.v1");
+        assert!(catalog.ladder_count > 0);
+        assert_eq!(catalog.ladder_count, catalog.ladders.len());
+        assert!(catalog
+            .ladders
+            .iter()
+            .any(|ladder| ladder.name.contains("RNA")));
+    }
+
+    #[test]
+    fn test_export_rna_ladders_operation() {
+        let mut engine = GentleEngine::new();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("rna.ladders.json");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::ExportRnaLadders {
+                path: path_text.clone(),
+                name_filter: Some("NEB".to_string()),
+            })
+            .unwrap();
+        assert!(res
+            .messages
+            .iter()
+            .any(|m| m.contains("RNA ladders catalog")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        let catalog: RnaLadderCatalog = serde_json::from_str(&text).unwrap();
+        assert_eq!(catalog.schema, "gentle.rna_ladders.v1");
         assert!(catalog.ladder_count > 0);
         assert!(catalog
             .ladders

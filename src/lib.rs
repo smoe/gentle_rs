@@ -1,5 +1,5 @@
 use amino_acids::AminoAcids;
-use dna_ladder::DNALadders;
+use dna_ladder::{default_dna_ladders, default_rna_ladders, LadderCatalog};
 use enzymes::Enzymes;
 use lazy_static::lazy_static;
 use translations::Translations;
@@ -34,6 +34,7 @@ pub mod render_export;
 pub mod render_sequence;
 pub mod resource_sync;
 pub mod restriction_enzyme;
+pub mod rna_structure;
 pub mod sequence_rows;
 pub mod sequence_rows_blank;
 pub mod sequence_rows_dna;
@@ -54,5 +55,8 @@ lazy_static! {
     pub static ref AMINO_ACIDS : AminoAcids = AminoAcids::default();
 
     // DNA ladders
-    pub static ref DNA_LADDERS: DNALadders = DNALadders::default();
+    pub static ref DNA_LADDERS: LadderCatalog = default_dna_ladders();
+
+    // RNA ladders
+    pub static ref RNA_LADDERS: LadderCatalog = default_rna_ladders();
 }

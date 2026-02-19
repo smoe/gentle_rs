@@ -1,4 +1,5 @@
 use crate::{
+    dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{Engine, GentleEngine, Operation, ProjectState, RenderSvgMode, Workflow},
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
@@ -25,6 +26,13 @@ pub enum ShellCommand {
         mode: RenderSvgMode,
         output: String,
     },
+    RenderRnaSvg {
+        seq_id: String,
+        output: String,
+    },
+    RnaInfo {
+        seq_id: String,
+    },
     RenderLineageSvg {
         output: String,
     },
@@ -34,9 +42,11 @@ pub enum ShellCommand {
         ladders: Option<Vec<String>>,
     },
     LaddersList {
+        molecule: LadderMolecule,
         name_filter: Option<String>,
     },
     LaddersExport {
+        molecule: LadderMolecule,
         output: String,
         name_filter: Option<String>,
     },
@@ -165,6 +175,12 @@ impl ShellCommand {
                 mode,
                 output,
             } => format!("render {mode:?} SVG for '{seq_id}' to '{output}'"),
+            Self::RenderRnaSvg { seq_id, output } => {
+                format!("render RNA structure SVG for '{seq_id}' to '{output}'")
+            }
+            Self::RnaInfo { seq_id } => {
+                format!("inspect rnapkin textual RNA report for '{seq_id}'")
+            }
             Self::RenderLineageSvg { output } => format!("render lineage SVG to '{output}'"),
             Self::RenderPoolGelSvg {
                 inputs,
@@ -180,15 +196,22 @@ impl ShellCommand {
                     inputs.len()
                 )
             }
-            Self::LaddersList { name_filter } => {
+            Self::LaddersList {
+                molecule,
+                name_filter,
+            } => {
                 let filter = name_filter
                     .as_deref()
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("-");
-                format!("inspect DNA ladders (filter={filter})")
+                format!(
+                    "inspect {} ladders (filter={filter})",
+                    molecule.display_name()
+                )
             }
             Self::LaddersExport {
+                molecule,
                 output,
                 name_filter,
             } => {
@@ -197,7 +220,10 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("-");
-                format!("export DNA ladders to '{output}' (filter={filter})")
+                format!(
+                    "export {} ladders to '{output}' (filter={filter})",
+                    molecule.display_name()
+                )
             }
             Self::ExportPool {
                 inputs,
@@ -375,10 +401,12 @@ state-summary\n\
 load-project PATH\n\
 save-project PATH\n\
 render-svg SEQ_ID linear|circular OUTPUT.svg\n\
+render-rna-svg SEQ_ID OUTPUT.svg\n\
+rna-info SEQ_ID\n\
 render-lineage-svg OUTPUT.svg\n\
 render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\
-ladders list [--filter TEXT]\n\
-ladders export OUTPUT.json [--filter TEXT]\n\
+ladders list [--molecule dna|rna] [--filter TEXT]\n\
+ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\
 export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n\
 import-pool INPUT.pool.gentle.json [PREFIX]\n\
 resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]\n\
@@ -571,6 +599,11 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
             "Unknown render mode '{other}', expected 'linear' or 'circular'"
         )),
     }
+}
+
+fn parse_ladder_molecule(value: &str) -> Result<LadderMolecule, String> {
+    LadderMolecule::parse(value)
+        .ok_or_else(|| format!("Unknown ladder molecule '{value}', expected 'dna' or 'rna'"))
 }
 
 fn parse_json_payload(raw: &str) -> Result<String, String> {
@@ -943,6 +976,23 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 output: tokens[3].clone(),
             })
         }
+        "render-rna-svg" => {
+            if tokens.len() != 3 {
+                return Err(token_error(cmd));
+            }
+            Ok(ShellCommand::RenderRnaSvg {
+                seq_id: tokens[1].clone(),
+                output: tokens[2].clone(),
+            })
+        }
+        "rna-info" => {
+            if tokens.len() != 2 {
+                return Err(token_error(cmd));
+            }
+            Ok(ShellCommand::RnaInfo {
+                seq_id: tokens[1].clone(),
+            })
+        }
         "render-lineage-svg" => {
             if tokens.len() == 2 {
                 Ok(ShellCommand::RenderLineageSvg {
@@ -994,10 +1044,18 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             match tokens[1].as_str() {
                 "list" => {
+                    let mut molecule = LadderMolecule::Dna;
                     let mut name_filter: Option<String> = None;
                     let mut idx = 2usize;
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
+                            "--molecule" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --molecule".to_string());
+                                }
+                                molecule = parse_ladder_molecule(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
                             "--filter" => {
                                 if idx + 1 >= tokens.len() {
                                     return Err("Missing value after --filter".to_string());
@@ -1010,19 +1068,30 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                             }
                         }
                     }
-                    Ok(ShellCommand::LaddersList { name_filter })
+                    Ok(ShellCommand::LaddersList {
+                        molecule,
+                        name_filter,
+                    })
                 }
                 "export" => {
                     if tokens.len() < 3 {
                         return Err(
-                            "ladders export requires: OUTPUT.json [--filter TEXT]".to_string()
+                            "ladders export requires: OUTPUT.json [--molecule dna|rna] [--filter TEXT]".to_string()
                         );
                     }
                     let output = tokens[2].clone();
+                    let mut molecule = LadderMolecule::Dna;
                     let mut name_filter: Option<String> = None;
                     let mut idx = 3usize;
                     while idx < tokens.len() {
                         match tokens[idx].as_str() {
+                            "--molecule" => {
+                                if idx + 1 >= tokens.len() {
+                                    return Err("Missing value after --molecule".to_string());
+                                }
+                                molecule = parse_ladder_molecule(&tokens[idx + 1])?;
+                                idx += 2;
+                            }
                             "--filter" => {
                                 if idx + 1 >= tokens.len() {
                                     return Err("Missing value after --filter".to_string());
@@ -1038,6 +1107,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                     }
                     Ok(ShellCommand::LaddersExport {
+                        molecule,
                         output,
                         name_filter,
                     })
@@ -1295,6 +1365,28 @@ pub fn execute_shell_command(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::RenderRnaSvg { seq_id, output } => {
+            let op_result = engine
+                .apply(Operation::RenderRnaStructureSvg {
+                    seq_id: seq_id.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::RnaInfo { seq_id } => {
+            let report = engine
+                .inspect_rna_structure(seq_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize RNA report: {e}"))?,
+            }
+        }
         ShellCommand::RenderLineageSvg { output } => {
             let op_result = engine
                 .apply(Operation::RenderLineageSvg {
@@ -1323,21 +1415,41 @@ pub fn execute_shell_command(
                 output: json!({ "result": op_result }),
             }
         }
-        ShellCommand::LaddersList { name_filter } => ShellRunResult {
+        ShellCommand::LaddersList {
+            molecule,
+            name_filter,
+        } => ShellRunResult {
             state_changed: false,
-            output: serde_json::to_value(GentleEngine::inspect_dna_ladders(name_filter.as_deref()))
-                .map_err(|e| format!("Could not serialize DNA ladders catalog: {e}"))?,
+            output: match molecule {
+                LadderMolecule::Dna => {
+                    serde_json::to_value(GentleEngine::inspect_dna_ladders(name_filter.as_deref()))
+                        .map_err(|e| format!("Could not serialize DNA ladders catalog: {e}"))?
+                }
+                LadderMolecule::Rna => {
+                    serde_json::to_value(GentleEngine::inspect_rna_ladders(name_filter.as_deref()))
+                        .map_err(|e| format!("Could not serialize RNA ladders catalog: {e}"))?
+                }
+            },
         },
         ShellCommand::LaddersExport {
+            molecule,
             output,
             name_filter,
         } => {
-            let op_result = engine
-                .apply(Operation::ExportDnaLadders {
-                    path: output.clone(),
-                    name_filter: name_filter.clone(),
-                })
-                .map_err(|e| e.to_string())?;
+            let op_result = match molecule {
+                LadderMolecule::Dna => engine
+                    .apply(Operation::ExportDnaLadders {
+                        path: output.clone(),
+                        name_filter: name_filter.clone(),
+                    })
+                    .map_err(|e| e.to_string())?,
+                LadderMolecule::Rna => engine
+                    .apply(Operation::ExportRnaLadders {
+                        path: output.clone(),
+                        name_filter: name_filter.clone(),
+                    })
+                    .map_err(|e| e.to_string())?,
+            };
             ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
@@ -1701,10 +1813,37 @@ mod tests {
     }
 
     #[test]
+    fn parse_render_rna_svg() {
+        let cmd = parse_shell_line("render-rna-svg rna_seq rna.svg").expect("parse command");
+        match cmd {
+            ShellCommand::RenderRnaSvg { seq_id, output } => {
+                assert_eq!(seq_id, "rna_seq".to_string());
+                assert_eq!(output, "rna.svg".to_string());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_rna_info() {
+        let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
+        match cmd {
+            ShellCommand::RnaInfo { seq_id } => {
+                assert_eq!(seq_id, "rna_seq".to_string());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_ladders_list_with_filter() {
         let cmd = parse_shell_line("ladders list --filter NEB").expect("parse command");
         match cmd {
-            ShellCommand::LaddersList { name_filter } => {
+            ShellCommand::LaddersList {
+                molecule,
+                name_filter,
+            } => {
+                assert_eq!(molecule, LadderMolecule::Dna);
                 assert_eq!(name_filter, Some("NEB".to_string()));
             }
             other => panic!("unexpected command: {other:?}"),
@@ -1717,11 +1856,28 @@ mod tests {
             parse_shell_line("ladders export ladders.json --filter ruler").expect("parse command");
         match cmd {
             ShellCommand::LaddersExport {
+                molecule,
                 output,
                 name_filter,
             } => {
+                assert_eq!(molecule, LadderMolecule::Dna);
                 assert_eq!(output, "ladders.json".to_string());
                 assert_eq!(name_filter, Some("ruler".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_ladders_list_rna() {
+        let cmd = parse_shell_line("ladders list --molecule rna --filter ss").expect("parse");
+        match cmd {
+            ShellCommand::LaddersList {
+                molecule,
+                name_filter,
+            } => {
+                assert_eq!(molecule, LadderMolecule::Rna);
+                assert_eq!(name_filter, Some("ss".to_string()));
             }
             other => panic!("unexpected command: {other:?}"),
         }

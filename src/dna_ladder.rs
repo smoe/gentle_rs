@@ -1,20 +1,65 @@
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum LadderMolecule {
+    Dna,
+    Rna,
+}
+
+impl LadderMolecule {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dna => "dna",
+            Self::Rna => "rna",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Dna => "DNA",
+            Self::Rna => "RNA",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        let norm = text.trim().to_ascii_lowercase();
+        match norm.as_str() {
+            "dna" => Some(Self::Dna),
+            "rna" => Some(Self::Rna),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
-pub struct DNALadderBand {
-    pub length_bp: f64,
+pub struct LadderBand {
+    length: f64,
     pub relative_strength: Option<f64>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct DNALadder {
-    name: String,
-    loading_hint: Option<f64>,
-    bands: Vec<DNALadderBand>,
+impl LadderBand {
+    pub fn length(&self) -> f64 {
+        self.length
+    }
+
+    pub fn length_bp(&self) -> f64 {
+        self.length
+    }
+
+    pub fn length_nt(&self) -> f64 {
+        self.length
+    }
 }
 
-impl DNALadder {
+#[derive(Clone, Debug, Default)]
+pub struct Ladder {
+    name: String,
+    loading_hint: Option<f64>,
+    bands: Vec<LadderBand>,
+}
+
+impl Ladder {
     pub fn new(name: &str, parts: &Value) -> Self {
         let raw_parts = parts
             .as_array()
@@ -40,20 +85,21 @@ impl DNALadder {
             (0, None)
         };
 
-        let bands: Vec<DNALadderBand> = raw_parts
+        let bands: Vec<LadderBand> = raw_parts
             .into_iter()
             .skip(start_idx)
             .filter_map(|p| {
-                let length_bp = p.first()?.as_f64()?;
-                if !length_bp.is_finite() || length_bp <= 0.0 {
+                let length = p.first()?.as_f64()?;
+                if !length.is_finite() || length <= 0.0 {
                     return None;
                 }
-                Some(DNALadderBand {
-                    length_bp,
+                Some(LadderBand {
+                    length,
                     relative_strength: p.get(1).and_then(|s| s.as_f64()),
                 })
             })
             .collect();
+
         Self {
             name: name.to_owned(),
             loading_hint,
@@ -69,39 +115,66 @@ impl DNALadder {
         self.loading_hint
     }
 
-    pub fn bands(&self) -> &Vec<DNALadderBand> {
+    pub fn bands(&self) -> &Vec<LadderBand> {
         &self.bands
     }
 
+    pub fn min_len(&self) -> Option<usize> {
+        self.bands.iter().map(|p| p.length.round() as usize).min()
+    }
+
+    pub fn max_len(&self) -> Option<usize> {
+        self.bands.iter().map(|p| p.length.round() as usize).max()
+    }
+
     pub fn min_bp(&self) -> Option<usize> {
-        self.bands
-            .iter()
-            .map(|p| p.length_bp.round() as usize)
-            .min()
+        self.min_len()
     }
 
     pub fn max_bp(&self) -> Option<usize> {
-        self.bands
-            .iter()
-            .map(|p| p.length_bp.round() as usize)
-            .max()
+        self.max_len()
+    }
+
+    pub fn min_nt(&self) -> Option<usize> {
+        self.min_len()
+    }
+
+    pub fn max_nt(&self) -> Option<usize> {
+        self.max_len()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct DNALadders(HashMap<String, DNALadder>);
+pub struct LadderCatalog {
+    molecule: LadderMolecule,
+    ladders: HashMap<String, Ladder>,
+}
 
-impl DNALadders {
-    pub fn get(&self, name: &str) -> Option<&DNALadder> {
-        self.0.get(name)
+impl LadderCatalog {
+    pub fn from_json_str(molecule: LadderMolecule, data: &str) -> Self {
+        let mut ladders = HashMap::new();
+        let res: Value = serde_json::from_str(data).expect("Invalid ladder JSON");
+        let map = res.as_object().expect("Ladder JSON is not an object");
+        for (name, parts) in map.iter() {
+            ladders.insert(name.to_owned(), Ladder::new(name, parts));
+        }
+        Self { molecule, ladders }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &DNALadder> {
-        self.0.values()
+    pub fn molecule(&self) -> LadderMolecule {
+        self.molecule
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Ladder> {
+        self.ladders.get(name)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Ladder> {
+        self.ladders.values()
     }
 
     pub fn names_sorted(&self) -> Vec<String> {
-        let mut names = self.0.keys().cloned().collect::<Vec<_>>();
+        let mut names = self.ladders.keys().cloned().collect::<Vec<_>>();
         names.sort_unstable();
         names
     }
@@ -112,7 +185,7 @@ impl DNALadders {
         max_bp: usize,
         max_ladders: usize,
     ) -> Vec<String> {
-        if self.0.is_empty() || max_ladders == 0 || min_bp == 0 || max_bp == 0 {
+        if self.ladders.is_empty() || max_ladders == 0 || min_bp == 0 || max_bp == 0 {
             return vec![];
         }
         let (min_bp, max_bp) = if min_bp <= max_bp {
@@ -124,8 +197,8 @@ impl DNALadders {
         let mut ladders = self
             .iter()
             .filter_map(|ladder| {
-                let lo = ladder.min_bp()?;
-                let hi = ladder.max_bp()?;
+                let lo = ladder.min_len()?;
+                let hi = ladder.max_len()?;
                 Some((ladder.name().to_string(), lo, hi))
             })
             .collect::<Vec<_>>();
@@ -194,19 +267,32 @@ impl DNALadders {
     }
 }
 
-impl Default for DNALadders {
+impl Default for LadderCatalog {
     fn default() -> Self {
-        let mut ret = HashMap::new();
-        let data = include_str!("../assets/dna_ladders.json");
-        let res: Value = serde_json::from_str(data).expect("Invalid JSON");
-        let map = res.as_object().expect("JSON is not an object");
-        for (name, parts) in map.iter() {
-            let dna_ladder = DNALadder::new(name, parts);
-            ret.insert(name.to_owned(), dna_ladder);
-        }
-        Self(ret)
+        default_dna_ladders()
     }
 }
+
+pub fn default_dna_ladders() -> LadderCatalog {
+    LadderCatalog::from_json_str(
+        LadderMolecule::Dna,
+        include_str!("../assets/dna_ladders.json"),
+    )
+}
+
+pub fn default_rna_ladders() -> LadderCatalog {
+    LadderCatalog::from_json_str(
+        LadderMolecule::Rna,
+        include_str!("../assets/rna_ladders.json"),
+    )
+}
+
+pub type DNALadderBand = LadderBand;
+pub type DNALadder = Ladder;
+pub type DNALadders = LadderCatalog;
+pub type RNALadderBand = LadderBand;
+pub type RNALadder = Ladder;
+pub type RNALadders = LadderCatalog;
 
 #[cfg(test)]
 mod tests {
@@ -214,17 +300,28 @@ mod tests {
 
     #[test]
     fn test_dna_ladder() {
-        let dna_ladders = DNALadders::default();
+        let dna_ladders = default_dna_ladders();
         let ladder = dna_ladders.get("GeneRuler Mix").unwrap();
-        assert_eq!(ladder.bands()[1].length_bp, 8000.0);
+        assert_eq!(ladder.bands()[1].length_bp(), 8000.0);
         assert_eq!(ladder.bands()[1].relative_strength, Some(13.0));
         assert_eq!(ladder.loading_hint(), Some(0.5));
+        assert_eq!(dna_ladders.molecule(), LadderMolecule::Dna);
     }
 
     #[test]
     fn test_choose_for_range() {
-        let dna_ladders = DNALadders::default();
+        let dna_ladders = default_dna_ladders();
         let picks = dna_ladders.choose_for_range(120, 1300, 2);
+        assert!(!picks.is_empty());
+        assert!(picks.len() <= 2);
+    }
+
+    #[test]
+    fn test_rna_ladder_catalog() {
+        let rna_ladders = default_rna_ladders();
+        assert_eq!(rna_ladders.molecule(), LadderMolecule::Rna);
+        assert!(rna_ladders.get("NEB ssRNA Ladder").is_some());
+        let picks = rna_ladders.choose_for_range(90, 2500, 2);
         assert!(!picks.is_empty());
         assert!(picks.len() <= 2);
     }

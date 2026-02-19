@@ -23,7 +23,7 @@ The long-term requirement is strict behavioral parity:
 
 - The same biological operations must run through the same core routines,
   regardless of entry point.
-- This tools does not describe any current protocol that could be used
+- This document does not describe any current protocol that could be used
   to change the human genome or that of animals or plants.
 
 Wet-lab semantic rule (target model):
@@ -33,6 +33,16 @@ Wet-lab semantic rule (target model):
 - A container may hold multiple candidate molecules/fragments.
 - Filter-like steps (PCR, gel extraction, in silico selection) produce a new
   container with a narrower candidate set.
+
+Strategic aims:
+
+1. Keep one deterministic engine contract across GUI, CLI, JS, and Lua.
+2. Preserve provenance so every derived result can be traced and replayed.
+3. Make every process exportable as a human-readable protocol text that a
+   technical assistant can follow step by step (inputs, operations, expected
+   outputs, and checkpoints).
+4. Support optional, explicit screenshot artifact generation for documentation
+   and progress communication without weakening default safety boundaries.
 
 ## 2. Core architecture rule
 
@@ -118,6 +128,9 @@ They only translate user input into engine operations and display results.
   - `SaveFile`
   - `RenderSequenceSvg`
   - `RenderLineageSvg`
+  - `RenderPoolGelSvg`
+  - `ExportDnaLadders`
+  - `ExportRnaLadders`
   - `ExportPool`
   - `PrepareGenome`
   - `ExtractGenomeRegion`
@@ -225,7 +238,9 @@ Legend:
 | `SaveFile` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderSequenceSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderLineageSvg` | Wired | Wired | Exposed | Exposed | Implemented |
+| `RenderPoolGelSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExportDnaLadders` | Exposed | Wired | Exposed | Exposed | Implemented |
+| `ExportRnaLadders` | Exposed | Wired | Exposed | Exposed | Implemented |
 | `ExportPool` | Wired | Wired | Exposed | Exposed | Implemented |
 | `PrepareGenome` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExtractGenomeRegion` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -279,8 +294,10 @@ Notes from current code:
   only list prepared entries. Retrieval provides paged/top-N regex filtering,
   biotype checkbox filtering from parsed annotations, and direct engine-backed
   extraction.
-- GUI operation parity is now complete for currently implemented engine
-  operations.
+- GUI operation parity is near-complete for sequence/container workflows; some
+  utility-style contracts (notably `ExportDnaLadders` / `ExportRnaLadders`) are currently exposed
+  through shared shell/adapter surfaces rather than dedicated first-class GUI
+  controls.
 - CLI exposes all implemented operations (`op`/`workflow`) and adds some
   adapter-level utilities (render and import helpers).
 - CLI now exposes a shared shell command path (`gentle_cli shell ...`) that
@@ -414,6 +431,14 @@ Practical rule:
 - State import/export and summary
 - Capabilities reporting
 - Shared shell command path (`shell`) aligned with GUI Shell panel
+- Optional screenshot bridge guarded by `--allow-screenshots`:
+  - default behavior: disabled
+  - enabled behavior: allow invoking the host system screenshot utility from an
+    explicit screenshot command path
+  - capture scope: active GENtle window only (not full desktop)
+  - output: caller-provided custom filename/path for saved image artifact
+  - purpose: automate documentation refresh and produce image-backed progress
+    updates for third-party communication
 
 ## 6. Protocol-first direction
 
@@ -444,7 +469,8 @@ Minimum requirements:
 5. Stable versioning policy
 
 Current work satisfies (1) through (4) for most operations; remaining gaps are
-mainly GUI wiring gaps described in section 11.
+mainly view-model formalization and promoting remaining adapter-level utility
+contracts into stable engine operations.
 
 ## 8. Rendering and interpretation direction
 
@@ -493,6 +519,10 @@ Use same view model for GUI and machine consumers.
 - compatibility policy
 - richer error taxonomy and validation
 - operation provenance metadata (engine version, timestamps, input references)
+- process-protocol export contract (plain-text, technical-assistant-friendly
+  step list derived from workflow/operation provenance)
+- define adapter contract for screenshot artifacts behind explicit opt-in
+  (`--allow-screenshots`) with active-window-only capture semantics
 
 ### Phase E: interpretation (later)
 
@@ -522,6 +552,8 @@ If work is interrupted, resume in this order:
   instead of engine operations
 - `import-pool` remains a shared shell/CLI utility contract (no dedicated
   engine operation yet)
+- No dedicated engine operation yet for exporting a full run/process as a
+  technical-assistant protocol text artifact
 
 ## 12. Decision log (concise)
 
@@ -535,6 +567,11 @@ If work is interrupted, resume in this order:
 - Promote DNA ladder catalog export to engine operation (`ExportDnaLadders`)
   and expose ladder inspection/export across CLI/JS/Lua/shared shell:
   accepted and implemented
+- Add opt-in screenshot artifact bridge (`--allow-screenshots`) for
+  documentation/progress image generation with active-window-only capture:
+  accepted and planned (adapter contract + command path pending)
+- Add protocol-grade process export as a strategic requirement:
+  accepted and planned (engine-level contract pending)
 - Promote container semantics to first-class engine state: accepted and
   implemented (`ProjectState.container_state`)
 - Add container-first operations: accepted and implemented

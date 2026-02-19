@@ -434,12 +434,14 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
-  gentle_cli [--state PATH|--project PATH] ladders list [--filter TEXT]\n  \
-  gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--filter TEXT]\n\n  \
+  gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
+  gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
   gentle_cli genomes list [--catalog PATH]\n  \
@@ -1488,6 +1490,41 @@ fn run() -> Result<(), String> {
                 println!("{msg}");
             }
             Ok(())
+        }
+        "render-rna-svg" => {
+            if args.len() <= cmd_idx + 2 {
+                usage();
+                return Err("render-rna-svg requires: SEQ_ID OUTPUT.svg".to_string());
+            }
+            let seq_id = &args[cmd_idx + 1];
+            let output = &args[cmd_idx + 2];
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::RenderRnaStructureSvg {
+                    seq_id: seq_id.to_string(),
+                    path: output.to_string(),
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "rna-info" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("rna-info requires: SEQ_ID".to_string());
+            }
+            let seq_id = &args[cmd_idx + 1];
+            let engine = GentleEngine::from_state(load_state(&state_path)?);
+            let report = engine
+                .inspect_rna_structure(seq_id)
+                .map_err(|e| e.to_string())?;
+            print_json(&report)
         }
         "render-lineage-svg" => {
             if args.len() <= cmd_idx + 1 {

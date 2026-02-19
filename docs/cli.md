@@ -256,6 +256,8 @@ cargo run --bin gentle_cli -- save-project project.gentle.json
 cargo run --bin gentle_cli -- load-project project.gentle.json
 cargo run --bin gentle_cli -- render-svg pgex linear pgex.linear.svg
 cargo run --bin gentle_cli -- render-svg pgex circular pgex.circular.svg
+cargo run --bin gentle_cli -- render-rna-svg rna_seq rna.secondary.svg
+cargo run --bin gentle_cli -- rna-info rna_seq
 cargo run --bin gentle_cli -- render-lineage-svg lineage.svg
 cargo run --bin gentle_cli -- shell 'help'
 cargo run --bin gentle_cli -- shell 'state-summary'
@@ -264,8 +266,10 @@ cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg --ladders "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"
 cargo run --bin gentle_cli -- ladders list
 cargo run --bin gentle_cli -- ladders list --filter NEB
+cargo run --bin gentle_cli -- ladders list --molecule rna
 cargo run --bin gentle_cli -- ladders export dna_ladders.snapshot.json
 cargo run --bin gentle_cli -- ladders export dna_ladders.neb.json --filter NEB
+cargo run --bin gentle_cli -- ladders export rna_ladders.snapshot.json --molecule rna
 cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json "BamHI+EcoRI digest pool"
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
@@ -323,10 +327,12 @@ Shared shell command:
     - `load-project PATH`
     - `save-project PATH`
     - `render-svg SEQ_ID linear|circular OUTPUT.svg`
+    - `render-rna-svg SEQ_ID OUTPUT.svg`
+    - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
     - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
-    - `ladders list [--filter TEXT]`
-    - `ladders export OUTPUT.json [--filter TEXT]`
+    - `ladders list [--molecule dna|rna] [--filter TEXT]`
+    - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
@@ -363,6 +369,10 @@ Rendering export commands:
 
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
+- `render-rna-svg SEQ_ID OUTPUT.svg`
+  - Calls engine operation `RenderRnaStructureSvg`.
+  - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).
+  - Uses external `rnapkin` executable (set `GENTLE_RNAPKIN_BIN` to override executable path).
 - `render-lineage-svg OUTPUT.svg`
   - Calls engine operation `RenderLineageSvg`.
 - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
@@ -372,13 +382,22 @@ Rendering export commands:
   - If `--ladders` is omitted, engine auto-selects one or two ladders based on
     pool bp range.
 
+RNA secondary-structure text command:
+
+- `rna-info SEQ_ID`
+  - Returns a JSON report from `rnapkin -v -p <sequence>`.
+  - Includes `stdout`/`stderr` and command metadata.
+  - Accepts only single-stranded RNA (`molecule_type` of `RNA`/`ssRNA`).
+  - Uses external `rnapkin` executable (set `GENTLE_RNAPKIN_BIN` to override executable path).
+
 DNA ladder catalog commands:
 
-- `ladders list [--filter TEXT]`
+- `ladders list [--molecule dna|rna] [--filter TEXT]`
   - Returns engine-inspected ladder catalog (`schema`, `ladder_count`, `ladders`).
+  - Default molecule is `dna`; use `--molecule rna` for RNA ladders.
   - Optional `--filter` keeps only ladders whose names contain `TEXT` (case-insensitive).
-- `ladders export OUTPUT.json [--filter TEXT]`
-  - Calls engine operation `ExportDnaLadders`.
+- `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
+  - Calls engine operation `ExportDnaLadders` or `ExportRnaLadders`.
   - Writes structured ladder catalog JSON to disk.
 
 Resource sync commands:
@@ -581,6 +600,8 @@ Export built-in DNA ladder catalog (engine operation):
 ```json
 {"ExportDnaLadders":{"path":"dna_ladders.snapshot.json","name_filter":null}}
 {"ExportDnaLadders":{"path":"dna_ladders.neb.json","name_filter":"NEB"}}
+{"ExportRnaLadders":{"path":"rna_ladders.snapshot.json","name_filter":null}}
+{"ExportRnaLadders":{"path":"rna_ladders.neb.json","name_filter":"NEB"}}
 ```
 
 Render sequence SVG (engine operation):
@@ -588,6 +609,12 @@ Render sequence SVG (engine operation):
 ```json
 {"RenderSequenceSvg":{"seq_id":"pgex","mode":"Linear","path":"pgex.linear.svg"}}
 {"RenderSequenceSvg":{"seq_id":"pgex","mode":"Circular","path":"pgex.circular.svg"}}
+```
+
+Render RNA secondary-structure SVG (engine operation):
+
+```json
+{"RenderRnaStructureSvg":{"seq_id":"rna_seq","path":"rna.secondary.svg"}}
 ```
 
 Render lineage SVG (engine operation):
