@@ -92,17 +92,21 @@ Supported commands:
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
 - `render-lineage-svg OUTPUT.svg`
 - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+- `ladders list [--filter TEXT]`
+- `ladders export OUTPUT.json [--filter TEXT]`
 - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
 - `import-pool INPUT.pool.gentle.json [PREFIX]`
 - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
 - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
 - `genomes list [--catalog PATH]`
+- `genomes validate-catalog [--catalog PATH]`
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
 - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
 - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers list [--catalog PATH]`
+- `helpers validate-catalog [--catalog PATH]`
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -291,6 +295,7 @@ Reference-genome workflow is split into two separate dialogs (masks) in the
 main project window menu:
 
 - `File -> Prepare Reference Genome...` (or `Genome -> Prepare Reference Genome...`)
+- `File -> Prepared References...` (or `Genome -> Prepared References...`)
 - `File -> Retrieve Genome Sequence...` (or `Genome -> Retrieve Genome Sequence...`)
 - `File -> Prepare Helper Genome...` (or `Genome -> Prepare Helper Genome...`)
 - `File -> Retrieve Helper Sequence...` (or `Genome -> Retrieve Helper Sequence...`)
@@ -319,6 +324,11 @@ Recommended flow:
    - click `Extract Selected Gene` (engine op `ExtractGenomeGene`) or
      `Extract Region` (explicit coordinate extraction)
    - coordinates are 1-based and inclusive
+3. Inspect prepared installations when needed:
+   - open `Prepared References...`
+   - review per-genome install size, readiness flags, source types, and short
+     SHA-1 fingerprints
+   - use `Retrieve` directly from an inspected row
 
 Equivalent workflow JSON (still supported via workflow runner):
 
@@ -351,6 +361,10 @@ Notes:
 - Retrieval fields are enabled only after the selected genome is prepared.
 - During preparation, a persistent `genes.json` index is built in the genome
   cache to keep retrieval responsive.
+- HTTP downloads support resume/retry behavior and continue from partial files
+  when possible.
+- Manifest integrity fields (`sequence_sha1`, `annotation_sha1`) are captured
+  after successful preparation and shown in `Prepared References...`.
 - `start_1based` and `end_1based` fields are constrained to numeric input and
   up to 10 digits.
 - Extracted regions are added to project state and opened in sequence windows.
@@ -376,6 +390,7 @@ Use the top application menu:
 - `File -> Open Sequence...`
 - `File -> Open Project...`
 - `File -> Prepare Reference Genome...`
+- `File -> Prepared References...`
 - `File -> Retrieve Genome Sequence...`
 - `File -> Prepare Helper Genome...`
 - `File -> Retrieve Helper Sequence...`

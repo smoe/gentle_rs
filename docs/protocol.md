@@ -55,6 +55,7 @@ Current draft operations:
 - `RenderSequenceSvg { seq_id, mode, path }`
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders? }`
+- `ExportDnaLadders { path, name_filter? }`
 - `Digest { input, enzymes, output_prefix? }`
 - `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
 - `MergeContainers { inputs, output_prefix? }`
@@ -118,6 +119,19 @@ Current ligation protocol behavior:
   - from explicit `ladders` list when provided
   - otherwise from built-in ladder catalog (auto mode)
 - Renders ladder lanes plus pooled band lane as SVG artifact.
+
+DNA ladder catalog semantics:
+
+- Inspection API:
+  - `GentleEngine::inspect_dna_ladders(name_filter?)`
+  - Returns structured ladder metadata:
+    - `schema` (`gentle.dna_ladders.v1`)
+    - `ladder_count`
+    - `ladders[]` (`name`, `loading_hint`, `min_bp`, `max_bp`, `band_count`, `bands`)
+- Export operation:
+  - `ExportDnaLadders { path, name_filter? }`
+  - Writes the same structured payload to JSON at `path`.
+  - Optional `name_filter` applies case-insensitive name matching before export.
 
 `Pcr` semantics (current):
 

@@ -128,6 +128,26 @@ fn state_summary(
 
 #[op2]
 #[serde]
+fn inspect_dna_ladders(
+    #[string] name_filter: &str,
+) -> Result<crate::engine::DnaLadderCatalog, deno_core::anyhow::Error> {
+    Ok(GentleEngine::inspect_dna_ladders(empty_to_none(
+        name_filter,
+    )))
+}
+
+#[op2]
+#[serde]
+fn export_dna_ladders(
+    #[string] path: &str,
+    #[string] name_filter: &str,
+) -> Result<crate::engine::DnaLadderExportReport, deno_core::anyhow::Error> {
+    GentleEngine::export_dna_ladders(path, empty_to_none(name_filter))
+        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+}
+
+#[op2]
+#[serde]
 fn list_reference_genomes(
     #[string] catalog_path: &str,
 ) -> Result<Vec<String>, deno_core::anyhow::Error> {
@@ -209,6 +229,8 @@ impl JavaScriptInterface {
         const SAVE_PROJECT: OpDecl = save_project();
         const CAPABILITIES: OpDecl = capabilities();
         const STATE_SUMMARY: OpDecl = state_summary();
+        const INSPECT_DNA_LADDERS: OpDecl = inspect_dna_ladders();
+        const EXPORT_DNA_LADDERS: OpDecl = export_dna_ladders();
         const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
         const LIST_REFERENCE_GENOME_GENES: OpDecl = list_reference_genome_genes();
@@ -225,6 +247,8 @@ impl JavaScriptInterface {
                 SAVE_PROJECT,
                 CAPABILITIES,
                 STATE_SUMMARY,
+                INSPECT_DNA_LADDERS,
+                EXPORT_DNA_LADDERS,
                 LIST_REFERENCE_GENOMES,
                 IS_REFERENCE_GENOME_PREPARED,
                 LIST_REFERENCE_GENOME_GENES,
@@ -247,11 +271,20 @@ impl JavaScriptInterface {
          	function write_gb(seq,path) {return Deno.core.ops.write_gb(seq,path)}
          	function load_project(path) {return Deno.core.ops.load_project(path)}
           	function save_project(state,path) {return Deno.core.ops.save_project(state,path)}
-          	function capabilities() {return Deno.core.ops.capabilities()}
-          	function state_summary(state) {return Deno.core.ops.state_summary(state)}
-          	function list_reference_genomes(catalog_path) {
-          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
-          	}
+	          	function capabilities() {return Deno.core.ops.capabilities()}
+	          	function state_summary(state) {return Deno.core.ops.state_summary(state)}
+	          	function inspect_dna_ladders(name_filter) {
+	          		return Deno.core.ops.inspect_dna_ladders(name_filter ?? "");
+	          	}
+	          	function list_dna_ladders(name_filter) {
+	          		return inspect_dna_ladders(name_filter);
+	          	}
+	          	function export_dna_ladders(path, name_filter) {
+	          		return Deno.core.ops.export_dna_ladders(path, name_filter ?? "");
+	          	}
+	          	function list_reference_genomes(catalog_path) {
+	          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
+	          	}
           	function is_reference_genome_prepared(genome_id, catalog_path, cache_dir) {
           		const status = Deno.core.ops.is_reference_genome_prepared(genome_id, catalog_path ?? "", cache_dir ?? "");
           		return !!status.prepared;

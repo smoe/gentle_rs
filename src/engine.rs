@@ -4,7 +4,8 @@ use crate::{
     enzymes::active_restriction_enzymes,
     genomes::{
         GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
-        PrepareGenomeReport, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        PrepareGenomeReport, PreparedGenomeInspection, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -12,9 +13,10 @@ use crate::{
     pool_gel::{build_pool_gel_layout, export_pool_gel_svg},
     render_export::{export_circular_svg, export_linear_svg},
     restriction_enzyme::RestrictionEnzyme,
-    tf_motifs,
+    tf_motifs, DNA_LADDERS,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{HashMap, HashSet},
@@ -32,6 +34,8 @@ pub type OpId = String;
 pub type RunId = String;
 pub type NodeId = String;
 pub type ContainerId = String;
+const PROVENANCE_METADATA_KEY: &str = "provenance";
+const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DisplayTarget {
@@ -314,6 +318,11 @@ pub enum Operation {
         path: String,
         ladders: Option<Vec<String>>,
     },
+    ExportDnaLadders {
+        path: String,
+        #[serde(default)]
+        name_filter: Option<String>,
+    },
     ExportPool {
         inputs: Vec<SeqId>,
         path: String,
@@ -518,6 +527,63 @@ struct PoolExport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderBandInfo {
+    pub length_bp: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_strength: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderInfo {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loading_hint: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_bp: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_bp: Option<usize>,
+    pub band_count: usize,
+    pub bands: Vec<DnaLadderBandInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderCatalog {
+    pub schema: String,
+    pub ladder_count: usize,
+    pub ladders: Vec<DnaLadderInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnaLadderExportReport {
+    pub path: String,
+    pub ladder_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeExtractionProvenance {
+    pub seq_id: SeqId,
+    pub recorded_at_unix_ms: u128,
+    pub operation: String,
+    pub genome_id: String,
+    pub catalog_path: String,
+    pub cache_dir: Option<String>,
+    pub chromosome: Option<String>,
+    pub start_1based: Option<usize>,
+    pub end_1based: Option<usize>,
+    pub gene_query: Option<String>,
+    pub occurrence: Option<usize>,
+    pub gene_id: Option<String>,
+    pub gene_name: Option<String>,
+    pub strand: Option<char>,
+    pub sequence_source_type: Option<String>,
+    pub annotation_source_type: Option<String>,
+    pub sequence_source: Option<String>,
+    pub annotation_source: Option<String>,
+    pub sequence_sha1: Option<String>,
+    pub annotation_sha1: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workflow {
     pub run_id: RunId,
     pub ops: Vec<Operation>,
@@ -658,6 +724,7 @@ impl GentleEngine {
                 "RenderSequenceSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
+                "ExportDnaLadders".to_string(),
                 "ExportPool".to_string(),
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
@@ -690,6 +757,66 @@ impl GentleEngine {
             supported_export_formats: vec!["GenBank".to_string(), "Fasta".to_string()],
             deterministic_operation_log: true,
         }
+    }
+
+    pub fn inspect_dna_ladders(name_filter: Option<&str>) -> DnaLadderCatalog {
+        let filter = name_filter
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_ascii_lowercase());
+
+        let mut ladders: Vec<DnaLadderInfo> = vec![];
+        for name in DNA_LADDERS.names_sorted() {
+            if let Some(filter_text) = &filter {
+                if !name.to_ascii_lowercase().contains(filter_text) {
+                    continue;
+                }
+            }
+            let Some(ladder) = DNA_LADDERS.get(&name) else {
+                continue;
+            };
+            let bands = ladder
+                .bands()
+                .iter()
+                .map(|band| DnaLadderBandInfo {
+                    length_bp: band.length_bp,
+                    relative_strength: band.relative_strength,
+                })
+                .collect::<Vec<_>>();
+            ladders.push(DnaLadderInfo {
+                name,
+                loading_hint: ladder.loading_hint(),
+                min_bp: ladder.min_bp(),
+                max_bp: ladder.max_bp(),
+                band_count: bands.len(),
+                bands,
+            });
+        }
+
+        DnaLadderCatalog {
+            schema: "gentle.dna_ladders.v1".to_string(),
+            ladder_count: ladders.len(),
+            ladders,
+        }
+    }
+
+    pub fn export_dna_ladders(
+        path: &str,
+        name_filter: Option<&str>,
+    ) -> Result<DnaLadderExportReport, EngineError> {
+        let catalog = Self::inspect_dna_ladders(name_filter);
+        let text = serde_json::to_string_pretty(&catalog).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize DNA ladders JSON: {e}"),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write DNA ladders file '{path}': {e}"),
+        })?;
+        Ok(DnaLadderExportReport {
+            path: path.to_string(),
+            ladder_count: catalog.ladder_count,
+        })
     }
 
     fn open_reference_genome_catalog(
@@ -1016,6 +1143,68 @@ impl GentleEngine {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0)
+    }
+
+    fn append_genome_extraction_provenance(&mut self, entry: GenomeExtractionProvenance) {
+        let mut provenance = self
+            .state
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        if !provenance.is_object() {
+            provenance = json!({});
+        }
+        if let Some(obj) = provenance.as_object_mut() {
+            let mut records: Vec<GenomeExtractionProvenance> = obj
+                .get(GENOME_EXTRACTIONS_METADATA_KEY)
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            records.push(entry);
+            if let Ok(records_value) = serde_json::to_value(records) {
+                obj.insert(GENOME_EXTRACTIONS_METADATA_KEY.to_string(), records_value);
+            }
+            obj.insert("updated_at_unix_ms".to_string(), json!(Self::now_unix_ms()));
+            self.state
+                .metadata
+                .insert(PROVENANCE_METADATA_KEY.to_string(), provenance);
+        }
+    }
+
+    fn genome_source_snapshot(
+        source_plan: Option<&GenomeSourcePlan>,
+        inspection: Option<&PreparedGenomeInspection>,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) {
+        let sequence_source_type = source_plan
+            .map(|p| p.sequence_source_type.clone())
+            .or_else(|| inspection.map(|i| i.sequence_source_type.clone()));
+        let annotation_source_type = source_plan
+            .map(|p| p.annotation_source_type.clone())
+            .or_else(|| inspection.map(|i| i.annotation_source_type.clone()));
+        let sequence_source = source_plan
+            .map(|p| p.sequence_source.clone())
+            .or_else(|| inspection.map(|i| i.sequence_source.clone()));
+        let annotation_source = source_plan
+            .map(|p| p.annotation_source.clone())
+            .or_else(|| inspection.map(|i| i.annotation_source.clone()));
+        let sequence_sha1 = inspection.and_then(|i| i.sequence_sha1.clone());
+        let annotation_sha1 = inspection.and_then(|i| i.annotation_sha1.clone());
+        (
+            sequence_source_type,
+            annotation_source_type,
+            sequence_source,
+            annotation_source,
+            sequence_sha1,
+            annotation_sha1,
+        )
     }
 
     fn classify_import_origin(path: &str, dna: &DNAsequence) -> SequenceOrigin {
@@ -1506,6 +1695,53 @@ impl GentleEngine {
         }
     }
 
+    fn canonical_fasta_molecule(raw: Option<&str>) -> &'static str {
+        let normalized = raw
+            .unwrap_or("dsdna")
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['_', '-'], "")
+            .replace(' ', "");
+        match normalized.as_str() {
+            "ssdna" | "singlestrandeddna" | "single" | "ssdnaoligo" | "ss" => "ssdna",
+            "rna" | "ssrna" | "singlestrandedrna" | "transcript" | "mrna" | "cdna" => "rna",
+            _ => "dsdna",
+        }
+    }
+
+    fn fasta_metadata_tokens(dna: &DNAsequence) -> Vec<String> {
+        let molecule = Self::canonical_fasta_molecule(dna.molecule_type());
+        let mut tokens = vec![
+            format!("molecule={molecule}"),
+            format!(
+                "topology={}",
+                if dna.is_circular() {
+                    "circular"
+                } else {
+                    "linear"
+                }
+            ),
+        ];
+
+        if molecule == "dsdna" {
+            let overhang = dna.overhang();
+            if !overhang.forward_5.is_empty() {
+                tokens.push(format!("f5={}", Self::overhang_text(&overhang.forward_5)));
+            }
+            if !overhang.forward_3.is_empty() {
+                tokens.push(format!("f3={}", Self::overhang_text(&overhang.forward_3)));
+            }
+            if !overhang.reverse_5.is_empty() {
+                tokens.push(format!("r5={}", Self::overhang_text(&overhang.reverse_5)));
+            }
+            if !overhang.reverse_3.is_empty() {
+                tokens.push(format!("r3={}", Self::overhang_text(&overhang.reverse_3)));
+            }
+        }
+
+        tokens
+    }
+
     fn save_as_fasta(seq_id: &str, dna: &DNAsequence, path: &str) -> Result<(), EngineError> {
         let mut file = File::create(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -1519,7 +1755,14 @@ impl GentleEngine {
             .replace(' ', "_");
         let seq = dna.get_forward_string();
 
-        writeln!(file, ">{header}").map_err(|e| EngineError {
+        let mut header_line = format!(">{header}");
+        let metadata = Self::fasta_metadata_tokens(dna);
+        if !metadata.is_empty() {
+            header_line.push(' ');
+            header_line.push_str(&metadata.join(" "));
+        }
+
+        writeln!(file, "{header_line}").map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write FASTA header to '{path}': {e}"),
         })?;
@@ -2644,6 +2887,18 @@ impl GentleEngine {
                     ladders_used
                 ));
             }
+            Operation::ExportDnaLadders { path, name_filter } => {
+                let report = Self::export_dna_ladders(&path, name_filter.as_deref())?;
+                let filter_text = name_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                result.messages.push(format!(
+                    "Wrote DNA ladders catalog ({} ladder(s), filter={}) to '{}'",
+                    report.ladder_count, filter_text, report.path
+                ));
+            }
             Operation::ExportPool {
                 inputs,
                 path,
@@ -2714,6 +2969,41 @@ impl GentleEngine {
                 );
                 let base = output_id.unwrap_or(default_id);
                 let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
+                let inspection = catalog
+                    .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
+                    .ok()
+                    .flatten();
+                let (
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                    seq_id: seq_id.clone(),
+                    recorded_at_unix_ms: Self::now_unix_ms(),
+                    operation: "ExtractGenomeRegion".to_string(),
+                    genome_id: genome_id.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    chromosome: Some(chromosome.clone()),
+                    start_1based: Some(start_1based),
+                    end_1based: Some(end_1based),
+                    gene_query: None,
+                    occurrence: None,
+                    gene_id: None,
+                    gene_name: None,
+                    strand: None,
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                });
                 result.messages.push(format!(
                     "Extracted genome region {}:{}-{} from '{}' as '{}'",
                     chromosome, start_1based, end_1based, genome_id, seq_id
@@ -2831,6 +3121,41 @@ impl GentleEngine {
                 );
                 let base = output_id.unwrap_or(default_id);
                 let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
+                let inspection = catalog
+                    .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
+                    .ok()
+                    .flatten();
+                let (
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                    seq_id: seq_id.clone(),
+                    recorded_at_unix_ms: Self::now_unix_ms(),
+                    operation: "ExtractGenomeGene".to_string(),
+                    genome_id: genome_id.clone(),
+                    catalog_path: catalog_path.clone(),
+                    cache_dir: cache_dir.clone(),
+                    chromosome: Some(selected_gene.chromosome.clone()),
+                    start_1based: Some(selected_gene.start_1based),
+                    end_1based: Some(selected_gene.end_1based),
+                    gene_query: Some(query.to_string()),
+                    occurrence: Some(occurrence),
+                    gene_id: selected_gene.gene_id.clone(),
+                    gene_name: selected_gene.gene_name.clone(),
+                    strand: selected_gene.strand,
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                });
                 let match_mode = if used_fuzzy { "fuzzy" } else { "exact" };
                 result.messages.push(format!(
                     "Extracted genome gene '{}' [{} match, occurrence {}] as '{}' from '{}' ({})",
@@ -4569,6 +4894,7 @@ impl Engine for GentleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bio::io::fasta;
     use flate2::{write::GzEncoder, Compression};
     use std::env;
     use std::fs;
@@ -4578,6 +4904,43 @@ mod tests {
 
     fn seq(s: &str) -> DNAsequence {
         DNAsequence::from_sequence(s).unwrap()
+    }
+
+    fn synth_oligo(desc: &str, sequence: &[u8]) -> DNAsequence {
+        let record = fasta::Record::with_attrs("synthetic", Some(desc), sequence);
+        DNAsequence::from_fasta_record(&record)
+    }
+
+    fn assert_fasta_roundtrip(expected: DNAsequence) {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("synth".to_string(), expected.clone());
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("fa");
+        let path_text = path.display().to_string();
+
+        engine
+            .apply(Operation::SaveFile {
+                seq_id: "synth".to_string(),
+                path: path_text.clone(),
+                format: ExportFormat::Fasta,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::LoadFile {
+                path: path_text,
+                as_id: Some("roundtrip".to_string()),
+            })
+            .unwrap();
+
+        let actual = engine
+            .state()
+            .sequences
+            .get("roundtrip")
+            .expect("roundtrip sequence should exist");
+        assert_eq!(actual.assert_sequence_equality(&expected), Ok(()));
     }
 
     fn write_gzip(path: &Path, text: &str) {
@@ -5590,6 +5953,33 @@ mod tests {
     }
 
     #[test]
+    fn test_fasta_roundtrip_synthetic_dsdna_blunt() {
+        let expected = synth_oligo("molecule=dsdna topology=linear", b"ATGCATGC");
+        assert_fasta_roundtrip(expected);
+    }
+
+    #[test]
+    fn test_fasta_roundtrip_synthetic_ssdna() {
+        let expected = synth_oligo("molecule=ssdna topology=linear", b"ATGCATGC");
+        assert_fasta_roundtrip(expected);
+    }
+
+    #[test]
+    fn test_fasta_roundtrip_synthetic_rna() {
+        let expected = synth_oligo("molecule=rna topology=linear", b"AUGTT");
+        assert_fasta_roundtrip(expected);
+    }
+
+    #[test]
+    fn test_fasta_roundtrip_synthetic_dsdna_with_overhangs() {
+        let expected = synth_oligo(
+            "molecule=dsdna f5=GATC r5=CTAG topology=linear",
+            b"ATGCATGC",
+        );
+        assert_fasta_roundtrip(expected);
+    }
+
+    #[test]
     fn test_save_file_operation_genbank() {
         let mut state = ProjectState::default();
         state.sequences.insert("s".to_string(), seq("ATGCCA"));
@@ -5970,6 +6360,44 @@ mod tests {
     }
 
     #[test]
+    fn test_inspect_dna_ladders() {
+        let catalog = GentleEngine::inspect_dna_ladders(None);
+        assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
+        assert!(catalog.ladder_count > 0);
+        assert_eq!(catalog.ladder_count, catalog.ladders.len());
+        assert!(catalog
+            .ladders
+            .iter()
+            .any(|ladder| ladder.name == "NEB 100bp DNA Ladder"));
+    }
+
+    #[test]
+    fn test_export_dna_ladders_operation() {
+        let mut engine = GentleEngine::new();
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("dna.ladders.json");
+        let path_text = path.display().to_string();
+        let res = engine
+            .apply(Operation::ExportDnaLadders {
+                path: path_text.clone(),
+                name_filter: Some("NEB".to_string()),
+            })
+            .unwrap();
+        assert!(res
+            .messages
+            .iter()
+            .any(|m| m.contains("DNA ladders catalog")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        let catalog: DnaLadderCatalog = serde_json::from_str(&text).unwrap();
+        assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
+        assert!(catalog.ladder_count > 0);
+        assert!(catalog
+            .ladders
+            .iter()
+            .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb")));
+    }
+
+    #[test]
     fn test_save_file_operation_fasta() {
         let mut state = ProjectState::default();
         state.sequences.insert("s".to_string(), seq("ATGCCA"));
@@ -5988,6 +6416,29 @@ mod tests {
         let text = std::fs::read_to_string(path_text).unwrap();
         assert!(text.starts_with(">"));
         assert!(text.contains("ATGCCA"));
+    }
+
+    #[test]
+    fn test_save_file_operation_fasta_includes_synthetic_metadata() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "s".to_string(),
+            synth_oligo("molecule=ssdna topology=linear", b"ATGCCA"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("fa");
+        let path_text = path.display().to_string();
+        engine
+            .apply(Operation::SaveFile {
+                seq_id: "s".to_string(),
+                path: path_text.clone(),
+                format: ExportFormat::Fasta,
+            })
+            .unwrap();
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("molecule=ssdna"));
+        assert!(text.contains("topology=linear"));
     }
 
     #[test]
@@ -6344,6 +6795,46 @@ mod tests {
         assert_eq!(extract_gene.created_seq_ids, vec!["toy_gene".to_string()]);
         let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
         assert_eq!(loaded_gene.get_forward_string(), "ACGTACGTACGT");
+        let provenance = engine
+            .state()
+            .metadata
+            .get("provenance")
+            .and_then(|v| v.as_object())
+            .expect("provenance metadata object");
+        let extractions = provenance
+            .get("genome_extractions")
+            .and_then(|v| v.as_array())
+            .expect("genome_extractions array");
+        assert_eq!(extractions.len(), 2);
+        assert!(extractions.iter().any(|entry| {
+            entry
+                .get("seq_id")
+                .and_then(|v| v.as_str())
+                .map(|v| v == "toy_slice")
+                .unwrap_or(false)
+                && entry
+                    .get("operation")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "ExtractGenomeRegion")
+                    .unwrap_or(false)
+        }));
+        assert!(extractions.iter().any(|entry| {
+            entry
+                .get("seq_id")
+                .and_then(|v| v.as_str())
+                .map(|v| v == "toy_gene")
+                .unwrap_or(false)
+                && entry
+                    .get("operation")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "ExtractGenomeGene")
+                    .unwrap_or(false)
+                && entry
+                    .get("sequence_sha1")
+                    .and_then(|v| v.as_str())
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false)
+        }));
     }
 
     #[test]

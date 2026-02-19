@@ -438,15 +438,19 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
+  gentle_cli [--state PATH|--project PATH] ladders list [--filter TEXT]\n  \
+  gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--filter TEXT]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
   gentle_cli genomes list [--catalog PATH]\n  \
+  gentle_cli genomes validate-catalog [--catalog PATH]\n  \
   gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli helpers list [--catalog PATH]\n  \
+  gentle_cli helpers validate-catalog [--catalog PATH]\n  \
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
@@ -798,7 +802,7 @@ fn run() -> Result<(), String> {
 
     if matches!(
         command.as_str(),
-        "genomes" | "helpers" | "resources" | "import-pool"
+        "genomes" | "helpers" | "resources" | "import-pool" | "ladders"
     ) {
         let tokens = args[cmd_idx..].to_vec();
         let shell_command = parse_shell_tokens(&tokens)?;

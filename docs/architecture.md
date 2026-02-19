@@ -225,6 +225,7 @@ Legend:
 | `SaveFile` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderSequenceSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderLineageSvg` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ExportDnaLadders` | Exposed | Wired | Exposed | Exposed | Implemented |
 | `ExportPool` | Wired | Wired | Exposed | Exposed | Implemented |
 | `PrepareGenome` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExtractGenomeRegion` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -268,6 +269,9 @@ Notes from current code:
 - GUI now exposes dedicated controls for `PrepareGenome` and
   `ExtractGenomeRegion` from the main-window menu as separate dialogs:
   `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
+- GUI now exposes a third reference-genome dialog, `Prepared References...`,
+  to inspect prepared installations (paths, readiness flags, source types,
+  and checksum fingerprints).
 - GUI also exposes helper-catalog shortcuts (`Prepare Helper Genome...`,
   `Retrieve Helper Sequence...`) that preselect helper catalog/cache defaults.
 - GUI genome selection is catalog-backed dropdown (no free-text genome id
@@ -282,11 +286,16 @@ Notes from current code:
 - CLI now exposes a shared shell command path (`gentle_cli shell ...`) that
   reuses `src/engine_shell.rs` (also used by GUI `Shell` panel).
 - Shared shell command coverage now includes `genomes`, `helpers`,
-  `resources`, and `import-pool`, and `gentle_cli` top-level dispatch routes
+  `resources`, `ladders`, and `import-pool`, and `gentle_cli` top-level dispatch routes
   these trees through the same shared parser/executor used by GUI Shell.
 - Shared shell/CLI `genomes status` and `helpers status` now include resolved
   source type reporting (`sequence_source_type`, `annotation_source_type`) in
   addition to prepared/not-prepared state.
+- Shared shell/CLI now include `genomes validate-catalog` and
+  `helpers validate-catalog` for preflight catalog validation.
+- Genome preparation now persists SHA-1 integrity fields in per-genome manifest
+  files and validates/backfills them on cache reuse; HTTP source downloads use
+  resumable Range requests with retry/backoff.
 - CLI includes dedicated `helpers` convenience subcommands (list/status/genes/
   prepare/extract-region/extract-gene) that default to
   `assets/helper_genomes.json`.
@@ -375,6 +384,10 @@ Why this works with your CLI concern:
   (`run_id`, tool name, caller id) when available.
 - If no external context is provided, provenance still remains valid through
   operation edges and parent state ids.
+- Current implementation now appends extraction-level provenance entries at
+  `ProjectState.metadata["provenance"]["genome_extractions"]` for
+  `ExtractGenomeRegion` and `ExtractGenomeGene`, including source descriptors
+  and checksum fields when available.
 
 Practical rule:
 
@@ -519,6 +532,9 @@ If work is interrupted, resume in this order:
 - Promote pool export to engine operation (`ExportPool`): accepted
 - Promote sequence/map SVG and lineage SVG export to engine operations
   (`RenderSequenceSvg`, `RenderLineageSvg`): accepted and implemented
+- Promote DNA ladder catalog export to engine operation (`ExportDnaLadders`)
+  and expose ladder inspection/export across CLI/JS/Lua/shared shell:
+  accepted and implemented
 - Promote container semantics to first-class engine state: accepted and
   implemented (`ProjectState.container_state`)
 - Add container-first operations: accepted and implemented
