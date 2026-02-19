@@ -9,8 +9,8 @@
   "Human GRCh38 Ensembl 116": {
     "ncbi_taxonomy_id": 9606,
     "description": "Human GRCh38 Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
     "cache_dir": "data/genomes"
   },
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {
@@ -23,15 +23,15 @@
   "Mouse GRCm39 Ensembl 116": {
     "ncbi_taxonomy_id": 10090,
     "description": "Mouse GRCm39 Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
     "cache_dir": "data/genomes"
   },
   "Rat GRCr8 Ensembl 116": {
     "ncbi_taxonomy_id": 10116,
     "description": "Rat GRCr8 Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/rattus_norvegicus/dna/Rattus_norvegicus.GRCr8.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/rattus_norvegicus/Rattus_norvegicus.GRCr8.116.gtf.gz",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/rattus_norvegicus/dna/Rattus_norvegicus.GRCr8.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/:tf/rattus_norvegicus/Rattus_norvegicus.GRCr8.116.gtf.gz",
     "cache_dir": "data/genomes"
   },
   "Saccharomyces cerevisiae S288c Ensembl 113": {
@@ -39,10 +39,10 @@
     "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
     "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.113.gtf.gz"
   },
-  "Saccharomyces cerevisiae S288c Ensembl 116": {
-    "description": "Saccharomyces cerevisiae S288c Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.116.gtf.gz",
+  "Saccharomyces cerevisiae S288c Ensembl 115": {
+    "description": "Saccharomyces cerevisiae S288c Ensembl 115",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-115/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-115/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.116.gtf.gz",
     "cache_dir": "data/genomes"
   },
   "LocalProject": {
