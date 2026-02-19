@@ -7,10 +7,17 @@ This page documents the current graphical interface of GENtle.
 ```bash
 cargo run --bin gentle
 cargo run --bin gentle -- path/to/project.gentle.json
-cargo run --bin gentle -- --allow-screenshots
+cargo run --features screenshot-capture --bin gentle -- --allow-screenshots
 ```
 
 The GUI opens an empty project unless a project path is passed on startup.
+
+Screenshot capture policy:
+
+- Default builds keep screenshot capture unavailable.
+- Screenshot capture requires:
+  - build feature `screenshot-capture`
+  - runtime flag `--allow-screenshots`
 
 ## Configuration Window
 
@@ -26,8 +33,12 @@ Access:
 Tabs:
 
 - `External Applications`
-  - Configure external executable override for `rnapkin` (`GENTLE_RNAPKIN_BIN`).
-  - Validate executable availability/version from within the UI (`rnapkin --version` check).
+  - Configure external executable overrides for:
+    - `rnapkin` (`GENTLE_RNAPKIN_BIN`)
+    - `makeblastdb` (`GENTLE_MAKEBLASTDB_BIN`)
+    - `blastn` (`GENTLE_BLASTN_BIN`)
+    - `bigWigToBedGraph` (`GENTLE_BIGWIG_TO_BEDGRAPH_BIN`)
+  - Validate executable availability/version from within the UI.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
   - Applies to sequence windows through the shared engine display state.
@@ -142,7 +153,7 @@ Supported commands:
 - `state-summary`
 - `load-project PATH`
 - `save-project PATH`
-- `screenshot-window OUTPUT.png`
+- `screenshot-window OUTPUT.png` (only in screenshot-enabled builds)
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
 - `render-rna-svg SEQ_ID OUTPUT.svg`
 - `rna-info SEQ_ID`
@@ -159,6 +170,7 @@ Supported commands:
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
 - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
 - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+- `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers list [--catalog PATH]`
@@ -166,21 +178,31 @@ Supported commands:
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+- `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+- `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
 
 Screenshot command (shared shell, implemented):
 
 - `screenshot-window OUTPUT.png`
-  - guarded by startup opt-in flag `--allow-screenshots`
+  - compile-time gated: available only in builds with feature
+    `screenshot-capture`
+  - runtime gated: still requires startup opt-in flag `--allow-screenshots`
   - captures active/topmost GENtle window only
   - window lookup uses native AppKit in-process path (no AppleScript bridge)
   - saves to caller-provided output filename/path
   - current backend support: macOS (`screencapture`); other platforms currently
     return unsupported
+
+## Documentation automation status
+
+- Auto-updated documentation with embedded graphics is explicitly postponed.
+- Current policy is manual documentation updates with optional manual screenshot
+  artifacts.
 
 ## About GENtle
 
@@ -226,8 +248,13 @@ Current linear map conventions are:
 
 - Forward-strand features are shown above the DNA backbone
 - Reverse-strand features are shown below the DNA backbone
+- Regulatory features (for example TFBS / `regulatory_region`) are grouped into
+  dedicated upper lanes above forward-strand coding features to keep dense loci
+  readable
 - Directional features use arrow-shaped ends
 - Feature labels are lane-packed to reduce overlap
+- Coordinate fallback labels are suppressed for unlabeled regulatory features
+  to avoid clutter in dense tracks
 - Restriction enzyme labels are lane-packed to reduce overlap
 
 ## Circular map conventions
@@ -366,8 +393,10 @@ standalone window/viewport (not embedded in the project canvas):
 - `File -> Prepare Reference Genome...` (or `Genome -> Prepare Reference Genome...`)
 - `File -> Prepared References...` (or `Genome -> Prepared References...`)
 - `File -> Retrieve Genome Sequence...` (or `Genome -> Retrieve Genome Sequence...`)
+- `File -> BLAST Genome Sequence...` (or `Genome -> BLAST Genome Sequence...`)
 - `File -> Prepare Helper Genome...` (or `Genome -> Prepare Helper Genome...`)
 - `File -> Retrieve Helper Sequence...` (or `Genome -> Retrieve Helper Sequence...`)
+- `File -> BLAST Helper Sequence...` (or `Genome -> BLAST Helper Sequence...`)
 
 Recommended flow:
 
@@ -377,7 +406,7 @@ Recommended flow:
    - select `genome` from dropdown values loaded from catalog JSON
    - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
-   - this runs in background, shows live progress, and builds local FASTA index
+   - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
    - if a previous attempt already downloaded `sequence.fa` but annotation
      resolution fails (for example wrong GTF path), the next retry reuses the
      local FASTA instead of downloading it again
@@ -396,17 +425,32 @@ Recommended flow:
    - click `Extract Selected Gene` (engine op `ExtractGenomeGene`) or
      `Extract Region` (explicit coordinate extraction)
    - coordinates are 1-based and inclusive
-3. Inspect prepared installations when needed:
+3. Run BLAST searches against prepared references:
+   - open `BLAST Genome Sequence...`
+   - select a prepared `genome` from the selected `catalog` + `cache_dir`
+   - choose query source:
+     - `Manual sequence` (paste sequence text)
+     - `Project sequence` (blast one loaded sequence by id)
+     - `Project pool` (blast all members of a selected pool/container)
+   - set `max_hits` and `task` (`blastn-short` or `blastn`)
+   - click `Run BLAST`
+   - BLAST runs in background and keeps the UI responsive; pool mode returns one result set per member
+4. Inspect prepared installations when needed:
    - open `Prepared References...`
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
    - use `Retrieve` directly from an inspected row
-4. Overlay ChIP-seq/CUT&RUN BED peaks onto an extracted sequence:
-   - open `Genome -> Import BED Track...`
-   - select a genome-anchored sequence (created by genome extract ops)
-   - choose a BED file (`.bed` or `.bed.gz`)
+5. Overlay signal tracks (BED or BigWig) onto an extracted sequence:
+   - open `Genome -> Import Genome Track...`
+   - this opens in its own floating window
+   - optionally select a genome-anchored sequence (for one-sequence import)
+   - choose a track file (`.bed`, `.bed.gz`, `.bw`, or `.bigWig`)
    - optionally set track name and score filters
-   - click `Import BED Track`
+   - click one of:
+     - `Import To Selected`
+     - `Import To All Anchored (One-Time)`
+     - `Import To All Anchored + Track`
+   - tracked files are listed in the same window and can be re-applied or removed
 
 Equivalent workflow JSON (still supported via workflow runner):
 
@@ -439,14 +483,27 @@ Notes:
   non-assembly records). If explicit URLs are absent, GENtle derives NCBI EFetch
   sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
   indexes extracted feature records for search/retrieval.
-- BED track import accepts both plain and gzipped BED files (`.bed` / `.bed.gz`).
-- BED track import requires a genome-anchored sequence (`ExtractGenomeRegion` or
+- Genome track import accepts BED (`.bed` / `.bed.gz`) and BigWig (`.bw` / `.bigWig`) inputs.
+- BigWig import uses `bigWigToBedGraph` and can be overridden via `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`.
+- Genome track import requires a genome-anchored sequence (`ExtractGenomeRegion` or
   `ExtractGenomeGene`) to map genomic coordinates into local sequence coordinates.
+- Imported GenBank files that include an NCBI `ACCESSION ... REGION: start..end`
+  header are auto-anchored on load (for example `NC_000001 REGION: 3652516..3736201`),
+  so BED tracks can be aligned immediately.
+- `ACCESSION ... REGION: complement(start..end)` is interpreted as a reverse
+  genomic anchor (`strand -`), and BED intervals are remapped into local
+  sequence coordinates accordingly.
+- `Import To All Anchored + Track` stores a tracked subscription in project
+  metadata and auto-applies it to newly added anchored sequences.
 - Prepare/Retrieve dialogs show resolved source types for the selected entry
   (`local`, `ncbi_assembly`, `genbank_accession`, `remote_http`).
 - Retrieval fields are enabled only after the selected genome is prepared.
 - During preparation, a persistent `genes.json` index is built in the genome
   cache to keep retrieval responsive.
+- During preparation, GENtle also prepares a BLAST nucleotide index (if
+  `makeblastdb` is available).
+- BLAST command-line searches use `blastn` and can be configured in
+  `Configuration -> External Applications`.
 - HTTP downloads support resume/retry behavior and continue from partial files
   when possible.
 - Manifest integrity fields (`sequence_sha1`, `annotation_sha1`) are captured
@@ -478,7 +535,9 @@ Use the top application menu:
 - `File -> Prepare Reference Genome...`
 - `File -> Prepared References...`
 - `File -> Retrieve Genome Sequence...`
+- `File -> BLAST Genome Sequence...`
 - `File -> Prepare Helper Genome...`
+- `File -> BLAST Helper Sequence...`
 - `File -> Retrieve Helper Sequence...`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
@@ -489,6 +548,7 @@ Shortcut:
 
 - `Cmd+Shift+G` opens `Retrieve Genome Sequence...`.
 - `Cmd+Shift+P` opens `Prepare Reference Genome...`.
+- `Cmd+Shift+L` opens `BLAST Genome Sequence...`.
 
 Resource import behavior:
 

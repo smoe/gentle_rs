@@ -42,7 +42,8 @@ Strategic aims:
    technical assistant can follow step by step (inputs, operations, expected
    outputs, and checkpoints).
 4. Support optional, explicit screenshot artifact generation for documentation
-   and progress communication without weakening default safety boundaries.
+   and progress communication without weakening default safety boundaries
+   (compile-time feature gate + explicit runtime opt-in).
 
 ## 2. Core architecture rule
 
@@ -83,6 +84,13 @@ They only translate user input into engine operations and display results.
   - engine operation `PrepareGenome` (one-time local install/cache of sequence + annotation)
   - engine operation `ExtractGenomeRegion` (indexed region retrieval into project sequence state)
   - engine operation `ExtractGenomeGene` (gene-name/id-based retrieval from indexed annotations)
+  - BLAST indexing during prepare (`makeblastdb`) with persisted DB prefix/status in manifest
+  - BLAST indexing is best-effort during prepare: missing/failed `makeblastdb`
+    is surfaced as warnings while genome preparation itself can still succeed
+  - BLAST query API for prepared references/helpers (`blastn-short` / `blastn`)
+  - dedicated GUI BLAST viewport (`BLAST Genome Sequence...`) with helper-catalog shortcut
+  - BLAST worker-thread execution in GUI (progress + non-blocking UI)
+  - BLAST GUI query source modes: manual sequence, project sequence, project pool/container
   - optional `cache_dir` override passed through both operations
   - progress events for background genome preparation in GUI
   - annotation-derived gene listing API for GUI gene-name filtering and gene extraction
@@ -102,6 +110,16 @@ They only translate user input into engine operations and display results.
     transient status/network errors, clearer fetch error reporting)
 - Built-in JASPAR motif snapshot (2026 CORE non-redundant derived) is shipped in `assets/jaspar.motifs.json`
     with runtime override at `data/resources/jaspar.motifs.json`
+- Genome signal-track import baseline:
+  - engine operation `ImportGenomeBedTrack` (BED/BED.GZ)
+  - engine operation `ImportGenomeBigWigTrack` (BigWig via `bigWigToBedGraph` conversion)
+  - stranded anchor-aware coordinate remapping for genome-anchored sequences
+  - generated signal features normalized with shared qualifiers
+    (`gentle_track_source`, `gentle_generated`)
+  - GUI track-import dialog supports both BED and BigWig via file-extension
+    detection (`.bed`/`.bed.gz` and `.bw`/`.bigwig`)
+  - optional tracked signal-file subscriptions persisted in state metadata and
+    auto-reapplied to newly anchored extracted sequences
 - TFBS runtime guardrails:
   - `AnnotateTfbs.max_hits` supports safe caps
   - default cap is `500` accepted hits per operation
@@ -119,6 +137,8 @@ They only translate user input into engine operations and display results.
 - SVG export parity for TFBS filtering:
   - linear/circular SVG export uses the same TFBS display criteria as GUI
   - no recomputation required to reduce visual TFBS density
+  - linear SVG now mirrors GUI regulatory-lane grouping for dense TFBS /
+    regulatory tracks
 
 ### Engine capabilities currently implemented
 
@@ -127,6 +147,7 @@ They only translate user input into engine operations and display results.
   - `LoadFile`
   - `SaveFile`
   - `RenderSequenceSvg`
+  - `RenderRnaStructureSvg`
   - `RenderLineageSvg`
   - `RenderPoolGelSvg`
   - `ExportDnaLadders`
@@ -135,6 +156,8 @@ They only translate user input into engine operations and display results.
   - `PrepareGenome`
   - `ExtractGenomeRegion`
   - `ExtractGenomeGene`
+  - `ImportGenomeBedTrack`
+  - `ImportGenomeBigWigTrack`
   - `DigestContainer`
   - `MergeContainersById`
   - `LigationContainer`
@@ -170,6 +193,9 @@ They only translate user input into engine operations and display results.
 
 - Linear renderer rewritten
 - Added overlap management and strand-aware placement in linear mode
+- Dense regulatory features (TFBS/`regulatory*`) are lane-packed into a
+  dedicated upper group in linear mode; coordinate-only fallback labels are
+  suppressed for unlabeled regulatory features
 - Circular renderer now supports multipart feature locations (`Join`, `Order`,
   nested `Complement`/`External`): exon-like segments are rendered separately
   with intron arches between them
@@ -213,10 +239,13 @@ Legend:
 | TFBS annotation with progress | Done | Done | Done | Done | Done |
 | TFBS display filtering (4 criteria) | Done | Done | Done | Done | Done |
 | Sequence SVG export | Done | Done | Done | Done | Done |
+| RNA secondary-structure SVG export | Done | Done | Done | Done | Done |
 | Lineage SVG export | Done | Done | Done | Done | Done |
 | Pool gel SVG export (auto ladder selection) | Done | Done | Done | Done | Done |
 | Pool export (overhang-aware) | Done | Done | Done | Done | Done |
 | Reference genome prepare + gene/region extraction | Done | Done | Done | Done | Done |
+| Genome BED track import | Done | Done | Done | Done | Done |
+| Genome BigWig track import | Done | Done | Done | Done | Done |
 | State summary (seq + container) | Done | Done | Done | Done | Done |
 | Shared operation protocol | Partial | Done | Done | Done | Done |
 
@@ -237,6 +266,7 @@ Legend:
 | `LoadFile` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SaveFile` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderSequenceSvg` | Wired | Wired | Exposed | Exposed | Implemented |
+| `RenderRnaStructureSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderLineageSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `RenderPoolGelSvg` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExportDnaLadders` | Exposed | Wired | Exposed | Exposed | Implemented |
@@ -245,6 +275,8 @@ Legend:
 | `PrepareGenome` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExtractGenomeRegion` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ExtractGenomeGene` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ImportGenomeBedTrack` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ImportGenomeBigWigTrack` | Wired | Wired | Exposed | Exposed | Implemented |
 | `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
 | `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
 | `LigationContainer` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -285,6 +317,9 @@ Notes from current code:
   `ExtractGenomeRegion` from the main-window menu as separate dialogs:
   `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
   `Prepare Reference Genome...` is rendered in its own viewport window.
+- GUI now exposes a dedicated BLAST viewport (`BLAST Genome Sequence...`) with
+  helper-catalog entry point (`BLAST Helper Sequence...`), and runs BLAST work
+  in a background worker thread with progress reporting.
 - GUI now exposes a third reference-genome dialog, `Prepared References...`,
   to inspect prepared installations (paths, readiness flags, source types,
   and checksum fingerprints).
@@ -299,13 +334,23 @@ Notes from current code:
   utility-style contracts (notably `ExportDnaLadders` / `ExportRnaLadders`) are currently exposed
   through shared shell/adapter surfaces rather than dedicated first-class GUI
   controls.
+- GUI main-loop hardening now avoids redundant per-frame window-title updates
+  to prevent idle redraw/event churn on macOS.
 - CLI exposes all implemented operations (`op`/`workflow`) and adds some
   adapter-level utilities (render and import helpers).
 - CLI now exposes a shared shell command path (`gentle_cli shell ...`) that
   reuses `src/engine_shell.rs` (also used by GUI `Shell` panel).
 - Shared shell command coverage now includes `genomes`, `helpers`,
-  `resources`, `ladders`, and `import-pool`, and `gentle_cli` top-level dispatch routes
-  these trees through the same shared parser/executor used by GUI Shell.
+  `resources`, `ladders`, `tracks`, and `import-pool`, and `gentle_cli` top-level
+  dispatch routes these trees through the same shared parser/executor used by
+  GUI Shell.
+- Shared `tracks` command tree now includes both `import-bed` and
+  `import-bigwig` (BigWig converted through `bigWigToBedGraph` before import).
+- GUI track import persists optional subscription rules
+  (`ProjectState.metadata["genome_bed_track_subscriptions"]`) and can
+  auto-sync tracked BED/BigWig sources onto newly created anchored sequences.
+- Shared shell/CLI reference commands now include `genomes blast` and
+  `helpers blast` for BLAST query execution against prepared/indexed catalogs.
 - Shared shell/CLI `genomes status` and `helpers status` now include resolved
   source type reporting (`sequence_source_type`, `annotation_source_type`) in
   addition to prepared/not-prepared state.
@@ -315,13 +360,14 @@ Notes from current code:
   files and validates/backfills them on cache reuse; HTTP source downloads use
   resumable Range requests with retry/backoff.
 - CLI includes dedicated `helpers` convenience subcommands (list/status/genes/
-  prepare/extract-region/extract-gene) that default to
+  prepare/blast/extract-region/extract-gene) that default to
   `assets/helper_genomes.json`.
 - CLI/JS/Lua now expose dedicated reference-genome helper surfaces in addition
   to raw operation bridges:
   - catalog listing
   - prepared-status checks
   - gene-index listing
+  - BLAST query helpers
   - prepare/extract convenience wrappers
 - REBASE/JASPAR snapshot update paths are now exposed across CLI, JS, Lua, and
   GUI (GUI through File-menu import actions).
@@ -404,8 +450,8 @@ Why this works with your CLI concern:
   operation edges and parent state ids.
 - Current implementation now appends extraction-level provenance entries at
   `ProjectState.metadata["provenance"]["genome_extractions"]` for
-  `ExtractGenomeRegion` and `ExtractGenomeGene`, including source descriptors
-  and checksum fields when available.
+  `ExtractGenomeRegion` and `ExtractGenomeGene`, including source descriptors,
+  checksum fields, and anchor-strand context (`anchor_strand`) when available.
 
 Practical rule:
 
@@ -432,8 +478,11 @@ Practical rule:
 - State import/export and summary
 - Capabilities reporting
 - Shared shell command path (`shell`) aligned with GUI Shell panel
-- Optional screenshot bridge guarded by `--allow-screenshots`:
-  - default behavior: disabled
+- Optional screenshot bridge (compile-time + runtime gated):
+  - default behavior: unavailable in default builds (`screenshot-capture`
+    feature disabled)
+  - runtime behavior in screenshot-enabled builds: still disabled until explicit
+    `--allow-screenshots` opt-in
   - enabled behavior: allow invoking the host system screenshot utility from an
     explicit screenshot command path
   - capture scope: active GENtle window only (not full desktop)
@@ -442,6 +491,10 @@ Practical rule:
   - shared command surface:
     - direct CLI command: `screenshot-window OUTPUT.png`
     - shared shell command: `screenshot-window OUTPUT.png`
+  - practical runtime scope:
+    - most useful from GUI shell in a running `gentle` process
+    - headless `gentle_cli` processes usually have no eligible active GENtle
+      window and therefore return an explicit error
   - current operation shape for command result payload:
     - `schema` (`gentle.screenshot.v1`)
     - `path` (caller-chosen filename)
@@ -457,8 +510,9 @@ Practical rule:
     - capture of non-GENtle windows
     - background/hidden-window capture without explicit future contract
   - output: caller-provided custom filename/path for saved image artifact
-  - purpose: automate documentation refresh and produce image-backed progress
-    updates for third-party communication
+  - current purpose: explicit/manual screenshot artifact capture for progress
+    communication
+  - explicitly postponed concept: auto-updated documentation with graphics
 
 ## 6. Protocol-first direction
 
@@ -542,6 +596,9 @@ Use same view model for GUI and machine consumers.
 - process-protocol export contract (plain-text, technical-assistant-friendly
   step list derived from workflow/operation provenance)
 - harden adapter screenshot bridge (expand backend coverage and automated tests)
+- keep graphics-backed documentation updates manual for now; postpone
+  auto-updated documentation with graphics until screenshot backend parity and
+  security policy are stabilized
 
 ### Phase E: interpretation (later)
 
@@ -569,12 +626,17 @@ If work is interrupted, resume in this order:
 - View model contract is not yet formalized
 - Some rendering/import/export utilities are still adapter-level contracts
   instead of engine operations
+- GUI signal-track dialog currently relies on file-extension detection for
+  BED-vs-BigWig routing; explicit source-type override controls are not yet
+  exposed
 - `import-pool` remains a shared shell/CLI utility contract (no dedicated
   engine operation yet)
 - No dedicated engine operation yet for exporting a full run/process as a
   technical-assistant protocol text artifact
 - Screenshot bridge is implemented as an adapter utility, but backend support is
   currently macOS-only
+- Auto-updated documentation with embedded graphics is intentionally postponed
+  (manual update flow remains the active policy)
 
 ## 12. Decision log (concise)
 
@@ -590,7 +652,10 @@ If work is interrupted, resume in this order:
   accepted and implemented
 - Add opt-in screenshot artifact bridge (`--allow-screenshots`) for
   documentation/progress image generation with active-window-only capture:
-  accepted and implemented (adapter-level command path; macOS backend)
+  accepted and implemented (adapter-level command path; macOS backend; default
+  build now keeps screenshot capture unavailable unless feature-enabled)
+- Postpone auto-updated documentation with graphics:
+  accepted and postponed (manual documentation updates remain in effect)
 - Add protocol-grade process export as a strategic requirement:
   accepted and planned (engine-level contract pending)
 - Promote container semantics to first-class engine state: accepted and
@@ -604,5 +669,15 @@ If work is interrupted, resume in this order:
   accepted and implemented
 - Add shared TFBS display filtering criteria and enforce parity in SVG export:
   accepted and implemented
+- Add dedicated GUI BLAST viewport with background execution/progress and
+  project-sequence/pool query modes: accepted and implemented
+- Add BigWig genome-signal import operation (`ImportGenomeBigWigTrack`) with
+  `bigWigToBedGraph` conversion and shared shell/adapter exposure:
+  accepted and implemented
+- Add tracked genome-signal subscriptions with auto-sync for newly anchored
+  sequences in GUI state metadata:
+  accepted and implemented
+- Prevent idle redraw churn by deduplicating window-title viewport commands in
+  GUI update loop: accepted and implemented
 - Defer for now: `import-pool` engine operation until first-class container
   semantics settle for stable import behavior across adapters.

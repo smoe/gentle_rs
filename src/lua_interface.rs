@@ -67,6 +67,12 @@ impl LuaInterface {
             "  - list_reference_genome_genes(genome_id, [catalog_path], [cache_dir]): Lists indexed genes"
         );
         println!(
+            "  - blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir]): BLAST query against prepared genome"
+        );
+        println!(
+            "  - blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir]): BLAST query against helper catalog genome"
+        );
+        println!(
             "  - prepare_genome(project, genome_id, [catalog_path], [cache_dir]): Engine op helper"
         );
         println!("  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper");
@@ -184,6 +190,56 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
             &genome_id,
+            cache_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+        )
+        .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn blast_reference_genome(
+        genome_id: String,
+        query_sequence: String,
+        max_hits: Option<usize>,
+        task: Option<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    ) -> LuaResult<crate::genomes::GenomeBlastReport> {
+        GentleEngine::blast_reference_genome(
+            catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+            &genome_id,
+            &query_sequence,
+            max_hits.unwrap_or(25).max(1),
+            task.as_deref().map(str::trim).filter(|v| !v.is_empty()),
+            cache_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
+        )
+        .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn blast_helper_genome(
+        genome_id: String,
+        query_sequence: String,
+        max_hits: Option<usize>,
+        task: Option<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    ) -> LuaResult<crate::genomes::GenomeBlastReport> {
+        GentleEngine::blast_helper_genome(
+            &genome_id,
+            &query_sequence,
+            max_hits.unwrap_or(25).max(1),
+            task.as_deref().map(str::trim).filter(|v| !v.is_empty()),
+            catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty()),
             cache_dir
                 .as_deref()
                 .map(str::trim)
@@ -357,6 +413,56 @@ impl LuaInterface {
         )?;
 
         self.lua.globals().set(
+            "blast_reference_genome",
+            self.lua.create_function(
+                |lua,
+                 (genome_id, query_sequence, max_hits, task, catalog_path, cache_dir): (
+                    String,
+                    String,
+                    Option<usize>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let report = Self::blast_reference_genome(
+                        genome_id,
+                        query_sequence,
+                        max_hits,
+                        task,
+                        catalog_path,
+                        cache_dir,
+                    )?;
+                    lua.to_value(&report)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "blast_helper_genome",
+            self.lua.create_function(
+                |lua,
+                 (genome_id, query_sequence, max_hits, task, catalog_path, cache_dir): (
+                    String,
+                    String,
+                    Option<usize>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let report = Self::blast_helper_genome(
+                        genome_id,
+                        query_sequence,
+                        max_hits,
+                        task,
+                        catalog_path,
+                        cache_dir,
+                    )?;
+                    lua.to_value(&report)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
             "apply_operation",
             self.lua
                 .create_function(|lua, (state, op): (Value, Value)| {
@@ -514,6 +620,46 @@ impl LuaInterface {
                     let mut engine = GentleEngine::from_state(state);
                     let result = engine
                         .apply(Operation::ImportGenomeBedTrack {
+                            seq_id,
+                            path,
+                            track_name,
+                            min_score,
+                            max_score,
+                            clear_existing,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "import_genome_bigwig_track",
+            self.lua.create_function(
+                |lua,
+                 (state, seq_id, path, track_name, min_score, max_score, clear_existing): (
+                    Value,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<f64>,
+                    Option<f64>,
+                    Option<bool>,
+                )| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::ImportGenomeBigWigTrack {
                             seq_id,
                             path,
                             track_name,

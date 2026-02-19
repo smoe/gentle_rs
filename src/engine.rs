@@ -3,9 +3,9 @@ use crate::{
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
     genomes::{
-        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
-        PrepareGenomeReport, PreparedGenomeInspection, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan,
+        PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -22,14 +22,17 @@ use serde_json::json;
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{HashMap, HashSet},
+    env,
     error::Error,
     fmt,
     fs::File,
     hash::{Hash, Hasher},
     io::{BufRead, BufReader, Write},
     path::Path,
+    process::Command,
     time::Instant,
 };
+use tempfile::NamedTempFile;
 
 pub type SeqId = String;
 pub type OpId = String;
@@ -39,6 +42,10 @@ pub type ContainerId = String;
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
+const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
+pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
+pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
+const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DisplayTarget {
@@ -371,6 +378,14 @@ pub enum Operation {
         max_score: Option<f64>,
         clear_existing: Option<bool>,
     },
+    ImportGenomeBigWigTrack {
+        seq_id: SeqId,
+        path: String,
+        track_name: Option<String>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: Option<bool>,
+    },
     DigestContainer {
         container_id: ContainerId,
         enzymes: Vec<String>,
@@ -628,6 +643,7 @@ pub struct GenomeExtractionProvenance {
     pub gene_id: Option<String>,
     pub gene_name: Option<String>,
     pub strand: Option<char>,
+    pub anchor_strand: Option<char>,
     pub sequence_source_type: Option<String>,
     pub annotation_source_type: Option<String>,
     pub sequence_source: Option<String>,
@@ -642,6 +658,7 @@ struct GenomeSequenceAnchor {
     chromosome: String,
     start_1based: usize,
     end_1based: usize,
+    strand: Option<char>,
 }
 
 #[derive(Debug, Clone)]
@@ -665,6 +682,7 @@ struct GenomeBedTrackImportReport {
     skipped_non_overlap: usize,
     skipped_missing_score: usize,
     skipped_outside_score_range: usize,
+    truncated_at_limit: bool,
     warnings: Vec<String>,
 }
 
@@ -809,6 +827,15 @@ impl GentleEngine {
             .collect()
     }
 
+    pub fn describe_sequence_genome_anchor(&self, seq_id: &str) -> Result<String, EngineError> {
+        let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
+        let strand = anchor.strand.unwrap_or('+');
+        Ok(format!(
+            "{}:{}-{} ({}, strand {})",
+            anchor.chromosome, anchor.start_1based, anchor.end_1based, anchor.genome_id, strand
+        ))
+    }
+
     pub fn capabilities() -> Capabilities {
         Capabilities {
             protocol_version: "v1".to_string(),
@@ -826,6 +853,7 @@ impl GentleEngine {
                 "ExtractGenomeRegion".to_string(),
                 "ExtractGenomeGene".to_string(),
                 "ImportGenomeBedTrack".to_string(),
+                "ImportGenomeBigWigTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
                 "LigationContainer".to_string(),
@@ -1154,6 +1182,54 @@ impl GentleEngine {
         Self::list_reference_genome_genes(Some(chosen), genome_id, cache_dir)
     }
 
+    pub fn blast_reference_genome(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
+        catalog
+            .blast_sequence_with_cache(
+                genome_id,
+                query_sequence,
+                max_hits,
+                task,
+                cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not run BLAST search against genome '{}' in catalog '{}': {}",
+                    genome_id, catalog_path, e
+                ),
+            })
+    }
+
+    pub fn blast_helper_genome(
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let chosen = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
+        Self::blast_reference_genome(
+            Some(chosen),
+            genome_id,
+            query_sequence,
+            max_hits,
+            task,
+            cache_dir,
+        )
+    }
+
     pub fn prepare_reference_genome_once(
         genome_id: &str,
         catalog_path: Option<&str>,
@@ -1201,8 +1277,19 @@ impl GentleEngine {
             .annotation_source_type
             .as_deref()
             .unwrap_or("unknown");
+        let blast_status = if report.blast_index_ready {
+            format!(
+                "ready ({})",
+                report
+                    .blast_db_prefix
+                    .as_deref()
+                    .unwrap_or("unknown BLAST DB prefix")
+            )
+        } else {
+            "not available".to_string()
+        };
         format!(
-            "Prepared genome '{}' ({status}). cache='{}' sequence='{}' [{}], annotation='{}' [{}]",
+            "Prepared genome '{}' ({status}). cache='{}' sequence='{}' [{}], annotation='{}' [{}], blast_index={}",
             genome_id,
             cache_dir
                 .map(str::trim)
@@ -1211,7 +1298,8 @@ impl GentleEngine {
             report.sequence_path,
             sequence_type,
             report.annotation_path,
-            annotation_type
+            annotation_type,
+            blast_status
         )
     }
 
@@ -1466,6 +1554,11 @@ impl GentleEngine {
             if start_1based == 0 || end_1based < start_1based {
                 continue;
             }
+            let anchor_strand = entry
+                .get("anchor_strand")
+                .and_then(|v| v.as_str())
+                .and_then(|v| v.trim().chars().next())
+                .filter(|c| matches!(c, '+' | '-'));
             let recorded_at = entry
                 .get("recorded_at_unix_ms")
                 .and_then(|v| v.as_u64())
@@ -1482,6 +1575,7 @@ impl GentleEngine {
                     chromosome: chromosome.to_string(),
                     start_1based: start_1based as usize,
                     end_1based: end_1based as usize,
+                    strand: anchor_strand,
                 });
             }
         }
@@ -1512,14 +1606,25 @@ impl GentleEngine {
             .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
     }
 
-    fn remove_generated_genome_bed_features(features: &mut Vec<gb_io::seq::Feature>) {
-        features.retain(|f| !Self::is_generated_genome_bed_feature(f));
+    fn is_generated_genome_bigwig_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|v| v.eq_ignore_ascii_case(GENOME_BIGWIG_TRACK_GENERATED_TAG))
+    }
+
+    fn is_generated_genome_signal_feature(feature: &gb_io::seq::Feature) -> bool {
+        Self::is_generated_genome_bed_feature(feature)
+            || Self::is_generated_genome_bigwig_feature(feature)
+    }
+
+    fn remove_generated_genome_signal_features(features: &mut Vec<gb_io::seq::Feature>) {
+        features.retain(|f| !Self::is_generated_genome_signal_feature(f));
     }
 
     fn open_text_reader(path: &str) -> Result<Box<dyn BufRead>, EngineError> {
         let file = std::fs::File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
-            message: format!("Could not open BED file '{path}': {e}"),
+            message: format!("Could not open track file '{path}': {e}"),
         })?;
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".gz") {
@@ -1600,12 +1705,54 @@ impl GentleEngine {
         })
     }
 
-    fn build_genome_bed_feature(
+    fn parse_bedgraph_record(line: &str) -> Result<BedRecord, String> {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 4 {
+            return Err(
+                "bedGraph record needs at least 4 columns (chrom, start, end, value)".to_string(),
+            );
+        }
+        let chromosome = fields[0].trim();
+        if chromosome.is_empty() {
+            return Err("bedGraph chromosome is empty".to_string());
+        }
+        let start_0based = fields[1]
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid bedGraph start '{}': {e}", fields[1]))?;
+        let end_0based = fields[2]
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid bedGraph end '{}': {e}", fields[2]))?;
+        if end_0based <= start_0based {
+            return Err(format!(
+                "Invalid bedGraph interval {}:{}-{} (end must be > start)",
+                chromosome, start_0based, end_0based
+            ));
+        }
+        let value = fields[3].parse::<f64>().map_err(|e| {
+            format!(
+                "Invalid bedGraph value '{}' (expected numeric): {e}",
+                fields[3]
+            )
+        })?;
+        Ok(BedRecord {
+            chromosome: chromosome.to_string(),
+            start_0based,
+            end_0based,
+            name: None,
+            score: Some(value),
+            strand: None,
+        })
+    }
+
+    fn build_genome_signal_feature(
         record: &BedRecord,
         track_name: &str,
         path: &str,
         local_start_0based: usize,
         local_end_0based_exclusive: usize,
+        local_strand: Option<char>,
+        generated_tag: &str,
+        source_label: &str,
     ) -> gb_io::seq::Feature {
         let label = record
             .name
@@ -1623,14 +1770,17 @@ impl GentleEngine {
             (
                 "note".into(),
                 Some(format!(
-                    "BED track '{}' from '{}' [{}:{}-{}]",
-                    track_name, path, record.chromosome, record.start_0based, record.end_0based
+                    "{} track '{}' from '{}' [{}:{}-{}]",
+                    source_label,
+                    track_name,
+                    path,
+                    record.chromosome,
+                    record.start_0based,
+                    record.end_0based
                 )),
             ),
-            (
-                "gentle_generated".into(),
-                Some(GENOME_BED_TRACK_GENERATED_TAG.to_string()),
-            ),
+            ("gentle_track_source".into(), Some(source_label.to_string())),
+            ("gentle_generated".into(), Some(generated_tag.to_string())),
             ("gentle_track_name".into(), Some(track_name.to_string())),
             ("gentle_track_file".into(), Some(path.to_string())),
             ("chromosome".into(), Some(record.chromosome.clone())),
@@ -1644,6 +1794,9 @@ impl GentleEngine {
             qualifiers.push(("score".into(), Some(format!("{score:.6}"))));
         }
         if let Some(strand) = record.strand {
+            qualifiers.push(("bed_strand".into(), Some(strand.to_string())));
+        }
+        if let Some(strand) = local_strand {
             qualifiers.push(("strand".into(), Some(strand.to_string())));
         }
 
@@ -1651,7 +1804,7 @@ impl GentleEngine {
             local_start_0based as i64,
             local_end_0based_exclusive as i64,
         );
-        let location = if record.strand == Some('-') {
+        let location = if local_strand == Some('-') {
             gb_io::seq::Location::Complement(Box::new(base_location))
         } else {
             base_location
@@ -1662,6 +1815,26 @@ impl GentleEngine {
             location,
             qualifiers,
         }
+    }
+
+    fn build_genome_bed_feature(
+        record: &BedRecord,
+        track_name: &str,
+        path: &str,
+        local_start_0based: usize,
+        local_end_0based_exclusive: usize,
+        local_strand: Option<char>,
+    ) -> gb_io::seq::Feature {
+        Self::build_genome_signal_feature(
+            record,
+            track_name,
+            path,
+            local_start_0based,
+            local_end_0based_exclusive,
+            local_strand,
+            GENOME_BED_TRACK_GENERATED_TAG,
+            "BED",
+        )
     }
 
     fn import_genome_bed_track(
@@ -1680,7 +1853,7 @@ impl GentleEngine {
             .unwrap_or_else(|| Self::default_track_name(path));
 
         if clear_existing {
-            Self::remove_generated_genome_bed_features(dna.features_mut());
+            Self::remove_generated_genome_signal_features(dna.features_mut());
         }
 
         let mut report = GenomeBedTrackImportReport {
@@ -1761,20 +1934,393 @@ impl GentleEngine {
                 }
             }
 
-            let local_start_0based = overlap_start_1based - anchor.start_1based;
-            let local_end_0based_exclusive = overlap_end_1based - anchor.start_1based + 1;
+            let (local_start_0based, local_end_0based_exclusive) = if anchor.strand == Some('-') {
+                (
+                    anchor.end_1based.saturating_sub(overlap_end_1based),
+                    anchor.end_1based.saturating_sub(overlap_start_1based) + 1,
+                )
+            } else {
+                (
+                    overlap_start_1based - anchor.start_1based,
+                    overlap_end_1based - anchor.start_1based + 1,
+                )
+            };
+            let local_strand = match (record.strand, anchor.strand) {
+                (Some('+'), Some('-')) => Some('-'),
+                (Some('-'), Some('-')) => Some('+'),
+                (Some(strand), _) => Some(strand),
+                _ => None,
+            };
+            if report.imported_features >= MAX_IMPORTED_SIGNAL_FEATURES {
+                report.truncated_at_limit = true;
+                break;
+            }
             let feature = Self::build_genome_bed_feature(
                 &record,
                 &selected_track_name,
                 path,
                 local_start_0based,
                 local_end_0based_exclusive,
+                local_strand,
             );
             dna.features_mut().push(feature);
             report.imported_features += 1;
         }
 
         Ok(report)
+    }
+
+    fn resolve_bigwig_to_bedgraph_executable() -> String {
+        env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| DEFAULT_BIGWIG_TO_BEDGRAPH_BIN.to_string())
+    }
+
+    fn convert_bigwig_to_bedgraph(path: &str) -> Result<NamedTempFile, EngineError> {
+        let executable = Self::resolve_bigwig_to_bedgraph_executable();
+        let output = NamedTempFile::new().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create temporary bedGraph file: {e}"),
+        })?;
+        let output_path = output.path().to_path_buf();
+        let command_output = Command::new(&executable)
+            .arg(path)
+            .arg(&output_path)
+            .output()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not execute '{}' for BigWig conversion (set {} to override): {}",
+                    executable, BIGWIG_TO_BEDGRAPH_ENV_BIN, e
+                ),
+            })?;
+        if !command_output.status.success() {
+            let stderr = String::from_utf8_lossy(&command_output.stderr)
+                .trim()
+                .to_string();
+            let stdout = String::from_utf8_lossy(&command_output.stdout)
+                .trim()
+                .to_string();
+            let detail = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("exit status {}", command_output.status)
+            };
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "BigWig conversion failed for '{}' via '{}' (set {} to override): {}",
+                    path, executable, BIGWIG_TO_BEDGRAPH_ENV_BIN, detail
+                ),
+            });
+        }
+        Ok(output)
+    }
+
+    fn import_genome_bigwig_track(
+        dna: &mut DNAsequence,
+        anchor: &GenomeSequenceAnchor,
+        path: &str,
+        track_name: Option<&str>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: bool,
+    ) -> Result<GenomeBedTrackImportReport, EngineError> {
+        let selected_track_name = track_name
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| Self::default_track_name(path));
+
+        if clear_existing {
+            Self::remove_generated_genome_signal_features(dna.features_mut());
+        }
+
+        let mut report = GenomeBedTrackImportReport {
+            track_name: selected_track_name.clone(),
+            ..Default::default()
+        };
+        let bedgraph_file = Self::convert_bigwig_to_bedgraph(path)?;
+        let bedgraph_path = bedgraph_file.path().to_string_lossy().to_string();
+        let mut reader = Self::open_text_reader(&bedgraph_path)?;
+        let mut line = String::new();
+        let mut line_no = 0usize;
+
+        while {
+            line.clear();
+            reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read converted bedGraph for '{path}': {e}"),
+            })? > 0
+        } {
+            line_no += 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with('#')
+                || trimmed.to_ascii_lowercase().starts_with("track ")
+                || trimmed.to_ascii_lowercase().starts_with("browser ")
+            {
+                continue;
+            }
+            report.parsed_records += 1;
+
+            let record = match Self::parse_bedgraph_record(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    report.skipped_records += 1;
+                    report.skipped_invalid += 1;
+                    if report.warnings.len() < 20 {
+                        report
+                            .warnings
+                            .push(format!("bedGraph line {} skipped: {}", line_no, e));
+                    }
+                    continue;
+                }
+            };
+
+            if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
+                report.skipped_records += 1;
+                report.skipped_wrong_chromosome += 1;
+                continue;
+            }
+
+            let bed_start_1based = record.start_0based.saturating_add(1);
+            let bed_end_1based = record.end_0based;
+            if bed_end_1based < anchor.start_1based || bed_start_1based > anchor.end_1based {
+                report.skipped_records += 1;
+                report.skipped_non_overlap += 1;
+                continue;
+            }
+            let overlap_start_1based = bed_start_1based.max(anchor.start_1based);
+            let overlap_end_1based = bed_end_1based.min(anchor.end_1based);
+            if overlap_end_1based < overlap_start_1based {
+                report.skipped_records += 1;
+                report.skipped_non_overlap += 1;
+                continue;
+            }
+
+            if min_score.is_some() || max_score.is_some() {
+                let Some(score) = record.score else {
+                    report.skipped_records += 1;
+                    report.skipped_missing_score += 1;
+                    continue;
+                };
+                if min_score.map(|v| score < v).unwrap_or(false)
+                    || max_score.map(|v| score > v).unwrap_or(false)
+                {
+                    report.skipped_records += 1;
+                    report.skipped_outside_score_range += 1;
+                    continue;
+                }
+            }
+
+            let (local_start_0based, local_end_0based_exclusive) = if anchor.strand == Some('-') {
+                (
+                    anchor.end_1based.saturating_sub(overlap_end_1based),
+                    anchor.end_1based.saturating_sub(overlap_start_1based) + 1,
+                )
+            } else {
+                (
+                    overlap_start_1based - anchor.start_1based,
+                    overlap_end_1based - anchor.start_1based + 1,
+                )
+            };
+            if report.imported_features >= MAX_IMPORTED_SIGNAL_FEATURES {
+                report.truncated_at_limit = true;
+                break;
+            }
+            let feature = Self::build_genome_signal_feature(
+                &record,
+                &selected_track_name,
+                path,
+                local_start_0based,
+                local_end_0based_exclusive,
+                None,
+                GENOME_BIGWIG_TRACK_GENERATED_TAG,
+                "BigWig",
+            );
+            dna.features_mut().push(feature);
+            report.imported_features += 1;
+        }
+
+        Ok(report)
+    }
+
+    fn is_genbank_like_path(path: &str) -> bool {
+        let lower = path.to_ascii_lowercase();
+        lower.ends_with(".gb")
+            || lower.ends_with(".gbk")
+            || lower.ends_with(".genbank")
+            || lower.ends_with(".gbff")
+    }
+
+    fn parse_first_usize_tokens(raw: &str, max_items: usize) -> Vec<usize> {
+        if max_items == 0 {
+            return vec![];
+        }
+        let mut out = Vec::with_capacity(max_items);
+        let mut current = String::new();
+        for ch in raw.chars() {
+            if ch.is_ascii_digit() || ch == ',' {
+                current.push(ch);
+                continue;
+            }
+            if !current.is_empty() {
+                if let Ok(value) = current.replace(',', "").parse::<usize>() {
+                    out.push(value);
+                    if out.len() >= max_items {
+                        return out;
+                    }
+                }
+                current.clear();
+            }
+        }
+        if !current.is_empty() && out.len() < max_items {
+            if let Ok(value) = current.replace(',', "").parse::<usize>() {
+                out.push(value);
+            }
+        }
+        out
+    }
+
+    fn parse_genbank_header_field_block(text: &str, key: &str) -> Option<String> {
+        let mut block = String::new();
+        let mut in_block = false;
+        for line in text.lines() {
+            if line.starts_with("ORIGIN") || line.starts_with("//") {
+                break;
+            }
+            if let Some(rest) = line.strip_prefix(key) {
+                in_block = true;
+                let trimmed = rest.trim();
+                if !trimmed.is_empty() {
+                    block.push_str(trimmed);
+                }
+                continue;
+            }
+            if in_block {
+                if line.starts_with("            ") {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        if !block.is_empty() {
+                            block.push(' ');
+                        }
+                        block.push_str(trimmed);
+                    }
+                    continue;
+                }
+                break;
+            }
+        }
+        if block.is_empty() {
+            None
+        } else {
+            Some(block)
+        }
+    }
+
+    fn parse_genbank_accession_region(path: &str) -> Option<(String, usize, usize, String, char)> {
+        if !Self::is_genbank_like_path(path) {
+            return None;
+        }
+        let text = std::fs::read_to_string(path).ok()?;
+        let definition =
+            Self::parse_genbank_header_field_block(&text, "DEFINITION").unwrap_or_default();
+        let accession_block = Self::parse_genbank_header_field_block(&text, "ACCESSION")?;
+        if accession_block.is_empty() {
+            return None;
+        }
+        let accession = accession_block.split_whitespace().next()?.to_string();
+        let lower_block = accession_block.to_ascii_lowercase();
+        let region_pos = lower_block.find("region:")?;
+        let region_spec = &accession_block[region_pos + "region:".len()..];
+        let lower_region_spec = region_spec.to_ascii_lowercase();
+        let anchor_strand = if lower_region_spec.contains("complement(") {
+            '-'
+        } else {
+            '+'
+        };
+        if lower_region_spec.contains("join(") || lower_region_spec.contains("order(") {
+            return None;
+        }
+        let numbers = Self::parse_first_usize_tokens(region_spec, 2);
+        if numbers.len() < 2 {
+            return None;
+        }
+        let mut start_1based = numbers[0];
+        let mut end_1based = numbers[1];
+        if start_1based == 0 || end_1based == 0 {
+            return None;
+        }
+        if end_1based < start_1based {
+            std::mem::swap(&mut start_1based, &mut end_1based);
+        }
+        Some((
+            accession,
+            start_1based,
+            end_1based,
+            definition,
+            anchor_strand,
+        ))
+    }
+
+    fn parse_chromosome_from_definition(definition: &str) -> Option<String> {
+        let lower = definition.to_ascii_lowercase();
+        let marker = "chromosome ";
+        let marker_pos = lower.find(marker)?;
+        let raw_tail = &definition[marker_pos + marker.len()..];
+        let token = raw_tail
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            .collect::<String>();
+        if token.is_empty() {
+            None
+        } else {
+            Some(token)
+        }
+    }
+
+    fn parse_genome_id_from_definition(definition: &str) -> Option<String> {
+        let lower = definition.to_ascii_lowercase();
+        let marker_pos = lower.find("primary assembly")?;
+        let prefix = definition[..marker_pos]
+            .trim()
+            .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == ',' || c == '.');
+        let candidate = prefix.rsplit(',').next()?.trim();
+        if candidate.is_empty() {
+            None
+        } else {
+            Some(candidate.to_string())
+        }
+    }
+
+    fn infer_imported_genbank_anchor(
+        path: &str,
+        dna: &DNAsequence,
+    ) -> Option<GenomeSequenceAnchor> {
+        let (accession, start_1based, end_1based, definition, anchor_strand) =
+            Self::parse_genbank_accession_region(path)?;
+        let region_len = end_1based - start_1based + 1;
+        if dna.len() > 0 && dna.len() != region_len {
+            return None;
+        }
+        let chromosome = Self::parse_chromosome_from_definition(&definition)
+            .unwrap_or_else(|| accession.clone());
+        let genome_id =
+            Self::parse_genome_id_from_definition(&definition).unwrap_or_else(|| accession.clone());
+        Some(GenomeSequenceAnchor {
+            genome_id,
+            chromosome,
+            start_1based,
+            end_1based,
+            strand: Some(anchor_strand),
+        })
     }
 
     fn classify_import_origin(path: &str, dna: &DNAsequence) -> SequenceOrigin {
@@ -1941,6 +2487,7 @@ impl GentleEngine {
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
             Operation::ImportGenomeBedTrack { .. } => Some("Imported BED track".to_string()),
+            Operation::ImportGenomeBigWigTrack { .. } => Some("Imported BigWig track".to_string()),
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -3340,6 +3887,46 @@ impl GentleEngine {
                     ),
                     Some(&result.op_id),
                 );
+                let imported_anchor = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
+                if let Some(anchor) = imported_anchor {
+                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                        seq_id: seq_id.clone(),
+                        recorded_at_unix_ms: Self::now_unix_ms(),
+                        operation: "LoadFileGenBankRegion".to_string(),
+                        genome_id: anchor.genome_id.clone(),
+                        catalog_path: path.clone(),
+                        cache_dir: None,
+                        chromosome: Some(anchor.chromosome.clone()),
+                        start_1based: Some(anchor.start_1based),
+                        end_1based: Some(anchor.end_1based),
+                        gene_query: None,
+                        occurrence: None,
+                        gene_id: None,
+                        gene_name: None,
+                        strand: None,
+                        anchor_strand: anchor.strand,
+                        sequence_source_type: Some("genbank_file".to_string()),
+                        annotation_source_type: Some("genbank_file".to_string()),
+                        sequence_source: Some(path.clone()),
+                        annotation_source: Some(path.clone()),
+                        sequence_sha1: None,
+                        annotation_sha1: None,
+                    });
+                    let strand = anchor.strand.unwrap_or('+');
+                    result.messages.push(format!(
+                        "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {})",
+                        seq_id,
+                        anchor.chromosome,
+                        anchor.start_1based,
+                        anchor.end_1based,
+                        anchor.genome_id,
+                        strand
+                    ));
+                }
                 result.created_seq_ids.push(seq_id.clone());
                 result
                     .messages
@@ -3518,6 +4105,9 @@ impl GentleEngine {
                     cache_dir.as_deref(),
                     &report,
                 ));
+                if !report.warnings.is_empty() {
+                    result.warnings.extend(report.warnings.clone());
+                }
             }
             Operation::ExtractGenomeRegion {
                 genome_id,
@@ -3587,6 +4177,7 @@ impl GentleEngine {
                     gene_id: None,
                     gene_name: None,
                     strand: None,
+                    anchor_strand: Some('+'),
                     sequence_source_type,
                     annotation_source_type,
                     sequence_source,
@@ -3739,6 +4330,7 @@ impl GentleEngine {
                     gene_id: selected_gene.gene_id.clone(),
                     gene_name: selected_gene.gene_name.clone(),
                     strand: selected_gene.strand,
+                    anchor_strand: Some('+'),
                     sequence_source_type,
                     annotation_source_type,
                     sequence_source,
@@ -3805,8 +4397,9 @@ impl GentleEngine {
 
                 result.changed_seq_ids.push(seq_id.clone());
                 result.warnings.extend(report.warnings);
+                let anchor_strand = anchor.strand.unwrap_or('+');
                 result.messages.push(format!(
-                    "Imported {} BED feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{}, parsed={}, skipped={})",
+                    "Imported {} BED feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
                     report.imported_features,
                     seq_id,
                     path,
@@ -3815,6 +4408,7 @@ impl GentleEngine {
                     anchor.chromosome,
                     anchor.start_1based,
                     anchor.end_1based,
+                    anchor_strand,
                     report.parsed_records,
                     report.skipped_records
                 ));
@@ -3828,6 +4422,96 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "{} BED record(s) were outside score filter bounds",
                         report.skipped_outside_score_range
+                    ));
+                }
+                if report.truncated_at_limit {
+                    result.warnings.push(format!(
+                        "BED import was truncated after {} features (limit={})",
+                        report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
+                    ));
+                }
+            }
+            Operation::ImportGenomeBigWigTrack {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => {
+                if path.trim().is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportGenomeBigWigTrack requires a non-empty BigWig path"
+                            .to_string(),
+                    });
+                }
+                if min_score
+                    .zip(max_score)
+                    .map(|(min, max)| min > max)
+                    .unwrap_or(false)
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportGenomeBigWigTrack requires min_score <= max_score"
+                            .to_string(),
+                    });
+                }
+
+                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                let _ = self.ensure_lineage_node(&seq_id);
+                let dna = self
+                    .state
+                    .sequences
+                    .get_mut(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+
+                let report = Self::import_genome_bigwig_track(
+                    dna,
+                    &anchor,
+                    &path,
+                    track_name.as_deref(),
+                    min_score,
+                    max_score,
+                    clear_existing.unwrap_or(false),
+                )?;
+
+                result.changed_seq_ids.push(seq_id.clone());
+                result.warnings.extend(report.warnings);
+                let anchor_strand = anchor.strand.unwrap_or('+');
+                result.messages.push(format!(
+                    "Imported {} BigWig feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
+                    report.imported_features,
+                    seq_id,
+                    path,
+                    report.track_name,
+                    anchor.genome_id,
+                    anchor.chromosome,
+                    anchor.start_1based,
+                    anchor.end_1based,
+                    anchor_strand,
+                    report.parsed_records,
+                    report.skipped_records
+                ));
+                if report.skipped_missing_score > 0 {
+                    result.warnings.push(format!(
+                        "{} converted bedGraph record(s) were skipped because score filters were set but no value was available",
+                        report.skipped_missing_score
+                    ));
+                }
+                if report.skipped_outside_score_range > 0 {
+                    result.messages.push(format!(
+                        "{} converted bedGraph record(s) were outside score filter bounds",
+                        report.skipped_outside_score_range
+                    ));
+                }
+                if report.truncated_at_limit {
+                    result.warnings.push(format!(
+                        "BigWig import was truncated after {} features (limit={})",
+                        report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
                     ));
                 }
             }
@@ -5652,6 +6336,22 @@ exit 2
         script_path.display().to_string()
     }
 
+    #[cfg(unix)]
+    fn install_fake_bigwig_to_bedgraph(path: &Path, bedgraph_source: &Path) -> String {
+        let script_path = path.join("fake_bigwig_to_bedgraph.sh");
+        let script = format!(
+            "#!/bin/sh\nif [ \"$#\" -ne 2 ]; then\n  echo \"expected INPUT.bw OUTPUT.bedGraph\" >&2\n  exit 2\nfi\ncp \"{}\" \"$2\"\n",
+            bedgraph_source.display()
+        );
+        std::fs::write(&script_path, script).expect("write fake bigwig converter");
+        let mut perms = std::fs::metadata(&script_path)
+            .expect("metadata fake bigwig converter")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script_path, perms).expect("chmod fake bigwig converter");
+        script_path.display().to_string()
+    }
+
     fn file_url(path: &Path) -> String {
         format!("file://{}", path.display())
     }
@@ -6604,6 +7304,147 @@ exit 2
             .unwrap();
         assert_eq!(res.created_seq_ids, vec!["pgex".to_string()]);
         assert!(engine.state().sequences.contains_key("pgex"));
+    }
+
+    #[test]
+    fn test_load_file_operation_genbank_region_anchor_enables_bed_import() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::LoadFile {
+                path: "test_files/tp73.ncbi.gb".to_string(),
+                as_id: Some("tp73".to_string()),
+            })
+            .unwrap();
+        assert_eq!(res.created_seq_ids, vec!["tp73".to_string()]);
+        assert!(engine
+            .list_sequences_with_genome_anchor()
+            .iter()
+            .any(|seq_id| seq_id == "tp73"));
+
+        let td = tempdir().unwrap();
+        let bed_path = td.path().join("tp73_anchor_test.bed");
+        std::fs::write(&bed_path, "chr1\t3652515\t3652525\tpeak1\t100\t+\n").unwrap();
+
+        let import_res = engine
+            .apply(Operation::ImportGenomeBedTrack {
+                seq_id: "tp73".to_string(),
+                path: bed_path.display().to_string(),
+                track_name: Some("anchor-test".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(import_res
+            .changed_seq_ids
+            .iter()
+            .any(|seq_id| seq_id == "tp73"));
+
+        let tp73 = engine
+            .state()
+            .sequences
+            .get("tp73")
+            .expect("tp73 should exist");
+        assert!(tp73
+            .features()
+            .iter()
+            .any(GentleEngine::is_generated_genome_bed_feature));
+    }
+
+    #[test]
+    fn test_parse_genbank_accession_region_supports_complement() {
+        let td = tempdir().unwrap();
+        let gb_path = td.path().join("complement_header.gb");
+        let gb_text = "\
+LOCUS       TEST000001              11 bp    DNA     linear   CON 01-JAN-2000
+DEFINITION  Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly.
+ACCESSION   NC_000001 REGION: complement(3652516..3652526)
+ORIGIN
+        1 atgcgatgcga
+//
+";
+        std::fs::write(&gb_path, gb_text).unwrap();
+        let parsed =
+            GentleEngine::parse_genbank_accession_region(gb_path.to_string_lossy().as_ref())
+                .expect("region should parse");
+        assert_eq!(parsed.0, "NC_000001");
+        assert_eq!(parsed.1, 3652516);
+        assert_eq!(parsed.2, 3652526);
+        assert_eq!(parsed.4, '-');
+    }
+
+    #[test]
+    fn test_import_genome_bed_track_remaps_for_reverse_anchor() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("rev".to_string(), seq("ACGTACGTACG"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "rev",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "LoadFileGenBankRegion",
+                        "genome_id": "GRCh38.p14",
+                        "catalog_path": "synthetic",
+                        "cache_dir": null,
+                        "chromosome": "1",
+                        "start_1based": 100,
+                        "end_1based": 110,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "-",
+                        "sequence_source_type": "genbank_file",
+                        "annotation_source_type": "genbank_file",
+                        "sequence_source": "synthetic",
+                        "annotation_source": "synthetic",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let td = tempdir().unwrap();
+        let bed_path = td.path().join("reverse_anchor.bed");
+        std::fs::write(&bed_path, "chr1\t99\t101\tpeak1\t100\t+\n").unwrap();
+
+        let result = engine
+            .apply(Operation::ImportGenomeBedTrack {
+                seq_id: "rev".to_string(),
+                path: bed_path.display().to_string(),
+                track_name: Some("rev-track".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(result.changed_seq_ids.iter().any(|id| id == "rev"));
+
+        let dna = engine
+            .state()
+            .sequences
+            .get("rev")
+            .expect("rev sequence should exist");
+        let feature = dna
+            .features()
+            .iter()
+            .find(|f| GentleEngine::is_generated_genome_bed_feature(f))
+            .expect("generated BED feature should exist");
+        assert!(crate::feature_location::feature_is_reverse(feature));
+        let ranges = crate::feature_location::feature_ranges_sorted_i64(feature);
+        assert_eq!(ranges, vec![(9, 11)]);
+        assert_eq!(
+            feature.qualifier_values("bed_strand".into()).next(),
+            Some("+")
+        );
+        assert_eq!(feature.qualifier_values("strand".into()).next(), Some("-"));
     }
 
     #[test]
@@ -7758,6 +8599,118 @@ exit 2
             .next()
             .map(|v| v.contains("peak_a"))
             .unwrap_or(false));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        );
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("toy_slice".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let bed_path = root.join("baseline.bed");
+        fs::write(&bed_path, "chr1\t1\t4\tpeak_a\t42\t+\n").unwrap();
+        engine
+            .apply(Operation::ImportGenomeBedTrack {
+                seq_id: "toy_slice".to_string(),
+                path: bed_path.to_string_lossy().to_string(),
+                track_name: Some("baseline".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+
+        let converted_bedgraph = root.join("signals.from_bigwig.bedgraph");
+        fs::write(
+            &converted_bedgraph,
+            "chr1\t1\t4\t0.5\nchr1\t5\t12\t2.0\nchr2\t1\t4\t7.0\nchr1\tbad\t9\tbroken\n",
+        )
+        .unwrap();
+        let fake_converter = install_fake_bigwig_to_bedgraph(root, &converted_bedgraph);
+        let _converter_guard = EnvVarGuard::set(BIGWIG_TO_BEDGRAPH_ENV_BIN, &fake_converter);
+
+        let fake_bigwig = root.join("signals.bw");
+        fs::write(&fake_bigwig, "placeholder").unwrap();
+        let result = engine
+            .apply(Operation::ImportGenomeBigWigTrack {
+                seq_id: "toy_slice".to_string(),
+                path: fake_bigwig.to_string_lossy().to_string(),
+                track_name: Some("signal".to_string()),
+                min_score: Some(1.0),
+                max_score: Some(3.0),
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(result.changed_seq_ids.contains(&"toy_slice".to_string()));
+        assert!(result.warnings.iter().any(|w| w.contains("bedGraph line")));
+
+        let dna = engine.state().sequences.get("toy_slice").unwrap();
+        let bed_features: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| {
+                f.qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case(GENOME_BED_TRACK_GENERATED_TAG))
+            })
+            .collect();
+        assert_eq!(bed_features.len(), 0);
+        let bigwig_features: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_bigwig_feature(f))
+            .collect();
+        assert_eq!(bigwig_features.len(), 1);
+        assert_eq!(
+            bigwig_features[0]
+                .qualifier_values("score".into())
+                .next()
+                .unwrap_or_default(),
+            "2.000000"
+        );
     }
 
     #[test]

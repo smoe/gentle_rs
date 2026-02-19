@@ -427,7 +427,7 @@ fn usage() {
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
-  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] [--allow-screenshots] COMMAND ...\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] [--allow-screenshots*] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'\n  \
   gentle_cli [--state PATH|--project PATH] workflow '<workflow-json>'\n  \
@@ -443,7 +443,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
-  gentle_cli [--state PATH|--project PATH] [--allow-screenshots] screenshot-window OUTPUT.png\n\n  \
+  gentle_cli [--state PATH|--project PATH] [--allow-screenshots*] screenshot-window OUTPUT.png\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
@@ -453,6 +453,7 @@ fn usage() {
   gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli helpers list [--catalog PATH]\n  \
@@ -460,13 +461,15 @@ fn usage() {
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
-  --project is an alias of --state for project.gentle.json files\n\n  \
+  --project is an alias of --state for project.gentle.json files\n  \
+  * screenshot capture requires build feature 'screenshot-capture'\n\n  \
   Shell help:\n  \
   {shell_help}"
         ,
@@ -557,6 +560,12 @@ fn parse_global_args(args: &[String]) -> Result<GlobalCliArgs, String> {
                 idx += 1;
             }
             "--allow-screenshots" => {
+                if !cfg!(feature = "screenshot-capture") {
+                    return Err(
+                        "--allow-screenshots is unavailable in this build; enable feature 'screenshot-capture'"
+                            .to_string(),
+                    );
+                }
                 allow_screenshots = true;
                 idx += 1;
             }
@@ -1865,10 +1874,15 @@ T [ 0 0 0 10 ]
             "screenshot-window".to_string(),
             "out.png".to_string(),
         ];
-        let parsed = parse_global_args(&args).unwrap();
-        assert_eq!(parsed.state_path, DEFAULT_STATE_PATH);
-        assert_eq!(parsed.progress_sink, None);
-        assert!(parsed.allow_screenshots);
-        assert_eq!(parsed.cmd_idx, 2);
+        if cfg!(feature = "screenshot-capture") {
+            let parsed = parse_global_args(&args).unwrap();
+            assert_eq!(parsed.state_path, DEFAULT_STATE_PATH);
+            assert_eq!(parsed.progress_sink, None);
+            assert!(parsed.allow_screenshots);
+            assert_eq!(parsed.cmd_idx, 2);
+        } else {
+            let err = parse_global_args(&args).unwrap_err();
+            assert!(err.contains("unavailable in this build"));
+        }
     }
 }

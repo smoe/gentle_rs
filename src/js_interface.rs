@@ -208,6 +208,48 @@ fn list_reference_genome_genes(
 
 #[op2]
 #[serde]
+fn blast_reference_genome(
+    #[string] genome_id: &str,
+    #[string] query_sequence: &str,
+    max_hits: u32,
+    #[string] task: &str,
+    #[string] catalog_path: &str,
+    #[string] cache_dir: &str,
+) -> Result<crate::genomes::GenomeBlastReport, deno_core::anyhow::Error> {
+    GentleEngine::blast_reference_genome(
+        empty_to_none(catalog_path),
+        genome_id,
+        query_sequence,
+        max_hits.max(1) as usize,
+        empty_to_none(task),
+        empty_to_none(cache_dir),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+}
+
+#[op2]
+#[serde]
+fn blast_helper_genome(
+    #[string] genome_id: &str,
+    #[string] query_sequence: &str,
+    max_hits: u32,
+    #[string] task: &str,
+    #[string] catalog_path: &str,
+    #[string] cache_dir: &str,
+) -> Result<crate::genomes::GenomeBlastReport, deno_core::anyhow::Error> {
+    GentleEngine::blast_helper_genome(
+        genome_id,
+        query_sequence,
+        max_hits.max(1) as usize,
+        empty_to_none(task),
+        empty_to_none(catalog_path),
+        empty_to_none(cache_dir),
+    )
+    .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+}
+
+#[op2]
+#[serde]
 fn apply_operation(
     #[serde] state: ProjectState,
     #[string] op_json: &str,
@@ -256,6 +298,8 @@ impl JavaScriptInterface {
         const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
         const LIST_REFERENCE_GENOME_GENES: OpDecl = list_reference_genome_genes();
+        const BLAST_REFERENCE_GENOME: OpDecl = blast_reference_genome();
+        const BLAST_HELPER_GENOME: OpDecl = blast_helper_genome();
         const APPLY_OPERATION: OpDecl = apply_operation();
         const APPLY_WORKFLOW: OpDecl = apply_workflow();
         const SYNC_REBASE_RESOURCE: OpDecl = sync_rebase_resource();
@@ -276,6 +320,8 @@ impl JavaScriptInterface {
                 LIST_REFERENCE_GENOMES,
                 IS_REFERENCE_GENOME_PREPARED,
                 LIST_REFERENCE_GENOME_GENES,
+                BLAST_REFERENCE_GENOME,
+                BLAST_HELPER_GENOME,
                 APPLY_OPERATION,
                 APPLY_WORKFLOW,
                 SYNC_REBASE_RESOURCE,
@@ -324,6 +370,26 @@ impl JavaScriptInterface {
           	}
           	function list_reference_genome_genes(genome_id, catalog_path, cache_dir) {
           		return Deno.core.ops.list_reference_genome_genes(genome_id, catalog_path ?? "", cache_dir ?? "");
+          	}
+          	function blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir) {
+          		return Deno.core.ops.blast_reference_genome(
+          			genome_id,
+          			query_sequence,
+          			(max_hits === undefined ? 25 : max_hits),
+          			task ?? "",
+          			catalog_path ?? "",
+          			cache_dir ?? ""
+          		);
+          	}
+          	function blast_helper_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir) {
+          		return Deno.core.ops.blast_helper_genome(
+          			genome_id,
+          			query_sequence,
+          			(max_hits === undefined ? 25 : max_hits),
+          			task ?? "",
+          			catalog_path ?? "",
+          			cache_dir ?? ""
+          		);
           	}
           	function apply_operation(state, op) {
           		const payload = (typeof op === "string") ? op : JSON.stringify(op);
@@ -386,6 +452,18 @@ impl JavaScriptInterface {
           	function import_genome_bed_track(state, seq_id, path, track_name, min_score, max_score, clear_existing) {
           		return apply_operation(state, {
           			ImportGenomeBedTrack: {
+          				seq_id: seq_id,
+          				path: path,
+          				track_name: track_name ?? null,
+          				min_score: (min_score === undefined ? null : min_score),
+          				max_score: (max_score === undefined ? null : max_score),
+          				clear_existing: (clear_existing === undefined ? null : !!clear_existing)
+          			}
+          		});
+          	}
+          	function import_genome_bigwig_track(state, seq_id, path, track_name, min_score, max_score, clear_existing) {
+          		return apply_operation(state, {
+          			ImportGenomeBigWigTrack: {
           				seq_id: seq_id,
           				path: path,
           				track_name: track_name ?? null,

@@ -12,6 +12,13 @@ const W: f32 = 1200.0;
 const H: f32 = 700.0;
 const RE_LABEL_BASE_OFFSET: f32 = 76.0;
 const RE_LABEL_ROW_HEIGHT: f32 = 12.0;
+const FEATURE_SIDE_MARGIN: f32 = 28.0;
+const FEATURE_LANE_GAP: f32 = 16.0;
+const FEATURE_BLOCK_HEIGHT: f32 = 10.0;
+const REGULATORY_SIDE_MARGIN: f32 = 6.0;
+const REGULATORY_LANE_GAP: f32 = 8.0;
+const REGULATORY_BLOCK_HEIGHT: f32 = 7.0;
+const REGULATORY_GROUP_GAP: f32 = 8.0;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -21,13 +28,10 @@ struct FeatureVm {
     color: &'static str,
     is_reverse: bool,
     is_pointy: bool,
+    is_regulatory: bool,
 }
 
 fn feature_name(feature: &Feature) -> String {
-    let mut label_text = match feature.location.find_bounds() {
-        Ok((from, to)) => format!("{from}..{to}"),
-        Err(_) => String::new(),
-    };
     for k in [
         "label",
         "name",
@@ -39,11 +43,19 @@ fn feature_name(feature: &Feature) -> String {
         "bound_moiety",
     ] {
         if let Some(s) = feature.qualifier_values(k.into()).next() {
-            label_text = s.to_string();
-            break;
+            let label_text = s.to_string();
+            if !label_text.trim().is_empty() {
+                return label_text;
+            }
         }
     }
-    label_text
+    if is_regulatory_feature(feature) {
+        return String::new();
+    }
+    match feature.location.find_bounds() {
+        Ok((from, to)) => format!("{from}..{to}"),
+        Err(_) => String::new(),
+    }
 }
 
 fn feature_color(feature: &Feature) -> &'static str {
@@ -68,6 +80,11 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
         feature.kind.to_string().to_ascii_uppercase().as_str(),
         "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
     )
+}
+
+fn is_regulatory_feature(feature: &Feature) -> bool {
+    let kind = feature.kind.to_string().to_ascii_uppercase();
+    is_tfbs_feature(feature) || kind.contains("REGULATORY")
 }
 
 fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
@@ -157,6 +174,7 @@ fn collect_features(dna: &DNAsequence, display: &DisplaySettings) -> Vec<Feature
             color: feature_color(feature),
             is_reverse: feature_is_reverse(feature),
             is_pointy: feature_pointy(feature),
+            is_regulatory: is_regulatory_feature(feature),
         });
     }
     ret.sort_by(|a, b| {
@@ -311,13 +329,21 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         let features = collect_features(dna, display);
         let mut lane_top_by_idx: Vec<usize> = vec![0; features.len()];
         let mut lane_bottom_by_idx: Vec<usize> = vec![0; features.len()];
+        let mut lane_regulatory_top_by_idx: Vec<usize> = vec![0; features.len()];
         let mut top_lane_ends: Vec<f32> = vec![];
         let mut bottom_lane_ends: Vec<f32> = vec![];
+        let mut regulatory_top_lane_ends: Vec<f32> = vec![];
 
         let mut top_order: Vec<usize> = features
             .iter()
             .enumerate()
-            .filter_map(|(idx, f)| if !f.is_reverse { Some(idx) } else { None })
+            .filter_map(|(idx, f)| {
+                if !f.is_reverse && !f.is_regulatory {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
             .collect();
         top_order.sort_by(|a, b| {
             let fa = &features[*a];
@@ -336,7 +362,13 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         let mut bottom_order: Vec<usize> = features
             .iter()
             .enumerate()
-            .filter_map(|(idx, f)| if f.is_reverse { Some(idx) } else { None })
+            .filter_map(|(idx, f)| {
+                if f.is_reverse && !f.is_regulatory {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
             .collect();
         bottom_order.sort_by(|a, b| {
             let fa = &features[*a];
@@ -352,46 +384,93 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             lane_bottom_by_idx[idx] = lane_allocate(&mut bottom_lane_ends, x1, x2, 4.0);
         }
 
+        let mut regulatory_top_order: Vec<usize> = features
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, f)| if f.is_regulatory { Some(idx) } else { None })
+            .collect();
+        regulatory_top_order.sort_by(|a, b| {
+            let fa = &features[*a];
+            let fb = &features[*b];
+            let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
+            let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
+            span_b.cmp(&span_a).then(fa.from.cmp(&fb.from))
+        });
+        for idx in regulatory_top_order {
+            let f = &features[idx];
+            let x1 = bp_to_x(f.from, len, left, right);
+            let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
+            lane_regulatory_top_by_idx[idx] =
+                lane_allocate(&mut regulatory_top_lane_ends, x1, x2, 1.0);
+        }
+
+        let top_regular_extent = if top_lane_ends.is_empty() {
+            0.0
+        } else {
+            FEATURE_SIDE_MARGIN
+                + (top_lane_ends.len().saturating_sub(1) as f32) * FEATURE_LANE_GAP
+                + FEATURE_BLOCK_HEIGHT * 0.5
+        };
+        let regulatory_group_gap = if !top_lane_ends.is_empty() && !regulatory_top_lane_ends.is_empty() {
+            REGULATORY_GROUP_GAP
+        } else {
+            0.0
+        };
+
         for (idx, f) in features.iter().enumerate() {
             let x1 = bp_to_x(f.from, len, left, right);
             let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            let lane = if f.is_reverse {
-                lane_bottom_by_idx[idx]
+            let (y, block_height) = if f.is_regulatory {
+                let lane = lane_regulatory_top_by_idx[idx];
+                let y = baseline
+                    - top_regular_extent
+                    - regulatory_group_gap
+                    - REGULATORY_SIDE_MARGIN
+                    - lane as f32 * REGULATORY_LANE_GAP;
+                (y, REGULATORY_BLOCK_HEIGHT)
+            } else if f.is_reverse {
+                let lane = lane_bottom_by_idx[idx];
+                let y = baseline + FEATURE_SIDE_MARGIN + lane as f32 * FEATURE_LANE_GAP;
+                (y, FEATURE_BLOCK_HEIGHT)
             } else {
-                lane_top_by_idx[idx]
+                let lane = lane_top_by_idx[idx];
+                let y = baseline - FEATURE_SIDE_MARGIN - lane as f32 * FEATURE_LANE_GAP;
+                (y, FEATURE_BLOCK_HEIGHT)
             };
-            let y = if f.is_reverse {
-                baseline + 28.0 + lane as f32 * 16.0
-            } else {
-                baseline - 28.0 - lane as f32 * 16.0
-            };
+            let half_height = block_height * 0.5;
             doc = doc.add(
                 Rectangle::new()
                     .set("x", x1)
-                    .set("y", y - 5.0)
+                    .set("y", y - half_height)
                     .set("width", x2 - x1)
-                    .set("height", 10.0)
+                    .set("height", block_height)
                     .set("fill", f.color),
             );
 
             if f.is_pointy {
+                let arrow_dx = 6.0;
                 let data = if f.is_reverse {
                     Data::new()
-                        .move_to((x1, y - 5.0))
-                        .line_to((x1 - 6.0, y))
-                        .line_to((x1, y + 5.0))
+                        .move_to((x1, y - half_height))
+                        .line_to((x1 - arrow_dx, y))
+                        .line_to((x1, y + half_height))
                         .close()
                 } else {
                     Data::new()
-                        .move_to((x2, y - 5.0))
-                        .line_to((x2 + 6.0, y))
-                        .line_to((x2, y + 5.0))
+                        .move_to((x2, y - half_height))
+                        .line_to((x2 + arrow_dx, y))
+                        .line_to((x2, y + half_height))
                         .close()
                 };
                 doc = doc.add(Path::new().set("d", data).set("fill", f.color));
             }
 
-            let (text_y, anchor) = if f.is_reverse {
+            if f.label.trim().is_empty() {
+                continue;
+            }
+            let (text_y, anchor) = if f.is_regulatory {
+                (y - half_height - 2.0, "start")
+            } else if f.is_reverse {
                 (y + 16.0, "start")
             } else {
                 (y - 10.0, "start")
