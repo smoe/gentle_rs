@@ -63,13 +63,39 @@ The top toolbar in each DNA window provides these controls (left to right):
 12. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-13. Engine Ops
+13. Export SVG
+   - Exports the active sequence map via engine `RenderSequenceSvg`.
+14. Export RNA SVG (ssRNA only)
+   - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
+   - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
+15. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
-14. Shell
+16. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 
 Hovering any button shows a tooltip in the UI.
+
+## RNA Structure (ssRNA)
+
+When the active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`),
+the DNA window shows an `RNA Structure (rnapkin)` panel in the top area.
+
+Features:
+
+- `Refresh RNA Structure`
+  - Runs `rnapkin` through shared engine APIs to fetch text output and refresh SVG preview.
+- `Export RNA SVG`
+  - Saves a chosen SVG path through engine operation `RenderRnaStructureSvg`.
+- Textual report
+  - Shows command metadata and `stdout`/`stderr` from `rnapkin`.
+- SVG preview
+  - Displays rendered structure image in-panel.
+
+Runtime dependency:
+
+- `rnapkin` must be installed and reachable in `PATH`, or
+- set `GENTLE_RNAPKIN_BIN` to the `rnapkin` executable path.
 
 ## GENtle Shell (GUI)
 
@@ -90,10 +116,12 @@ Supported commands:
 - `load-project PATH`
 - `save-project PATH`
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
+- `render-rna-svg SEQ_ID OUTPUT.svg`
+- `rna-info SEQ_ID`
 - `render-lineage-svg OUTPUT.svg`
 - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
-- `ladders list [--filter TEXT]`
-- `ladders export OUTPUT.json [--filter TEXT]`
+- `ladders list [--molecule dna|rna] [--filter TEXT]`
+- `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
 - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
 - `import-pool INPUT.pool.gentle.json [PREFIX]`
 - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
@@ -205,6 +233,7 @@ Ladder source:
 
 - built-in ladder catalog: `assets/dna_ladders.json` (derived from historical
   GENtle ladder data; upstream legacy files used "marker" naming)
+- built-in RNA ladder catalog: `assets/rna_ladders.json`
 - historical references:
   - `https://github.com/GENtle-persons/gentle-m/blob/main/src/marker.txt`
   - `http://en.wikibooks.org/wiki/GENtle/DNA_markers`

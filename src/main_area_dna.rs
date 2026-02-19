@@ -18,6 +18,7 @@ use eframe::egui::{self, Frame, PointerState, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashMap},
+    path::PathBuf,
     sync::{
         mpsc::{self, Receiver, TryRecvError},
         Arc, Mutex, RwLock,
@@ -226,6 +227,10 @@ pub struct MainAreaDna {
     shell_command_text: String,
     shell_preview_text: String,
     shell_output_text: String,
+    rna_info_text: String,
+    rna_svg_uri: String,
+    rna_status: String,
+    rna_preview_path: Option<PathBuf>,
     digest_enzymes_text: String,
     digest_prefix_text: String,
     merge_inputs_text: String,
@@ -361,6 +366,10 @@ impl MainAreaDna {
             shell_command_text: "state-summary".to_string(),
             shell_preview_text: String::new(),
             shell_output_text: String::new(),
+            rna_info_text: String::new(),
+            rna_svg_uri: String::new(),
+            rna_status: String::new(),
+            rna_preview_path: None,
             digest_enzymes_text: "BamHI,EcoRI".to_string(),
             digest_prefix_text: "digest".to_string(),
             merge_inputs_text: seq_id_for_defaults.clone().unwrap_or_default(),
@@ -906,6 +915,14 @@ impl MainAreaDna {
             {
                 self.export_active_sequence_svg();
             }
+            if self.is_single_stranded_rna()
+                && ui
+                    .button("Export RNA SVG")
+                    .on_hover_text("Export RNA secondary-structure SVG via rnapkin")
+                    .clicked()
+            {
+                self.export_rna_structure_svg();
+            }
             ui.separator();
             if ui
                 .button("Engine Ops")
@@ -928,6 +945,11 @@ impl MainAreaDna {
         });
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
+        }
+
+        if self.is_single_stranded_rna() {
+            ui.separator();
+            self.render_rna_structure_panel(ui);
         }
 
         if self.show_engine_ops {
@@ -2634,6 +2656,168 @@ impl MainAreaDna {
             RenderSvgMode::Linear
         };
         self.apply_operation_with_feedback(Operation::RenderSequenceSvg { seq_id, mode, path });
+    }
+
+    fn is_single_stranded_rna(&self) -> bool {
+        self.dna
+            .read()
+            .ok()
+            .and_then(|dna| dna.molecule_type().map(ToString::to_string))
+            .map(|v| v.eq_ignore_ascii_case("RNA") || v.eq_ignore_ascii_case("ssRNA"))
+            .unwrap_or(false)
+    }
+
+    fn refresh_rna_structure(&mut self) {
+        if !self.is_single_stranded_rna() {
+            self.rna_status = "RNA structure is only available for single-stranded RNA".to_string();
+            return;
+        }
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.rna_status = "No active sequence id for RNA structure".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.rna_status = "No engine attached".to_string();
+            return;
+        };
+
+        let sanitized_seq_id: String = seq_id
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let preview_path =
+            std::env::temp_dir().join(format!("gentle_rna_preview_{sanitized_seq_id}.svg"));
+        let preview_path_text = preview_path.display().to_string();
+
+        let outcome = {
+            let guard = engine.read().expect("Engine lock poisoned");
+            let text_report = guard.inspect_rna_structure(&seq_id);
+            let svg_report = guard.render_rna_structure_svg_to_path(&seq_id, &preview_path_text);
+            (text_report, svg_report)
+        };
+
+        match outcome {
+            (Ok(text_report), Ok(_svg_report)) => {
+                let mut text = format!(
+                    "Tool: {}\nExecutable: {}\nSequence length: {}\nCommand: rnapkin {}\n",
+                    text_report.tool,
+                    text_report.executable,
+                    text_report.sequence_length,
+                    text_report.command.join(" ")
+                );
+                if !text_report.stdout.trim().is_empty() {
+                    text.push_str("\nstdout:\n");
+                    text.push_str(&text_report.stdout);
+                    if !text.ends_with('\n') {
+                        text.push('\n');
+                    }
+                }
+                if !text_report.stderr.trim().is_empty() {
+                    text.push_str("\nstderr:\n");
+                    text.push_str(&text_report.stderr);
+                    if !text.ends_with('\n') {
+                        text.push('\n');
+                    }
+                }
+                self.rna_info_text = text;
+                self.rna_preview_path = Some(preview_path.clone());
+                self.rna_svg_uri = format!("file://{}", preview_path.display());
+                self.rna_status = "RNA structure refreshed from rnapkin".to_string();
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                self.rna_status = format!("RNA structure error: {}", e);
+                self.rna_info_text.clear();
+                self.rna_svg_uri.clear();
+                self.rna_preview_path = None;
+            }
+        }
+    }
+
+    fn export_rna_structure_svg(&mut self) {
+        if !self.is_single_stranded_rna() {
+            self.op_status =
+                "RNA structure export is only available for single-stranded RNA".to_string();
+            return;
+        }
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence to export".to_string();
+            return;
+        };
+        if self.engine.is_none() {
+            self.op_status = "No engine attached".to_string();
+            return;
+        }
+        let default_name = format!("{seq_id}.rna.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Export canceled".to_string();
+            return;
+        };
+        let path = path.display().to_string();
+        self.apply_operation_with_feedback(Operation::RenderRnaStructureSvg { seq_id, path });
+    }
+
+    fn render_rna_structure_panel(&mut self, ui: &mut egui::Ui) {
+        if !self.is_single_stranded_rna() {
+            return;
+        }
+        if self.rna_info_text.trim().is_empty()
+            && self.rna_svg_uri.trim().is_empty()
+            && self.rna_status.trim().is_empty()
+        {
+            self.refresh_rna_structure();
+        }
+
+        ui.collapsing("RNA Structure (rnapkin)", |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Refresh RNA Structure")
+                    .on_hover_text("Run rnapkin and refresh textual report + SVG preview")
+                    .clicked()
+                {
+                    self.refresh_rna_structure();
+                }
+                if ui
+                    .button("Export RNA SVG")
+                    .on_hover_text("Export current RNA structure image as SVG via shared engine")
+                    .clicked()
+                {
+                    self.export_rna_structure_svg();
+                }
+            });
+
+            if !self.rna_status.trim().is_empty() {
+                ui.monospace(self.rna_status.clone());
+            }
+
+            if !self.rna_svg_uri.trim().is_empty() {
+                ui.add(
+                    egui::Image::from_uri(self.rna_svg_uri.clone())
+                        .max_width(ui.available_width())
+                        .max_height(360.0)
+                        .shrink_to_fit(),
+                );
+            }
+
+            if !self.rna_info_text.trim().is_empty() {
+                ui.label("Textual report");
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.rna_info_text)
+                        .desired_rows(10)
+                        .code_editor()
+                        .interactive(false),
+                );
+            }
+        });
     }
 
     fn export_pool_to_file(&mut self) {

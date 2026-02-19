@@ -128,7 +128,7 @@ pub fn build_pool_gel_layout(
             continue;
         };
         let mut parts = ladder.bands().clone();
-        parts.sort_by(|a, b| b.length_bp.total_cmp(&a.length_bp));
+        parts.sort_by(|a, b| b.length_bp().total_cmp(&a.length_bp()));
         let max_strength = parts
             .iter()
             .filter_map(|p| p.relative_strength)
@@ -137,7 +137,7 @@ pub fn build_pool_gel_layout(
         let bands = parts
             .into_iter()
             .map(|p| {
-                let bp = p.length_bp.round().max(1.0) as usize;
+                let bp = p.length_bp().round().max(1.0) as usize;
                 all_band_bps.push(bp);
                 let raw = p.relative_strength.unwrap_or(1.0).max(0.1);
                 let intensity = (raw / max_strength).clamp(0.18, 1.0) as f32;

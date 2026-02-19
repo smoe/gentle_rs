@@ -51,6 +51,10 @@ impl LuaInterface {
         println!("  - state_summary(project): Returns sequence/container summary");
         println!("  - inspect_dna_ladders([name_filter]): Returns built-in DNA ladder catalog");
         println!("  - export_dna_ladders(output_json, [name_filter]): Writes ladder catalog JSON");
+        println!("  - inspect_rna_ladders([name_filter]): Returns built-in RNA ladder catalog");
+        println!(
+            "  - export_rna_ladders(output_json, [name_filter]): Writes RNA ladder catalog JSON"
+        );
         println!(
             "  - apply_operation(project, op): Applies an operation (Lua table or JSON string)"
         );
@@ -124,6 +128,28 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         GentleEngine::export_dna_ladders(&output_json, name_filter)
+            .map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn inspect_rna_ladders(
+        name_filter: Option<String>,
+    ) -> LuaResult<crate::engine::RnaLadderCatalog> {
+        let name_filter = name_filter
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        Ok(GentleEngine::inspect_rna_ladders(name_filter))
+    }
+
+    fn export_rna_ladders(
+        output_json: String,
+        name_filter: Option<String>,
+    ) -> LuaResult<crate::engine::RnaLadderExportReport> {
+        let name_filter = name_filter
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty());
+        GentleEngine::export_rna_ladders(&output_json, name_filter)
             .map_err(|e| Self::err(&e.to_string()))
     }
 
@@ -266,6 +292,34 @@ impl LuaInterface {
             self.lua.create_function(
                 |lua, (output_json, name_filter): (String, Option<String>)| {
                     let report = Self::export_dna_ladders(output_json, name_filter)?;
+                    lua.to_value(&report)
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "inspect_rna_ladders",
+            self.lua
+                .create_function(|lua, name_filter: Option<String>| {
+                    let ladders = Self::inspect_rna_ladders(name_filter)?;
+                    lua.to_value(&ladders)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "list_rna_ladders",
+            self.lua
+                .create_function(|lua, name_filter: Option<String>| {
+                    let ladders = Self::inspect_rna_ladders(name_filter)?;
+                    lua.to_value(&ladders)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "export_rna_ladders",
+            self.lua.create_function(
+                |lua, (output_json, name_filter): (String, Option<String>)| {
+                    let report = Self::export_rna_ladders(output_json, name_filter)?;
                     lua.to_value(&report)
                 },
             )?,

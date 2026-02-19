@@ -53,9 +53,11 @@ Current draft operations:
 - `LoadFile { path, as_id? }`
 - `SaveFile { seq_id, path, format }`
 - `RenderSequenceSvg { seq_id, mode, path }`
+- `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders? }`
 - `ExportDnaLadders { path, name_filter? }`
+- `ExportRnaLadders { path, name_filter? }`
 - `Digest { input, enzymes, output_prefix? }`
 - `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
 - `MergeContainers { inputs, output_prefix? }`
@@ -120,6 +122,23 @@ Current ligation protocol behavior:
   - otherwise from built-in ladder catalog (auto mode)
 - Renders ladder lanes plus pooled band lane as SVG artifact.
 
+RNA secondary-structure semantics:
+
+- Inspection API:
+  - `GentleEngine::inspect_rna_structure(seq_id)`
+  - Runs `rnapkin -v -p <sequence>` and returns structured text report (`stdout`/`stderr` + command metadata).
+- Export operation:
+  - `RenderRnaStructureSvg { seq_id, path }`
+  - Runs `rnapkin <sequence> <path>` and expects SVG output at `path`.
+- Input constraints:
+  - accepted only for single-stranded RNA (`molecule_type` `RNA` or `ssRNA`)
+  - empty sequence is rejected
+- Runtime dependency:
+  - external `rnapkin` executable is required
+  - executable path resolution order:
+    1. env var `GENTLE_RNAPKIN_BIN`
+    2. fallback executable name `rnapkin` in `PATH`
+
 DNA ladder catalog semantics:
 
 - Inspection API:
@@ -130,6 +149,19 @@ DNA ladder catalog semantics:
     - `ladders[]` (`name`, `loading_hint`, `min_bp`, `max_bp`, `band_count`, `bands`)
 - Export operation:
   - `ExportDnaLadders { path, name_filter? }`
+  - Writes the same structured payload to JSON at `path`.
+  - Optional `name_filter` applies case-insensitive name matching before export.
+
+RNA ladder catalog semantics:
+
+- Inspection API:
+  - `GentleEngine::inspect_rna_ladders(name_filter?)`
+  - Returns structured ladder metadata:
+    - `schema` (`gentle.rna_ladders.v1`)
+    - `ladder_count`
+    - `ladders[]` (`name`, `loading_hint`, `min_nt`, `max_nt`, `band_count`, `bands`)
+- Export operation:
+  - `ExportRnaLadders { path, name_filter? }`
   - Writes the same structured payload to JSON at `path`.
   - Optional `name_filter` applies case-insensitive name matching before export.
 

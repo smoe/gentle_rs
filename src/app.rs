@@ -2869,6 +2869,9 @@ impl GENtleApp {
             Operation::RenderSequenceSvg { seq_id, mode, path } => format!(
                 "Render sequence SVG: seq_id={seq_id}, mode={mode:?}, path={path}"
             ),
+            Operation::RenderRnaStructureSvg { seq_id, path } => {
+                format!("Render RNA structure SVG: seq_id={seq_id}, path={path}")
+            }
             Operation::RenderLineageSvg { path } => {
                 format!("Render lineage SVG: path={path}")
             }
@@ -2888,6 +2891,15 @@ impl GENtleApp {
             ),
             Operation::ExportDnaLadders { path, name_filter } => format!(
                 "Export DNA ladders: path={}, filter={}",
+                path,
+                name_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-")
+            ),
+            Operation::ExportRnaLadders { path, name_filter } => format!(
+                "Export RNA ladders: path={}, filter={}",
                 path,
                 name_filter
                     .as_deref()
