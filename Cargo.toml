@@ -82,7 +82,7 @@ deno_core = "*"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"
 objc2-foundation = "0.2.2"
-objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder"] }
+objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"] }
 
 #[build-dependencies]
 #winresource = "*" # For Windows app icon

@@ -280,11 +280,12 @@ cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome",
 cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
 cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.json
-cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
-cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
-cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 113" --catalog assets/genomes.json --cache-dir data/genomes
-cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 113" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
-cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 113" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
+cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
@@ -299,6 +300,7 @@ Global CLI options:
 - `--state PATH`: use a non-default project state file
 - `--progress` or `--progress-stderr`: print live progress events to `stderr`
 - `--progress-stdout`: print live progress events to `stdout`
+- `--allow-screenshots`: opt-in guard for window screenshot commands
 
 Current progress events include TFBS annotation updates and genome-prepare
 updates (download/index phases).
@@ -351,10 +353,33 @@ Shared shell command:
     - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
+    - `screenshot-window OUTPUT.png` (requires process startup with
+      `--allow-screenshots`)
   - Use single quotes around JSON payloads to preserve whitespace:
     - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
+
+Screenshot bridge:
+
+- Startup guard:
+  - screenshot commands are accepted only when `gentle_cli` was started with
+    `--allow-screenshots`.
+- Command surface:
+  - direct CLI: `gentle_cli --allow-screenshots screenshot-window OUTPUT.png`
+  - shared shell: `gentle_cli --allow-screenshots shell 'screenshot-window OUTPUT.png'`
+- Scope/safety:
+  - captures only the active/topmost GENtle window
+  - full-screen capture and non-GENtle window capture are out of contract
+  - window lookup is native AppKit in-process (no AppleScript automation path)
+  - in practice this is most useful from the GUI shell; a headless `gentle_cli`
+    process usually has no eligible window
+  - current backend support is macOS (`screencapture`); non-macOS returns an
+    unsupported error for now
+- Output:
+  - caller chooses the full output path/filename (for docs auto-update workflows)
+  - expected result schema: `gentle.screenshot.v1`
 
 Pool exchange commands:
 
@@ -639,20 +664,27 @@ Prepare a whole reference genome once (download/copy sequence + annotation and
 build local FASTA index):
 
 ```json
-{"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 113","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+{"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ```
 
 Extract a genomic interval from the prepared cache (1-based inclusive
 coordinates):
 
 ```json
-{"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 113","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+{"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 116","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ```
 
 Extract by gene query (name/id) from the prepared gene index:
 
 ```json
-{"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 113","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+{"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 116","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+```
+
+Import BED intervals (plain `.bed` or gzipped `.bed.gz`) onto a genome-anchored
+sequence:
+
+```json
+{"ImportGenomeBedTrack":{"seq_id":"grch38_tp53","path":"data/chipseq/peaks.bed.gz","track_name":"H3K27ac","min_score":10.0,"max_score":null,"clear_existing":false}}
 ```
 
 Notes:
@@ -669,10 +701,17 @@ Notes:
   (`rettype=fasta` + `rettype=gbwithparts`) for one-time prepare/index.
 - `ExtractGenomeRegion` expects the genome to have been prepared already.
 - `ExtractGenomeGene` also expects prepared cache and gene index.
+- `ImportGenomeBedTrack` expects `seq_id` to be a sequence created by
+  `ExtractGenomeRegion` or `ExtractGenomeGene` (genome-anchored provenance).
+- BED import accepts local `.bed` and `.bed.gz` files.
 - `ExtractGenomeRegion` and `ExtractGenomeGene` append extraction provenance
   records into `ProjectState.metadata["provenance"]["genome_extractions"]`
   (genome id, coordinates/query, source descriptors, and checksums when present).
 - If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
+- Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
+  Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Saccharomyces cerevisiae
+  S288c (Ensembl 113 and 116), and `LocalProject` (backed by
+  `test_files/AB011549.2.fa` + `test_files/AB011549.2.gb`).
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix
   differences (`1` vs `chr1`).

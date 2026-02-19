@@ -436,6 +436,25 @@ Practical rule:
   - enabled behavior: allow invoking the host system screenshot utility from an
     explicit screenshot command path
   - capture scope: active GENtle window only (not full desktop)
+  - window targeting uses native AppKit in-process lookup (no AppleScript
+    automation bridge)
+  - shared command surface:
+    - direct CLI command: `screenshot-window OUTPUT.png`
+    - shared shell command: `screenshot-window OUTPUT.png`
+  - current operation shape for command result payload:
+    - `schema` (`gentle.screenshot.v1`)
+    - `path` (caller-chosen filename)
+    - `window_title`
+    - `captured_at_unix_ms`
+    - `pixel_width` / `pixel_height`
+    - `backend` (OS utility route used)
+  - current backend availability:
+    - implemented on macOS via `screencapture`
+    - non-macOS platforms currently return unsupported
+  - non-goals for this bridge:
+    - full-screen capture
+    - capture of non-GENtle windows
+    - background/hidden-window capture without explicit future contract
   - output: caller-provided custom filename/path for saved image artifact
   - purpose: automate documentation refresh and produce image-backed progress
     updates for third-party communication
@@ -521,8 +540,7 @@ Use same view model for GUI and machine consumers.
 - operation provenance metadata (engine version, timestamps, input references)
 - process-protocol export contract (plain-text, technical-assistant-friendly
   step list derived from workflow/operation provenance)
-- define adapter contract for screenshot artifacts behind explicit opt-in
-  (`--allow-screenshots`) with active-window-only capture semantics
+- harden adapter screenshot bridge (expand backend coverage and automated tests)
 
 ### Phase E: interpretation (later)
 
@@ -554,6 +572,8 @@ If work is interrupted, resume in this order:
   engine operation yet)
 - No dedicated engine operation yet for exporting a full run/process as a
   technical-assistant protocol text artifact
+- Screenshot bridge is implemented as an adapter utility, but backend support is
+  currently macOS-only
 
 ## 12. Decision log (concise)
 
@@ -569,7 +589,7 @@ If work is interrupted, resume in this order:
   accepted and implemented
 - Add opt-in screenshot artifact bridge (`--allow-screenshots`) for
   documentation/progress image generation with active-window-only capture:
-  accepted and planned (adapter contract + command path pending)
+  accepted and implemented (adapter-level command path; macOS backend)
 - Add protocol-grade process export as a strategic requirement:
   accepted and planned (engine-level contract pending)
 - Promote container semantics to first-class engine state: accepted and

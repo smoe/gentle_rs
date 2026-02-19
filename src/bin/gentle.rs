@@ -94,13 +94,14 @@ struct CliArgs {
     show_help: bool,
     show_version: bool,
     project_path: Option<String>,
+    allow_screenshots: bool,
 }
 
 fn print_help() {
     println!(
         "Usage:\n  \
-gentle [--help|-h] [--version|-V]\n  \
-gentle [--project PATH] [PATH]\n\n  \
+gentle [--help|-h] [--version|-V] [--allow-screenshots]\n  \
+gentle [--project PATH] [--allow-screenshots] [PATH]\n\n  \
 PATH can be a project file such as 'project.gentle.json'."
     );
 }
@@ -124,6 +125,10 @@ fn parse_cli_args(args: &[String]) -> Result<CliArgs, String> {
                 }
                 parsed.project_path = Some(args[idx + 1].clone());
                 idx += 2;
+            }
+            "--allow-screenshots" => {
+                parsed.allow_screenshots = true;
+                idx += 1;
             }
             arg if arg.starts_with('-') => {
                 return Err(format!("Unknown option '{arg}'"));
@@ -164,6 +169,9 @@ fn main() -> eframe::Result<()> {
     if cli.show_version {
         println!("{}", about::version_cli_text());
         return Ok(());
+    }
+    if cli.allow_screenshots {
+        std::env::set_var("GENTLE_ALLOW_SCREENSHOTS", "1");
     }
 
     let options = NativeOptions {

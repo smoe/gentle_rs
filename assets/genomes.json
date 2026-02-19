@@ -39,6 +39,12 @@
     "sequence_remote": "https://ftp.ensembl.org/pub/release-113/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
     "annotations_remote": "https://ftp.ensembl.org/pub/release-113/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.113.gtf.gz"
   },
+  "Saccharomyces cerevisiae S288c Ensembl 116": {
+    "description": "Saccharomyces cerevisiae S288c Ensembl 116",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/saccharomyces_cerevisiae/dna/Saccharomyces_cerevisiae.R64-1-1.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/saccharomyces_cerevisiae/Saccharomyces_cerevisiae.R64-1-1.116.gtf.gz",
+    "cache_dir": "data/genomes"
+  },
   "LocalProject": {
     "description": "Local project training genome from AB011549.2",
     "sequence_local": "../test_files/AB011549.2.fa",
