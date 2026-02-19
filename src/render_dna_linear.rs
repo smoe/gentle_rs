@@ -17,6 +17,12 @@ const BASELINE_STROKE: f32 = 2.0;
 const FEATURE_HEIGHT: f32 = 12.0;
 const FEATURE_GAP: f32 = 18.0;
 const BASELINE_MARGIN: f32 = 30.0;
+const MIN_FEATURE_HEIGHT: f32 = 6.0;
+const MIN_FEATURE_GAP: f32 = 4.0;
+const MIN_BASELINE_MARGIN: f32 = 8.0;
+const BASELINE_TOP_PADDING: f32 = 26.0;
+const BASELINE_BOTTOM_PADDING: f32 = 24.0;
+const BASELINE_SIDE_MIN_EXTENT: f32 = 36.0;
 const LABEL_ROW_HEIGHT: f32 = 12.0;
 const LABEL_CHAR_WIDTH: f32 = 6.5;
 const ORF_HEIGHT: f32 = 6.0;
@@ -29,6 +35,13 @@ const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
 const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
 const FEATURE_LABEL_PADDING_X: f32 = 3.0;
 const FEATURE_LABEL_MAX_EXPANSION_PX: f32 = 120.0;
+const REGULATORY_BASELINE_MARGIN: f32 = 6.0;
+const REGULATORY_FEATURE_GAP: f32 = 8.0;
+const REGULATORY_FEATURE_HEIGHT: f32 = 7.0;
+const REGULATORY_GROUP_GAP: f32 = 8.0;
+const MIN_REGULATORY_BASELINE_MARGIN: f32 = 2.0;
+const MIN_REGULATORY_FEATURE_GAP: f32 = 3.0;
+const MIN_REGULATORY_FEATURE_HEIGHT: f32 = 4.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -65,12 +78,20 @@ impl FeaturePosition {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SideLaneStyle {
+    margin: f32,
+    gap: f32,
+    height: f32,
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderDnaLinear {
     dna: Arc<RwLock<DNAsequence>>,
     display: Arc<RwLock<DnaDisplay>>,
     sequence_length: usize,
     area: Rect,
+    baseline_y: f32,
     features: Vec<FeaturePosition>,
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
@@ -86,6 +107,7 @@ impl RenderDnaLinear {
             display,
             sequence_length,
             area: Rect::NOTHING,
+            baseline_y: 0.0,
             features: vec![],
             restriction_enzyme_sites: vec![],
             selected_feature_number: None,
@@ -121,7 +143,11 @@ impl RenderDnaLinear {
     }
 
     fn baseline_y(&self) -> f32 {
-        self.area.center().y
+        if self.baseline_y.is_finite() && self.baseline_y > 0.0 {
+            self.baseline_y
+        } else {
+            self.area.center().y
+        }
     }
 
     fn viewport(&self) -> LinearViewport {
@@ -284,8 +310,54 @@ impl RenderDnaLinear {
         span.max(1)
     }
 
+    fn side_extent(lane_count: usize, style: SideLaneStyle) -> f32 {
+        if lane_count == 0 {
+            return 0.0;
+        }
+        style.margin + (lane_count.saturating_sub(1) as f32) * style.gap + style.height * 0.5
+    }
+
+    fn fit_side_style(lane_count: usize, target_extent: f32) -> SideLaneStyle {
+        Self::fit_lane_style(
+            lane_count,
+            target_extent,
+            SideLaneStyle {
+                margin: BASELINE_MARGIN,
+                gap: FEATURE_GAP,
+                height: FEATURE_HEIGHT,
+            },
+            MIN_BASELINE_MARGIN,
+            MIN_FEATURE_GAP,
+            MIN_FEATURE_HEIGHT,
+        )
+    }
+
+    fn fit_lane_style(
+        lane_count: usize,
+        target_extent: f32,
+        default: SideLaneStyle,
+        min_margin: f32,
+        min_gap: f32,
+        min_height: f32,
+    ) -> SideLaneStyle {
+        if lane_count == 0 {
+            return default;
+        }
+        let natural = Self::side_extent(lane_count, default);
+        if natural <= 0.0 || target_extent <= 0.0 || natural <= target_extent {
+            return default;
+        }
+        let scale = (target_extent / natural).clamp(0.1, 1.0);
+        SideLaneStyle {
+            margin: (default.margin * scale).max(min_margin),
+            gap: (default.gap * scale).max(min_gap),
+            height: (default.height * scale).max(min_height),
+        }
+    }
+
     fn layout_features(&mut self, viewport: LinearViewport) {
         self.features.clear();
+        self.baseline_y = self.area.center().y;
         if self.sequence_length == 0 {
             return;
         }
@@ -303,12 +375,21 @@ impl RenderDnaLinear {
             color: Color32,
             is_pointy: bool,
             is_reverse: bool,
+            is_regulatory: bool,
         }
 
         #[derive(Clone)]
         struct PositionedSeed {
             seed: Seed,
             feature_lane: usize,
+            lane_side: LaneSide,
+        }
+
+        #[derive(Clone, Copy)]
+        enum LaneSide {
+            Top,
+            Bottom,
+            RegulatoryTop,
         }
 
         let mut seeds: Vec<Seed> = Vec::new();
@@ -470,28 +551,112 @@ impl RenderDnaLinear {
                 color: RenderDna::feature_color(feature),
                 is_pointy: RenderDna::is_feature_pointy(feature),
                 is_reverse: feature_is_reverse(feature),
+                is_regulatory: RenderDna::is_regulatory_feature(feature),
             });
         }
 
         let mut feature_lanes_top: Vec<f32> = vec![];
         let mut feature_lanes_bottom: Vec<f32> = vec![];
+        let mut feature_lanes_regulatory_top: Vec<f32> = vec![];
         let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
         let mut lane_order = seeds.clone();
         lane_order.sort_by(|a, b| {
-            (b.x2 - b.x1)
-                .total_cmp(&(a.x2 - a.x1))
-                .then_with(|| a.x1.total_cmp(&b.x1))
-                .then_with(|| a.feature_number.cmp(&b.feature_number))
+            a.is_regulatory.cmp(&b.is_regulatory).then_with(|| {
+                (b.x2 - b.x1)
+                    .total_cmp(&(a.x2 - a.x1))
+                    .then_with(|| a.x1.total_cmp(&b.x1))
+                    .then_with(|| a.feature_number.cmp(&b.feature_number))
+            })
         });
 
         for seed in lane_order {
-            let feature_lane = if seed.is_reverse {
-                Self::allocate_lane(&mut feature_lanes_bottom, seed.x1, seed.x2, 3.0)
+            let lane_padding = if seed.is_regulatory { 1.0 } else { 3.0 };
+            let (lane_side, feature_lane) = if seed.is_regulatory {
+                (
+                    LaneSide::RegulatoryTop,
+                    Self::allocate_lane(
+                        &mut feature_lanes_regulatory_top,
+                        seed.x1,
+                        seed.x2,
+                        lane_padding,
+                    ),
+                )
+            } else if seed.is_reverse {
+                (
+                    LaneSide::Bottom,
+                    Self::allocate_lane(&mut feature_lanes_bottom, seed.x1, seed.x2, lane_padding),
+                )
             } else {
-                Self::allocate_lane(&mut feature_lanes_top, seed.x1, seed.x2, 3.0)
+                (
+                    LaneSide::Top,
+                    Self::allocate_lane(&mut feature_lanes_top, seed.x1, seed.x2, lane_padding),
+                )
             };
-            lane_seed.push(PositionedSeed { seed, feature_lane });
+            lane_seed.push(PositionedSeed {
+                seed,
+                feature_lane,
+                lane_side,
+            });
         }
+
+        let top_lane_count = feature_lanes_top.len();
+        let bottom_lane_count = feature_lanes_bottom.len();
+        let regulatory_top_lane_count = feature_lanes_regulatory_top.len();
+        let default_style = SideLaneStyle {
+            margin: BASELINE_MARGIN,
+            gap: FEATURE_GAP,
+            height: FEATURE_HEIGHT,
+        };
+        let regulatory_top_default_style = SideLaneStyle {
+            margin: REGULATORY_BASELINE_MARGIN,
+            gap: REGULATORY_FEATURE_GAP,
+            height: REGULATORY_FEATURE_HEIGHT,
+        };
+        let top_regular_natural_extent = Self::side_extent(top_lane_count, default_style);
+        let regulatory_top_natural_extent =
+            Self::side_extent(regulatory_top_lane_count, regulatory_top_default_style);
+        let regulatory_group_gap_natural = if top_lane_count > 0 && regulatory_top_lane_count > 0 {
+            REGULATORY_GROUP_GAP
+        } else {
+            0.0
+        };
+        let top_natural_extent =
+            (top_regular_natural_extent + regulatory_group_gap_natural + regulatory_top_natural_extent)
+                .max(BASELINE_SIDE_MIN_EXTENT);
+        let bottom_natural_extent =
+            Self::side_extent(bottom_lane_count, default_style).max(BASELINE_SIDE_MIN_EXTENT);
+        let natural_total = (top_natural_extent + bottom_natural_extent).max(1.0);
+        let available_total =
+            (self.area.height() - BASELINE_TOP_PADDING - BASELINE_BOTTOM_PADDING).max(60.0);
+        let top_target_extent = available_total * (top_natural_extent / natural_total);
+        let bottom_target_extent = available_total * (bottom_natural_extent / natural_total);
+
+        let baseline = self.area.top() + BASELINE_TOP_PADDING + top_target_extent;
+        self.baseline_y = baseline.clamp(
+            self.area.top() + BASELINE_TOP_PADDING,
+            self.area.bottom() - BASELINE_BOTTOM_PADDING,
+        );
+
+        let top_scale = if top_natural_extent > 0.0 {
+            (top_target_extent / top_natural_extent).clamp(0.1, 1.0)
+        } else {
+            1.0
+        };
+        let top_target_regular_extent = top_regular_natural_extent * top_scale;
+        let top_target_regulatory_extent = regulatory_top_natural_extent * top_scale;
+        let regulatory_group_gap = regulatory_group_gap_natural * top_scale;
+
+        let top_style = Self::fit_side_style(top_lane_count, top_target_regular_extent);
+        let bottom_style = Self::fit_side_style(bottom_lane_count, bottom_target_extent);
+        let regulatory_top_style = Self::fit_lane_style(
+            regulatory_top_lane_count,
+            top_target_regulatory_extent,
+            regulatory_top_default_style,
+            MIN_REGULATORY_BASELINE_MARGIN,
+            MIN_REGULATORY_FEATURE_GAP,
+            MIN_REGULATORY_FEATURE_HEIGHT,
+        );
+        let top_regular_extent = Self::side_extent(top_lane_count, top_style);
 
         lane_seed.sort_by(|a, b| {
             a.seed
@@ -503,18 +668,31 @@ impl RenderDnaLinear {
         for item in lane_seed {
             let seed = item.seed;
             let feature_lane = item.feature_lane;
-            let center_y = if seed.is_reverse {
-                self.baseline_y() + BASELINE_MARGIN + FEATURE_GAP * feature_lane as f32
-            } else {
-                self.baseline_y() - BASELINE_MARGIN - FEATURE_GAP * feature_lane as f32
+            let side_style = match item.lane_side {
+                LaneSide::Top => top_style,
+                LaneSide::Bottom => bottom_style,
+                LaneSide::RegulatoryTop => regulatory_top_style,
             };
+            let center_y = match item.lane_side {
+                LaneSide::Top => {
+                    self.baseline_y() - side_style.margin - side_style.gap * feature_lane as f32
+                }
+                LaneSide::Bottom => {
+                    self.baseline_y() + side_style.margin + side_style.gap * feature_lane as f32
+                }
+                LaneSide::RegulatoryTop => {
+                    let regulatory_origin = self.baseline_y() - top_regular_extent - regulatory_group_gap;
+                    regulatory_origin - side_style.margin - side_style.gap * feature_lane as f32
+                }
+            };
+            let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
             let exon_rects: Vec<Rect> = seed
                 .exon_segments
                 .iter()
                 .map(|(x1, x2)| {
                     Rect::from_min_max(
-                        Pos2::new(*x1, center_y - FEATURE_HEIGHT / 2.0),
-                        Pos2::new(*x2, center_y + FEATURE_HEIGHT / 2.0),
+                        Pos2::new(*x1, center_y - side_style.height / 2.0),
+                        Pos2::new(*x2, center_y + side_style.height / 2.0),
                     )
                 })
                 .collect();
@@ -525,8 +703,8 @@ impl RenderDnaLinear {
             for exon_rect in exon_rects.iter().skip(1) {
                 rect = rect.union(*exon_rect);
             }
-            let connector_delta = 5.0;
-            let connector_apex_y = if seed.is_reverse {
+            let connector_delta = (side_style.height * 0.42).max(3.0);
+            let connector_apex_y = if lane_is_bottom_side {
                 center_y + connector_delta
             } else {
                 center_y - connector_delta

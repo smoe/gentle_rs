@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
@@ -18,13 +18,14 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
         DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GentleEngine, OpResult,
-        Operation, ProjectState,
+        Operation, ProjectState, BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
     },
     enzymes,
     genomes::{
-        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
-        PreparedGenomeInspection, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan,
+        PrepareGenomeProgress, PreparedGenomeInspection, BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN,
+        DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs,
@@ -41,15 +42,9 @@ use serde::{Deserialize, Serialize};
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
+const BED_TRACK_SUBSCRIPTIONS_METADATA_KEY: &str = "genome_bed_track_subscriptions";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
-const GENOME_PREPARE_STEP_LABELS: [&str; 5] = [
-    "Resolve/download sequence",
-    "Resolve/download annotation",
-    "Build FASTA index",
-    "Build gene index",
-    "Finalize installation",
-];
 
 pub fn request_open_help_from_native_menu() {
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
@@ -63,6 +58,9 @@ pub fn request_open_settings_from_native_menu() {
 #[serde(default)]
 struct PersistedConfiguration {
     rnapkin_executable: String,
+    makeblastdb_executable: String,
+    blastn_executable: String,
+    bigwig_to_bedgraph_executable: String,
     graphics_defaults: DisplaySettings,
 }
 
@@ -70,7 +68,60 @@ impl Default for PersistedConfiguration {
     fn default() -> Self {
         Self {
             rnapkin_executable: String::new(),
+            makeblastdb_executable: String::new(),
+            blastn_executable: String::new(),
+            bigwig_to_bedgraph_executable: String::new(),
             graphics_defaults: DisplaySettings::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+enum GenomeTrackSource {
+    #[default]
+    Bed,
+    BigWig,
+}
+
+impl GenomeTrackSource {
+    fn from_path(path: &str) -> Self {
+        let lower = path.trim().to_ascii_lowercase();
+        if lower.ends_with(".bw") || lower.ends_with(".bigwig") {
+            Self::BigWig
+        } else {
+            Self::Bed
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Bed => "BED",
+            Self::BigWig => "BigWig",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+struct BedTrackSubscription {
+    source: GenomeTrackSource,
+    path: String,
+    track_name: Option<String>,
+    min_score: Option<f64>,
+    max_score: Option<f64>,
+    clear_existing: bool,
+}
+
+impl Default for BedTrackSubscription {
+    fn default() -> Self {
+        Self {
+            source: GenomeTrackSource::Bed,
+            path: String::new(),
+            track_name: None,
+            min_score: None,
+            max_score: None,
+            clear_existing: false,
         }
     }
 }
@@ -91,17 +142,24 @@ pub struct GENtleApp {
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
+    configuration_makeblastdb_executable: String,
+    configuration_blastn_executable: String,
+    configuration_bigwig_to_bedgraph_executable: String,
     configuration_rnapkin_validation_ok: Option<bool>,
     configuration_rnapkin_validation_message: String,
+    configuration_blast_validation_ok: Option<bool>,
+    configuration_blast_validation_message: String,
     configuration_graphics: DisplaySettings,
     configuration_graphics_dirty: bool,
     configuration_status: String,
     current_project_path: Option<String>,
     lineage_graph_view: bool,
     clean_state_fingerprint: u64,
+    last_applied_window_title: String,
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
+    show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
     genome_catalog_path: String,
     genome_cache_dir: String,
@@ -124,6 +182,18 @@ pub struct GENtleApp {
     genome_end_1based: String,
     genome_output_id: String,
     genome_retrieve_status: String,
+    genome_blast_source_mode: GenomeBlastSourceMode,
+    genome_blast_query_manual: String,
+    genome_blast_query_seq_id: String,
+    genome_blast_query_pool_id: String,
+    genome_blast_max_hits: usize,
+    genome_blast_task_name: String,
+    genome_blast_task: Option<GenomeBlastTask>,
+    genome_blast_progress_fraction: Option<f32>,
+    genome_blast_progress_label: String,
+    genome_blast_results: Vec<GenomeBlastQueryResult>,
+    genome_blast_selected_result: usize,
+    genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
     genome_track_seq_id: String,
     genome_track_path: String,
@@ -132,6 +202,9 @@ pub struct GENtleApp {
     genome_track_max_score: String,
     genome_track_clear_existing: bool,
     genome_track_status: String,
+    genome_bed_track_subscriptions: Vec<BedTrackSubscription>,
+    genome_track_autosync_status: String,
+    known_anchored_seq_ids: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -163,6 +236,47 @@ enum GenomePrepareTaskMessage {
     Done(Result<OpResult, EngineError>),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GenomeBlastSourceMode {
+    Manual,
+    ProjectSequence,
+    ProjectPool,
+}
+
+struct GenomeBlastTask {
+    started: Instant,
+    receiver: mpsc::Receiver<GenomeBlastTaskMessage>,
+}
+
+enum GenomeBlastTaskMessage {
+    Progress {
+        done_queries: usize,
+        total_queries: usize,
+        current_query_label: String,
+    },
+    Done(Result<GenomeBlastBatchResult, String>),
+}
+
+#[derive(Clone)]
+struct GenomeBlastQueryResult {
+    query_label: String,
+    query_length: usize,
+    report: GenomeBlastReport,
+}
+
+#[derive(Clone)]
+struct GenomeBlastBatchResult {
+    reports: Vec<GenomeBlastQueryResult>,
+    failed_queries: Vec<String>,
+}
+
+#[derive(Clone)]
+struct BlastPoolOption {
+    container_id: String,
+    label: String,
+    members: Vec<String>,
+}
+
 impl Default for GENtleApp {
     fn default() -> Self {
         Self {
@@ -181,17 +295,25 @@ impl Default for GENtleApp {
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
+            configuration_makeblastdb_executable: env::var(MAKEBLASTDB_ENV_BIN).unwrap_or_default(),
+            configuration_blastn_executable: env::var(BLASTN_ENV_BIN).unwrap_or_default(),
+            configuration_bigwig_to_bedgraph_executable: env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
+                .unwrap_or_default(),
             configuration_rnapkin_validation_ok: None,
             configuration_rnapkin_validation_message: String::new(),
+            configuration_blast_validation_ok: None,
+            configuration_blast_validation_message: String::new(),
             configuration_graphics: DisplaySettings::default(),
             configuration_graphics_dirty: false,
             configuration_status: String::new(),
             current_project_path: None,
             lineage_graph_view: false,
             clean_state_fingerprint: 0,
+            last_applied_window_title: String::new(),
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
+            show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
             genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
             genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
@@ -214,6 +336,18 @@ impl Default for GENtleApp {
             genome_end_1based: "1000".to_string(),
             genome_output_id: String::new(),
             genome_retrieve_status: String::new(),
+            genome_blast_source_mode: GenomeBlastSourceMode::Manual,
+            genome_blast_query_manual: String::new(),
+            genome_blast_query_seq_id: String::new(),
+            genome_blast_query_pool_id: String::new(),
+            genome_blast_max_hits: 25,
+            genome_blast_task_name: "blastn-short".to_string(),
+            genome_blast_task: None,
+            genome_blast_progress_fraction: None,
+            genome_blast_progress_label: String::new(),
+            genome_blast_results: vec![],
+            genome_blast_selected_result: 0,
+            genome_blast_status: String::new(),
             show_genome_bed_track_dialog: false,
             genome_track_seq_id: String::new(),
             genome_track_path: String::new(),
@@ -222,6 +356,9 @@ impl Default for GENtleApp {
             genome_track_max_score: String::new(),
             genome_track_clear_existing: false,
             genome_track_status: String::new(),
+            genome_bed_track_subscriptions: vec![],
+            genome_track_autosync_status: String::new(),
+            known_anchored_seq_ids: BTreeSet::new(),
         }
     }
 }
@@ -235,8 +372,16 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Prepare Genome Viewport")
     }
 
+    fn blast_genome_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle BLAST Genome Viewport")
+    }
+
     fn configuration_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Configuration Viewport")
+    }
+
+    fn bed_track_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle BED Tracks Viewport")
     }
 
     fn configuration_store_path() -> PathBuf {
@@ -266,6 +411,12 @@ impl GENtleApp {
         }
         let payload = PersistedConfiguration {
             rnapkin_executable: self.configuration_rnapkin_executable.trim().to_string(),
+            makeblastdb_executable: self.configuration_makeblastdb_executable.trim().to_string(),
+            blastn_executable: self.configuration_blastn_executable.trim().to_string(),
+            bigwig_to_bedgraph_executable: self
+                .configuration_bigwig_to_bedgraph_executable
+                .trim()
+                .to_string(),
             graphics_defaults: self.configuration_graphics.clone(),
         };
         let json = serde_json::to_string_pretty(&payload)
@@ -303,6 +454,10 @@ impl GENtleApp {
             return;
         };
         self.configuration_rnapkin_executable = saved.rnapkin_executable.trim().to_string();
+        self.configuration_makeblastdb_executable = saved.makeblastdb_executable.trim().to_string();
+        self.configuration_blastn_executable = saved.blastn_executable.trim().to_string();
+        self.configuration_bigwig_to_bedgraph_executable =
+            saved.bigwig_to_bedgraph_executable.trim().to_string();
         if self.configuration_rnapkin_executable.is_empty() {
             env::remove_var("GENTLE_RNAPKIN_BIN");
         } else {
@@ -311,10 +466,33 @@ impl GENtleApp {
                 self.configuration_rnapkin_executable.clone(),
             );
         }
+        if self.configuration_makeblastdb_executable.is_empty() {
+            env::remove_var(MAKEBLASTDB_ENV_BIN);
+        } else {
+            env::set_var(
+                MAKEBLASTDB_ENV_BIN,
+                self.configuration_makeblastdb_executable.clone(),
+            );
+        }
+        if self.configuration_blastn_executable.is_empty() {
+            env::remove_var(BLASTN_ENV_BIN);
+        } else {
+            env::set_var(BLASTN_ENV_BIN, self.configuration_blastn_executable.clone());
+        }
+        if self.configuration_bigwig_to_bedgraph_executable.is_empty() {
+            env::remove_var(BIGWIG_TO_BEDGRAPH_ENV_BIN);
+        } else {
+            env::set_var(
+                BIGWIG_TO_BEDGRAPH_ENV_BIN,
+                self.configuration_bigwig_to_bedgraph_executable.clone(),
+            );
+        }
         self.configuration_graphics = saved.graphics_defaults;
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
         self.configuration_rnapkin_validation_message.clear();
+        self.configuration_blast_validation_ok = None;
+        self.configuration_blast_validation_message.clear();
 
         if apply_graphics_to_current_project {
             self.apply_configuration_graphics_to_engine_state();
@@ -528,23 +706,49 @@ impl GENtleApp {
         }
     }
 
+    fn resolved_makeblastdb_executable(&self) -> String {
+        let configured = self.configuration_makeblastdb_executable.trim();
+        if configured.is_empty() {
+            DEFAULT_MAKEBLASTDB_BIN.to_string()
+        } else {
+            configured.to_string()
+        }
+    }
+
+    fn resolved_blastn_executable(&self) -> String {
+        let configured = self.configuration_blastn_executable.trim();
+        if configured.is_empty() {
+            DEFAULT_BLASTN_BIN.to_string()
+        } else {
+            configured.to_string()
+        }
+    }
+
     fn clear_rnapkin_validation(&mut self) {
         self.configuration_rnapkin_validation_ok = None;
         self.configuration_rnapkin_validation_message.clear();
+    }
+
+    fn clear_blast_validation(&mut self) {
+        self.configuration_blast_validation_ok = None;
+        self.configuration_blast_validation_message.clear();
+    }
+
+    fn first_non_empty_output_line(stdout: &[u8], stderr: &[u8]) -> String {
+        String::from_utf8_lossy(stdout)
+            .lines()
+            .chain(String::from_utf8_lossy(stderr).lines())
+            .find(|line| !line.trim().is_empty())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "No version output".to_string())
     }
 
     fn validate_rnapkin_executable(&mut self) {
         let executable = self.resolved_rnapkin_executable();
         match Command::new(&executable).arg("--version").output() {
             Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                let first_non_empty = stdout
-                    .lines()
-                    .chain(stderr.lines())
-                    .find(|line| !line.trim().is_empty())
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "No version output".to_string());
+                let first_non_empty =
+                    Self::first_non_empty_output_line(&output.stdout, &output.stderr);
                 if output.status.success() {
                     self.configuration_rnapkin_validation_ok = Some(true);
                     self.configuration_rnapkin_validation_message = format!(
@@ -574,13 +778,81 @@ impl GENtleApp {
         }
     }
 
+    fn validate_blast_executables(&mut self) {
+        let makeblastdb = self.resolved_makeblastdb_executable();
+        let blastn = self.resolved_blastn_executable();
+
+        let mut ok = true;
+        let makeblastdb_message = match Command::new(&makeblastdb).arg("-version").output() {
+            Ok(output) => {
+                let first_non_empty =
+                    Self::first_non_empty_output_line(&output.stdout, &output.stderr);
+                if output.status.success() {
+                    format!("makeblastdb OK ('{}'): {}", makeblastdb, first_non_empty)
+                } else {
+                    ok = false;
+                    format!(
+                        "makeblastdb failed ('{}', status {:?}): {}",
+                        makeblastdb,
+                        output.status.code(),
+                        first_non_empty
+                    )
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                ok = false;
+                format!("makeblastdb executable '{}' not found", makeblastdb)
+            }
+            Err(e) => {
+                ok = false;
+                format!("Could not execute makeblastdb '{}': {}", makeblastdb, e)
+            }
+        };
+
+        let blastn_message = match Command::new(&blastn).arg("-version").output() {
+            Ok(output) => {
+                let first_non_empty =
+                    Self::first_non_empty_output_line(&output.stdout, &output.stderr);
+                if output.status.success() {
+                    format!("blastn OK ('{}'): {}", blastn, first_non_empty)
+                } else {
+                    ok = false;
+                    format!(
+                        "blastn failed ('{}', status {:?}): {}",
+                        blastn,
+                        output.status.code(),
+                        first_non_empty
+                    )
+                }
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                ok = false;
+                format!("blastn executable '{}' not found", blastn)
+            }
+            Err(e) => {
+                ok = false;
+                format!("Could not execute blastn '{}': {}", blastn, e)
+            }
+        };
+
+        self.configuration_blast_validation_ok = Some(ok);
+        self.configuration_blast_validation_message =
+            format!("{makeblastdb_message} | {blastn_message}");
+    }
+
     fn sync_configuration_from_runtime(&mut self) {
         self.configuration_rnapkin_executable = env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default();
+        self.configuration_makeblastdb_executable =
+            env::var(MAKEBLASTDB_ENV_BIN).unwrap_or_default();
+        self.configuration_blastn_executable = env::var(BLASTN_ENV_BIN).unwrap_or_default();
+        self.configuration_bigwig_to_bedgraph_executable =
+            env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN).unwrap_or_default();
         if let Ok(engine) = self.engine.read() {
             self.configuration_graphics = engine.state().display.clone();
             self.configuration_graphics_dirty = false;
         }
         self.clear_rnapkin_validation();
+        self.clear_blast_validation();
     }
 
     fn open_configuration_dialog(&mut self) {
@@ -614,6 +886,7 @@ impl GENtleApp {
         let mut app = Self::default();
         app.refresh_help_docs();
         app.load_persisted_configuration(true);
+        app.load_bed_track_subscriptions_from_state();
         app.mark_clean_snapshot();
         app
     }
@@ -748,11 +1021,23 @@ impl GENtleApp {
         self.engine = Arc::new(RwLock::new(GentleEngine::new()));
         self.apply_configuration_graphics_to_engine_state();
         self.current_project_path = None;
+        self.last_applied_window_title.clear();
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
         self.viewport_id_counter = 0;
         self.pending_project_action = None;
+        self.show_reference_genome_blast_dialog = false;
+        self.genome_blast_task = None;
+        self.genome_blast_progress_fraction = None;
+        self.genome_blast_progress_label.clear();
+        self.genome_blast_results.clear();
+        self.genome_blast_selected_result = 0;
+        self.genome_blast_status.clear();
+        self.show_genome_bed_track_dialog = false;
+        self.genome_track_status.clear();
+        self.genome_track_autosync_status.clear();
+        self.load_bed_track_subscriptions_from_state();
         self.mark_clean_snapshot();
     }
 
@@ -813,11 +1098,16 @@ impl GENtleApp {
         self.show_reference_genome_retrieve_dialog = true;
     }
 
+    fn open_reference_genome_blast_dialog(&mut self) {
+        self.show_reference_genome_blast_dialog = true;
+    }
+
     fn open_reference_genome_inspector_dialog(&mut self) {
         self.show_reference_genome_inspector_dialog = true;
     }
 
     fn open_genome_bed_track_dialog(&mut self) {
+        self.load_bed_track_subscriptions_from_state();
         self.show_genome_bed_track_dialog = true;
     }
 
@@ -833,6 +1123,12 @@ impl GENtleApp {
         self.genome_cache_dir = "data/helper_genomes".to_string();
         self.invalidate_genome_genes();
         self.show_reference_genome_retrieve_dialog = true;
+    }
+
+    fn open_helper_genome_blast_dialog(&mut self) {
+        self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
+        self.genome_cache_dir = "data/helper_genomes".to_string();
+        self.show_reference_genome_blast_dialog = true;
     }
 
     fn genome_catalog_path_opt(&self) -> Option<String> {
@@ -865,6 +1161,58 @@ impl GENtleApp {
             .list_sequences_with_genome_anchor()
     }
 
+    fn describe_sequence_genome_anchor(&self, seq_id: &str) -> Option<String> {
+        self.engine
+            .read()
+            .unwrap()
+            .describe_sequence_genome_anchor(seq_id)
+            .ok()
+    }
+
+    fn anchored_sequence_id_set(&self) -> BTreeSet<String> {
+        self.anchored_sequence_ids_for_tracks()
+            .into_iter()
+            .collect()
+    }
+
+    fn load_bed_track_subscriptions_from_state(&mut self) {
+        let (subscriptions, anchored_ids) = {
+            let engine = self.engine.read().unwrap();
+            let subscriptions = engine
+                .state()
+                .metadata
+                .get(BED_TRACK_SUBSCRIPTIONS_METADATA_KEY)
+                .cloned()
+                .and_then(|v| serde_json::from_value::<Vec<BedTrackSubscription>>(v).ok())
+                .unwrap_or_default();
+            let anchored_ids = engine
+                .list_sequences_with_genome_anchor()
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+            (subscriptions, anchored_ids)
+        };
+        self.genome_bed_track_subscriptions = subscriptions;
+        self.known_anchored_seq_ids = anchored_ids;
+    }
+
+    fn persist_bed_track_subscriptions_to_state(&mut self) -> Result<()> {
+        let mut engine = self.engine.write().unwrap();
+        if self.genome_bed_track_subscriptions.is_empty() {
+            engine
+                .state_mut()
+                .metadata
+                .remove(BED_TRACK_SUBSCRIPTIONS_METADATA_KEY);
+            return Ok(());
+        }
+        let value = serde_json::to_value(&self.genome_bed_track_subscriptions)
+            .map_err(|e| anyhow!("Could not serialize track subscriptions: {e}"))?;
+        engine
+            .state_mut()
+            .metadata
+            .insert(BED_TRACK_SUBSCRIPTIONS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
     fn parse_optional_score_field(raw: &str, label: &str) -> Result<Option<f64>> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
@@ -877,42 +1225,21 @@ impl GENtleApp {
         }
     }
 
-    fn import_genome_bed_track(&mut self) {
-        let seq_id = self.genome_track_seq_id.trim().to_string();
-        if seq_id.is_empty() {
-            self.genome_track_status =
-                "Select a genome-anchored sequence before importing BED".to_string();
-            return;
-        }
+    fn parse_bed_track_form(&self) -> Result<BedTrackSubscription> {
         let path = self.genome_track_path.trim().to_string();
         if path.is_empty() {
-            self.genome_track_status = "BED path cannot be empty".to_string();
-            return;
+            return Err(anyhow!("Track path cannot be empty"));
         }
         let min_score =
-            match Self::parse_optional_score_field(&self.genome_track_min_score, "min score") {
-                Ok(v) => v,
-                Err(e) => {
-                    self.genome_track_status = format!("Import BED failed: {e}");
-                    return;
-                }
-            };
+            Self::parse_optional_score_field(&self.genome_track_min_score, "min score")?;
         let max_score =
-            match Self::parse_optional_score_field(&self.genome_track_max_score, "max score") {
-                Ok(v) => v,
-                Err(e) => {
-                    self.genome_track_status = format!("Import BED failed: {e}");
-                    return;
-                }
-            };
+            Self::parse_optional_score_field(&self.genome_track_max_score, "max score")?;
         if min_score
             .zip(max_score)
             .map(|(min, max)| min > max)
             .unwrap_or(false)
         {
-            self.genome_track_status =
-                "Import BED failed: min score must be <= max score".to_string();
-            return;
+            return Err(anyhow!("min score must be <= max score"));
         }
         let track_name = {
             let trimmed = self.genome_track_name.trim();
@@ -922,28 +1249,245 @@ impl GENtleApp {
                 Some(trimmed.to_string())
             }
         };
-
-        let op = Operation::ImportGenomeBedTrack {
-            seq_id,
+        Ok(BedTrackSubscription {
+            source: GenomeTrackSource::from_path(&path),
             path,
             track_name,
             min_score,
             max_score,
-            clear_existing: Some(self.genome_track_clear_existing),
+            clear_existing: self.genome_track_clear_existing,
+        })
+    }
+
+    fn apply_bed_track_to_sequence(
+        &mut self,
+        seq_id: &str,
+        subscription: &BedTrackSubscription,
+    ) -> Result<OpResult, EngineError> {
+        let op = match subscription.source {
+            GenomeTrackSource::Bed => Operation::ImportGenomeBedTrack {
+                seq_id: seq_id.to_string(),
+                path: subscription.path.clone(),
+                track_name: subscription.track_name.clone(),
+                min_score: subscription.min_score,
+                max_score: subscription.max_score,
+                clear_existing: Some(subscription.clear_existing),
+            },
+            GenomeTrackSource::BigWig => Operation::ImportGenomeBigWigTrack {
+                seq_id: seq_id.to_string(),
+                path: subscription.path.clone(),
+                track_name: subscription.track_name.clone(),
+                min_score: subscription.min_score,
+                max_score: subscription.max_score,
+                clear_existing: Some(subscription.clear_existing),
+            },
         };
-        let result = { self.engine.write().unwrap().apply(op) };
+        self.engine.write().unwrap().apply(op)
+    }
+
+    fn upsert_bed_track_subscription(&mut self, subscription: BedTrackSubscription) -> bool {
+        if self
+            .genome_bed_track_subscriptions
+            .iter()
+            .any(|existing| existing == &subscription)
+        {
+            return false;
+        }
+        self.genome_bed_track_subscriptions.push(subscription);
+        self.genome_bed_track_subscriptions.sort_by(|a, b| {
+            a.source
+                .label()
+                .cmp(b.source.label())
+                .then(a.path.cmp(&b.path))
+                .then(
+                    a.track_name
+                        .clone()
+                        .unwrap_or_default()
+                        .cmp(&b.track_name.clone().unwrap_or_default()),
+                )
+        });
+        true
+    }
+
+    fn import_genome_bed_track_for_selected_sequence(&mut self) {
+        let seq_id = self.genome_track_seq_id.trim().to_string();
+        if seq_id.is_empty() {
+            self.genome_track_status =
+                "Select a genome-anchored sequence before importing a track".to_string();
+            return;
+        }
+        let subscription = match self.parse_bed_track_form() {
+            Ok(value) => value,
+            Err(e) => {
+                self.genome_track_status = format!("Import track failed: {e}");
+                return;
+            }
+        };
+        let result = self.apply_bed_track_to_sequence(&seq_id, &subscription);
+        let source_label = subscription.source.label();
         match result {
             Ok(r) => {
                 self.genome_track_status = Self::format_op_result_status(
-                    "Import BED track: ok",
+                    &format!("Import {source_label} track: ok"),
                     &r.created_seq_ids,
                     &r.warnings,
                     &r.messages,
                 );
             }
             Err(e) => {
-                self.genome_track_status = format!("Import BED track failed: {}", e.message);
+                self.genome_track_status =
+                    format!("Import {source_label} track failed: {}", e.message);
             }
+        }
+    }
+
+    fn import_genome_bed_track_for_all_anchored_sequences(&mut self, track_subscription: bool) {
+        let subscription = match self.parse_bed_track_form() {
+            Ok(value) => value,
+            Err(e) => {
+                self.genome_track_status = format!("Import track failed: {e}");
+                return;
+            }
+        };
+        let anchored_seq_ids = self.anchored_sequence_ids_for_tracks();
+        if anchored_seq_ids.is_empty() {
+            self.genome_track_status =
+                "No genome-anchored sequence is available. Extract a genome region or gene first."
+                    .to_string();
+            return;
+        }
+
+        let mut ok_count = 0usize;
+        let mut failed: Vec<String> = vec![];
+        let mut warnings_count = 0usize;
+        for seq_id in &anchored_seq_ids {
+            match self.apply_bed_track_to_sequence(seq_id, &subscription) {
+                Ok(op_result) => {
+                    ok_count += 1;
+                    warnings_count += op_result.warnings.len();
+                }
+                Err(e) => {
+                    failed.push(format!("{seq_id}: {}", e.message));
+                }
+            }
+        }
+
+        let mut tracked_note = "not tracked".to_string();
+        if track_subscription {
+            let inserted = self.upsert_bed_track_subscription(subscription.clone());
+            match self.persist_bed_track_subscriptions_to_state() {
+                Ok(()) => {
+                    tracked_note = if inserted {
+                        "tracked for auto-update".to_string()
+                    } else {
+                        "already tracked".to_string()
+                    };
+                }
+                Err(e) => {
+                    tracked_note = format!("tracking failed: {e}");
+                }
+            }
+        }
+
+        let source_label = subscription.source.label();
+        let mut status = format!(
+            "{} import (all anchored): ok={}, failed={}, warnings={} ({})",
+            source_label,
+            ok_count,
+            failed.len(),
+            warnings_count,
+            tracked_note
+        );
+        if !failed.is_empty() {
+            let preview = failed
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" | ");
+            status.push_str(&format!(" | errors: {preview}"));
+        }
+        self.genome_track_status = status;
+        self.known_anchored_seq_ids = self.anchored_sequence_id_set();
+    }
+
+    fn apply_tracked_bed_subscription_to_all_anchored(&mut self, index: usize) {
+        let Some(subscription) = self.genome_bed_track_subscriptions.get(index).cloned() else {
+            return;
+        };
+        let anchored_seq_ids = self.anchored_sequence_ids_for_tracks();
+        if anchored_seq_ids.is_empty() {
+            self.genome_track_status =
+                "No genome-anchored sequence is available. Extract a genome region or gene first."
+                    .to_string();
+            return;
+        }
+        let mut ok_count = 0usize;
+        let mut failed = 0usize;
+        for seq_id in &anchored_seq_ids {
+            match self.apply_bed_track_to_sequence(seq_id, &subscription) {
+                Ok(_) => ok_count += 1,
+                Err(_) => failed += 1,
+            }
+        }
+        self.genome_track_status = format!(
+            "Re-applied tracked {} '{}' to {} anchored sequence(s) (failed={})",
+            subscription.source.label(),
+            subscription.path,
+            ok_count,
+            failed
+        );
+        self.known_anchored_seq_ids = self.anchored_sequence_id_set();
+    }
+
+    fn sync_tracked_bed_tracks_for_new_anchors(&mut self) {
+        let current_anchored = self.anchored_sequence_id_set();
+        let new_ids = current_anchored
+            .difference(&self.known_anchored_seq_ids)
+            .cloned()
+            .collect::<Vec<_>>();
+        if new_ids.is_empty() {
+            self.known_anchored_seq_ids = current_anchored;
+            return;
+        }
+        if self.genome_bed_track_subscriptions.is_empty() {
+            self.known_anchored_seq_ids = current_anchored;
+            return;
+        }
+        let subscriptions = self.genome_bed_track_subscriptions.clone();
+        let mut applied = 0usize;
+        let mut failed = 0usize;
+        let mut error_preview: Vec<String> = vec![];
+        for seq_id in &new_ids {
+            for subscription in &subscriptions {
+                match self.apply_bed_track_to_sequence(seq_id, subscription) {
+                    Ok(_) => applied += 1,
+                    Err(e) => {
+                        failed += 1;
+                        if error_preview.len() < 3 {
+                            error_preview
+                                .push(format!("{} @ {}: {}", subscription.path, seq_id, e.message));
+                        }
+                    }
+                }
+            }
+        }
+        self.known_anchored_seq_ids = current_anchored;
+        if failed == 0 {
+            self.genome_track_autosync_status = format!(
+                "Auto-sync: applied {} tracked import(s) to {} new anchored sequence(s).",
+                applied,
+                new_ids.len()
+            );
+        } else {
+            let preview = error_preview.join(" | ");
+            self.genome_track_autosync_status = format!(
+                "Auto-sync: applied {}, failed {} on {} new anchored sequence(s). {}",
+                applied,
+                failed,
+                new_ids.len(),
+                preview
+            );
         }
     }
 
@@ -1084,6 +1628,65 @@ impl GENtleApp {
             }
         }
         Ok(names)
+    }
+
+    fn project_sequence_ids_for_blast(&self) -> Vec<String> {
+        let mut seq_ids: Vec<String> = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .keys()
+            .cloned()
+            .collect();
+        seq_ids.sort_unstable();
+        seq_ids
+    }
+
+    fn blast_pool_options(&self) -> Vec<BlastPoolOption> {
+        let engine = self.engine.read().unwrap();
+        let state = engine.state();
+        let mut options: Vec<BlastPoolOption> = state
+            .container_state
+            .containers
+            .values()
+            .filter_map(|container| {
+                if container.members.len() <= 1 {
+                    return None;
+                }
+                let mut members: Vec<String> = container
+                    .members
+                    .iter()
+                    .filter(|seq_id| state.sequences.contains_key(*seq_id))
+                    .cloned()
+                    .collect();
+                if members.len() <= 1 {
+                    return None;
+                }
+                members.sort_unstable();
+                members.dedup();
+                let name = container
+                    .name
+                    .as_ref()
+                    .map(|v| v.trim())
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                Some(BlastPoolOption {
+                    container_id: container.container_id.clone(),
+                    label: format!(
+                        "{} (kind={:?}, name={}, n={})",
+                        container.container_id,
+                        container.kind,
+                        name,
+                        members.len()
+                    ),
+                    members,
+                })
+            })
+            .collect();
+        options.sort_by(|a, b| a.container_id.cmp(&b.container_id));
+        options
     }
 
     fn selected_genome_source_plan(&self) -> Result<Option<GenomeSourcePlan>, String> {
@@ -1317,6 +1920,254 @@ impl GENtleApp {
                 Err(e) => {
                     self.genome_prepare_status =
                         format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
+                }
+            }
+        }
+    }
+
+    fn start_reference_genome_blast(&mut self) {
+        if self.genome_blast_task.is_some() {
+            self.genome_blast_status = "A BLAST task is already running".to_string();
+            return;
+        }
+
+        let genome_id = self.genome_id.trim().to_string();
+        if genome_id.is_empty() {
+            self.genome_blast_status = "Select a prepared genome first".to_string();
+            return;
+        }
+
+        let blast_queries: Vec<(String, String)> = match self.genome_blast_source_mode {
+            GenomeBlastSourceMode::Manual => {
+                let query = self.genome_blast_query_manual.trim().to_string();
+                if query.is_empty() {
+                    self.genome_blast_status =
+                        "Provide a query sequence for manual BLAST mode".to_string();
+                    return;
+                }
+                vec![("manual_query".to_string(), query)]
+            }
+            GenomeBlastSourceMode::ProjectSequence => {
+                let seq_id = self.genome_blast_query_seq_id.trim().to_string();
+                if seq_id.is_empty() {
+                    self.genome_blast_status = "Select a project sequence to blast".to_string();
+                    return;
+                }
+                let sequence = {
+                    let engine = self.engine.read().unwrap();
+                    let Some(dna) = engine.state().sequences.get(&seq_id) else {
+                        self.genome_blast_status =
+                            format!("Selected sequence '{}' is no longer available", seq_id);
+                        return;
+                    };
+                    dna.get_forward_string()
+                };
+                if sequence.is_empty() {
+                    self.genome_blast_status = format!(
+                        "Selected sequence '{}' has no bases and cannot be blasted",
+                        seq_id
+                    );
+                    return;
+                }
+                vec![(seq_id, sequence)]
+            }
+            GenomeBlastSourceMode::ProjectPool => {
+                let pool_id = self.genome_blast_query_pool_id.trim().to_string();
+                if pool_id.is_empty() {
+                    self.genome_blast_status =
+                        "Select a project pool/container to blast".to_string();
+                    return;
+                }
+                let mut queries: Vec<(String, String)> = vec![];
+                {
+                    let engine = self.engine.read().unwrap();
+                    let state = engine.state();
+                    let Some(container) = state.container_state.containers.get(&pool_id) else {
+                        self.genome_blast_status =
+                            format!("Selected pool/container '{}' does not exist", pool_id);
+                        return;
+                    };
+                    for seq_id in &container.members {
+                        let Some(dna) = state.sequences.get(seq_id) else {
+                            continue;
+                        };
+                        let seq = dna.get_forward_string();
+                        if seq.is_empty() {
+                            continue;
+                        }
+                        queries.push((seq_id.clone(), seq));
+                    }
+                }
+                if queries.is_empty() {
+                    self.genome_blast_status = format!(
+                        "Selected pool/container '{}' has no blastable sequence members",
+                        pool_id
+                    );
+                    return;
+                }
+                queries
+            }
+        };
+
+        let total_queries = blast_queries.len();
+        let catalog_path = self.genome_catalog_path_opt();
+        let cache_dir = self.genome_cache_dir_opt();
+        let max_hits = self.genome_blast_max_hits.max(1);
+        let blast_task_name = self.genome_blast_task_name.trim().to_string();
+        let task_arg = if blast_task_name.is_empty() {
+            None
+        } else {
+            Some(blast_task_name)
+        };
+        let (tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
+        self.genome_blast_results.clear();
+        self.genome_blast_selected_result = 0;
+        self.genome_blast_progress_fraction = Some(0.0);
+        self.genome_blast_progress_label = format!("0 / {total_queries}");
+        self.genome_blast_status = format!(
+            "Running BLAST for {} quer{} in background",
+            total_queries,
+            if total_queries == 1 { "y" } else { "ies" }
+        );
+        self.genome_blast_task = Some(GenomeBlastTask {
+            started: Instant::now(),
+            receiver: rx,
+        });
+        std::thread::spawn(move || {
+            let mut reports: Vec<GenomeBlastQueryResult> = vec![];
+            let mut failed_queries: Vec<String> = vec![];
+
+            for (idx, (label, query)) in blast_queries.into_iter().enumerate() {
+                let _ = tx.send(GenomeBlastTaskMessage::Progress {
+                    done_queries: idx,
+                    total_queries,
+                    current_query_label: label.clone(),
+                });
+
+                let query_length = query.len();
+                match GentleEngine::blast_reference_genome(
+                    catalog_path.as_deref(),
+                    &genome_id,
+                    &query,
+                    max_hits,
+                    task_arg.as_deref(),
+                    cache_dir.as_deref(),
+                ) {
+                    Ok(report) => {
+                        reports.push(GenomeBlastQueryResult {
+                            query_label: label.clone(),
+                            query_length,
+                            report,
+                        });
+                    }
+                    Err(e) => {
+                        failed_queries.push(format!("{label}: {}", e.message));
+                    }
+                }
+                let _ = tx.send(GenomeBlastTaskMessage::Progress {
+                    done_queries: idx + 1,
+                    total_queries,
+                    current_query_label: label,
+                });
+            }
+
+            let done_result = if reports.is_empty() && !failed_queries.is_empty() {
+                Err(format!(
+                    "BLAST failed for all queries: {}",
+                    failed_queries.join(" | ")
+                ))
+            } else {
+                Ok(GenomeBlastBatchResult {
+                    reports,
+                    failed_queries,
+                })
+            };
+            let _ = tx.send(GenomeBlastTaskMessage::Done(done_result));
+        });
+    }
+
+    fn poll_reference_genome_blast_task(&mut self, ctx: &egui::Context) {
+        if self.genome_blast_task.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let mut done: Option<Result<GenomeBlastBatchResult, String>> = None;
+        if let Some(task) = &self.genome_blast_task {
+            const MAX_MESSAGES_PER_TICK: usize = 128;
+            for _ in 0..MAX_MESSAGES_PER_TICK {
+                match task.receiver.try_recv() {
+                    Ok(GenomeBlastTaskMessage::Progress {
+                        done_queries,
+                        total_queries,
+                        current_query_label,
+                    }) => {
+                        let fraction = if total_queries == 0 {
+                            0.0
+                        } else {
+                            (done_queries as f32 / total_queries as f32).clamp(0.0, 1.0)
+                        };
+                        self.genome_blast_progress_fraction = Some(fraction);
+                        self.genome_blast_progress_label =
+                            format!("{done_queries} / {total_queries} ({current_query_label})");
+                    }
+                    Ok(GenomeBlastTaskMessage::Done(result)) => {
+                        done = Some(result);
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        done = Some(Err("BLAST worker disconnected".to_string()));
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(outcome) = done {
+            let elapsed = self
+                .genome_blast_task
+                .as_ref()
+                .map(|task| task.started.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            self.genome_blast_task = None;
+            self.genome_blast_progress_fraction = None;
+            self.genome_blast_progress_label.clear();
+
+            match outcome {
+                Ok(batch) => {
+                    self.genome_blast_results = batch.reports;
+                    if self.genome_blast_results.is_empty() {
+                        self.genome_blast_selected_result = 0;
+                    } else if self.genome_blast_selected_result >= self.genome_blast_results.len() {
+                        self.genome_blast_selected_result = 0;
+                    }
+                    let hit_total: usize = self
+                        .genome_blast_results
+                        .iter()
+                        .map(|r| r.report.hit_count)
+                        .sum();
+                    if batch.failed_queries.is_empty() {
+                        self.genome_blast_status = format!(
+                            "BLAST finished in {:.1}s: {} query result(s), {} total hit(s)",
+                            elapsed,
+                            self.genome_blast_results.len(),
+                            hit_total
+                        );
+                    } else {
+                        self.genome_blast_status = format!(
+                            "BLAST finished in {:.1}s: {} query result(s), {} total hit(s), {} failed query(ies): {}",
+                            elapsed,
+                            self.genome_blast_results.len(),
+                            hit_total,
+                            batch.failed_queries.len(),
+                            batch.failed_queries.join(" | ")
+                        );
+                    }
+                }
+                Err(e) => {
+                    self.genome_blast_results.clear();
+                    self.genome_blast_selected_result = 0;
+                    self.genome_blast_status = format!("BLAST failed after {:.1}s: {}", elapsed, e);
                 }
             }
         }
@@ -1987,6 +2838,364 @@ impl GENtleApp {
         self.show_reference_genome_retrieve_dialog = open;
     }
 
+    fn render_blast_query_result(ui: &mut Ui, result: &GenomeBlastQueryResult) {
+        let report = &result.report;
+        ui.label(format!(
+            "Query: {} ({} bp) | Genome: {} | Hits: {}",
+            result.query_label, result.query_length, report.genome_id, report.hit_count
+        ));
+        ui.label(format!(
+            "Task: {} | max_hits: {}",
+            report.task, report.max_hits
+        ));
+        ui.monospace(format!("blastn: {}", report.blastn_executable));
+        ui.monospace(format!("db: {}", report.blast_db_prefix));
+        if !report.command.is_empty() {
+            ui.monospace(format!("command: {}", report.command.join(" ")));
+        }
+        if !report.warnings.is_empty() {
+            ui.separator();
+            ui.label("Warnings");
+            for warning in &report.warnings {
+                ui.monospace(format!("- {}", warning));
+            }
+        }
+        if !report.stderr.trim().is_empty() {
+            ui.separator();
+            ui.label("BLAST stderr");
+            ui.monospace(report.stderr.trim().to_string());
+        }
+        ui.separator();
+        ui.label("Hits");
+        let max_rows = 200usize;
+        let shown_hits = report.hits.len().min(max_rows);
+        if shown_hits < report.hits.len() {
+            ui.small(format!(
+                "Showing first {} of {} hits",
+                shown_hits,
+                report.hits.len()
+            ));
+        }
+        egui::ScrollArea::both().max_height(280.0).show(ui, |ui| {
+            egui::Grid::new(format!("blast_hits_{}", result.query_label))
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("subject");
+                    ui.strong("%identity");
+                    ui.strong("aln_len");
+                    ui.strong("q_range");
+                    ui.strong("s_range");
+                    ui.strong("evalue");
+                    ui.strong("bit_score");
+                    ui.strong("qcov%");
+                    ui.end_row();
+                    for hit in report.hits.iter().take(max_rows) {
+                        ui.monospace(hit.subject_id.clone());
+                        ui.label(format!("{:.2}", hit.identity_percent));
+                        ui.label(hit.alignment_length.to_string());
+                        ui.label(format!("{}-{}", hit.query_start, hit.query_end));
+                        ui.label(format!("{}-{}", hit.subject_start, hit.subject_end));
+                        ui.label(format!("{:.3e}", hit.evalue));
+                        ui.label(format!("{:.2}", hit.bit_score));
+                        ui.label(
+                            hit.query_coverage_percent
+                                .map(|v| format!("{v:.1}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                        );
+                        ui.end_row();
+                    }
+                });
+        });
+    }
+
+    fn render_reference_genome_blast_contents(&mut self, ui: &mut Ui) {
+        self.refresh_genome_catalog_list();
+        let sequence_ids = self.project_sequence_ids_for_blast();
+        if !sequence_ids.is_empty() && !sequence_ids.contains(&self.genome_blast_query_seq_id) {
+            self.genome_blast_query_seq_id = sequence_ids[0].clone();
+        }
+        let pool_options = self.blast_pool_options();
+        if !pool_options
+            .iter()
+            .any(|pool| pool.container_id == self.genome_blast_query_pool_id)
+        {
+            self.genome_blast_query_pool_id = pool_options
+                .first()
+                .map(|pool| pool.container_id.clone())
+                .unwrap_or_default();
+        }
+
+        ui.label("Run BLAST against a prepared genome index.");
+        ui.horizontal(|ui| {
+            ui.label("catalog");
+            ui.text_edit_singleline(&mut self.genome_catalog_path);
+            if ui.button("Browse...").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+                {
+                    self.genome_catalog_path = path.display().to_string();
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("cache_dir");
+            ui.text_edit_singleline(&mut self.genome_cache_dir);
+            if ui.button("Browse...").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.genome_cache_dir = path.display().to_string();
+                }
+            }
+        });
+        if !self.genome_catalog_error.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                format!("Catalog error: {}", self.genome_catalog_error),
+            );
+        }
+
+        let prepared_genomes = match self.prepared_genomes_for_retrieve_dialog() {
+            Ok(names) => names,
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Prepared-state check error: {e}"),
+                );
+                vec![]
+            }
+        };
+        if !prepared_genomes.is_empty() && !prepared_genomes.contains(&self.genome_id) {
+            self.genome_id = prepared_genomes[0].clone();
+            self.invalidate_genome_genes();
+        }
+        let selection_changed =
+            Self::choose_genome_from_catalog(ui, &mut self.genome_id, &prepared_genomes);
+        if selection_changed {
+            self.invalidate_genome_genes();
+        }
+        match self.selected_genome_source_plan() {
+            Ok(Some(plan)) => {
+                ui.small(format!(
+                    "sources: sequence={} | annotation={}",
+                    plan.sequence_source_type, plan.annotation_source_type
+                ));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Source-plan error: {e}"),
+                );
+            }
+        }
+        if prepared_genomes.is_empty() {
+            ui.label(
+                "No prepared genomes are available in this catalog/cache. Use 'Prepare Reference Genome...' first.",
+            );
+        }
+
+        ui.separator();
+        ui.label("Query source");
+        ui.horizontal(|ui| {
+            ui.selectable_value(
+                &mut self.genome_blast_source_mode,
+                GenomeBlastSourceMode::Manual,
+                "Manual sequence",
+            );
+            ui.selectable_value(
+                &mut self.genome_blast_source_mode,
+                GenomeBlastSourceMode::ProjectSequence,
+                "Project sequence",
+            );
+            ui.selectable_value(
+                &mut self.genome_blast_source_mode,
+                GenomeBlastSourceMode::ProjectPool,
+                "Project pool",
+            );
+        });
+        match self.genome_blast_source_mode {
+            GenomeBlastSourceMode::Manual => {
+                ui.label("Query sequence (IUPAC DNA letters)");
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.genome_blast_query_manual)
+                        .desired_rows(4)
+                        .hint_text("Paste query sequence here"),
+                );
+            }
+            GenomeBlastSourceMode::ProjectSequence => {
+                if sequence_ids.is_empty() {
+                    ui.label("No sequences are loaded in this project.");
+                } else {
+                    egui::ComboBox::from_label("sequence")
+                        .selected_text(if self.genome_blast_query_seq_id.trim().is_empty() {
+                            "(choose sequence)"
+                        } else {
+                            self.genome_blast_query_seq_id.as_str()
+                        })
+                        .show_ui(ui, |ui| {
+                            for seq_id in &sequence_ids {
+                                ui.selectable_value(
+                                    &mut self.genome_blast_query_seq_id,
+                                    seq_id.clone(),
+                                    seq_id,
+                                );
+                            }
+                        });
+                }
+            }
+            GenomeBlastSourceMode::ProjectPool => {
+                if pool_options.is_empty() {
+                    ui.label("No sequence pools/containers with >1 sequence are available.");
+                } else {
+                    egui::ComboBox::from_label("pool/container")
+                        .selected_text(if self.genome_blast_query_pool_id.trim().is_empty() {
+                            "(choose pool)"
+                        } else {
+                            self.genome_blast_query_pool_id.as_str()
+                        })
+                        .show_ui(ui, |ui| {
+                            for pool in &pool_options {
+                                ui.selectable_value(
+                                    &mut self.genome_blast_query_pool_id,
+                                    pool.container_id.clone(),
+                                    pool.label.clone(),
+                                );
+                            }
+                        });
+                    if let Some(pool) = pool_options
+                        .iter()
+                        .find(|pool| pool.container_id == self.genome_blast_query_pool_id)
+                    {
+                        ui.small(format!(
+                            "Selected pool will run {} query sequence(s).",
+                            pool.members.len()
+                        ));
+                    }
+                }
+            }
+        }
+
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("max_hits");
+            ui.add(
+                egui::DragValue::new(&mut self.genome_blast_max_hits)
+                    .range(1..=1000)
+                    .speed(1.0),
+            );
+            ui.label("task");
+            egui::ComboBox::from_id_salt("genome_blast_task_combo")
+                .selected_text(self.genome_blast_task_name.clone())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.genome_blast_task_name,
+                        "blastn-short".to_string(),
+                        "blastn-short",
+                    );
+                    ui.selectable_value(
+                        &mut self.genome_blast_task_name,
+                        "blastn".to_string(),
+                        "blastn",
+                    );
+                });
+        });
+
+        let running = self.genome_blast_task.is_some();
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(
+                    !running && !prepared_genomes.is_empty(),
+                    egui::Button::new("Run BLAST"),
+                )
+                .clicked()
+            {
+                self.start_reference_genome_blast();
+            }
+            if ui.button("Clear Results").clicked() {
+                self.genome_blast_results.clear();
+                self.genome_blast_selected_result = 0;
+            }
+            if ui.button("Close").clicked() {
+                self.show_reference_genome_blast_dialog = false;
+            }
+        });
+
+        if let Some(fraction) = self.genome_blast_progress_fraction {
+            ui.add(
+                egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
+                    .show_percentage()
+                    .text(self.genome_blast_progress_label.clone()),
+            );
+        }
+        if !self.genome_blast_status.is_empty() {
+            ui.separator();
+            ui.monospace(self.genome_blast_status.clone());
+        }
+        if !self.genome_blast_results.is_empty() {
+            ui.separator();
+            if self.genome_blast_selected_result >= self.genome_blast_results.len() {
+                self.genome_blast_selected_result = 0;
+            }
+            if self.genome_blast_results.len() > 1 {
+                egui::ComboBox::from_label("Query result")
+                    .selected_text(
+                        self.genome_blast_results[self.genome_blast_selected_result]
+                            .query_label
+                            .clone(),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (idx, result) in self.genome_blast_results.iter().enumerate() {
+                            let label = format!(
+                                "{} (hits={})",
+                                result.query_label, result.report.hit_count
+                            );
+                            ui.selectable_value(&mut self.genome_blast_selected_result, idx, label);
+                        }
+                    });
+            }
+            if let Some(result) = self
+                .genome_blast_results
+                .get(self.genome_blast_selected_result)
+            {
+                Self::render_blast_query_result(ui, result);
+            }
+        }
+    }
+
+    fn render_reference_genome_blast_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_reference_genome_blast_dialog {
+            return;
+        }
+
+        let builder = egui::ViewportBuilder::default()
+            .with_title("BLAST Genome Sequence")
+            .with_inner_size([980.0, 700.0])
+            .with_min_inner_size([640.0, 420.0]);
+        ctx.show_viewport_immediate(Self::blast_genome_viewport_id(), builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_reference_genome_blast_dialog;
+                egui::Window::new("BLAST Genome Sequence")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(980.0, 700.0))
+                    .show(ctx, |ui| {
+                        self.render_reference_genome_blast_contents(ui);
+                    });
+                self.show_reference_genome_blast_dialog = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.render_reference_genome_blast_contents(ui);
+            });
+
+            if ctx.input(|i| i.viewport().close_requested()) {
+                self.show_reference_genome_blast_dialog = false;
+            }
+        });
+    }
+
     fn render_reference_genome_inspector_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_reference_genome_inspector_dialog {
             return;
@@ -2136,102 +3345,248 @@ impl GENtleApp {
         self.show_reference_genome_inspector_dialog = open;
     }
 
-    fn render_genome_bed_track_dialog(&mut self, ctx: &egui::Context) {
-        if !self.show_genome_bed_track_dialog {
-            return;
-        }
+    fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) {
         let anchored_seq_ids = self.anchored_sequence_ids_for_tracks();
         if !anchored_seq_ids.is_empty() && !anchored_seq_ids.contains(&self.genome_track_seq_id) {
             self.genome_track_seq_id = anchored_seq_ids[0].clone();
         }
 
-        let mut open = self.show_genome_bed_track_dialog;
-        egui::Window::new("Import BED Track")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.label("Map BED intervals onto a genome-anchored sequence.");
-                ui.small("Supports .bed and .bed.gz input files.");
+        ui.label("Map genome signal tracks onto genome-anchored sequences.");
+        ui.small("Supports .bed/.bed.gz and .bw/.bigWig input files.");
+        ui.small(format!(
+            "Anchored sequences available: {}",
+            anchored_seq_ids.len()
+        ));
 
-                if anchored_seq_ids.is_empty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(190, 70, 70),
-                        "No genome-anchored sequence is available. Extract a genome region or gene first.",
-                    );
-                } else {
-                    ui.horizontal(|ui| {
-                        ui.label("sequence");
-                        egui::ComboBox::from_id_salt("genome_track_seq_id_combo")
-                            .selected_text(
-                                if self.genome_track_seq_id.trim().is_empty() {
-                                    "<select sequence>"
-                                } else {
-                                    self.genome_track_seq_id.as_str()
-                                },
-                            )
-                            .show_ui(ui, |ui| {
-                                for seq_id in &anchored_seq_ids {
-                                    ui.selectable_value(
-                                        &mut self.genome_track_seq_id,
-                                        seq_id.clone(),
-                                        seq_id,
-                                    );
-                                }
-                            });
-                    });
-                }
-
-                ui.horizontal(|ui| {
-                    ui.label("bed_path");
-                    ui.text_edit_singleline(&mut self.genome_track_path);
-                    if ui.button("Browse...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("BED", &["bed", "gz"])
-                            .pick_file()
-                        {
-                            self.genome_track_path = path.display().to_string();
+        if anchored_seq_ids.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                "No genome-anchored sequence is available. Extract a genome region or gene first.",
+            );
+        } else {
+            ui.horizontal(|ui| {
+                ui.label("sequence");
+                egui::ComboBox::from_id_salt("genome_track_seq_id_combo")
+                    .selected_text(if self.genome_track_seq_id.trim().is_empty() {
+                        "<select sequence>"
+                    } else {
+                        self.genome_track_seq_id.as_str()
+                    })
+                    .show_ui(ui, |ui| {
+                        for seq_id in &anchored_seq_ids {
+                            ui.selectable_value(
+                                &mut self.genome_track_seq_id,
+                                seq_id.clone(),
+                                seq_id,
+                            );
                         }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("track_name");
-                    ui.text_edit_singleline(&mut self.genome_track_name);
-                    ui.small("(optional)");
-                });
-                ui.horizontal(|ui| {
-                    ui.label("min_score");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.genome_track_min_score)
-                            .desired_width(90.0),
-                    );
-                    ui.label("max_score");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.genome_track_max_score)
-                            .desired_width(90.0),
-                    );
-                });
-                ui.checkbox(
-                    &mut self.genome_track_clear_existing,
-                    "Clear existing imported BED track features first",
-                );
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            !anchored_seq_ids.is_empty(),
-                            egui::Button::new("Import BED Track"),
-                        )
-                        .clicked()
-                    {
-                        self.import_genome_bed_track();
-                    }
-                });
-                if !self.genome_track_status.is_empty() {
-                    ui.separator();
-                    ui.monospace(&self.genome_track_status);
-                }
+                    });
             });
-        self.show_genome_bed_track_dialog = open;
+            if let Some(anchor) = self.describe_sequence_genome_anchor(&self.genome_track_seq_id) {
+                ui.small(format!("selected anchor: {anchor}"));
+            }
+        }
+
+        ui.horizontal(|ui| {
+            ui.label("track_path");
+            ui.text_edit_singleline(&mut self.genome_track_path);
+            if ui.button("Browse...").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig"])
+                    .pick_file()
+                {
+                    self.genome_track_path = path.display().to_string();
+                }
+            }
+        });
+        let detected_source = GenomeTrackSource::from_path(&self.genome_track_path);
+        ui.small(format!(
+            "Detected source format: {} (from file extension)",
+            detected_source.label()
+        ));
+        ui.horizontal(|ui| {
+            ui.label("track_name");
+            ui.text_edit_singleline(&mut self.genome_track_name);
+            ui.small("(optional)");
+        });
+        ui.horizontal(|ui| {
+            ui.label("min_score");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.genome_track_min_score).desired_width(90.0),
+            );
+            ui.label("max_score");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.genome_track_max_score).desired_width(90.0),
+            );
+        });
+        ui.checkbox(
+            &mut self.genome_track_clear_existing,
+            "Clear existing imported track features first",
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(
+                    !anchored_seq_ids.is_empty(),
+                    egui::Button::new("Import To Selected"),
+                )
+                .clicked()
+            {
+                self.import_genome_bed_track_for_selected_sequence();
+            }
+            if ui
+                .add_enabled(
+                    !anchored_seq_ids.is_empty(),
+                    egui::Button::new("Import To All Anchored (One-Time)"),
+                )
+                .clicked()
+            {
+                self.import_genome_bed_track_for_all_anchored_sequences(false);
+            }
+            if ui
+                .add_enabled(
+                    !anchored_seq_ids.is_empty(),
+                    egui::Button::new("Import To All Anchored + Track"),
+                )
+                .clicked()
+            {
+                self.import_genome_bed_track_for_all_anchored_sequences(true);
+            }
+        });
+
+        ui.separator();
+        ui.label("Tracked genome signal files for auto-sync to new anchored sequences");
+
+        let mut apply_now_index: Option<usize> = None;
+        let mut remove_index: Option<usize> = None;
+        if self.genome_bed_track_subscriptions.is_empty() {
+            ui.small("No tracked files yet.");
+        } else {
+            egui::Grid::new("genome_bed_track_subscriptions_grid")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("Type");
+                    ui.strong("Path");
+                    ui.strong("Track");
+                    ui.strong("Score Range");
+                    ui.strong("Clear Existing");
+                    ui.strong("Actions");
+                    ui.end_row();
+                    for (index, subscription) in
+                        self.genome_bed_track_subscriptions.iter().enumerate()
+                    {
+                        ui.label(subscription.source.label());
+                        ui.monospace(subscription.path.as_str());
+                        ui.label(
+                            subscription
+                                .track_name
+                                .clone()
+                                .unwrap_or_else(|| "-".to_string()),
+                        );
+                        ui.label(format!(
+                            "{}..{}",
+                            subscription
+                                .min_score
+                                .map(|v| format!("{v:.3}"))
+                                .unwrap_or_else(|| "-".to_string()),
+                            subscription
+                                .max_score
+                                .map(|v| format!("{v:.3}"))
+                                .unwrap_or_else(|| "-".to_string())
+                        ));
+                        ui.label(if subscription.clear_existing {
+                            "yes"
+                        } else {
+                            "no"
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.small_button("Apply now").clicked() {
+                                apply_now_index = Some(index);
+                            }
+                            if ui.small_button("Remove").clicked() {
+                                remove_index = Some(index);
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+        }
+
+        if let Some(index) = apply_now_index {
+            self.apply_tracked_bed_subscription_to_all_anchored(index);
+        }
+        if let Some(index) = remove_index {
+            if index < self.genome_bed_track_subscriptions.len() {
+                let removed = self.genome_bed_track_subscriptions.remove(index);
+                match self.persist_bed_track_subscriptions_to_state() {
+                    Ok(()) => {
+                        self.genome_track_status =
+                            format!(
+                                "Removed tracked {} '{}'",
+                                removed.source.label(),
+                                removed.path
+                            );
+                    }
+                    Err(e) => {
+                        self.genome_track_status =
+                            format!("Removed locally but could not persist tracking change: {e}");
+                    }
+                }
+            }
+        }
+        if !self.genome_bed_track_subscriptions.is_empty() {
+            if ui.button("Clear Tracked Files").clicked() {
+                self.genome_bed_track_subscriptions.clear();
+                match self.persist_bed_track_subscriptions_to_state() {
+                    Ok(()) => {
+                        self.genome_track_status = "Cleared all tracked files".to_string();
+                    }
+                    Err(e) => {
+                        self.genome_track_status =
+                            format!("Cleared locally but could not persist tracking change: {e}");
+                    }
+                }
+            }
+        }
+
+        if !self.genome_track_autosync_status.is_empty() {
+            ui.separator();
+            ui.monospace(&self.genome_track_autosync_status);
+        }
+        if !self.genome_track_status.is_empty() {
+            ui.separator();
+            ui.monospace(&self.genome_track_status);
+        }
+    }
+
+    fn render_genome_bed_track_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_genome_bed_track_dialog {
+            return;
+        }
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Import Genome Tracks")
+            .with_inner_size([980.0, 620.0])
+            .with_min_inner_size([620.0, 320.0]);
+        ctx.show_viewport_immediate(Self::bed_track_viewport_id(), builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_genome_bed_track_dialog;
+                egui::Window::new("Import Genome Tracks")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(980.0, 620.0))
+                    .show(ctx, |ui| self.render_genome_bed_track_contents(ui));
+                self.show_genome_bed_track_dialog = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.render_genome_bed_track_contents(ui);
+            });
+
+            if ctx.input(|i| i.viewport().close_requested()) {
+                self.show_genome_bed_track_dialog = false;
+            }
+        });
     }
 
     fn refresh_project_restriction_enzymes(&mut self, resource_path: &str) -> Result<usize> {
@@ -2352,6 +3707,7 @@ impl GENtleApp {
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
+        self.load_bed_track_subscriptions_from_state();
 
         self.mark_clean_snapshot();
         Ok(())
@@ -2404,7 +3760,11 @@ impl GENtleApp {
                     self.open_reference_genome_retrieve_dialog();
                     ui.close_menu();
                 }
-                if ui.button("Import BED Track...").clicked() {
+                if ui.button("BLAST Genome Sequence...").clicked() {
+                    self.open_reference_genome_blast_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Import Genome Track...").clicked() {
                     self.open_genome_bed_track_dialog();
                     ui.close_menu();
                 }
@@ -2414,6 +3774,10 @@ impl GENtleApp {
                 }
                 if ui.button("Retrieve Helper Sequence...").clicked() {
                     self.open_helper_genome_retrieve_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("BLAST Helper Sequence...").clicked() {
+                    self.open_helper_genome_blast_dialog();
                     ui.close_menu();
                 }
                 if ui.button("Import REBASE Data...").clicked() {
@@ -2452,7 +3816,11 @@ impl GENtleApp {
                     self.open_reference_genome_retrieve_dialog();
                     ui.close_menu();
                 }
-                if ui.button("Import BED Track...").clicked() {
+                if ui.button("BLAST Genome Sequence...").clicked() {
+                    self.open_reference_genome_blast_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("Import Genome Track...").clicked() {
                     self.open_genome_bed_track_dialog();
                     ui.close_menu();
                 }
@@ -2463,6 +3831,10 @@ impl GENtleApp {
                 }
                 if ui.button("Retrieve Helper Sequence...").clicked() {
                     self.open_helper_genome_retrieve_dialog();
+                    ui.close_menu();
+                }
+                if ui.button("BLAST Helper Sequence...").clicked() {
+                    self.open_helper_genome_blast_dialog();
                     ui.close_menu();
                 }
             });
@@ -2680,6 +4052,13 @@ impl GENtleApp {
                 .clicked()
             {
                 self.open_reference_genome_retrieve_dialog();
+            }
+            if ui
+                .button("BLAST Genome Sequence...")
+                .on_hover_text("Run BLAST against prepared genome indices")
+                .clicked()
+            {
+                self.open_reference_genome_blast_dialog();
             }
         });
         ui.horizontal(|ui| {
@@ -2966,20 +4345,73 @@ impl GENtleApp {
     }
 
     fn apply_configuration_external_apps(&mut self) {
-        let value = self.configuration_rnapkin_executable.trim().to_string();
-        if value.is_empty() {
+        self.configuration_rnapkin_executable =
+            self.configuration_rnapkin_executable.trim().to_string();
+        self.configuration_makeblastdb_executable =
+            self.configuration_makeblastdb_executable.trim().to_string();
+        self.configuration_blastn_executable =
+            self.configuration_blastn_executable.trim().to_string();
+        self.configuration_bigwig_to_bedgraph_executable = self
+            .configuration_bigwig_to_bedgraph_executable
+            .trim()
+            .to_string();
+
+        if self.configuration_rnapkin_executable.is_empty() {
             env::remove_var("GENTLE_RNAPKIN_BIN");
-            self.configuration_status =
-                "External app settings applied (rnapkin override cleared; PATH lookup active)"
-                    .to_string();
         } else {
-            env::set_var("GENTLE_RNAPKIN_BIN", &value);
-            self.configuration_status = format!(
-                "External app settings applied (rnapkin override: {})",
-                value
+            env::set_var(
+                "GENTLE_RNAPKIN_BIN",
+                self.configuration_rnapkin_executable.clone(),
             );
         }
+
+        if self.configuration_makeblastdb_executable.is_empty() {
+            env::remove_var(MAKEBLASTDB_ENV_BIN);
+        } else {
+            env::set_var(
+                MAKEBLASTDB_ENV_BIN,
+                self.configuration_makeblastdb_executable.clone(),
+            );
+        }
+
+        if self.configuration_blastn_executable.is_empty() {
+            env::remove_var(BLASTN_ENV_BIN);
+        } else {
+            env::set_var(BLASTN_ENV_BIN, self.configuration_blastn_executable.clone());
+        }
+
+        if self.configuration_bigwig_to_bedgraph_executable.is_empty() {
+            env::remove_var(BIGWIG_TO_BEDGRAPH_ENV_BIN);
+        } else {
+            env::set_var(
+                BIGWIG_TO_BEDGRAPH_ENV_BIN,
+                self.configuration_bigwig_to_bedgraph_executable.clone(),
+            );
+        }
+
+        let rnapkin_status = env::var("GENTLE_RNAPKIN_BIN")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| "PATH lookup: rnapkin".to_string());
+        let makeblastdb_status = env::var(MAKEBLASTDB_ENV_BIN)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_MAKEBLASTDB_BIN}"));
+        let blastn_status = env::var(BLASTN_ENV_BIN)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BLASTN_BIN}"));
+        let bigwig_status = env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BIGWIG_TO_BEDGRAPH_BIN}"));
+        self.configuration_status = format!(
+            "External app settings applied (rnapkin: {}, makeblastdb: {}, blastn: {}, bigWigToBedGraph: {})",
+            rnapkin_status, makeblastdb_status, blastn_status, bigwig_status
+        );
+
         self.validate_rnapkin_executable();
+        self.validate_blast_executables();
         match self.write_persisted_configuration_to_disk() {
             Ok(()) => {
                 self.configuration_status
@@ -3039,25 +4471,89 @@ impl GENtleApp {
         ui.label("Configure external application integration used by shared engine features.");
         ui.separator();
         ui.label("rnapkin executable override");
-        let edit_response = ui.add(
+        let rnapkin_edit_response = ui.add(
             egui::TextEdit::singleline(&mut self.configuration_rnapkin_executable)
                 .hint_text("Leave empty to use PATH lookup for 'rnapkin'"),
         );
-        if edit_response.changed() {
+        if rnapkin_edit_response.changed() {
             self.clear_rnapkin_validation();
         }
-        let active = env::var("GENTLE_RNAPKIN_BIN")
+        let active_rnapkin = env::var("GENTLE_RNAPKIN_BIN")
             .ok()
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| "PATH lookup: rnapkin".to_string());
-        ui.monospace(format!("Active resolution: {active}"));
+        ui.monospace(format!("Active resolution: {active_rnapkin}"));
+
+        ui.separator();
+        ui.label("makeblastdb executable override");
+        let makeblastdb_edit_response = ui.add(
+            egui::TextEdit::singleline(&mut self.configuration_makeblastdb_executable).hint_text(
+                format!(
+                    "Leave empty to use PATH lookup for '{}'",
+                    DEFAULT_MAKEBLASTDB_BIN
+                ),
+            ),
+        );
+        if makeblastdb_edit_response.changed() {
+            self.clear_blast_validation();
+        }
+        let active_makeblastdb = env::var(MAKEBLASTDB_ENV_BIN)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_MAKEBLASTDB_BIN}"));
+        ui.monospace(format!("Active makeblastdb: {active_makeblastdb}"));
+
+        ui.label("blastn executable override");
+        let blastn_edit_response = ui.add(
+            egui::TextEdit::singleline(&mut self.configuration_blastn_executable).hint_text(
+                format!(
+                    "Leave empty to use PATH lookup for '{}'",
+                    DEFAULT_BLASTN_BIN
+                ),
+            ),
+        );
+        if blastn_edit_response.changed() {
+            self.clear_blast_validation();
+        }
+        let active_blastn = env::var(BLASTN_ENV_BIN)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BLASTN_BIN}"));
+        ui.monospace(format!("Active blastn: {active_blastn}"));
+
+        ui.separator();
+        ui.label("bigWigToBedGraph executable override");
+        ui.add(
+            egui::TextEdit::singleline(&mut self.configuration_bigwig_to_bedgraph_executable)
+                .hint_text(format!(
+                    "Leave empty to use PATH lookup for '{}'",
+                    DEFAULT_BIGWIG_TO_BEDGRAPH_BIN
+                )),
+        );
+        let active_bigwig = env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BIGWIG_TO_BEDGRAPH_BIN}"));
+        ui.monospace(format!("Active bigWigToBedGraph: {active_bigwig}"));
+
         ui.horizontal(|ui| {
             if ui.button("Use PATH").clicked() {
                 self.configuration_rnapkin_executable.clear();
                 self.clear_rnapkin_validation();
             }
+            if ui.button("Use PATH (BLAST)").clicked() {
+                self.configuration_makeblastdb_executable.clear();
+                self.configuration_blastn_executable.clear();
+                self.clear_blast_validation();
+            }
+            if ui.button("Use PATH (BigWig)").clicked() {
+                self.configuration_bigwig_to_bedgraph_executable.clear();
+            }
             if ui.button("Validate rnapkin").clicked() {
                 self.validate_rnapkin_executable();
+            }
+            if ui.button("Validate BLAST tools").clicked() {
+                self.validate_blast_executables();
             }
             if ui.button("Apply External Settings").clicked() {
                 self.apply_configuration_external_apps();
@@ -3076,6 +4572,21 @@ impl GENtleApp {
             .is_empty()
         {
             ui.monospace(self.configuration_rnapkin_validation_message.clone());
+        }
+
+        if let Some(ok) = self.configuration_blast_validation_ok {
+            let color = if ok {
+                egui::Color32::from_rgb(20, 140, 45)
+            } else {
+                egui::Color32::from_rgb(180, 50, 50)
+            };
+            ui.colored_label(color, self.configuration_blast_validation_message.clone());
+        } else if !self
+            .configuration_blast_validation_message
+            .trim()
+            .is_empty()
+        {
+            ui.monospace(self.configuration_blast_validation_message.clone());
         }
     }
 
@@ -3747,6 +5258,22 @@ impl GENtleApp {
                 max_score,
                 clear_existing.unwrap_or(false)
             ),
+            Operation::ImportGenomeBigWigTrack {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => format!(
+                "Import genome BigWig track: seq_id={}, path={}, track_name={}, min_score={:?}, max_score={:?}, clear_existing={}",
+                seq_id,
+                path,
+                track_name.clone().unwrap_or_else(|| "-".to_string()),
+                min_score,
+                max_score,
+                clear_existing.unwrap_or(false)
+            ),
         }
     }
 }
@@ -3763,12 +5290,16 @@ impl eframe::App for GENtleApp {
             self.consume_native_help_request();
             self.consume_native_settings_request();
             let dirty_marker = if self.is_project_dirty() { " *" } else { "" };
-            ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+            let window_title = format!(
                 "GENtle - {}{} (v{})",
                 self.current_project_name(),
                 dirty_marker,
                 about::GENTLE_DISPLAY_VERSION
-            )));
+            );
+            if self.last_applied_window_title != window_title {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Title(window_title.clone()));
+                self.last_applied_window_title = window_title;
+            }
 
             let open_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::O);
             let new_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
@@ -3778,6 +5309,8 @@ impl eframe::App for GENtleApp {
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::G);
             let open_prepare_genome =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::P);
+            let open_blast_genome =
+                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::L);
             let open_import_bed_track =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
             let save_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
@@ -3799,6 +5332,9 @@ impl eframe::App for GENtleApp {
             if ctx.input_mut(|i| i.consume_shortcut(&open_prepare_genome)) {
                 self.open_reference_genome_prepare_dialog();
             }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_blast_genome)) {
+                self.open_reference_genome_blast_dialog();
+            }
             if ctx.input_mut(|i| i.consume_shortcut(&open_import_bed_track)) {
                 self.open_genome_bed_track_dialog();
             }
@@ -3813,6 +5349,8 @@ impl eframe::App for GENtleApp {
             }
 
             self.poll_prepare_reference_genome_task(ctx);
+            self.poll_reference_genome_blast_task(ctx);
+            self.sync_tracked_bed_tracks_for_new_anchors();
 
             // Show menu bar
             egui::TopBottomPanel::top("top").show(ctx, |ui| {
@@ -3830,6 +5368,7 @@ impl eframe::App for GENtleApp {
             });
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
+            self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
             self.render_configuration_dialog(ctx);

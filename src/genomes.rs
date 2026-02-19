@@ -7,12 +7,18 @@ use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
+use tempfile::NamedTempFile;
 
 pub const DEFAULT_GENOME_CATALOG_PATH: &str = "assets/genomes.json";
 pub const DEFAULT_HELPER_GENOME_CATALOG_PATH: &str = "assets/helper_genomes.json";
 pub const DEFAULT_GENOME_CACHE_DIR: &str = "data/genomes";
+pub const DEFAULT_MAKEBLASTDB_BIN: &str = "makeblastdb";
+pub const DEFAULT_BLASTN_BIN: &str = "blastn";
+pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
+pub const BLASTN_ENV_BIN: &str = "GENTLE_BLASTN_BIN";
 const DEFAULT_NCBI_EFETCH_ENDPOINT: &str =
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
 const NCBI_EFETCH_ENV_VAR: &str = "GENTLE_NCBI_EFETCH_URL";
@@ -20,6 +26,8 @@ const HTTP_RETRY_ATTEMPTS: usize = 4;
 const HTTP_RETRY_BASE_BACKOFF_MS: u64 = 1000;
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 20;
 const HTTP_READ_TIMEOUT_SECS: u64 = 120;
+const BLASTN_OUTFMT_FIELDS: &str =
+    "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs";
 
 #[cfg(test)]
 pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
@@ -67,6 +75,12 @@ struct GenomeInstallManifest {
     annotation_path: String,
     fasta_index_path: String,
     gene_index_path: Option<String>,
+    #[serde(default)]
+    blast_db_prefix: Option<String>,
+    #[serde(default)]
+    blast_index_executable: Option<String>,
+    #[serde(default)]
+    blast_indexed_at_unix_ms: Option<u128>,
     installed_at_unix_ms: u128,
 }
 
@@ -81,6 +95,11 @@ pub struct PrepareGenomeReport {
     pub annotation_source: Option<String>,
     pub sequence_source_type: Option<String>,
     pub annotation_source_type: Option<String>,
+    pub blast_db_prefix: Option<String>,
+    pub blast_index_ready: bool,
+    pub blast_index_executable: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +115,8 @@ pub struct PreparedGenomeInspection {
     pub annotation_path: String,
     pub fasta_index_path: String,
     pub gene_index_path: String,
+    pub blast_db_prefix: Option<String>,
+    pub blast_index_ready: bool,
     pub sequence_sha1: Option<String>,
     pub annotation_sha1: Option<String>,
     pub sequence_present: bool,
@@ -104,6 +125,38 @@ pub struct PreparedGenomeInspection {
     pub gene_index_ready: bool,
     pub total_size_bytes: u64,
     pub installed_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlastHit {
+    pub subject_id: String,
+    pub identity_percent: f64,
+    pub alignment_length: usize,
+    pub mismatches: usize,
+    pub gap_opens: usize,
+    pub query_start: usize,
+    pub query_end: usize,
+    pub subject_start: usize,
+    pub subject_end: usize,
+    pub evalue: f64,
+    pub bit_score: f64,
+    pub query_coverage_percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeBlastReport {
+    pub genome_id: String,
+    pub query_length: usize,
+    pub max_hits: usize,
+    pub task: String,
+    pub blastn_executable: String,
+    pub blast_db_prefix: String,
+    pub command: Vec<String>,
+    pub hit_count: usize,
+    pub hits: Vec<BlastHit>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    pub stderr: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +208,13 @@ struct FastaIndexEntry {
     offset: u64,
     line_bases: u64,
     line_bytes: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+struct BlastIndexOutcome {
+    ready: bool,
+    executable: Option<String>,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -258,11 +318,26 @@ impl GenomeCatalog {
         let sequence_path = PathBuf::from(&manifest.sequence_path);
         let annotation_path = PathBuf::from(&manifest.annotation_path);
         let fasta_index_path = PathBuf::from(&manifest.fasta_index_path);
+        let blast_db_prefix_path = manifest
+            .blast_db_prefix
+            .as_deref()
+            .map(PathBuf::from)
+            .or_else(|| Some(default_blast_db_prefix(&install_dir)));
+        let blast_db_prefix = manifest.blast_db_prefix.clone().or_else(|| {
+            blast_db_prefix_path
+                .as_ref()
+                .map(|p| canonical_or_display(p))
+        });
+        let blast_index_files = blast_db_prefix_path
+            .as_ref()
+            .map(|p| collect_blast_index_files(p))
+            .unwrap_or_default();
 
         let sequence_present = sequence_path.exists();
         let annotation_present = annotation_path.exists();
         let fasta_index_ready = fasta_index_path.exists();
         let gene_index_ready = gene_index_path.exists();
+        let blast_index_ready = is_blast_index_ready(&blast_index_files);
         let total_size_bytes = [
             &sequence_path,
             &annotation_path,
@@ -272,7 +347,12 @@ impl GenomeCatalog {
         .into_iter()
         .filter_map(|path| fs::metadata(path).ok())
         .map(|meta| meta.len())
-        .sum::<u64>();
+        .sum::<u64>()
+            + blast_index_files
+                .iter()
+                .filter_map(|path| fs::metadata(path).ok())
+                .map(|meta| meta.len())
+                .sum::<u64>();
 
         Ok(Some(PreparedGenomeInspection {
             genome_id: genome_id.to_string(),
@@ -290,6 +370,8 @@ impl GenomeCatalog {
             annotation_path: manifest.annotation_path.clone(),
             fasta_index_path: manifest.fasta_index_path.clone(),
             gene_index_path: canonical_or_display(&gene_index_path),
+            blast_db_prefix,
+            blast_index_ready,
             sequence_sha1: manifest.sequence_sha1.clone(),
             annotation_sha1: manifest.annotation_sha1.clone(),
             sequence_present,
@@ -334,6 +416,7 @@ impl GenomeCatalog {
             let mut manifest = Self::load_manifest(&manifest_path)?;
             Self::validate_manifest_files(&manifest)?;
             let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
+            let mut warnings: Vec<String> = vec![];
             let gene_index_path = manifest
                 .gene_index_path
                 .as_ref()
@@ -361,8 +444,53 @@ impl GenomeCatalog {
                     },
                 )?;
                 manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
-                Self::write_manifest(&manifest_path, &manifest)?;
-            } else if checksum_changed {
+            }
+            let blast_prefix_path = manifest
+                .blast_db_prefix
+                .as_deref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
+            on_progress(PrepareGenomeProgress {
+                genome_id: genome_id.to_string(),
+                phase: "index_blast".to_string(),
+                item: canonical_or_display(&blast_prefix_path),
+                bytes_done: 0,
+                bytes_total: None,
+                percent: None,
+            });
+            let blast_outcome =
+                ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
+            if !blast_outcome.warnings.is_empty() {
+                warnings.extend(blast_outcome.warnings.clone());
+            }
+            on_progress(PrepareGenomeProgress {
+                genome_id: genome_id.to_string(),
+                phase: "index_blast".to_string(),
+                item: canonical_or_display(&blast_prefix_path),
+                bytes_done: if blast_outcome.ready { 1 } else { 0 },
+                bytes_total: Some(1),
+                percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
+            });
+            let mut manifest_changed = checksum_changed;
+            let blast_prefix = canonical_or_display(&blast_prefix_path);
+            if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
+                manifest.blast_db_prefix = Some(blast_prefix.clone());
+                manifest_changed = true;
+            }
+            if manifest.blast_index_executable != blast_outcome.executable {
+                manifest.blast_index_executable = blast_outcome.executable.clone();
+                manifest_changed = true;
+            }
+            if blast_outcome.ready {
+                if manifest.blast_indexed_at_unix_ms.is_none() {
+                    manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+                    manifest_changed = true;
+                }
+            } else if manifest.blast_indexed_at_unix_ms.is_some() {
+                manifest.blast_indexed_at_unix_ms = None;
+                manifest_changed = true;
+            }
+            if manifest_changed {
                 Self::write_manifest(&manifest_path, &manifest)?;
             }
             on_progress(PrepareGenomeProgress {
@@ -390,6 +518,10 @@ impl GenomeCatalog {
                 annotation_source: Some(manifest.annotation_source.clone()),
                 sequence_source_type: Some(sequence_source_type),
                 annotation_source_type: Some(annotation_source_type),
+                blast_db_prefix: manifest.blast_db_prefix.clone(),
+                blast_index_ready: blast_outcome.ready,
+                blast_index_executable: blast_outcome.executable,
+                warnings,
             });
         }
 
@@ -415,9 +547,12 @@ impl GenomeCatalog {
         let annotation_path = install_dir.join(format!("annotation.{annotation_ext}"));
         let fasta_index_path = install_dir.join("sequence.fa.fai");
         let gene_index_path = install_dir.join("genes.json");
+        let blast_prefix_path = default_blast_db_prefix(&install_dir);
 
         if non_empty_regular_file_exists(&sequence_path) {
-            let bytes = fs::metadata(&sequence_path).map(|meta| meta.len()).unwrap_or(0);
+            let bytes = fs::metadata(&sequence_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
             on_progress(PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
                 phase: "reuse_sequence".to_string(),
@@ -492,6 +627,23 @@ impl GenomeCatalog {
                 }),
             });
         })?;
+        on_progress(PrepareGenomeProgress {
+            genome_id: genome_id.to_string(),
+            phase: "index_blast".to_string(),
+            item: canonical_or_display(&blast_prefix_path),
+            bytes_done: 0,
+            bytes_total: None,
+            percent: None,
+        });
+        let blast_outcome = ensure_blast_index(&sequence_path, &blast_prefix_path);
+        on_progress(PrepareGenomeProgress {
+            genome_id: genome_id.to_string(),
+            phase: "index_blast".to_string(),
+            item: canonical_or_display(&blast_prefix_path),
+            bytes_done: if blast_outcome.ready { 1 } else { 0 },
+            bytes_total: Some(1),
+            percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
+        });
 
         let manifest = GenomeInstallManifest {
             genome_id: genome_id.to_string(),
@@ -509,6 +661,9 @@ impl GenomeCatalog {
             annotation_path: canonical_or_display(&annotation_path),
             fasta_index_path: canonical_or_display(&fasta_index_path),
             gene_index_path: Some(canonical_or_display(&gene_index_path)),
+            blast_db_prefix: Some(canonical_or_display(&blast_prefix_path)),
+            blast_index_executable: blast_outcome.executable.clone(),
+            blast_indexed_at_unix_ms: blast_outcome.ready.then_some(now_unix_ms()),
             installed_at_unix_ms: now_unix_ms(),
         };
         Self::write_manifest(&manifest_path, &manifest)?;
@@ -532,6 +687,10 @@ impl GenomeCatalog {
             annotation_source: Some(manifest.annotation_source.clone()),
             sequence_source_type: manifest.sequence_source_type.clone(),
             annotation_source_type: manifest.annotation_source_type.clone(),
+            blast_db_prefix: manifest.blast_db_prefix.clone(),
+            blast_index_ready: blast_outcome.ready,
+            blast_index_executable: blast_outcome.executable,
+            warnings: blast_outcome.warnings,
         })
     }
 
@@ -641,6 +800,157 @@ impl GenomeCatalog {
             Self::write_manifest(&manifest_path, &manifest)?;
         }
         load_gene_index_file(&gene_index_path)
+    }
+
+    pub fn blast_sequence(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+    ) -> Result<GenomeBlastReport, String> {
+        self.blast_sequence_with_cache(genome_id, query_sequence, max_hits, task, None)
+    }
+
+    pub fn blast_sequence_with_cache(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        cache_dir_override: Option<&str>,
+    ) -> Result<GenomeBlastReport, String> {
+        if max_hits == 0 {
+            return Err("BLAST search requires max_hits >= 1".to_string());
+        }
+        let task = normalize_blast_task(task)?;
+        let query = normalize_blast_query_sequence(query_sequence)?;
+
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            return Err(format!(
+                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
+            ));
+        }
+        let mut manifest = Self::load_manifest(&manifest_path)?;
+        Self::validate_manifest_files(&manifest)?;
+
+        let blast_prefix_path = manifest
+            .blast_db_prefix
+            .as_deref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
+        let mut blast_outcome =
+            ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
+        let mut manifest_changed = false;
+        let blast_prefix = canonical_or_display(&blast_prefix_path);
+        if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
+            manifest.blast_db_prefix = Some(blast_prefix.clone());
+            manifest_changed = true;
+        }
+        if manifest.blast_index_executable != blast_outcome.executable {
+            manifest.blast_index_executable = blast_outcome.executable.clone();
+            manifest_changed = true;
+        }
+        if blast_outcome.ready {
+            if manifest.blast_indexed_at_unix_ms.is_none() {
+                manifest.blast_indexed_at_unix_ms = Some(now_unix_ms());
+                manifest_changed = true;
+            }
+        } else if manifest.blast_indexed_at_unix_ms.is_some() {
+            manifest.blast_indexed_at_unix_ms = None;
+            manifest_changed = true;
+        }
+        if manifest_changed {
+            Self::write_manifest(&manifest_path, &manifest)?;
+        }
+        if !blast_outcome.ready {
+            let detail = if blast_outcome.warnings.is_empty() {
+                "no index files found and makeblastdb could not build one".to_string()
+            } else {
+                blast_outcome.warnings.join(" | ")
+            };
+            return Err(format!(
+                "BLAST index for genome '{}' is not ready (db='{}'): {}",
+                genome_id, blast_prefix, detail
+            ));
+        }
+
+        let blastn_executable = resolve_tool_executable(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN);
+        let mut query_file = NamedTempFile::new_in(&install_dir).map_err(|e| {
+            format!(
+                "Could not create temporary BLAST query file in '{}': {e}",
+                install_dir.display()
+            )
+        })?;
+        write!(query_file, ">query\n{}\n", query)
+            .map_err(|e| format!("Could not write temporary BLAST query file: {e}"))?;
+        query_file
+            .flush()
+            .map_err(|e| format!("Could not flush temporary BLAST query file: {e}"))?;
+        let query_path = canonical_or_display(query_file.path());
+
+        let args = vec![
+            "-db".to_string(),
+            blast_prefix.clone(),
+            "-query".to_string(),
+            query_path,
+            "-task".to_string(),
+            task.clone(),
+            "-outfmt".to_string(),
+            BLASTN_OUTFMT_FIELDS.to_string(),
+            "-max_target_seqs".to_string(),
+            max_hits.to_string(),
+        ];
+        let output = Command::new(&blastn_executable)
+            .args(&args)
+            .output()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    format!(
+                        "Could not find blastn executable '{}'. Install BLAST+ or set {}",
+                        blastn_executable, BLASTN_ENV_BIN
+                    )
+                } else {
+                    format!(
+                        "Could not run blastn executable '{}' with args [{}]: {}",
+                        blastn_executable,
+                        args.join(" "),
+                        e
+                    )
+                }
+            })?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !output.status.success() {
+            return Err(format!(
+                "blastn search failed: {} {} (status={:?}, stderr='{}')",
+                blastn_executable,
+                args.join(" "),
+                output.status.code(),
+                stderr.trim()
+            ));
+        }
+
+        let (hits, parse_warnings) = parse_blastn_tabular_hits(&stdout);
+        if !parse_warnings.is_empty() {
+            blast_outcome.warnings.extend(parse_warnings);
+        }
+        Ok(GenomeBlastReport {
+            genome_id: genome_id.to_string(),
+            query_length: query.len(),
+            max_hits,
+            task,
+            blastn_executable,
+            blast_db_prefix: blast_prefix,
+            command: args,
+            hit_count: hits.len(),
+            hits,
+            warnings: blast_outcome.warnings,
+            stderr,
+        })
     }
 
     fn entry(&self, genome_id: &str) -> Result<&GenomeCatalogEntry, String> {
@@ -1754,6 +2064,255 @@ fn non_empty_regular_file_exists(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+fn resolve_tool_executable(env_var: &str, default_bin: &str) -> String {
+    std::env::var(env_var)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| default_bin.to_string())
+}
+
+fn default_blast_db_prefix(install_dir: &Path) -> PathBuf {
+    install_dir.join("blastdb").join("genome")
+}
+
+fn is_blast_index_suffix(suffix: &str) -> bool {
+    matches!(
+        suffix,
+        "nhr" | "nin" | "nsq" | "ndb" | "not" | "ntf" | "nto" | "nog" | "nos" | "nsd" | "nsi"
+    )
+}
+
+fn collect_blast_index_files(db_prefix: &Path) -> Vec<PathBuf> {
+    let Some(parent) = db_prefix.parent() else {
+        return vec![];
+    };
+    let Some(base_name) = db_prefix.file_name().and_then(|v| v.to_str()) else {
+        return vec![];
+    };
+    let prefix = format!("{base_name}.");
+    let mut files: Vec<PathBuf> = fs::read_dir(parent)
+        .ok()
+        .into_iter()
+        .flat_map(|iter| iter.flatten())
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            if !name.starts_with(&prefix) {
+                return None;
+            }
+            let suffix = name.strip_prefix(&prefix)?;
+            if !is_blast_index_suffix(suffix) {
+                return None;
+            }
+            Some(entry.path())
+        })
+        .collect();
+    files.sort();
+    files
+}
+
+fn is_blast_index_ready(index_files: &[PathBuf]) -> bool {
+    let mut has_nhr = false;
+    let mut has_nin = false;
+    let mut has_nsq = false;
+    let mut has_ndb = false;
+    for path in index_files {
+        let suffix = path
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or_default();
+        match suffix {
+            "nhr" => has_nhr = true,
+            "nin" => has_nin = true,
+            "nsq" => has_nsq = true,
+            "ndb" => has_ndb = true,
+            _ => {}
+        }
+    }
+    (has_nhr && has_nin && has_nsq) || has_ndb
+}
+
+fn first_non_empty_output_line(stdout: &str, stderr: &str) -> String {
+    stdout
+        .lines()
+        .chain(stderr.lines())
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .unwrap_or_else(|| "no output".to_string())
+}
+
+fn ensure_blast_index(sequence_path: &Path, db_prefix: &Path) -> BlastIndexOutcome {
+    let db_prefix_string = canonical_or_display(db_prefix);
+    let mut outcome = BlastIndexOutcome {
+        ready: false,
+        executable: None,
+        warnings: vec![],
+    };
+
+    let existing = collect_blast_index_files(db_prefix);
+    if is_blast_index_ready(&existing) {
+        outcome.ready = true;
+        return outcome;
+    }
+
+    let executable = resolve_tool_executable(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN);
+    outcome.executable = Some(executable.clone());
+
+    if let Some(parent) = db_prefix.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            outcome.warnings.push(format!(
+                "BLAST indexing skipped for '{}': could not create directory '{}': {}",
+                db_prefix_string,
+                parent.display(),
+                e
+            ));
+            return outcome;
+        }
+    }
+
+    let args = vec![
+        "-in".to_string(),
+        canonical_or_display(sequence_path),
+        "-dbtype".to_string(),
+        "nucl".to_string(),
+        "-out".to_string(),
+        db_prefix_string.clone(),
+        "-parse_seqids".to_string(),
+    ];
+    match Command::new(&executable).args(&args).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if !output.status.success() {
+                outcome.warnings.push(format!(
+                    "BLAST indexing skipped for '{}': makeblastdb failed (status {:?}): {}",
+                    db_prefix_string,
+                    output.status.code(),
+                    first_non_empty_output_line(&stdout, &stderr)
+                ));
+                return outcome;
+            }
+            let produced = collect_blast_index_files(db_prefix);
+            if is_blast_index_ready(&produced) {
+                outcome.ready = true;
+            } else {
+                outcome.warnings.push(format!(
+                    "BLAST indexing skipped for '{}': makeblastdb reported success but index files were not produced",
+                    db_prefix_string
+                ));
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            outcome.warnings.push(format!(
+                "BLAST indexing skipped for '{}': makeblastdb executable '{}' not found (set {} to override)",
+                db_prefix_string, executable, MAKEBLASTDB_ENV_BIN
+            ));
+        }
+        Err(e) => {
+            outcome.warnings.push(format!(
+                "BLAST indexing skipped for '{}': could not run makeblastdb executable '{}': {}",
+                db_prefix_string, executable, e
+            ));
+        }
+    }
+    outcome
+}
+
+fn normalize_blast_task(task: Option<&str>) -> Result<String, String> {
+    let normalized = task
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("blastn-short")
+        .to_ascii_lowercase();
+    match normalized.as_str() {
+        "blastn-short" | "blastn" => Ok(normalized),
+        other => Err(format!(
+            "Unsupported BLAST task '{}'. Expected one of: blastn-short, blastn",
+            other
+        )),
+    }
+}
+
+fn normalize_blast_query_sequence(raw: &str) -> Result<String, String> {
+    let normalized: String = raw
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace())
+        .map(|c| match c.to_ascii_uppercase() {
+            'U' => 'T',
+            other => other,
+        })
+        .collect();
+    if normalized.is_empty() {
+        return Err("BLAST query sequence is empty".to_string());
+    }
+    if normalized
+        .chars()
+        .any(|c| !c.is_ascii_alphabetic() && c != '*')
+    {
+        return Err(
+            "BLAST query contains invalid characters; only nucleotide/IUPAC letters are supported"
+                .to_string(),
+        );
+    }
+    Ok(normalized)
+}
+
+fn parse_blastn_tabular_hits(stdout: &str) -> (Vec<BlastHit>, Vec<String>) {
+    let mut hits: Vec<BlastHit> = vec![];
+    let mut warnings: Vec<String> = vec![];
+    for (idx, line) in stdout.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let cols: Vec<&str> = trimmed.split('\t').collect();
+        if cols.len() < 13 {
+            if warnings.len() < 20 {
+                warnings.push(format!(
+                    "BLAST output line {} skipped: expected 13 tab-separated fields, got {}",
+                    idx + 1,
+                    cols.len()
+                ));
+            }
+            continue;
+        }
+        let parse_usize = |raw: &str, name: &str| -> Result<usize, String> {
+            raw.parse::<usize>()
+                .map_err(|e| format!("could not parse {name}='{raw}': {e}"))
+        };
+        let parse_f64 = |raw: &str, name: &str| -> Result<f64, String> {
+            raw.parse::<f64>()
+                .map_err(|e| format!("could not parse {name}='{raw}': {e}"))
+        };
+        let parsed: Result<BlastHit, String> = (|| {
+            Ok(BlastHit {
+                subject_id: cols[1].to_string(),
+                identity_percent: parse_f64(cols[2], "pident")?,
+                alignment_length: parse_usize(cols[3], "length")?,
+                mismatches: parse_usize(cols[4], "mismatch")?,
+                gap_opens: parse_usize(cols[5], "gapopen")?,
+                query_start: parse_usize(cols[6], "qstart")?,
+                query_end: parse_usize(cols[7], "qend")?,
+                subject_start: parse_usize(cols[8], "sstart")?,
+                subject_end: parse_usize(cols[9], "send")?,
+                evalue: parse_f64(cols[10], "evalue")?,
+                bit_score: parse_f64(cols[11], "bitscore")?,
+                query_coverage_percent: cols[12].parse::<f64>().ok(),
+            })
+        })();
+        match parsed {
+            Ok(hit) => hits.push(hit),
+            Err(e) => {
+                if warnings.len() < 20 {
+                    warnings.push(format!("BLAST output line {} skipped: {}", idx + 1, e));
+                }
+            }
+        }
+    }
+    (hits, warnings)
+}
+
 fn build_fasta_index_with_progress<F>(
     fasta_path: &Path,
     index_path: &Path,
@@ -2831,7 +3390,9 @@ mod tests {
             })
             .unwrap_err();
         assert!(first_err.contains("missing_annotation.gtf"));
-        assert!(first_phases.iter().any(|phase| phase == "download_sequence"));
+        assert!(first_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
 
         let sequence_path = cache_dir.join("toygenome").join("sequence.fa");
         assert!(sequence_path.exists());
@@ -3222,5 +3783,49 @@ mod tests {
         let local = catalog.source_plan("LocalProject", None).unwrap();
         assert_eq!(local.sequence_source_type, "local");
         assert_eq!(local.annotation_source_type, "local");
+    }
+
+    #[test]
+    fn test_normalize_blast_task_accepts_and_rejects_expected_values() {
+        assert_eq!(
+            normalize_blast_task(None).expect("default task"),
+            "blastn-short"
+        );
+        assert_eq!(
+            normalize_blast_task(Some(" blastn ")).expect("blastn task"),
+            "blastn"
+        );
+        assert!(normalize_blast_task(Some("megablast")).is_err());
+    }
+
+    #[test]
+    fn test_normalize_blast_query_sequence_validates_and_normalizes() {
+        assert_eq!(
+            normalize_blast_query_sequence("acgu n").expect("query should normalize"),
+            "ACGTN"
+        );
+        assert!(normalize_blast_query_sequence("").is_err());
+        assert!(normalize_blast_query_sequence("ACGT-").is_err());
+    }
+
+    #[test]
+    fn test_parse_blastn_tabular_hits_reads_expected_columns() {
+        let stdout = "query\tsubject1\t99.1\t20\t0\t0\t1\t20\t100\t119\t1e-10\t50.2\t100\n";
+        let (hits, warnings) = parse_blastn_tabular_hits(stdout);
+        assert!(warnings.is_empty());
+        assert_eq!(hits.len(), 1);
+        let hit = &hits[0];
+        assert_eq!(hit.subject_id, "subject1");
+        assert_eq!(hit.identity_percent, 99.1);
+        assert_eq!(hit.alignment_length, 20);
+        assert_eq!(hit.mismatches, 0);
+        assert_eq!(hit.gap_opens, 0);
+        assert_eq!(hit.query_start, 1);
+        assert_eq!(hit.query_end, 20);
+        assert_eq!(hit.subject_start, 100);
+        assert_eq!(hit.subject_end, 119);
+        assert_eq!(hit.evalue, 1e-10);
+        assert_eq!(hit.bit_score, 50.2);
+        assert_eq!(hit.query_coverage_percent, Some(100.0));
     }
 }

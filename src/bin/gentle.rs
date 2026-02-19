@@ -100,9 +100,10 @@ struct CliArgs {
 fn print_help() {
     println!(
         "Usage:\n  \
-gentle [--help|-h] [--version|-V] [--allow-screenshots]\n  \
-gentle [--project PATH] [--allow-screenshots] [PATH]\n\n  \
-PATH can be a project file such as 'project.gentle.json'."
+gentle [--help|-h] [--version|-V] [--allow-screenshots*]\n  \
+gentle [--project PATH] [--allow-screenshots*] [PATH]\n\n  \
+PATH can be a project file such as 'project.gentle.json'.\n  \
+* screenshot capture requires build feature 'screenshot-capture'."
     );
 }
 
@@ -127,6 +128,12 @@ fn parse_cli_args(args: &[String]) -> Result<CliArgs, String> {
                 idx += 2;
             }
             "--allow-screenshots" => {
+                if !cfg!(feature = "screenshot-capture") {
+                    return Err(
+                        "--allow-screenshots is unavailable in this build; enable feature 'screenshot-capture'"
+                            .to_string(),
+                    );
+                }
                 parsed.allow_screenshots = true;
                 idx += 1;
             }

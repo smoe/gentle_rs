@@ -5,14 +5,18 @@ use crate::{
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync,
 };
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::BTreeSet, fs, path::Path, process::Command};
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
+use std::path::Path;
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
+use std::process::Command;
+use std::{collections::BTreeSet, fs};
 
 #[derive(Debug, Clone)]
 pub enum ShellCommand {
@@ -124,7 +128,24 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    ReferenceBlast {
+        helper_mode: bool,
+        genome_id: String,
+        query_sequence: String,
+        max_hits: usize,
+        task: Option<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     TracksImportBed {
+        seq_id: String,
+        path: String,
+        track_name: Option<String>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: bool,
+    },
+    TracksImportBigWig {
         seq_id: String,
         path: String,
         track_name: Option<String>,
@@ -154,10 +175,11 @@ pub struct ShellExecutionOptions {
 impl ShellExecutionOptions {
     pub fn from_env() -> Self {
         let raw = std::env::var("GENTLE_ALLOW_SCREENSHOTS").unwrap_or_default();
-        let allow_screenshots = matches!(
-            raw.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        );
+        let allow_screenshots = cfg!(feature = "screenshot-capture")
+            && matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            );
         Self { allow_screenshots }
     }
 }
@@ -419,6 +441,26 @@ impl ShellCommand {
                     "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', catalog='{catalog}', cache='{cache}')"
                 )
             }
+            Self::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                task,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+                format!(
+                    "blast query (len={}) against {label} '{genome_id}' (max_hits={max_hits}, task='{task}', catalog='{catalog}', cache='{cache}')",
+                    query_sequence.len()
+                )
+            }
             Self::TracksImportBed {
                 seq_id,
                 path,
@@ -428,6 +470,27 @@ impl ShellCommand {
                 clear_existing,
             } => format!(
                 "import BED track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
+                path,
+                track_name
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                min_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                max_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                clear_existing
+            ),
+            Self::TracksImportBigWig {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => format!(
+                "import BigWig track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
                 path,
                 track_name
                     .clone()
@@ -454,20 +517,27 @@ impl ShellCommand {
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
                 | Self::TracksImportBed { .. }
+                | Self::TracksImportBigWig { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
         )
     }
 }
 
-pub fn shell_help_text() -> &'static str {
-    "GENtle Shell commands:\n\
+pub fn shell_help_text() -> String {
+    let screenshot_line = if cfg!(feature = "screenshot-capture") {
+        "screenshot-window OUTPUT.png\n"
+    } else {
+        "screenshot-window OUTPUT.png (disabled in this build; enable feature 'screenshot-capture')\n"
+    };
+    format!(
+        "GENtle Shell commands:\n\
 help\n\
 capabilities\n\
 state-summary\n\
 load-project PATH\n\
 save-project PATH\n\
-screenshot-window OUTPUT.png\n\
+{screenshot_line}\
 render-svg SEQ_ID linear|circular OUTPUT.svg\n\
 render-rna-svg SEQ_ID OUTPUT.svg\n\
 rna-info SEQ_ID\n\
@@ -484,6 +554,7 @@ genomes validate-catalog [--catalog PATH]\n\
 genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
 genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
 genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
+genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers list [--catalog PATH]\n\
@@ -491,12 +562,15 @@ helpers validate-catalog [--catalog PATH]\n\
 helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
 helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
 helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
+helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
+tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
 IDS is comma-separated sequence IDs"
+    )
 }
 
 fn split_ids(input: &str) -> Vec<String> {
@@ -675,6 +749,7 @@ fn parse_ladder_molecule(value: &str) -> Result<LadderMolecule, String> {
         .ok_or_else(|| format!("Unknown ladder molecule '{value}', expected 'dna' or 'rna'"))
 }
 
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 fn now_unix_ms() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -682,6 +757,7 @@ fn now_unix_ms() -> u128 {
         .unwrap_or(0)
 }
 
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 fn ensure_parent_dir(path: &str) -> Result<(), String> {
     let parent = Path::new(path)
         .parent()
@@ -691,7 +767,7 @@ fn ensure_parent_dir(path: &str) -> Result<(), String> {
         .map_err(|e| format!("Could not create output directory for '{path}': {e}"))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 fn active_window_info_from_appkit() -> Result<(u64, String), String> {
     let Some(mtm) = MainThreadMarker::new() else {
         return Err("Screenshot capture requires the macOS main thread".to_string());
@@ -720,7 +796,7 @@ fn active_window_info_from_appkit() -> Result<(u64, String), String> {
     Ok((window_id, window_title))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 fn capture_active_window_screenshot(output: &str) -> Result<ScreenshotReport, String> {
     ensure_parent_dir(output)?;
     let (window_id, window_title) = active_window_info_from_appkit()?;
@@ -752,9 +828,16 @@ fn capture_active_window_screenshot(output: &str) -> Result<ScreenshotReport, St
     })
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(not(target_os = "macos"), not(feature = "screenshot-capture")))]
 fn capture_active_window_screenshot(_output: &str) -> Result<ScreenshotReport, String> {
-    Err("screenshot-window is currently supported only on macOS".to_string())
+    if !cfg!(feature = "screenshot-capture") {
+        Err(
+            "screenshot-window is unavailable in this build; enable feature 'screenshot-capture'"
+                .to_string(),
+        )
+    } else {
+        Err("screenshot-window is currently supported only on macOS".to_string())
+    }
 }
 
 fn parse_json_payload(raw: &str) -> Result<String, String> {
@@ -954,6 +1037,70 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 cache_dir,
             })
         }
+        "blast" => {
+            if tokens.len() < 4 {
+                return Err(format!(
+                    "{label} blast requires GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let query_sequence = tokens[3].clone();
+            let mut max_hits: usize = 25;
+            let mut task: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--max-hits" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--max-hits", label)?;
+                        max_hits = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-hits value '{raw}': {e}"))?;
+                        if max_hits == 0 {
+                            return Err("--max-hits must be >= 1".to_string());
+                        }
+                    }
+                    "--task" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--task", label)?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        match normalized.as_str() {
+                            "blastn-short" | "blastn" => task = Some(normalized),
+                            _ => {
+                                return Err(format!(
+                                    "Unsupported --task value '{}'; expected blastn-short or blastn",
+                                    raw
+                                ))
+                            }
+                        }
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} blast"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                task,
+                catalog_path,
+                cache_dir,
+            })
+        }
         "extract-region" => {
             if tokens.len() < 6 {
                 return Err(format!(
@@ -1073,7 +1220,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, extract-region, extract-gene)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, extract-region, extract-gene)"
         )),
     }
 }
@@ -1120,6 +1267,12 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "screenshot-window" => {
             if tokens.len() != 2 {
                 return Err(token_error(cmd));
+            }
+            if !cfg!(feature = "screenshot-capture") {
+                return Err(
+                    "screenshot-window is unavailable in this build; enable feature 'screenshot-capture'"
+                        .to_string(),
+                );
             }
             let output = tokens[1].trim();
             if output.is_empty() {
@@ -1384,7 +1537,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "tracks" => {
             if tokens.len() < 2 {
-                return Err("tracks requires a subcommand: import-bed".to_string());
+                return Err("tracks requires a subcommand: import-bed or import-bigwig".to_string());
             }
             match tokens[1].as_str() {
                 "import-bed" => {
@@ -1459,8 +1612,80 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         clear_existing,
                     })
                 }
+                "import-bigwig" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "tracks import-bigwig requires SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]".to_string()
+                        );
+                    }
+                    let seq_id = tokens[2].clone();
+                    let path = tokens[3].clone();
+                    let mut track_name: Option<String> = None;
+                    let mut min_score: Option<f64> = None;
+                    let mut max_score: Option<f64> = None;
+                    let mut clear_existing = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--name" => {
+                                track_name = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--name",
+                                    "tracks import-bigwig",
+                                )?);
+                            }
+                            "--min-score" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--min-score",
+                                    "tracks import-bigwig",
+                                )?;
+                                min_score = Some(raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --min-score value '{raw}': {e}")
+                                })?);
+                            }
+                            "--max-score" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--max-score",
+                                    "tracks import-bigwig",
+                                )?;
+                                max_score = Some(raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --max-score value '{raw}': {e}")
+                                })?);
+                            }
+                            "--clear-existing" => {
+                                clear_existing = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for tracks import-bigwig"
+                                ));
+                            }
+                        }
+                    }
+                    if min_score
+                        .zip(max_score)
+                        .map(|(min, max)| min > max)
+                        .unwrap_or(false)
+                    {
+                        return Err("--min-score must be <= --max-score".to_string());
+                    }
+                    Ok(ShellCommand::TracksImportBigWig {
+                        seq_id,
+                        path,
+                        track_name,
+                        min_score,
+                        max_score,
+                        clear_existing,
+                    })
+                }
                 other => Err(format!(
-                    "Unknown tracks subcommand '{other}' (expected import-bed)"
+                    "Unknown tracks subcommand '{other}' (expected import-bed or import-bigwig)"
                 )),
             }
         }
@@ -1602,6 +1827,12 @@ pub fn execute_shell_command_with_options(
             }
         }
         ShellCommand::ScreenshotWindow { output } => {
+            if !cfg!(feature = "screenshot-capture") {
+                return Err(
+                    "screenshot capture is unavailable in this build; enable feature 'screenshot-capture'"
+                        .to_string(),
+                );
+            }
             if !options.allow_screenshots {
                 return Err(
                     "screenshot capture is disabled; restart with --allow-screenshots".to_string(),
@@ -1958,6 +2189,46 @@ pub fn execute_shell_command_with_options(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::ReferenceBlast {
+            helper_mode,
+            genome_id,
+            query_sequence,
+            max_hits,
+            task,
+            catalog_path,
+            cache_dir,
+        } => {
+            let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
+            let report = if *helper_mode {
+                GentleEngine::blast_helper_genome(
+                    genome_id,
+                    query_sequence,
+                    *max_hits,
+                    task.as_deref(),
+                    resolved_catalog,
+                    cache_dir.as_deref(),
+                )
+            } else {
+                GentleEngine::blast_reference_genome(
+                    resolved_catalog,
+                    genome_id,
+                    query_sequence,
+                    *max_hits,
+                    task.as_deref(),
+                    cache_dir.as_deref(),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+            let effective_catalog = effective_catalog_path(catalog_path, *helper_mode);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "catalog_path": effective_catalog,
+                    "cache_dir": cache_dir,
+                    "report": report,
+                }),
+            }
+        }
         ShellCommand::ReferenceExtractRegion {
             helper_mode,
             genome_id,
@@ -2022,6 +2293,31 @@ pub fn execute_shell_command_with_options(
         } => {
             let op_result = engine
                 .apply(Operation::ImportGenomeBedTrack {
+                    seq_id: seq_id.clone(),
+                    path: path.clone(),
+                    track_name: track_name.clone(),
+                    min_score: *min_score,
+                    max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::TracksImportBigWig {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportGenomeBigWigTrack {
                     seq_id: seq_id.clone(),
                     path: path.clone(),
                     track_name: track_name.clone(),
@@ -2117,13 +2413,21 @@ mod tests {
 
     #[test]
     fn parse_screenshot_window() {
-        let cmd =
-            parse_shell_line("screenshot-window docs/images/main.png").expect("parse command");
-        match cmd {
-            ShellCommand::ScreenshotWindow { output } => {
-                assert_eq!(output, "docs/images/main.png".to_string());
+        #[cfg(feature = "screenshot-capture")]
+        {
+            let cmd =
+                parse_shell_line("screenshot-window docs/images/main.png").expect("parse command");
+            match cmd {
+                ShellCommand::ScreenshotWindow { output } => {
+                    assert_eq!(output, "docs/images/main.png".to_string());
+                }
+                other => panic!("unexpected command: {other:?}"),
             }
-            other => panic!("unexpected command: {other:?}"),
+        }
+        #[cfg(not(feature = "screenshot-capture"))]
+        {
+            let err = parse_shell_line("screenshot-window docs/images/main.png").unwrap_err();
+            assert!(err.contains("unavailable in this build"));
         }
     }
 
@@ -2214,6 +2518,56 @@ mod tests {
     }
 
     #[test]
+    fn parse_genomes_blast_with_options() {
+        let cmd = parse_shell_line(
+            "genomes blast ToyGenome ACGTACGT --max-hits 12 --task blastn --catalog c.json --cache-dir cache",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                task,
+                catalog_path,
+                cache_dir,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome");
+                assert_eq!(query_sequence, "ACGTACGT");
+                assert_eq!(max_hits, 12);
+                assert_eq!(task.as_deref(), Some("blastn"));
+                assert_eq!(catalog_path.as_deref(), Some("c.json"));
+                assert_eq!(cache_dir.as_deref(), Some("cache"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_helpers_blast_defaults() {
+        let cmd = parse_shell_line("helpers blast pUC19 ACGTAG").expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                task,
+                ..
+            } => {
+                assert!(helper_mode);
+                assert_eq!(genome_id, "pUC19");
+                assert_eq!(query_sequence, "ACGTAG");
+                assert_eq!(max_hits, 25);
+                assert!(task.is_none());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_tracks_import_bed() {
         let cmd = parse_shell_line(
             "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
@@ -2240,6 +2594,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_tracks_import_bigwig() {
+        let cmd = parse_shell_line(
+            "tracks import-bigwig toy_slice test_files/data/signal.bw --name RNA --min-score 0.5 --max-score 2.5 --clear-existing",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::TracksImportBigWig {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => {
+                assert_eq!(seq_id, "toy_slice".to_string());
+                assert_eq!(path, "test_files/data/signal.bw".to_string());
+                assert_eq!(track_name, Some("RNA".to_string()));
+                assert_eq!(min_score, Some(0.5));
+                assert_eq!(max_score, Some(2.5));
+                assert!(clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn execute_state_summary_returns_json() {
         let mut engine = GentleEngine::from_state(ProjectState::default());
         let out = execute_shell_command(&mut engine, &ShellCommand::StateSummary)
@@ -2258,7 +2638,11 @@ mod tests {
             },
         )
         .unwrap_err();
-        assert!(err.contains("--allow-screenshots"));
+        if cfg!(feature = "screenshot-capture") {
+            assert!(err.contains("--allow-screenshots"));
+        } else {
+            assert!(err.contains("unavailable in this build"));
+        }
     }
 
     #[test]

@@ -19,9 +19,9 @@ Resource update capability status:
 
 Reference genome capability status:
 
-- `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`, `ExtractGenomeGene`)
-- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
-- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_cli`: supported via shared engine operations (`PrepareGenome`, `ExtractGenomeRegion`, `ExtractGenomeGene`) and shell-level `genomes/helpers blast`
+- `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
+- `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
 ## Build and run
 
@@ -128,6 +128,10 @@ Exit methods:
     - Convenience wrapper around engine `ExtractGenomeRegion`.
 17. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
+18. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
+    - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
+19. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
+    - Same as `blast_reference_genome`, but defaults to helper catalog context.
 
 ### JavaScript example
 
@@ -196,6 +200,10 @@ Exit methods:
     - Convenience wrapper around engine `ExtractGenomeRegion`.
 17. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
+18. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
+    - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
+19. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
+    - Same as `blast_reference_genome`, but defaults to helper catalog context.
 
 ### Lua example
 
@@ -283,14 +291,17 @@ cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.
 cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
+cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
+cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --cache-dir data/helper_genomes
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -344,6 +355,7 @@ Shared shell command:
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+    - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
@@ -351,9 +363,11 @@ Shared shell command:
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
     - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+    - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (requires process startup with
@@ -456,6 +470,9 @@ Genome convenience commands:
   - `--biotype` can be repeated to constrain matches to selected biotypes.
 - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `PrepareGenome`.
+- `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
+  - Runs `blastn` against prepared genome cache/index.
+  - `--task` defaults to `blastn-short`; accepted values: `blastn-short`, `blastn`.
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeRegion`.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -473,6 +490,8 @@ Helper convenience commands:
   - Same behavior as `genomes genes`, with helper-catalog default.
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes prepare`, with helper-catalog default.
+- `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes blast`, with helper-catalog default.
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -661,7 +680,7 @@ Render pool gel SVG with automatic ladder selection:
 ```
 
 Prepare a whole reference genome once (download/copy sequence + annotation and
-build local FASTA index):
+build local FASTA and BLAST indexes):
 
 ```json
 {"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
@@ -687,10 +706,19 @@ sequence:
 {"ImportGenomeBedTrack":{"seq_id":"grch38_tp53","path":"data/chipseq/peaks.bed.gz","track_name":"H3K27ac","min_score":10.0,"max_score":null,"clear_existing":false}}
 ```
 
+Import BigWig signal tracks (`.bw` / `.bigWig`) onto a genome-anchored
+sequence:
+
+```json
+{"ImportGenomeBigWigTrack":{"seq_id":"grch38_tp53","path":"data/chipseq/signal.bw","track_name":"ATAC","min_score":0.2,"max_score":null,"clear_existing":false}}
+```
+
 Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
   location.
+- During prepare, GENtle also attempts to create a BLAST nucleotide index
+  (`makeblastdb`) under the genome install directory.
 - HTTP-based source downloads are resumable (Range requests with retry/backoff),
   and completed installs persist SHA-1 checksums for sequence/annotation files.
 - A catalog entry can either define explicit URLs (`sequence_remote` /
@@ -701,9 +729,17 @@ Notes:
   (`rettype=fasta` + `rettype=gbwithparts`) for one-time prepare/index.
 - `ExtractGenomeRegion` expects the genome to have been prepared already.
 - `ExtractGenomeGene` also expects prepared cache and gene index.
+- `genomes/helpers blast` expects prepared cache and a BLAST index.
+  If index files are missing, GENtle tries to build them on demand.
+- BLAST executable overrides:
+  - `GENTLE_MAKEBLASTDB_BIN` (default: `makeblastdb`)
+  - `GENTLE_BLASTN_BIN` (default: `blastn`)
 - `ImportGenomeBedTrack` expects `seq_id` to be a sequence created by
   `ExtractGenomeRegion` or `ExtractGenomeGene` (genome-anchored provenance).
+- `ImportGenomeBigWigTrack` expects the same genome-anchored `seq_id`.
 - BED import accepts local `.bed` and `.bed.gz` files.
+- BigWig import accepts local `.bw` and `.bigWig` files and uses
+  `bigWigToBedGraph` (override with `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`).
 - `ExtractGenomeRegion` and `ExtractGenomeGene` append extraction provenance
   records into `ProjectState.metadata["provenance"]["genome_extractions"]`
   (genome id, coordinates/query, source descriptors, and checksums when present).
