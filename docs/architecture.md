@@ -209,6 +209,11 @@ Practical rule:
 - State import/export and summary
 - Capabilities reporting
 - Shared shell command path (`shell`) aligned with GUI Shell panel
+- Structured command glossary contract:
+  - source file: `docs/glossary.json`
+  - consumed by runtime `help` rendering (`text|json|markdown`)
+  - intended as single machine-readable command semantics index for
+    CLI/GUI-shell/JS/Lua documentation generation
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
     bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)

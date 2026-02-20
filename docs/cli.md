@@ -14,6 +14,12 @@ GENtle currently provides four binaries:
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.
 
+Structured command glossary:
+
+- `docs/glossary.json` is the machine-readable command glossary used for
+  per-command help rendering (`help ...`) and catalog export
+  (`help --format json|markdown`).
+
 Architecture invariant: all adapters/frontends above route cloning/business
 behavior through the same shared engine.
 
@@ -283,6 +289,9 @@ State is persisted to `.gentle_state.json` by default (override with `--state PA
 cargo run --bin gentle_cli -- --version
 cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle_cli -- state-summary
+cargo run --bin gentle_cli -- help
+cargo run --bin gentle_cli -- help candidates generate
+cargo run --bin gentle_cli -- help --format json
 cargo run --bin gentle_cli -- op '<operation-json>'
 cargo run --bin gentle_cli -- workflow '<workflow-json>'
 cargo run --bin gentle_cli -- --progress op '<operation-json>'
@@ -421,8 +430,12 @@ Shared shell command:
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (requires process startup with
       `--allow-screenshots`)
+    - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]`
   - Use single quotes around JSON payloads to preserve whitespace:
     - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
+  - Structured help export for automation:
+    - `gentle_cli help --format json`
+    - `gentle_cli help --format markdown`
 
 Screenshot bridge:
 

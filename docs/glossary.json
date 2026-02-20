@@ -1,0 +1,779 @@
+{
+   "command_count" : 58,
+   "commands" : [
+      {
+         "aliases" : [
+            "-h",
+            "--help"
+         ],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "help",
+         "summary" : "Show full command help catalog or help for one command path.",
+         "usage" : "help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "capabilities",
+         "summary" : "Inspect engine capability metadata.",
+         "usage" : "capabilities"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "state-summary",
+         "summary" : "Summarize loaded state (sequences, containers, metadata).",
+         "usage" : "state-summary"
+      },
+      {
+         "aliases" : [
+            "import-state"
+         ],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "load-project",
+         "summary" : "Load a project/state file into the current state.",
+         "usage" : "load-project PATH"
+      },
+      {
+         "aliases" : [
+            "export-state"
+         ],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "save-project",
+         "summary" : "Save current state to a project file.",
+         "usage" : "save-project PATH"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "screenshot-window",
+         "summary" : "Reserved screenshot adapter command (currently disabled by security policy).",
+         "usage" : "screenshot-window OUTPUT.png"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "RenderSequenceSvg"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "render-svg",
+         "summary" : "Render sequence map SVG.",
+         "usage" : "render-svg SEQ_ID linear|circular OUTPUT.svg"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "RenderRnaStructureSvg"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "render-rna-svg",
+         "summary" : "Render RNA secondary structure SVG.",
+         "usage" : "render-rna-svg SEQ_ID OUTPUT.svg"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "rna-info",
+         "summary" : "Inspect textual RNA secondary-structure report.",
+         "usage" : "rna-info SEQ_ID"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "RenderLineageSvg"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "render-lineage-svg",
+         "summary" : "Render lineage graph SVG.",
+         "usage" : "render-lineage-svg OUTPUT.svg"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "RenderPoolGelSvg"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "render-pool-gel-svg",
+         "summary" : "Render pool gel SVG with optional explicit ladders.",
+         "usage" : "render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "ladders list",
+         "summary" : "Inspect built-in ladder catalogs.",
+         "usage" : "ladders list [--molecule dna|rna] [--filter TEXT]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExportDnaLadders",
+            "ExportRnaLadders"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "ladders export",
+         "summary" : "Export ladder definitions as JSON.",
+         "usage" : "ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExportPool"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "export-pool",
+         "summary" : "Export selected sequence IDs as a pool artifact.",
+         "usage" : "export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "import-pool",
+         "summary" : "Import pool artifact members as project sequences.",
+         "usage" : "import-pool INPUT.pool.gentle.json [PREFIX]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "resources sync-rebase",
+         "summary" : "Normalize REBASE source data into project resource JSON.",
+         "usage" : "resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "resources sync-jaspar",
+         "summary" : "Normalize JASPAR source data into project motif JSON.",
+         "usage" : "resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes list",
+         "summary" : "List reference genomes from catalog.",
+         "usage" : "genomes list [--catalog PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes validate-catalog",
+         "summary" : "Validate reference genome catalog entries.",
+         "usage" : "genomes validate-catalog [--catalog PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes status",
+         "summary" : "Inspect local availability and prep status for one genome.",
+         "usage" : "genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes genes",
+         "summary" : "List indexed genes from one reference genome.",
+         "usage" : "genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "PrepareReferenceGenome"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes prepare",
+         "summary" : "Prepare/index one reference genome locally.",
+         "usage" : "genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes blast",
+         "summary" : "Run BLAST query against one reference genome.",
+         "usage" : "genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ImportBlastHitsTrack"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes blast-track",
+         "summary" : "BLAST query and import hits as features on target sequence.",
+         "usage" : "genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExtractGenomeRegion"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes extract-region",
+         "summary" : "Extract genomic interval into a project sequence.",
+         "usage" : "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExtractGenomeGene"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes extract-gene",
+         "summary" : "Extract a named gene interval into a project sequence.",
+         "usage" : "genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExtendGenomeAnchor"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "genomes extend-anchor",
+         "summary" : "Extend anchored genomic sequence by 5' or 3'.",
+         "usage" : "genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers list",
+         "summary" : "List helper genomes from catalog.",
+         "usage" : "helpers list [--catalog PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers validate-catalog",
+         "summary" : "Validate helper genome catalog entries.",
+         "usage" : "helpers validate-catalog [--catalog PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers status",
+         "summary" : "Inspect local availability and prep status for one helper genome.",
+         "usage" : "helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers genes",
+         "summary" : "List indexed genes from one helper genome.",
+         "usage" : "helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "PrepareReferenceGenome"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers prepare",
+         "summary" : "Prepare/index one helper genome locally.",
+         "usage" : "helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers blast",
+         "summary" : "Run BLAST query against one helper genome.",
+         "usage" : "helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ImportBlastHitsTrack"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers blast-track",
+         "summary" : "BLAST query and import hits as features on target sequence.",
+         "usage" : "helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExtractGenomeRegion"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers extract-region",
+         "summary" : "Extract helper-genome interval into a project sequence.",
+         "usage" : "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExtractGenomeGene"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers extract-gene",
+         "summary" : "Extract helper-gene interval into a project sequence.",
+         "usage" : "helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExtendGenomeAnchor"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "helpers extend-anchor",
+         "summary" : "Extend anchored helper sequence by 5' or 3'.",
+         "usage" : "helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ImportGenomeBedTrack"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks import-bed",
+         "summary" : "Import BED features aligned to an anchored sequence.",
+         "usage" : "tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ImportGenomeBigWigTrack"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks import-bigwig",
+         "summary" : "Import BigWig signal track aligned to an anchored sequence.",
+         "usage" : "tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ImportGenomeVcfTrack"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks import-vcf",
+         "summary" : "Import VCF variants aligned to an anchored sequence.",
+         "usage" : "tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks tracked list",
+         "summary" : "List tracked genome-track subscriptions.",
+         "usage" : "tracks tracked list"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks tracked add",
+         "summary" : "Add tracked genome-track subscription.",
+         "usage" : "tracks tracked add PATH [--source auto|bed|bigwig|vcf] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks tracked remove",
+         "summary" : "Remove one tracked genome-track subscription.",
+         "usage" : "tracks tracked remove INDEX"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks tracked clear",
+         "summary" : "Remove all tracked genome-track subscriptions.",
+         "usage" : "tracks tracked clear"
+      },
+      {
+         "aliases" : [
+            "tracks tracked sync"
+         ],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "tracks tracked apply",
+         "summary" : "Apply tracked genome-track subscriptions to anchored sequences.",
+         "usage" : "tracks tracked apply [--index N] [--only-new-anchors]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates list",
+         "summary" : "List persisted candidate sets.",
+         "usage" : "candidates list"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "DeleteCandidateSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates delete",
+         "summary" : "Delete one candidate set.",
+         "usage" : "candidates delete SET_NAME"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "GenerateCandidateSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates generate",
+         "summary" : "Generate a candidate window set over one sequence.",
+         "usage" : "candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates show",
+         "summary" : "Page candidate rows from one set.",
+         "usage" : "candidates show SET_NAME [--limit N] [--offset N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates metrics",
+         "summary" : "List available metric names for one set.",
+         "usage" : "candidates metrics SET_NAME"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ScoreCandidateSetExpression"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates score",
+         "summary" : "Compute derived metric expression for a candidate set.",
+         "usage" : "candidates score SET_NAME METRIC_NAME EXPRESSION"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ScoreCandidateSetDistance"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates score-distance",
+         "summary" : "Compute nearest-feature distance metric for candidate set.",
+         "usage" : "candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "FilterCandidateSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates filter",
+         "summary" : "Filter candidate set by metric bounds/quantiles.",
+         "usage" : "candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "CandidateSetOp"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates set-op",
+         "summary" : "Apply set algebra on candidate sets.",
+         "usage" : "candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "GenerateCandidateSet",
+            "ScoreCandidateSetExpression",
+            "ScoreCandidateSetDistance",
+            "FilterCandidateSet",
+            "CandidateSetOp",
+            "DeleteCandidateSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates macro",
+         "summary" : "Execute multi-statement candidate workflow script.",
+         "usage" : "candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "SetParameter"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path" : "set-param",
+         "summary" : "Set engine/UI parameter via JSON value.",
+         "usage" : "set-param NAME JSON_VALUE"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "op",
+         "summary" : "Apply one engine operation payload.",
+         "usage" : "op <operation-json-or-@file>"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "workflow",
+         "summary" : "Apply one engine workflow payload.",
+         "usage" : "workflow <workflow-json-or-@file>"
+      }
+   ],
+   "description" : "Structured shell/CLI command glossary for GENtle interfaces.",
+   "interfaces" : [
+      "cli-direct",
+      "cli-shell",
+      "gui-shell",
+      "js",
+      "lua"
+   ],
+   "schema" : "gentle.glossary.v1",
+   "source" : "src/shell_docs.rs"
+}
