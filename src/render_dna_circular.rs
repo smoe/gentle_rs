@@ -566,7 +566,7 @@ impl RenderDnaCircular {
         ) = {
             let display = self.display.read().expect("Display lock poisoned");
             (
-                display.show_cds_features(),
+                display.show_cds_features_effective(),
                 display.show_gene_features(),
                 display.show_mrna_features(),
                 display.show_tfbs(),

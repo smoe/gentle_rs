@@ -111,6 +111,48 @@ fn import_pool_impl(
     })
 }
 
+fn list_agent_systems_impl(
+    catalog_path: &str,
+) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::AgentsList {
+        catalog_path: empty_to_none(catalog_path).map(str::to_string),
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("agents list failed: {e}"))?;
+    Ok(run.output)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn ask_agent_system_impl(
+    state: ProjectState,
+    system_id: &str,
+    prompt: &str,
+    catalog_path: &str,
+    allow_auto_exec: bool,
+    execute_all: bool,
+    execute_indices: &[u32],
+    include_state_summary: bool,
+) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+    let mut engine = GentleEngine::from_state(state);
+    let command = ShellCommand::AgentsAsk {
+        system_id: system_id.to_string(),
+        prompt: prompt.to_string(),
+        catalog_path: empty_to_none(catalog_path).map(str::to_string),
+        include_state_summary,
+        allow_auto_exec,
+        execute_all,
+        execute_indices: execute_indices.iter().map(|idx| *idx as usize).collect(),
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("agents ask failed: {e}"))?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
+}
+
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, deno_core::anyhow::Error> {
@@ -244,6 +286,38 @@ fn list_reference_genomes(
 
 #[op2]
 #[serde]
+fn list_agent_systems(
+    #[string] catalog_path: &str,
+) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+    list_agent_systems_impl(catalog_path)
+}
+
+#[op2]
+#[serde]
+fn ask_agent_system(
+    #[serde] state: Option<ProjectState>,
+    #[string] system_id: &str,
+    #[string] prompt: &str,
+    #[string] catalog_path: &str,
+    allow_auto_exec: bool,
+    execute_all: bool,
+    #[serde] execute_indices: Vec<u32>,
+    include_state_summary: bool,
+) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+    ask_agent_system_impl(
+        state.unwrap_or_default(),
+        system_id,
+        prompt,
+        catalog_path,
+        allow_auto_exec,
+        execute_all,
+        &execute_indices,
+        include_state_summary,
+    )
+}
+
+#[op2]
+#[serde]
 fn is_reference_genome_prepared(
     #[string] genome_id: &str,
     #[string] catalog_path: &str,
@@ -363,6 +437,8 @@ impl JavaScriptInterface {
         const EXPORT_DNA_LADDERS: OpDecl = export_dna_ladders();
         const EXPORT_RNA_LADDERS: OpDecl = export_rna_ladders();
         const LIST_REFERENCE_GENOMES: OpDecl = list_reference_genomes();
+        const LIST_AGENT_SYSTEMS: OpDecl = list_agent_systems();
+        const ASK_AGENT_SYSTEM: OpDecl = ask_agent_system();
         const IS_REFERENCE_GENOME_PREPARED: OpDecl = is_reference_genome_prepared();
         const LIST_REFERENCE_GENOME_GENES: OpDecl = list_reference_genome_genes();
         const BLAST_REFERENCE_GENOME: OpDecl = blast_reference_genome();
@@ -386,6 +462,8 @@ impl JavaScriptInterface {
                 EXPORT_DNA_LADDERS,
                 EXPORT_RNA_LADDERS,
                 LIST_REFERENCE_GENOMES,
+                LIST_AGENT_SYSTEMS,
+                ASK_AGENT_SYSTEM,
                 IS_REFERENCE_GENOME_PREPARED,
                 LIST_REFERENCE_GENOME_GENES,
                 BLAST_REFERENCE_GENOME,
@@ -430,13 +508,29 @@ impl JavaScriptInterface {
 		          	function export_rna_ladders(path, name_filter) {
 		          		return Deno.core.ops.export_rna_ladders(path, name_filter ?? "");
 		          	}
-		          	function list_reference_genomes(catalog_path) {
-		          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
-		          	}
-          	function is_reference_genome_prepared(genome_id, catalog_path, cache_dir) {
-          		const status = Deno.core.ops.is_reference_genome_prepared(genome_id, catalog_path ?? "", cache_dir ?? "");
-          		return !!status.prepared;
-          	}
+			          	function list_reference_genomes(catalog_path) {
+			          		return Deno.core.ops.list_reference_genomes(catalog_path ?? "");
+			          	}
+			          	function list_agent_systems(catalog_path) {
+			          		return Deno.core.ops.list_agent_systems(catalog_path ?? "");
+			          	}
+			          	function ask_agent_system(state, system_id, prompt, options) {
+			          		const opts = options ?? {};
+			          		return Deno.core.ops.ask_agent_system(
+			          			(state === undefined ? null : state),
+			          			system_id,
+			          			prompt,
+			          			opts.catalog_path ?? "",
+			          			!!opts.allow_auto_exec,
+			          			!!opts.execute_all,
+			          			Array.isArray(opts.execute_indices) ? opts.execute_indices : [],
+			          			(opts.include_state_summary === undefined) ? true : !!opts.include_state_summary
+			          		);
+			          	}
+	          	function is_reference_genome_prepared(genome_id, catalog_path, cache_dir) {
+	          		const status = Deno.core.ops.is_reference_genome_prepared(genome_id, catalog_path ?? "", cache_dir ?? "");
+	          		return !!status.prepared;
+	          	}
           	function list_reference_genome_genes(genome_id, catalog_path, cache_dir) {
           		return Deno.core.ops.list_reference_genome_genes(genome_id, catalog_path ?? "", cache_dir ?? "");
           	}
@@ -748,5 +842,92 @@ mod tests {
         assert_eq!(imported_ids.len(), 1);
         let imported_id = imported_ids[0].as_str().expect("imported id string");
         assert!(out.state.sequences.contains_key(imported_id));
+    }
+
+    #[test]
+    fn js_list_agent_systems_wrapper_reads_catalog() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = list_agent_systems_impl(catalog_path.to_string_lossy().as_ref())
+            .expect("list agent systems");
+        assert_eq!(out["schema"].as_str(), Some("gentle.agent_systems_list.v1"));
+        assert_eq!(out["system_count"].as_u64(), Some(1));
+        assert_eq!(out["systems"][0]["id"].as_str(), Some("builtin_echo"));
+    }
+
+    #[test]
+    fn js_ask_agent_system_wrapper_uses_builtin_echo() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = ask_agent_system_impl(
+            ProjectState::default(),
+            "builtin_echo",
+            "hello",
+            catalog_path.to_string_lossy().as_ref(),
+            false,
+            false,
+            &[],
+            true,
+        )
+        .expect("ask agent");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_ask_result.v1")
+        );
+        assert_eq!(
+            out.output["invocation"]["system_id"].as_str(),
+            Some("builtin_echo")
+        );
+    }
+
+    #[test]
+    fn js_ask_agent_system_accepts_null_state() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let catalog_js = serde_json::to_string(catalog_path.to_string_lossy().as_ref())
+            .expect("serialize catalog path");
+        let mut js = JavaScriptInterface::default();
+        js.run_checked(format!(
+            r#"
+                const out = ask_agent_system(null, "builtin_echo", "hello", {{
+                    catalog_path: {catalog_js}
+                }});
+                if (out.output?.schema !== "gentle.agent_ask_result.v1") {{
+                    throw new Error("unexpected schema");
+                }}
+            "#
+        ))
+        .expect("ask agent with null state");
     }
 }

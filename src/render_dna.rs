@@ -176,6 +176,16 @@ impl RenderDna {
                 _ => Color32::from_rgb(90, 90, 90),
             };
         }
+        if Self::is_regulatory_feature(feature) {
+            if let Some(reg_class) = Self::regulatory_class(feature) {
+                if reg_class.contains("silencer") || reg_class.contains("repressor") {
+                    return Color32::from_rgb(190, 50, 50);
+                }
+                if reg_class.contains("enhancer") || reg_class.contains("activator") {
+                    return Color32::from_rgb(45, 150, 65);
+                }
+            }
+        }
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
@@ -279,9 +289,13 @@ impl RenderDna {
     fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
         feature
             .qualifier_values(key.into())
-            .map(str::trim)
+            .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+            .map(|value| value.trim().to_string())
             .find(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
+    }
+
+    fn regulatory_class(feature: &Feature) -> Option<String> {
+        Self::feature_qualifier_text(feature, "regulatory_class").map(|v| v.to_ascii_lowercase())
     }
 
     fn first_nonempty_qualifier(feature: &Feature, keys: &[&str]) -> Option<String> {
@@ -529,6 +543,41 @@ impl RenderDna {
     }
 
     pub fn feature_name(feature: &Feature) -> String {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if Self::is_regulatory_feature(feature) {
+            if let Some(reg_class) = Self::feature_qualifier_text(feature, "regulatory_class") {
+                let note = Self::feature_qualifier_text(feature, "note");
+                return if let Some(note) = note {
+                    format!("{reg_class}: {note}")
+                } else {
+                    reg_class
+                };
+            }
+        }
+        if kind == "MRNA" {
+            if let Some(name) = Self::first_nonempty_qualifier(
+                feature,
+                &[
+                    "transcript_id",
+                    "standard_name",
+                    "product",
+                    "label",
+                    "name",
+                    "gene",
+                    "locus_tag",
+                ],
+            ) {
+                return name;
+            }
+        }
+        if kind == "GENE" {
+            if let Some(name) = Self::first_nonempty_qualifier(
+                feature,
+                &["gene", "locus_tag", "gene_synonym", "label", "name", "standard_name"],
+            ) {
+                return name;
+            }
+        }
         for k in [
             "label",
             "name",
@@ -548,15 +597,85 @@ impl RenderDna {
             }
         }
 
-        // Keep dense regulatory tracks readable: don't use coordinate-only labels there.
-        if Self::is_regulatory_feature(feature) {
-            return String::new();
-        }
-
         match feature.location.find_bounds() {
             Ok((from, to)) => format!("{from}..{to}"),
             Err(_) => String::new(),
         }
+    }
+
+    pub fn feature_detail_lines(feature: &Feature) -> Vec<String> {
+        let mut lines = Vec::new();
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        let keys = if Self::is_regulatory_feature(feature) {
+            vec![
+                "regulatory_class",
+                "standard_name",
+                "function",
+                "note",
+                "experiment",
+                "db_xref",
+            ]
+        } else if kind == "MRNA" {
+            vec![
+                "transcript_id",
+                "product",
+                "gene",
+                "gene_synonym",
+                "locus_tag",
+                "note",
+                "function",
+                "experiment",
+                "db_xref",
+            ]
+        } else if kind == "GENE" {
+            vec![
+                "gene",
+                "gene_synonym",
+                "locus_tag",
+                "standard_name",
+                "note",
+                "function",
+                "experiment",
+                "db_xref",
+            ]
+        } else {
+            vec!["product", "gene", "note", "experiment", "db_xref"]
+        };
+        for key in keys {
+            for value in feature.qualifier_values(key.into()) {
+                let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                let normalized = normalized.trim();
+                if !normalized.is_empty() {
+                    lines.push(format!("{key}: {normalized}"));
+                }
+            }
+        }
+        lines
+    }
+
+    pub fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usize) -> usize {
+        if Self::is_source_feature(feature) {
+            return 0;
+        }
+        if Self::is_regulatory_feature(feature) {
+            return regulatory_max_view_span_bp;
+        }
+        match feature.kind.to_string().to_ascii_uppercase().as_str() {
+            "CDS" | "GENE" | "MRNA" => 2_000_000,
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => 200_000,
+            "TRACK" => 250_000,
+            "RESTRICTION_SITE" => 100_000,
+            _ => 500_000,
+        }
+    }
+
+    pub fn feature_visible_for_view_span(
+        feature: &Feature,
+        view_span_bp: usize,
+        regulatory_max_view_span_bp: usize,
+    ) -> bool {
+        let max_span = Self::feature_max_view_span_bp(feature, regulatory_max_view_span_bp);
+        max_span == 0 || view_span_bp <= max_span
     }
 
     pub fn feature_range_text(feature: &Feature) -> String {

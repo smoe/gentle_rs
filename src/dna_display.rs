@@ -175,10 +175,12 @@ pub struct DnaDisplay {
     suppress_open_reading_frames_for_genome_anchor: bool,
     show_features: bool,
     show_cds_features: bool,
+    suppress_cds_features_for_gene_annotations: bool,
     show_gene_features: bool,
     show_mrna_features: bool,
     show_tfbs: bool,
     regulatory_tracks_near_baseline: bool,
+    regulatory_feature_max_view_span_bp: usize,
     hidden_feature_kinds: BTreeSet<String>,
     tfbs_display_criteria: TfbsDisplayCriteria,
     vcf_display_criteria: VcfDisplayCriteria,
@@ -249,9 +251,24 @@ impl DnaDisplay {
         self.show_cds_features
     }
 
+    pub fn show_cds_features_effective(&self) -> bool {
+        self.show_cds_features && !self.suppress_cds_features_for_gene_annotations
+    }
+
     pub fn set_show_cds_features(&mut self, value: bool) {
         if self.show_cds_features != value {
             self.show_cds_features = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn suppress_cds_features_for_gene_annotations(&self) -> bool {
+        self.suppress_cds_features_for_gene_annotations
+    }
+
+    pub fn set_suppress_cds_features_for_gene_annotations(&mut self, value: bool) {
+        if self.suppress_cds_features_for_gene_annotations != value {
+            self.suppress_cds_features_for_gene_annotations = value;
             self.mark_layout_dirty();
         }
     }
@@ -301,6 +318,17 @@ impl DnaDisplay {
     pub fn set_regulatory_tracks_near_baseline(&mut self, value: bool) {
         if self.regulatory_tracks_near_baseline != value {
             self.regulatory_tracks_near_baseline = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn regulatory_feature_max_view_span_bp(&self) -> usize {
+        self.regulatory_feature_max_view_span_bp
+    }
+
+    pub fn set_regulatory_feature_max_view_span_bp(&mut self, value: usize) {
+        if self.regulatory_feature_max_view_span_bp != value {
+            self.regulatory_feature_max_view_span_bp = value;
             self.mark_layout_dirty();
         }
     }
@@ -519,6 +547,8 @@ impl DnaDisplay {
 
 impl Default for DnaDisplay {
     fn default() -> Self {
+        let mut hidden_feature_kinds = BTreeSet::new();
+        hidden_feature_kinds.insert("MISC_FEATURE".to_string());
         Self {
             show_restriction_enzymes: true,
             show_reverse_complement: true,
@@ -526,11 +556,13 @@ impl Default for DnaDisplay {
             suppress_open_reading_frames_for_genome_anchor: false,
             show_features: true,
             show_cds_features: true,
+            suppress_cds_features_for_gene_annotations: false,
             show_gene_features: true,
             show_mrna_features: true,
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
-            hidden_feature_kinds: BTreeSet::new(),
+            regulatory_feature_max_view_span_bp: 50_000,
+            hidden_feature_kinds,
             tfbs_display_criteria: TfbsDisplayCriteria::default(),
             vcf_display_criteria: VcfDisplayCriteria::default(),
             show_gc_contents: true,

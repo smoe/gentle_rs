@@ -136,6 +136,7 @@ pub struct GENtleApp {
     new_windows: Vec<Window>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
+    pending_focus_viewports: Vec<ViewportId>,
     viewport_id_counter: usize,
     update_has_run_before: bool,
     show_about_dialog: bool,
@@ -181,6 +182,7 @@ pub struct GENtleApp {
     lineage_edges: Vec<(String, String, String)>,
     lineage_op_label_by_id: HashMap<String, String>,
     lineage_containers: Vec<ContainerRow>,
+    lineage_arrangements: Vec<ArrangementRow>,
     clean_state_fingerprint: u64,
     dirty_cache_stamp: u64,
     dirty_cache_valid: bool,
@@ -494,6 +496,16 @@ struct ContainerRow {
 }
 
 #[derive(Clone)]
+struct ArrangementRow {
+    arrangement_id: String,
+    mode: String,
+    name: String,
+    lane_count: usize,
+    lane_container_ids: Vec<String>,
+    ladders: Vec<String>,
+}
+
+#[derive(Clone)]
 struct OpenWindowEntry {
     viewport_id: ViewportId,
     title: String,
@@ -563,6 +575,7 @@ impl Default for GENtleApp {
             new_windows: vec![],
             windows: HashMap::new(),
             windows_to_close: Arc::new(RwLock::new(vec![])),
+            pending_focus_viewports: vec![],
             viewport_id_counter: 0,
             update_has_run_before: false,
             show_about_dialog: false,
@@ -609,6 +622,7 @@ impl Default for GENtleApp {
             lineage_edges: vec![],
             lineage_op_label_by_id: HashMap::new(),
             lineage_containers: vec![],
+            lineage_arrangements: vec![],
             clean_state_fingerprint: 0,
             dirty_cache_stamp: 0,
             dirty_cache_valid: false,
@@ -879,6 +893,7 @@ impl GENtleApp {
         target.show_mrna_features = source.show_mrna_features;
         target.show_tfbs = source.show_tfbs;
         target.regulatory_tracks_near_baseline = source.regulatory_tracks_near_baseline;
+        target.regulatory_feature_max_view_span_bp = source.regulatory_feature_max_view_span_bp;
         target.tfbs_display_use_llr_bits = source.tfbs_display_use_llr_bits;
         target.tfbs_display_min_llr_bits = source.tfbs_display_min_llr_bits;
         target.tfbs_display_use_llr_quantile = source.tfbs_display_use_llr_quantile;
@@ -1468,6 +1483,7 @@ impl GENtleApp {
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
+        self.lineage_arrangements.clear();
         self.load_bed_track_subscriptions_from_state();
         self.tracked_autosync_last_op_count = None;
         self.genome_track_autosync_status.clear();
@@ -1801,7 +1817,39 @@ impl GENtleApp {
             .push(Window::new_dna(dna, seq_id, self.engine.clone()));
     }
 
+    fn find_open_sequence_viewport_id(&self, seq_id: &str) -> Option<ViewportId> {
+        self.windows.iter().find_map(|(viewport_id, window)| {
+            let Ok(guard) = window.read() else {
+                return None;
+            };
+            if guard.sequence_id().as_deref() == Some(seq_id) {
+                Some(*viewport_id)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn find_pending_sequence_window_mut(&mut self, seq_id: &str) -> Option<&mut Window> {
+        self.new_windows
+            .iter_mut()
+            .find(|window| window.sequence_id().as_deref() == Some(seq_id))
+    }
+
+    fn queue_focus_viewport(&mut self, viewport_id: ViewportId) {
+        if !self.pending_focus_viewports.contains(&viewport_id) {
+            self.pending_focus_viewports.push(viewport_id);
+        }
+    }
+
     fn open_sequence_window(&mut self, seq_id: &str) {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if self.find_pending_sequence_window_mut(seq_id).is_some() {
+            return;
+        }
         let dna = self
             .engine
             .read()
@@ -1816,6 +1864,19 @@ impl GENtleApp {
     }
 
     fn open_pool_window(&mut self, representative_seq_id: &str, pool_seq_ids: Vec<String>) {
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(representative_seq_id) {
+            if let Some(window) = self.windows.get(&viewport_id) {
+                if let Ok(mut window) = window.write() {
+                    window.set_pool_context(pool_seq_ids);
+                }
+            }
+            self.queue_focus_viewport(viewport_id);
+            return;
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(representative_seq_id) {
+            window.set_pool_context(pool_seq_ids);
+            return;
+        }
         let dna = self
             .engine
             .read()
@@ -1917,6 +1978,9 @@ impl GENtleApp {
         display.show_mrna_features.hash(&mut hasher);
         display.show_tfbs.hash(&mut hasher);
         display.regulatory_tracks_near_baseline.hash(&mut hasher);
+        display
+            .regulatory_feature_max_view_span_bp
+            .hash(&mut hasher);
         display.tfbs_display_use_llr_bits.hash(&mut hasher);
         display
             .tfbs_display_min_llr_bits
@@ -2030,6 +2094,7 @@ impl GENtleApp {
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
+        self.lineage_arrangements.clear();
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
@@ -2043,6 +2108,7 @@ impl GENtleApp {
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
+        self.pending_focus_viewports.clear();
         self.viewport_id_counter = 0;
         self.pending_project_action = None;
         self.show_reference_genome_blast_dialog = false;
@@ -6065,6 +6131,7 @@ impl GENtleApp {
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
+        self.lineage_arrangements.clear();
         self.lineage_graph_zoom = 1.0;
         self.lineage_graph_area_height = 420.0;
         self.lineage_container_area_height = 220.0;
@@ -6079,6 +6146,7 @@ impl GENtleApp {
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
+        self.pending_focus_viewports.clear();
         self.agent_task = None;
         self.agent_status.clear();
         self.agent_last_invocation = None;
@@ -6781,7 +6849,7 @@ impl GENtleApp {
             return;
         }
 
-        let (rows, lineage_edges, op_label_by_id, containers) = {
+        let (rows, lineage_edges, op_label_by_id, containers, arrangements) = {
             let engine = self.engine.read().unwrap();
             let state = engine.state();
             let mut op_created_count: HashMap<String, usize> = HashMap::new();
@@ -6881,13 +6949,28 @@ impl GENtleApp {
                 })
                 .collect();
             containers.sort_by(|a, b| a.container_id.cmp(&b.container_id));
-            (out, lineage_edges, op_label_by_id, containers)
+            let mut arrangements: Vec<ArrangementRow> = state
+                .container_state
+                .arrangements
+                .iter()
+                .map(|(id, arrangement)| ArrangementRow {
+                    arrangement_id: id.clone(),
+                    mode: format!("{:?}", arrangement.mode),
+                    name: arrangement.name.clone().unwrap_or_default(),
+                    lane_count: arrangement.lane_container_ids.len(),
+                    lane_container_ids: arrangement.lane_container_ids.clone(),
+                    ladders: arrangement.ladders.clone(),
+                })
+                .collect();
+            arrangements.sort_by(|a, b| a.arrangement_id.cmp(&b.arrangement_id));
+            (out, lineage_edges, op_label_by_id, containers, arrangements)
         };
 
         self.lineage_rows = rows;
         self.lineage_edges = lineage_edges;
         self.lineage_op_label_by_id = op_label_by_id;
         self.lineage_containers = containers;
+        self.lineage_arrangements = arrangements;
         self.lineage_cache_stamp = stamp;
         self.lineage_cache_valid = true;
     }
@@ -7268,10 +7351,7 @@ impl GENtleApp {
             ui.horizontal(|ui| {
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
-                ui.colored_label(
-                    egui::Color32::from_rgb(180, 120, 70),
-                    "◆ pool (n inside node)",
-                );
+                ui.colored_label(egui::Color32::from_rgb(180, 120, 70), "◆ pool");
                 ui.separator();
                 let zoom_out_resp = self.track_hover_status(
                     ui.button("−").on_hover_text("Zoom out"),
@@ -7351,19 +7431,26 @@ impl GENtleApp {
             let lineage_edges = &self.lineage_edges;
             let op_label_by_id = &self.lineage_op_label_by_id;
             let graph_resize_max_height = ui.available_height().max(220.0);
+            let graph_resize_width = ui.available_width().max(360.0);
             egui::Resize::default()
                 .id_salt("lineage_graph_area_resize")
+                .default_width(graph_resize_width)
+                .min_width(graph_resize_width)
+                .max_width(graph_resize_width)
                 .default_height(graph_area_height.min(graph_resize_max_height))
                 .min_height(220.0)
                 .max_height(graph_resize_max_height)
                 .resizable(egui::Vec2b::new(false, true))
                 .show(ui, |ui| {
+                    ui.set_min_width(graph_resize_width);
+                    ui.set_max_width(graph_resize_width);
                     graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
                     ui.small(
                         "Resize area by dragging lower edge. Hold Space + drag background to pan. Drag nodes to reposition. Cmd/Ctrl+scroll zooms.",
                     );
                     let graph_scroll_output = egui::ScrollArea::both()
                         .id_salt("lineage_graph_scroll")
+                        .auto_shrink([false, false])
                         .scroll_offset(graph_scroll_offset)
                         .drag_to_scroll(false)
                         .max_height(ui.available_height())
@@ -7387,7 +7474,8 @@ impl GENtleApp {
                                 self.lineage_graph_pan_origin = None;
                                 request_fit_origin = false;
                             }
-                            let width = base_width * graph_zoom;
+                            let width = (base_width * graph_zoom + 280.0 * graph_zoom)
+                                .max(ui.available_width());
                             let height = base_height * graph_zoom;
                             let (resp, painter) = ui.allocate_painter(
                                 Vec2::new(width, height),
@@ -7422,6 +7510,7 @@ impl GENtleApp {
                             };
                             let rect = resp.rect;
                             let edge_stroke_width = (1.0 * graph_zoom).clamp(1.0, 2.5);
+                            let node_id_font_size = (10.0 * graph_zoom).clamp(8.0, 15.0);
                             let op_font_size = if simplify_labels {
                                 (9.0 * graph_zoom).clamp(8.0, 14.0)
                             } else {
@@ -7458,20 +7547,74 @@ impl GENtleApp {
                                 let Some(pos) = pos_by_node.get(&row.node_id).copied() else {
                                     return false;
                                 };
-                                if row.pool_size > 1 {
+                                let glyph_hit = if row.pool_size > 1 {
                                     egui::Rect::from_center_size(
                                         pos,
-                                        Vec2::new(30.0 * graph_zoom, 24.0 * graph_zoom),
+                                        Vec2::new(34.0 * graph_zoom, 28.0 * graph_zoom),
                                     )
                                     .contains(pointer)
                                 } else {
-                                    pointer.distance(pos) <= 18.0 * graph_zoom
+                                    pointer.distance(pos) <= 19.0 * graph_zoom
+                                };
+                                if glyph_hit {
+                                    return true;
                                 }
+                                let display_name = if simplify_labels {
+                                    Self::compact_lineage_node_label(&row.display_name, 26)
+                                } else {
+                                    row.display_name.clone()
+                                };
+                                let name_galley = painter.layout_no_wrap(
+                                    display_name,
+                                    egui::FontId::proportional(name_font_size),
+                                    egui::Color32::BLACK,
+                                );
+                                let name_anchor = pos + Vec2::new(22.0 * graph_zoom, -4.0 * graph_zoom);
+                                let name_rect = egui::Rect::from_min_size(
+                                    Pos2::new(name_anchor.x, name_anchor.y - name_galley.size().y),
+                                    name_galley.size(),
+                                )
+                                .expand(3.0 * graph_zoom);
+                                if name_rect.contains(pointer) {
+                                    return true;
+                                }
+                                if !simplify_labels {
+                                    let detail_text = if row.pool_size > 1 {
+                                        format!("{} ({} bp) | pool={}", row.seq_id, row.length, row.pool_size)
+                                    } else {
+                                        format!("{} ({} bp)", row.seq_id, row.length)
+                                    };
+                                    let details_galley = painter.layout_no_wrap(
+                                        detail_text,
+                                        egui::FontId::proportional(details_font_size),
+                                        egui::Color32::BLACK,
+                                    );
+                                    let details_anchor =
+                                        pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom);
+                                    let details_rect =
+                                        egui::Rect::from_min_size(details_anchor, details_galley.size())
+                                            .expand(3.0 * graph_zoom);
+                                    if details_rect.contains(pointer) {
+                                        return true;
+                                    }
+                                }
+                                false
                             };
                             let hovered_node_id = pointer.and_then(|pointer| {
                                 rows.iter()
-                                    .find(|row| is_node_hit(row, pointer))
-                                    .map(|row| row.node_id.clone())
+                                    .filter_map(|row| {
+                                        if !is_node_hit(row, pointer) {
+                                            return None;
+                                        }
+                                        pos_by_node
+                                            .get(&row.node_id)
+                                            .map(|pos| (row.node_id.clone(), pointer.distance_sq(*pos)))
+                                    })
+                                    .min_by(|a, b| {
+                                        a.1.partial_cmp(&b.1)
+                                            .unwrap_or(std::cmp::Ordering::Equal)
+                                    })
+                                    .map(|(node_id, _)| node_id)
                             });
                             let mut used_label_rects: Vec<egui::Rect> = Vec::new();
                             let mut op_label_galleys: HashMap<String, Arc<egui::Galley>> =
@@ -7608,13 +7751,6 @@ impl GENtleApp {
                                         },
                                         highlight_stroke,
                                     ));
-                                    painter.text(
-                                        pos,
-                                        egui::Align2::CENTER_CENTER,
-                                        format!("{}", row.pool_size),
-                                        egui::FontId::proportional((11.0 * graph_zoom).clamp(9.0, 15.0)),
-                                        egui::Color32::WHITE,
-                                    );
                                 } else {
                                     painter.circle_filled(
                                         pos,
@@ -7627,6 +7763,14 @@ impl GENtleApp {
                                     );
                                     painter.circle_stroke(pos, node_radius, highlight_stroke);
                                 }
+                                let node_id_label = Self::compact_lineage_node_label(&row.node_id, 10);
+                                painter.text(
+                                    pos,
+                                    egui::Align2::CENTER_CENTER,
+                                    node_id_label,
+                                    egui::FontId::monospace(node_id_font_size),
+                                    egui::Color32::WHITE,
+                                );
                                 let display_name = if simplify_labels {
                                     Self::compact_lineage_node_label(&row.display_name, 26)
                                 } else {
@@ -7640,10 +7784,15 @@ impl GENtleApp {
                                     egui::Color32::BLACK,
                                 );
                                 if !simplify_labels {
+                                    let detail_text = if row.pool_size > 1 {
+                                        format!("{} ({} bp) | pool={}", row.seq_id, row.length, row.pool_size)
+                                    } else {
+                                        format!("{} ({} bp)", row.seq_id, row.length)
+                                    };
                                     painter.text(
                                         pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom),
                                         egui::Align2::LEFT_TOP,
-                                        format!("{} ({} bp)", row.seq_id, row.length),
+                                        detail_text,
                                         egui::FontId::proportional(details_font_size),
                                         egui::Color32::BLACK,
                                     );
@@ -7828,64 +7977,54 @@ impl GENtleApp {
                     }
                 });
         } else {
-            ui.horizontal(|ui| {
-                ui.strong("Node");
-                ui.separator();
-                ui.strong("Sequence");
-                ui.separator();
-                ui.strong("Parents");
-                ui.separator();
-                ui.strong("Origin");
-                ui.separator();
-                ui.strong("Op");
-                ui.separator();
-                ui.strong("Length");
-                ui.separator();
-                ui.strong("Topology");
-                ui.separator();
-                ui.strong("Action");
-            });
-            ui.separator();
-            let row_height = ui.text_style_height(&egui::TextStyle::Body).max(18.0) + 6.0;
-            egui::ScrollArea::vertical().show_rows(
-                ui,
-                row_height,
-                self.lineage_rows.len(),
-                |ui, row_range| {
-                    for row_idx in row_range {
-                        let row = &self.lineage_rows[row_idx];
-                        ui.horizontal(|ui| {
-                            ui.monospace(&row.node_id);
-                            if ui
-                                .button(&row.seq_id)
-                                .on_hover_text("Open this sequence in a dedicated window")
-                                .clicked()
-                            {
-                                open_seq = Some(row.seq_id.clone());
-                            }
-                            ui.label(if row.parents.is_empty() {
-                                "-".to_string()
-                            } else {
-                                row.parents.join(" + ")
-                            });
-                            ui.label(&row.origin);
-                            ui.monospace(&row.created_by_op);
-                            ui.monospace(format!("{} bp", row.length));
-                            ui.label(if row.circular { "circular" } else { "linear" });
-                            if ui
-                                .button("Select")
-                                .on_hover_text(
-                                    "Run candidate selection operation using this sequence as input",
-                                )
-                                .clicked()
-                            {
-                                select_candidate_from = Some(row.seq_id.clone());
+            egui::ScrollArea::both()
+                .id_salt("lineage_table_scroll")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    egui::Grid::new("lineage_table_grid")
+                        .striped(true)
+                        .min_col_width(90.0)
+                        .show(ui, |ui| {
+                            ui.strong("Node");
+                            ui.strong("Sequence");
+                            ui.strong("Parents");
+                            ui.strong("Origin");
+                            ui.strong("Op");
+                            ui.strong("Length");
+                            ui.strong("Topology");
+                            ui.strong("Action");
+                            ui.end_row();
+                            for row in &self.lineage_rows {
+                                ui.monospace(&row.node_id);
+                                if ui
+                                    .button(&row.seq_id)
+                                    .on_hover_text("Open this sequence in a dedicated window")
+                                    .clicked()
+                                {
+                                    open_seq = Some(row.seq_id.clone());
+                                }
+                                ui.label(if row.parents.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    row.parents.join(" + ")
+                                });
+                                ui.label(&row.origin);
+                                ui.monospace(&row.created_by_op);
+                                ui.monospace(format!("{} bp", row.length));
+                                ui.label(if row.circular { "circular" } else { "linear" });
+                                if ui
+                                    .button("Select")
+                                    .on_hover_text(
+                                        "Run candidate selection operation using this sequence as input",
+                                    )
+                                    .clicked()
+                                {
+                                    select_candidate_from = Some(row.seq_id.clone());
+                                }
+                                ui.end_row();
                             }
                         });
-                        ui.separator();
-                    }
-                },
-            );
+                });
         }
         ui.separator();
         ui.heading("Containers");
@@ -7905,13 +8044,19 @@ impl GENtleApp {
             }
         });
         let container_resize_max_height = ui.available_height().max(120.0);
+        let container_resize_width = ui.available_width().max(360.0);
         egui::Resize::default()
             .id_salt("lineage_container_area_resize")
+            .default_width(container_resize_width)
+            .min_width(container_resize_width)
+            .max_width(container_resize_width)
             .default_height(container_area_height.min(container_resize_max_height))
             .min_height(120.0)
             .max_height(container_resize_max_height)
             .resizable(egui::Vec2b::new(false, true))
             .show(ui, |ui| {
+                ui.set_min_width(container_resize_width);
+                ui.set_max_width(container_resize_width);
                 container_area_height = ui.max_rect().height().clamp(120.0, 1600.0);
                 egui::ScrollArea::both()
                     .id_salt("lineage_container_grid_scroll")
@@ -8078,6 +8223,8 @@ impl GENtleApp {
         self.configuration_graphics.show_tfbs = defaults.show_tfbs;
         self.configuration_graphics.regulatory_tracks_near_baseline =
             defaults.regulatory_tracks_near_baseline;
+        self.configuration_graphics.regulatory_feature_max_view_span_bp =
+            defaults.regulatory_feature_max_view_span_bp;
         self.configuration_graphics.tfbs_display_use_llr_bits = defaults.tfbs_display_use_llr_bits;
         self.configuration_graphics.tfbs_display_min_llr_bits = defaults.tfbs_display_min_llr_bits;
         self.configuration_graphics.tfbs_display_use_llr_quantile =
@@ -8326,6 +8473,25 @@ impl GENtleApp {
                 "Place regulatory features near DNA/GC strip",
             )
             .changed();
+        ui.horizontal(|ui| {
+            ui.label("Regulatory max view span");
+            if ui
+                .add(
+                    egui::DragValue::new(
+                        &mut self.configuration_graphics.regulatory_feature_max_view_span_bp,
+                    )
+                    .range(0..=5_000_000)
+                    .speed(100.0)
+                    .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "Regulatory features are hidden in linear view when current view span exceeds this threshold",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
 
         ui.separator();
         ui.heading("Overlays");
@@ -9394,10 +9560,34 @@ impl GENtleApp {
                 inputs,
                 path,
                 ladders,
+                ..
             } => format!(
                 "Render pool gel SVG: inputs={}, path={}, ladders={}",
                 inputs.join(", "),
                 path,
+                ladders
+                    .as_ref()
+                    .map(|v| v.join(", "))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "auto".to_string())
+            ),
+            Operation::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                name,
+                ladders,
+            } => format!(
+                "Create serial arrangement: containers={}, arrangement_id={}, name={}, ladders={}",
+                container_ids.join(", "),
+                arrangement_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("auto"),
+                name.as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-"),
                 ladders
                     .as_ref()
                     .map(|v| v.join(", "))
@@ -9722,6 +9912,13 @@ impl eframe::App for GENtleApp {
             for (id, window) in self.windows.iter() {
                 let id = id.to_owned();
                 self.show_window(ctx, id, window.clone());
+            }
+
+            if !self.pending_focus_viewports.is_empty() {
+                let to_focus: Vec<ViewportId> = self.pending_focus_viewports.drain(..).collect();
+                for viewport_id in to_focus {
+                    self.focus_window_viewport(ctx, viewport_id);
+                }
             }
         }));
         if update_result.is_err() {

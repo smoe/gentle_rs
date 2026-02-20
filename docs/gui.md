@@ -196,6 +196,8 @@ Supported commands:
 - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+- `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+- `macros template-list|template-show|template-put|template-delete|template-run ...`
 - `candidates list`
 - `candidates delete SET_NAME`
 - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
@@ -291,6 +293,13 @@ Recommended flow in one sequence window:
    - Shell equivalents:
      - `candidates template-put ...`
      - `candidates template-run ...`
+10. Optional full-operation workflow macros:
+   - Shell equivalents:
+     - `macros template-put ...`
+     - `macros template-run ...`
+     - `macros run --file cloning_flow.gsh --transactional`
+   - These scripts can orchestrate non-candidate operations through `op ...` and
+     `workflow ...` statements.
 
 Persistence:
 

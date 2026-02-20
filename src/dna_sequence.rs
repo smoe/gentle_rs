@@ -914,6 +914,34 @@ mod tests {
     }
 
     #[test]
+    fn test_genbank_regulatory_qualifiers_are_preserved() {
+        let dna = DNAsequence::from_genbank_file("test_files/tp73.ncbi.gb").unwrap();
+        let dna = dna.first().unwrap();
+        let regulatory = dna
+            .features()
+            .iter()
+            .find(|feature| {
+                feature
+                    .kind
+                    .to_string()
+                    .eq_ignore_ascii_case("regulatory")
+            })
+            .expect("expected at least one regulatory feature");
+        assert!(regulatory
+            .qualifier_values("regulatory_class".into())
+            .any(|value| !value.trim().is_empty()));
+        assert!(regulatory
+            .qualifier_values("function".into())
+            .any(|value| value.to_ascii_lowercase().contains("promoter")));
+        assert!(regulatory
+            .qualifier_values("experiment".into())
+            .any(|value| value.to_ascii_lowercase().contains("reporter gene assay")));
+        assert!(regulatory
+            .qualifier_values("db_xref".into())
+            .any(|value| value.contains("GeneID:")));
+    }
+
+    #[test]
     fn test_fasta_header_sets_ssdna_molecule_type() {
         let record = fasta::Record::with_attrs("oligo_ss", Some("molecule=ssdna"), b"ATGCATGC");
         let dna = DNAsequence::from_fasta_record(&record);

@@ -425,19 +425,21 @@ impl RenderDnaLinear {
             tfbs_display_criteria,
             vcf_display_criteria,
             regulatory_tracks_near_baseline,
+            regulatory_feature_max_view_span_bp,
             hidden_feature_kinds,
         ) = self
             .display
             .read()
             .map(|display| {
                 (
-                    display.show_cds_features(),
+                    display.show_cds_features_effective(),
                     display.show_gene_features(),
                     display.show_mrna_features(),
                     display.show_tfbs(),
                     display.tfbs_display_criteria(),
                     display.vcf_display_criteria(),
                     display.regulatory_tracks_near_baseline(),
+                    display.regulatory_feature_max_view_span_bp(),
                     display.hidden_feature_kinds().clone(),
                 )
             })
@@ -449,6 +451,7 @@ impl RenderDnaLinear {
                 TfbsDisplayCriteria::default(),
                 VcfDisplayCriteria::default(),
                 false,
+                50_000,
                 BTreeSet::new(),
             ));
         let features = self
@@ -466,6 +469,13 @@ impl RenderDnaLinear {
                 tfbs_display_criteria,
                 vcf_display_criteria.clone(),
                 &hidden_feature_kinds,
+            ) {
+                continue;
+            }
+            if !RenderDna::feature_visible_for_view_span(
+                feature,
+                viewport.span,
+                regulatory_feature_max_view_span_bp,
             ) {
                 continue;
             }

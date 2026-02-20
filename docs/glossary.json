@@ -793,6 +793,84 @@
       },
       {
          "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "macros run",
+         "summary" : "Execute multi-statement workflow script.",
+         "usage" : "macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "macros template-list",
+         "summary" : "List persisted workflow macro templates.",
+         "usage" : "macros template-list"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "macros template-show",
+         "summary" : "Show one persisted workflow macro template.",
+         "usage" : "macros template-show TEMPLATE_NAME"
+      },
+      {
+         "aliases" : [
+            "macros template-upsert"
+         ],
+         "engine_operations" : [
+            "UpsertWorkflowMacroTemplate"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "macros template-put",
+         "summary" : "Create or update a persisted workflow macro template.",
+         "usage" : "macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "DeleteWorkflowMacroTemplate"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "macros template-delete",
+         "summary" : "Delete one persisted workflow macro template.",
+         "usage" : "macros template-delete TEMPLATE_NAME"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "macros template-run",
+         "summary" : "Run one persisted workflow macro template with bindings.",
+         "usage" : "macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+      },
+      {
+         "aliases" : [],
          "engine_operations" : [
             "GenerateCandidateSet",
             "GenerateCandidateSetBetweenAnchors",

@@ -104,6 +104,8 @@ Current draft operations:
 - `ScoreCandidateSetWeightedObjective { set_name, metric, objectives[], normalize_metrics? }`
 - `TopKCandidateSet { input_set, output_set, metric, k, direction?, tie_break? }`
 - `ParetoFrontierCandidateSet { input_set, output_set, objectives[], max_candidates?, tie_break? }`
+- `UpsertWorkflowMacroTemplate { name, description?, parameters[], script }`
+- `DeleteWorkflowMacroTemplate { name }`
 - `UpsertCandidateMacroTemplate { name, description?, parameters[], script }`
 - `DeleteCandidateMacroTemplate { name }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
@@ -142,12 +144,122 @@ Adapter utility contracts (current, non-engine operations):
   - `--format json` renders machine-readable help catalog/topic payload
   - `--format markdown` renders documentation-ready markdown
 
+- `macros run/template-list/template-show/template-put/template-delete/template-run`
+  - shared-shell macro adapter family for full operation/workflow scripting
+  - template persistence is backed by engine operations
+    `UpsertWorkflowMacroTemplate`/`DeleteWorkflowMacroTemplate`
+  - expanded scripts can execute `op ...` and `workflow ...` statements and
+    optionally roll back via `--transactional`
+
 - `screenshot-window OUTPUT.png`
   - currently disabled by security policy
   - returns deterministic disabled message from shared shell/CLI/GUI command
     paths
   - kept as reserved adapter contract for future re-enable after explicit
     endpoint-security approval
+
+- `agents list [--catalog PATH]`
+  - Lists configured agent systems from catalog JSON.
+  - Default catalog: `assets/agent_systems.json`.
+
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - Invokes one configured agent system via catalog transport.
+  - `--no-state-summary` suppresses project context injection.
+  - Suggested-command execution is per-suggestion only (no global always-execute).
+
+Agent bridge catalog schema (`gentle.agent_systems.v1`):
+
+```json
+{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "openai_gpt5_stdio",
+      "label": "OpenAI GPT-5 (stdio bridge)",
+      "description": "Optional human-readable description",
+      "transport": "external_json_stdio",
+      "command": ["openai-agent-bridge", "--model", "gpt-5"],
+      "env": {},
+      "working_dir": null
+    }
+  ]
+}
+```
+
+Agent request payload schema (`gentle.agent_request.v1`):
+
+```json
+{
+  "schema": "gentle.agent_request.v1",
+  "system_id": "openai_gpt5_stdio",
+  "prompt": "User request text",
+  "sent_at_unix_ms": 1768860000000,
+  "state_summary": {}
+}
+```
+
+Agent response payload schema (`gentle.agent_response.v1`):
+
+```json
+{
+  "schema": "gentle.agent_response.v1",
+  "assistant_message": "Text response",
+  "questions": ["Optional follow-up question"],
+  "suggested_commands": [
+    {
+      "title": "Optional short label",
+      "rationale": "Optional reason",
+      "command": "state-summary",
+      "execution": "ask"
+    }
+  ]
+}
+```
+
+Agent execution intent semantics:
+
+- `chat`: explain/ask only, never executed as shell command.
+- `ask`: executable suggestion requiring explicit user confirmation.
+- `auto`: executable suggestion eligible for automatic execution only when
+  caller enables `--allow-auto-exec`.
+
+Agent schema/compatibility policy:
+
+- `schema` is mandatory for catalog/request/response JSON objects.
+- Supported major versions (current): `gentle.agent_systems.v1`,
+  `gentle.agent_request.v1`, `gentle.agent_response.v1`.
+- Future incompatible major versions (for example `.v2`) are rejected with a
+  deterministic schema-unsupported error.
+- Response validation is strict for canonical fields:
+  - top-level allowed: `schema`, `assistant_message`, `questions`,
+    `suggested_commands` plus extension keys prefixed with `x_` or `x-`
+  - `suggested_commands[]` allowed: `title`, `rationale`, `command`,
+    `execution` plus extension keys prefixed with `x_` or `x-`
+  - unsupported canonical fields (for example `commands`, `mode`) are rejected
+
+Execution safety rules:
+
+- There is no global always-execute mode.
+- Execution is per suggestion:
+  - explicit run (`--execute-index`, `--execute-all`, GUI row `Run`)
+  - optional auto-run only for `execution = auto` + `--allow-auto-exec`
+- Recursive `agents ask` execution from suggested commands is blocked.
+
+Failure-handling policy for external adapters:
+
+- Adapter invocations use bounded retry with exponential backoff for transient
+  failures.
+- Missing/unreachable adapter binaries fail gracefully with deterministic
+  adapter-unavailable errors.
+- CLI/shell errors are stable and prefixed for scripting, e.g.:
+  - `AGENT_INVALID_INPUT`
+  - `AGENT_SCHEMA_VALIDATION`
+  - `AGENT_SCHEMA_UNSUPPORTED`
+  - `AGENT_ADAPTER_UNAVAILABLE`
+  - `AGENT_ADAPTER_TRANSIENT`
+  - `AGENT_ADAPTER_FAILED`
+  - `AGENT_RESPONSE_PARSE`
+  - `AGENT_RESPONSE_VALIDATION`
 
 Planned operation refinements:
 
@@ -169,6 +281,9 @@ Current parameter support:
   - also serves as ligation product-count limit guard
 - `feature_details_font_size` (default `11.0`, range `8.0..24.0`)
   - controls GUI font size for the feature tree entries and feature range details
+- `regulatory_feature_max_view_span_bp` (default `50000`, range `>= 0`)
+  - hides regulatory feature overlays in linear view when current view span
+    exceeds this threshold (`0` disables regulatory overlays)
 - VCF display filter parameters (shared GUI/SVG state):
   - `vcf_display_show_snp`
   - `vcf_display_show_ins`
@@ -237,6 +352,16 @@ Candidate-set semantics:
 - `ParetoFrontierCandidateSet` keeps non-dominated candidates for multiple
   objectives (`maximize`/`minimize` per objective), with optional tie-break
   truncation.
+- Workflow macro templates are persisted in project metadata:
+  - `UpsertWorkflowMacroTemplate` stores/replaces named templates
+  - `DeleteWorkflowMacroTemplate` removes templates
+  - each template now carries `template_schema`
+    (`gentle.cloning_macro_template.v1`) so cloning-operation macro intent is
+    explicit at engine level
+  - template expansion/binding is exposed through adapter command surfaces
+    (`macros template-*`)
+  - expanded scripts run through shared shell execution (`macros run`) and can
+    orchestrate full cloning operations via `op ...` or `workflow ...` payloads
 - Candidate macro templates are persisted in project metadata:
   - `UpsertCandidateMacroTemplate` stores/replaces named templates
   - `DeleteCandidateMacroTemplate` removes templates

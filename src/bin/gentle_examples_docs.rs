@@ -1,6 +1,6 @@
 use gentle::workflow_examples::{
-    generate_workflow_example_docs, load_workflow_examples, validate_example_required_files,
-    DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR,
+    DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, generate_workflow_example_docs,
+    load_workflow_examples, validate_example_required_files,
 };
 use serde_json::json;
 use std::{

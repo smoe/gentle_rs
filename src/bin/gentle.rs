@@ -1,4 +1,4 @@
-use eframe::{egui, NativeOptions};
+use eframe::{NativeOptions, egui};
 use gentle::{about, app};
 use std::{
     backtrace::Backtrace,
@@ -12,7 +12,7 @@ use std::{
 
 #[cfg(target_os = "macos")]
 fn configure_macos_process_name() {
-    use objc2_foundation::{ns_string, NSProcessInfo};
+    use objc2_foundation::{NSProcessInfo, ns_string};
     // Winit builds the macOS app menu title from NSProcessInfo::processName.
     // Set it early so the native menu shows "About GENtle" instead of "About gentle".
     unsafe {

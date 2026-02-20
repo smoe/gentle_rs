@@ -10,7 +10,7 @@ use crate::{
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{build_pool_gel_layout, export_pool_gel_svg},
+    pool_gel::{build_serial_gel_layout, export_pool_gel_svg, GelSampleInput},
     render_export::{export_circular_svg, export_linear_svg},
     restriction_enzyme::RestrictionEnzyme,
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
@@ -51,6 +51,11 @@ const CANDIDATE_SETS_REF_SCHEMA: &str = "gentle.candidate_sets.ref.v1";
 const CANDIDATE_SETS_DISK_INDEX_SCHEMA: &str = "gentle.candidate_sets.disk_index.v1";
 const CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY: &str = "candidate_sets_load_warning";
 const CANDIDATE_STORE_STRICT_LOAD_ENV: &str = "GENTLE_CANDIDATE_STORE_STRICT_LOAD";
+pub const GUIDE_DESIGN_METADATA_KEY: &str = "guide_design";
+const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
+pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
+const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
+pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
 pub const CANDIDATE_MACRO_TEMPLATES_METADATA_KEY: &str = "candidate_macro_templates";
 const CANDIDATE_MACRO_TEMPLATES_SCHEMA: &str = "gentle.candidate_macro_templates.v1";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
@@ -87,6 +92,7 @@ pub struct DisplaySettings {
     pub show_mrna_features: bool,
     pub show_tfbs: bool,
     pub regulatory_tracks_near_baseline: bool,
+    pub regulatory_feature_max_view_span_bp: usize,
     pub tfbs_display_use_llr_bits: bool,
     pub tfbs_display_min_llr_bits: f64,
     pub tfbs_display_use_llr_quantile: bool,
@@ -127,6 +133,7 @@ impl Default for DisplaySettings {
             show_mrna_features: true,
             show_tfbs: false,
             regulatory_tracks_near_baseline: false,
+            regulatory_feature_max_view_span_bp: 50_000,
             tfbs_display_use_llr_bits: true,
             tfbs_display_min_llr_bits: 0.0,
             tfbs_display_use_llr_quantile: true,
@@ -211,12 +218,33 @@ pub struct Container {
     pub created_at_unix_ms: u128,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ArrangementMode {
+    Serial,
+    Plate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Arrangement {
+    pub arrangement_id: String,
+    pub mode: ArrangementMode,
+    pub name: Option<String>,
+    pub lane_container_ids: Vec<ContainerId>,
+    #[serde(default)]
+    pub ladders: Vec<String>,
+    pub created_by_op: Option<OpId>,
+    pub created_at_unix_ms: u128,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct ContainerState {
     pub containers: HashMap<ContainerId, Container>,
+    pub arrangements: HashMap<String, Arrangement>,
     pub seq_to_latest_container: HashMap<SeqId, ContainerId>,
     pub next_container_counter: u64,
+    pub next_arrangement_counter: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1297,6 +1325,283 @@ impl CandidateTieBreakPolicy {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GuideU6TerminatorWindow {
+    SpacerOnly,
+    #[default]
+    SpacerPlusTail,
+}
+
+impl GuideU6TerminatorWindow {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SpacerOnly => "spacer_only",
+            Self::SpacerPlusTail => "spacer_plus_tail",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GuideOligoExportFormat {
+    CsvTable,
+    PlateCsv,
+    Fasta,
+}
+
+impl GuideOligoExportFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CsvTable => "csv_table",
+            Self::PlateCsv => "plate_csv",
+            Self::Fasta => "fasta",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GuideOligoPlateFormat {
+    #[default]
+    Plate96,
+    Plate384,
+}
+
+impl GuideOligoPlateFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Plate96 => "96",
+            Self::Plate384 => "384",
+        }
+    }
+
+    fn dimensions(self) -> (usize, usize) {
+        match self {
+            Self::Plate96 => (8, 12),
+            Self::Plate384 => (16, 24),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct GuideDesignStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    guide_sets: HashMap<String, GuideSet>,
+    practical_filter_reports: HashMap<String, GuidePracticalFilterReport>,
+    oligo_sets: HashMap<String, GuideOligoSet>,
+    latest_oligo_set_by_guide_set: HashMap<String, String>,
+    audit_log: Vec<GuideDesignAuditEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideSet {
+    pub guide_set_id: String,
+    pub guides: Vec<GuideCandidate>,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideCandidate {
+    pub guide_id: String,
+    pub seq_id: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub strand: String,
+    pub protospacer: String,
+    pub pam: String,
+    pub nuclease: String,
+    pub cut_offset_from_protospacer_start: usize,
+    pub rank: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuideSetSummary {
+    pub guide_set_id: String,
+    pub guide_count: usize,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GuidePracticalFilterConfig {
+    pub gc_min: Option<f64>,
+    pub gc_max: Option<f64>,
+    pub max_homopolymer_run: Option<usize>,
+    #[serde(default)]
+    pub max_homopolymer_run_per_base: HashMap<String, usize>,
+    pub reject_ambiguous_bases: bool,
+    pub avoid_u6_terminator_tttt: bool,
+    pub u6_terminator_window: GuideU6TerminatorWindow,
+    pub max_dinucleotide_repeat_units: Option<usize>,
+    #[serde(default)]
+    pub forbidden_motifs: Vec<String>,
+    pub required_5prime_base: Option<String>,
+    pub allow_5prime_g_extension: bool,
+}
+
+impl Default for GuidePracticalFilterConfig {
+    fn default() -> Self {
+        Self {
+            gc_min: None,
+            gc_max: None,
+            max_homopolymer_run: None,
+            max_homopolymer_run_per_base: HashMap::new(),
+            reject_ambiguous_bases: true,
+            avoid_u6_terminator_tttt: true,
+            u6_terminator_window: GuideU6TerminatorWindow::SpacerPlusTail,
+            max_dinucleotide_repeat_units: None,
+            forbidden_motifs: vec![],
+            required_5prime_base: None,
+            allow_5prime_g_extension: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideFilterReason {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuidePracticalFilterResult {
+    pub guide_id: String,
+    pub passed: bool,
+    #[serde(default)]
+    pub reasons: Vec<GuideFilterReason>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub metrics: HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuidePracticalFilterReport {
+    pub guide_set_id: String,
+    pub generated_at_unix_ms: u128,
+    pub config: GuidePracticalFilterConfig,
+    pub passed_count: usize,
+    pub rejected_count: usize,
+    #[serde(default)]
+    pub results: Vec<GuidePracticalFilterResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoTemplateSpec {
+    pub template_id: String,
+    pub description: String,
+    pub forward_prefix: String,
+    pub forward_suffix: String,
+    pub reverse_prefix: String,
+    pub reverse_suffix: String,
+    pub reverse_uses_reverse_complement_of_spacer: bool,
+    pub uppercase_output: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoRecord {
+    pub guide_id: String,
+    pub rank: Option<usize>,
+    pub forward_oligo: String,
+    pub reverse_oligo: String,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoSet {
+    pub oligo_set_id: String,
+    pub guide_set_id: String,
+    pub generated_at_unix_ms: u128,
+    pub template: GuideOligoTemplateSpec,
+    pub apply_5prime_g_extension: bool,
+    #[serde(default)]
+    pub records: Vec<GuideOligoRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideOligoExportReport {
+    pub guide_set_id: String,
+    pub oligo_set_id: String,
+    pub format: String,
+    pub path: String,
+    pub exported_records: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GuideProtocolExportReport {
+    pub guide_set_id: String,
+    pub oligo_set_id: String,
+    pub path: String,
+    pub guide_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct GuideDesignAuditEntry {
+    unix_ms: u128,
+    operation: String,
+    guide_set_id: String,
+    payload: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct WorkflowMacroTemplateStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    templates: HashMap<String, WorkflowMacroTemplate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct WorkflowMacroTemplate {
+    pub name: String,
+    pub description: Option<String>,
+    pub parameters: Vec<WorkflowMacroTemplateParam>,
+    #[serde(default = "default_cloning_macro_template_schema")]
+    pub template_schema: String,
+    pub script: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
+fn default_cloning_macro_template_schema() -> String {
+    CLONING_MACRO_TEMPLATE_SCHEMA.to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct WorkflowMacroTemplateParam {
+    pub name: String,
+    pub default_value: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowMacroTemplateSummary {
+    pub name: String,
+    pub description: Option<String>,
+    pub parameter_count: usize,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 struct CandidateMacroTemplateStore {
@@ -1388,6 +1693,17 @@ pub enum Operation {
     RenderPoolGelSvg {
         inputs: Vec<SeqId>,
         path: String,
+        ladders: Option<Vec<String>>,
+        #[serde(default)]
+        container_ids: Option<Vec<ContainerId>>,
+        #[serde(default)]
+        arrangement_id: Option<String>,
+    },
+    CreateArrangementSerial {
+        container_ids: Vec<ContainerId>,
+        arrangement_id: Option<String>,
+        name: Option<String>,
+        #[serde(default)]
         ladders: Option<Vec<String>>,
     },
     ExportDnaLadders {
@@ -1608,6 +1924,47 @@ pub enum Operation {
     DeleteCandidateSet {
         set_name: String,
     },
+    UpsertGuideSet {
+        guide_set_id: String,
+        guides: Vec<GuideCandidate>,
+    },
+    DeleteGuideSet {
+        guide_set_id: String,
+    },
+    FilterGuidesPractical {
+        guide_set_id: String,
+        #[serde(default)]
+        config: GuidePracticalFilterConfig,
+        #[serde(default)]
+        output_guide_set_id: Option<String>,
+    },
+    GenerateGuideOligos {
+        guide_set_id: String,
+        template_id: String,
+        #[serde(default)]
+        apply_5prime_g_extension: Option<bool>,
+        #[serde(default)]
+        output_oligo_set_id: Option<String>,
+        #[serde(default)]
+        passed_only: Option<bool>,
+    },
+    ExportGuideOligos {
+        guide_set_id: String,
+        #[serde(default)]
+        oligo_set_id: Option<String>,
+        format: GuideOligoExportFormat,
+        path: String,
+        #[serde(default)]
+        plate_format: Option<GuideOligoPlateFormat>,
+    },
+    ExportGuideProtocolText {
+        guide_set_id: String,
+        #[serde(default)]
+        oligo_set_id: Option<String>,
+        path: String,
+        #[serde(default)]
+        include_qc_checklist: Option<bool>,
+    },
     ScoreCandidateSetExpression {
         set_name: String,
         metric: String,
@@ -1668,6 +2025,16 @@ pub enum Operation {
         max_candidates: Option<usize>,
         #[serde(default)]
         tie_break: Option<CandidateTieBreakPolicy>,
+    },
+    UpsertWorkflowMacroTemplate {
+        name: String,
+        description: Option<String>,
+        #[serde(default)]
+        parameters: Vec<WorkflowMacroTemplateParam>,
+        script: String,
+    },
+    DeleteWorkflowMacroTemplate {
+        name: String,
     },
     UpsertCandidateMacroTemplate {
         name: String,
@@ -2216,11 +2583,22 @@ pub struct EngineContainerSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineArrangementSummary {
+    pub id: String,
+    pub mode: String,
+    pub lane_count: usize,
+    pub lane_container_ids: Vec<String>,
+    pub ladders: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineStateSummary {
     pub sequence_count: usize,
     pub sequences: Vec<EngineSequenceSummary>,
     pub container_count: usize,
     pub containers: Vec<EngineContainerSummary>,
+    pub arrangement_count: usize,
+    pub arrangements: Vec<EngineArrangementSummary>,
     pub display: DisplaySettings,
 }
 
@@ -2494,6 +2872,7 @@ impl GentleEngine {
                 "RenderRnaStructureSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
+                "CreateArrangementSerial".to_string(),
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
@@ -2523,6 +2902,12 @@ impl GentleEngine {
                 "GenerateCandidateSet".to_string(),
                 "GenerateCandidateSetBetweenAnchors".to_string(),
                 "DeleteCandidateSet".to_string(),
+                "UpsertGuideSet".to_string(),
+                "DeleteGuideSet".to_string(),
+                "FilterGuidesPractical".to_string(),
+                "GenerateGuideOligos".to_string(),
+                "ExportGuideOligos".to_string(),
+                "ExportGuideProtocolText".to_string(),
                 "ScoreCandidateSetExpression".to_string(),
                 "ScoreCandidateSetDistance".to_string(),
                 "FilterCandidateSet".to_string(),
@@ -2530,6 +2915,8 @@ impl GentleEngine {
                 "ScoreCandidateSetWeightedObjective".to_string(),
                 "TopKCandidateSet".to_string(),
                 "ParetoFrontierCandidateSet".to_string(),
+                "UpsertWorkflowMacroTemplate".to_string(),
+                "DeleteWorkflowMacroTemplate".to_string(),
                 "UpsertCandidateMacroTemplate".to_string(),
                 "DeleteCandidateMacroTemplate".to_string(),
                 "Reverse".to_string(),
@@ -3549,6 +3936,724 @@ impl GentleEngine {
             .metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), value);
         Ok(())
+    }
+
+    fn read_guide_design_store_from_metadata(value: Option<&serde_json::Value>) -> GuideDesignStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<GuideDesignStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = GUIDE_DESIGN_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_guide_design_store(&self) -> GuideDesignStore {
+        Self::read_guide_design_store_from_metadata(self.state.metadata.get(GUIDE_DESIGN_METADATA_KEY))
+    }
+
+    fn write_guide_design_store(&mut self, mut store: GuideDesignStore) -> Result<(), EngineError> {
+        if store.guide_sets.is_empty()
+            && store.practical_filter_reports.is_empty()
+            && store.oligo_sets.is_empty()
+            && store.latest_oligo_set_by_guide_set.is_empty()
+            && store.audit_log.is_empty()
+        {
+            self.state.metadata.remove(GUIDE_DESIGN_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = GUIDE_DESIGN_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize guide-design metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(GUIDE_DESIGN_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn normalize_guide_set_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "guide_set_id cannot be empty".to_string(),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn normalize_guide_id(raw: &str, index: usize) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            format!("g_{:04}", index + 1)
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn normalize_guide_strand(raw: &str) -> Result<String, EngineError> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "+" | "plus" | "forward" | "fwd" => Ok("+".to_string()),
+            "-" | "minus" | "reverse" | "rev" => Ok("-".to_string()),
+            other => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported guide strand '{}'; expected '+' or '-'",
+                    other
+                ),
+            }),
+        }
+    }
+
+    fn normalize_guide_candidate(
+        guide: GuideCandidate,
+        index: usize,
+    ) -> Result<GuideCandidate, EngineError> {
+        if guide.end_0based_exclusive <= guide.start_0based {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Guide {} has invalid genomic interval {}..{}",
+                    index + 1,
+                    guide.start_0based,
+                    guide.end_0based_exclusive
+                ),
+            });
+        }
+        if guide.seq_id.trim().is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Guide {} has empty seq_id", index + 1),
+            });
+        }
+        if matches!(guide.rank, Some(0)) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Guide {} rank must be >= 1", index + 1),
+            });
+        }
+        let protospacer = Self::normalize_iupac_text(&guide.protospacer)?;
+        if protospacer.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Guide {} has empty protospacer", index + 1),
+            });
+        }
+        let pam = Self::normalize_iupac_text(&guide.pam)?;
+        if pam.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Guide {} has empty PAM", index + 1),
+            });
+        }
+        if guide.cut_offset_from_protospacer_start >= protospacer.len() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Guide {} cut_offset_from_protospacer_start ({}) must be < protospacer length ({})",
+                    index + 1,
+                    guide.cut_offset_from_protospacer_start,
+                    protospacer.len()
+                ),
+            });
+        }
+        Ok(GuideCandidate {
+            guide_id: Self::normalize_guide_id(&guide.guide_id, index),
+            seq_id: guide.seq_id.trim().to_string(),
+            start_0based: guide.start_0based,
+            end_0based_exclusive: guide.end_0based_exclusive,
+            strand: Self::normalize_guide_strand(&guide.strand)?,
+            protospacer,
+            pam,
+            nuclease: if guide.nuclease.trim().is_empty() {
+                "SpCas9".to_string()
+            } else {
+                guide.nuclease.trim().to_string()
+            },
+            cut_offset_from_protospacer_start: guide.cut_offset_from_protospacer_start,
+            rank: guide.rank,
+        })
+    }
+
+    fn normalize_guide_candidates(
+        guides: Vec<GuideCandidate>,
+    ) -> Result<Vec<GuideCandidate>, EngineError> {
+        if guides.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "guide set requires at least one guide".to_string(),
+            });
+        }
+        let mut normalized = Vec::with_capacity(guides.len());
+        let mut seen_ids = HashSet::new();
+        for (idx, guide) in guides.into_iter().enumerate() {
+            let guide = Self::normalize_guide_candidate(guide, idx)?;
+            if !seen_ids.insert(guide.guide_id.clone()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Duplicate guide_id '{}' in guide set", guide.guide_id),
+                });
+            }
+            normalized.push(guide);
+        }
+        normalized.sort_by(|a, b| {
+            a.rank
+                .unwrap_or(usize::MAX)
+                .cmp(&b.rank.unwrap_or(usize::MAX))
+                .then(a.guide_id.cmp(&b.guide_id))
+        });
+        Ok(normalized)
+    }
+
+    fn max_homopolymer_run_for_base(sequence: &[u8], base: u8) -> usize {
+        let base = base.to_ascii_uppercase();
+        let mut best = 0usize;
+        let mut current = 0usize;
+        for b in sequence {
+            if b.to_ascii_uppercase() == base {
+                current += 1;
+                best = best.max(current);
+            } else {
+                current = 0;
+            }
+        }
+        best
+    }
+
+    fn max_dinucleotide_repeat_units(sequence: &[u8]) -> usize {
+        if sequence.len() < 2 {
+            return 0;
+        }
+        let canonical = |b: u8| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T');
+        let mut best = 1usize;
+        for start in 0..(sequence.len() - 1) {
+            let b0 = sequence[start].to_ascii_uppercase();
+            let b1 = sequence[start + 1].to_ascii_uppercase();
+            if !canonical(b0) || !canonical(b1) {
+                continue;
+            }
+            let mut units = 1usize;
+            let mut idx = start + 2;
+            while idx + 1 < sequence.len()
+                && sequence[idx].to_ascii_uppercase() == b0
+                && sequence[idx + 1].to_ascii_uppercase() == b1
+            {
+                units += 1;
+                idx += 2;
+            }
+            best = best.max(units);
+        }
+        best
+    }
+
+    fn normalize_practical_filter_config(
+        mut config: GuidePracticalFilterConfig,
+    ) -> Result<GuidePracticalFilterConfig, EngineError> {
+        if let Some(min) = config.gc_min {
+            if !(0.0..=1.0).contains(&min) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+                });
+            }
+        }
+        if let Some(max) = config.gc_max {
+            if !(0.0..=1.0).contains(&max) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
+                });
+            }
+        }
+        if let (Some(min), Some(max)) = (config.gc_min, config.gc_max) {
+            if min > max {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("gc_min ({min}) must be <= gc_max ({max})"),
+                });
+            }
+        }
+        if let Some(max_run) = config.max_homopolymer_run {
+            if max_run == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "max_homopolymer_run must be >= 1".to_string(),
+                });
+            }
+        }
+        if let Some(max_repeat) = config.max_dinucleotide_repeat_units {
+            if max_repeat == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "max_dinucleotide_repeat_units must be >= 1".to_string(),
+                });
+            }
+        }
+
+        let mut normalized_per_base = HashMap::new();
+        for (base, value) in &config.max_homopolymer_run_per_base {
+            let key = base.trim().to_ascii_uppercase();
+            if !matches!(key.as_str(), "A" | "C" | "G" | "T" | "U") {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Unsupported max_homopolymer_run_per_base key '{}'; expected A/C/G/T",
+                        base
+                    ),
+                });
+            }
+            if *value == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "max_homopolymer_run_per_base for '{}' must be >= 1",
+                        base
+                    ),
+                });
+            }
+            let key = if key == "U" {
+                "T".to_string()
+            } else {
+                key.to_string()
+            };
+            normalized_per_base.insert(key, *value);
+        }
+        config.max_homopolymer_run_per_base = normalized_per_base;
+
+        if let Some(required) = config.required_5prime_base.as_ref() {
+            let normalized = Self::normalize_iupac_text(required)?;
+            if normalized.len() != 1
+                || !matches!(normalized.as_bytes()[0], b'A' | b'C' | b'G' | b'T' | b'U')
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message:
+                        "required_5prime_base must be one canonical nucleotide (A/C/G/T)"
+                            .to_string(),
+                });
+            }
+            config.required_5prime_base = Some(
+                if normalized == "U" {
+                    "T".to_string()
+                } else {
+                    normalized
+                },
+            );
+        }
+
+        let mut motifs = vec![];
+        for motif in &config.forbidden_motifs {
+            let normalized = Self::normalize_iupac_text(motif)?;
+            if !normalized.is_empty() {
+                motifs.push(normalized);
+            }
+        }
+        motifs.sort();
+        motifs.dedup();
+        config.forbidden_motifs = motifs;
+        Ok(config)
+    }
+
+    pub fn list_guide_sets(&self) -> Vec<GuideSetSummary> {
+        let store = self.read_guide_design_store();
+        let mut names = store.guide_sets.keys().cloned().collect::<Vec<_>>();
+        names.sort();
+        names
+            .into_iter()
+            .filter_map(|name| store.guide_sets.get(&name).cloned())
+            .map(|set| GuideSetSummary {
+                guide_set_id: set.guide_set_id,
+                guide_count: set.guides.len(),
+                created_at_unix_ms: set.created_at_unix_ms,
+                updated_at_unix_ms: set.updated_at_unix_ms,
+            })
+            .collect()
+    }
+
+    pub fn inspect_guide_set_page(
+        &self,
+        guide_set_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(GuideSet, usize, usize), EngineError> {
+        if limit == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Guide page limit must be >= 1".to_string(),
+            });
+        }
+        let guide_set_id = Self::normalize_guide_set_id(guide_set_id)?;
+        let store = self.read_guide_design_store();
+        let mut set = store
+            .guide_sets
+            .get(&guide_set_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide set '{}' not found", guide_set_id),
+            })?;
+        let total = set.guides.len();
+        let clamped_offset = offset.min(total);
+        set.guides = set
+            .guides
+            .into_iter()
+            .skip(clamped_offset)
+            .take(limit)
+            .collect();
+        Ok((set, total, clamped_offset))
+    }
+
+    pub fn get_guide_practical_filter_report(
+        &self,
+        guide_set_id: &str,
+    ) -> Result<GuidePracticalFilterReport, EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(guide_set_id)?;
+        let store = self.read_guide_design_store();
+        store
+            .practical_filter_reports
+            .get(&guide_set_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No practical guide filter report found for '{}'",
+                    guide_set_id
+                ),
+            })
+    }
+
+    pub fn list_guide_oligo_sets(&self, guide_set_id: Option<&str>) -> Vec<GuideOligoSet> {
+        let store = self.read_guide_design_store();
+        let filter = guide_set_id.map(|v| v.trim().to_string());
+        let mut ids = store.oligo_sets.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.oligo_sets.get(&id).cloned())
+            .filter(|set| {
+                filter
+                    .as_ref()
+                    .map(|f| set.guide_set_id == *f)
+                    .unwrap_or(true)
+            })
+            .collect()
+    }
+
+    pub fn get_guide_oligo_set(&self, oligo_set_id: &str) -> Result<GuideOligoSet, EngineError> {
+        let id = oligo_set_id.trim();
+        if id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "oligo_set_id cannot be empty".to_string(),
+            });
+        }
+        let store = self.read_guide_design_store();
+        store
+            .oligo_sets
+            .get(id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide oligo set '{}' not found", id),
+            })
+    }
+
+    fn built_in_guide_oligo_template(template_id: &str) -> Option<GuideOligoTemplateSpec> {
+        match template_id.trim() {
+            "lenti_bsmbi_u6_default" => Some(GuideOligoTemplateSpec {
+                template_id: "lenti_bsmbi_u6_default".to_string(),
+                description: "U6 sgRNA cloning oligos with BsmBI overhangs".to_string(),
+                forward_prefix: "CACC".to_string(),
+                forward_suffix: "".to_string(),
+                reverse_prefix: "AAAC".to_string(),
+                reverse_suffix: "C".to_string(),
+                reverse_uses_reverse_complement_of_spacer: true,
+                uppercase_output: true,
+            }),
+            "plain_forward_reverse" => Some(GuideOligoTemplateSpec {
+                template_id: "plain_forward_reverse".to_string(),
+                description: "Raw spacer and reverse-complement spacer".to_string(),
+                forward_prefix: "".to_string(),
+                forward_suffix: "".to_string(),
+                reverse_prefix: "".to_string(),
+                reverse_suffix: "".to_string(),
+                reverse_uses_reverse_complement_of_spacer: true,
+                uppercase_output: true,
+            }),
+            _ => None,
+        }
+    }
+
+    fn normalize_oligo_set_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "oligo_set_id cannot be empty".to_string(),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn unique_oligo_set_id(store: &GuideDesignStore, base: &str) -> String {
+        if !store.oligo_sets.contains_key(base) {
+            return base.to_string();
+        }
+        let mut idx = 2usize;
+        loop {
+            let candidate = format!("{base}_{idx}");
+            if !store.oligo_sets.contains_key(&candidate) {
+                return candidate;
+            }
+            idx += 1;
+        }
+    }
+
+    fn resolve_oligo_set_for_export(
+        store: &GuideDesignStore,
+        guide_set_id: &str,
+        requested_oligo_set_id: Option<&str>,
+    ) -> Result<GuideOligoSet, EngineError> {
+        if let Some(id) = requested_oligo_set_id {
+            let id = id.trim();
+            if id.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "oligo_set_id cannot be empty".to_string(),
+                });
+            }
+            let set = store.oligo_sets.get(id).ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide oligo set '{}' not found", id),
+            })?;
+            if set.guide_set_id != guide_set_id {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Guide oligo set '{}' belongs to '{}' (expected '{}')",
+                        id, set.guide_set_id, guide_set_id
+                    ),
+                });
+            }
+            return Ok(set.clone());
+        }
+
+        let latest = store
+            .latest_oligo_set_by_guide_set
+            .get(guide_set_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No oligo set is registered for guide set '{}'; run GenerateGuideOligos first",
+                    guide_set_id
+                ),
+            })?;
+        store
+            .oligo_sets
+            .get(latest)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Guide oligo set '{}' referenced by '{}' is missing",
+                    latest, guide_set_id
+                ),
+            })
+    }
+
+    fn normalize_workflow_macro_template_name(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Workflow macro template name cannot be empty".to_string(),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn normalize_workflow_macro_param_name(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Workflow macro parameter name cannot be empty".to_string(),
+            });
+        }
+        let valid = trimmed.chars().enumerate().all(|(idx, ch)| match idx {
+            0 => ch.is_ascii_alphabetic() || ch == '_',
+            _ => ch.is_ascii_alphanumeric() || ch == '_',
+        });
+        if !valid {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid workflow macro parameter name '{}' (expected [A-Za-z_][A-Za-z0-9_]*)",
+                    trimmed
+                ),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn read_workflow_macro_template_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> WorkflowMacroTemplateStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<WorkflowMacroTemplateStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = WORKFLOW_MACRO_TEMPLATES_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_workflow_macro_template_store(&self) -> WorkflowMacroTemplateStore {
+        Self::read_workflow_macro_template_store_from_metadata(
+            self.state
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY),
+        )
+    }
+
+    fn write_workflow_macro_template_store(
+        &mut self,
+        mut store: WorkflowMacroTemplateStore,
+    ) -> Result<(), EngineError> {
+        if store.templates.is_empty() {
+            self.state
+                .metadata
+                .remove(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = WORKFLOW_MACRO_TEMPLATES_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize workflow macro template metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub fn list_workflow_macro_templates(&self) -> Vec<WorkflowMacroTemplateSummary> {
+        let store = self.read_workflow_macro_template_store();
+        let mut names = store.templates.keys().cloned().collect::<Vec<_>>();
+        names.sort();
+        names
+            .into_iter()
+            .filter_map(|name| store.templates.get(&name))
+            .map(|template| WorkflowMacroTemplateSummary {
+                name: template.name.clone(),
+                description: template.description.clone(),
+                parameter_count: template.parameters.len(),
+                created_at_unix_ms: template.created_at_unix_ms,
+                updated_at_unix_ms: template.updated_at_unix_ms,
+            })
+            .collect()
+    }
+
+    pub fn get_workflow_macro_template(&self, name: &str) -> Result<WorkflowMacroTemplate, EngineError> {
+        let name = Self::normalize_workflow_macro_template_name(name)?;
+        let store = self.read_workflow_macro_template_store();
+        store
+            .templates
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Workflow macro template '{}' not found", name),
+            })
+    }
+
+    pub fn render_workflow_macro_template_script(
+        &self,
+        name: &str,
+        bindings: &HashMap<String, String>,
+    ) -> Result<String, EngineError> {
+        let template = self.get_workflow_macro_template(name)?;
+        let declared = template
+            .parameters
+            .iter()
+            .map(|p| p.name.clone())
+            .collect::<HashSet<_>>();
+        for key in bindings.keys() {
+            if !declared.contains(key) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' does not define parameter '{}'",
+                        template.name, key
+                    ),
+                });
+            }
+        }
+
+        let mut resolved: HashMap<String, String> = HashMap::new();
+        for param in &template.parameters {
+            if let Some(value) = bindings.get(&param.name) {
+                resolved.insert(param.name.clone(), value.clone());
+            } else if let Some(default_value) = &param.default_value {
+                resolved.insert(param.name.clone(), default_value.clone());
+            } else if param.required {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' is missing required parameter '{}'",
+                        template.name, param.name
+                    ),
+                });
+            }
+        }
+
+        let placeholder_regex =
+            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not compile workflow macro placeholder regex: {e}"),
+            })?;
+        let mut missing: Vec<String> = vec![];
+        for captures in placeholder_regex.captures_iter(&template.script) {
+            if let Some(name) = captures.get(1).map(|m| m.as_str()) {
+                if !declared.contains(name) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Workflow macro template '{}' references undeclared parameter '{}'",
+                            template.name, name
+                        ),
+                    });
+                }
+                if !resolved.contains_key(name) {
+                    missing.push(name.to_string());
+                }
+            }
+        }
+        if !missing.is_empty() {
+            missing.sort();
+            missing.dedup();
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Workflow macro template '{}' is missing parameter bindings for: {}",
+                    template.name,
+                    missing.join(", ")
+                ),
+            });
+        }
+
+        let rendered = placeholder_regex
+            .replace_all(&template.script, |captures: &regex::Captures<'_>| {
+                let key = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
+                resolved.get(key).cloned().unwrap_or_default()
+            })
+            .to_string();
+        Ok(rendered)
     }
 
     fn normalize_candidate_macro_template_name(raw: &str) -> Result<String, EngineError> {
@@ -5008,6 +6113,780 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn append_guide_design_audit(
+        store: &mut GuideDesignStore,
+        operation: &str,
+        guide_set_id: &str,
+        payload: serde_json::Value,
+    ) {
+        store.audit_log.push(GuideDesignAuditEntry {
+            unix_ms: Self::now_unix_ms(),
+            operation: operation.to_string(),
+            guide_set_id: guide_set_id.to_string(),
+            payload,
+        });
+        if store.audit_log.len() > 512 {
+            let drain = store.audit_log.len() - 512;
+            store.audit_log.drain(0..drain);
+        }
+    }
+
+    fn op_upsert_guide_set(
+        &mut self,
+        guide_set_id: String,
+        guides: Vec<GuideCandidate>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(&guide_set_id)?;
+        let guides = Self::normalize_guide_candidates(guides)?;
+        let mut store = self.read_guide_design_store();
+        let now = Self::now_unix_ms();
+        let created_at_unix_ms = store
+            .guide_sets
+            .get(&guide_set_id)
+            .map(|set| set.created_at_unix_ms)
+            .unwrap_or(now);
+        let replaced_existing = store
+            .guide_sets
+            .insert(
+                guide_set_id.clone(),
+                GuideSet {
+                    guide_set_id: guide_set_id.clone(),
+                    guides: guides.clone(),
+                    created_at_unix_ms,
+                    updated_at_unix_ms: now,
+                },
+            )
+            .is_some();
+        Self::append_guide_design_audit(
+            &mut store,
+            "UpsertGuideSet",
+            &guide_set_id,
+            json!({
+                "guide_count": guides.len(),
+                "replaced_existing": replaced_existing
+            }),
+        );
+        self.write_guide_design_store(store)?;
+        result.messages.push(format!(
+            "Upserted guide set '{}' with {} guide(s)",
+            guide_set_id,
+            guides.len()
+        ));
+        if replaced_existing {
+            result.warnings.push(format!(
+                "Guide set '{}' replaced existing content",
+                guide_set_id
+            ));
+        }
+        Ok(())
+    }
+
+    fn op_delete_guide_set(
+        &mut self,
+        guide_set_id: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(&guide_set_id)?;
+        let mut store = self.read_guide_design_store();
+        let removed = store.guide_sets.remove(&guide_set_id).is_some();
+        let _ = store.practical_filter_reports.remove(&guide_set_id);
+        let oligo_ids = store
+            .oligo_sets
+            .iter()
+            .filter(|(_, set)| set.guide_set_id == guide_set_id)
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        for oligo_id in &oligo_ids {
+            let _ = store.oligo_sets.remove(oligo_id);
+        }
+        let _ = store.latest_oligo_set_by_guide_set.remove(&guide_set_id);
+        if removed {
+            Self::append_guide_design_audit(
+                &mut store,
+                "DeleteGuideSet",
+                &guide_set_id,
+                json!({
+                    "removed_oligo_sets": oligo_ids.len()
+                }),
+            );
+        }
+        self.write_guide_design_store(store)?;
+        if removed {
+            result.messages.push(format!(
+                "Deleted guide set '{}' and {} associated oligo set(s)",
+                guide_set_id,
+                oligo_ids.len()
+            ));
+        } else {
+            result
+                .warnings
+                .push(format!("Guide set '{}' was not present", guide_set_id));
+        }
+        Ok(())
+    }
+
+    fn op_filter_guides_practical(
+        &mut self,
+        guide_set_id: String,
+        config: GuidePracticalFilterConfig,
+        output_guide_set_id: Option<String>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(&guide_set_id)?;
+        let output_guide_set_id = output_guide_set_id
+            .as_deref()
+            .map(Self::normalize_guide_set_id)
+            .transpose()?;
+        let config = Self::normalize_practical_filter_config(config)?;
+        let mut store = self.read_guide_design_store();
+        let guide_set = store
+            .guide_sets
+            .get(&guide_set_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide set '{}' not found", guide_set_id),
+            })?;
+        if guide_set.guides.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Guide set '{}' is empty", guide_set_id),
+            });
+        }
+
+        let mut passed_guides: Vec<GuideCandidate> = Vec::new();
+        let mut rows: Vec<GuidePracticalFilterResult> = Vec::with_capacity(guide_set.guides.len());
+
+        for guide in &guide_set.guides {
+            let spacer = guide
+                .protospacer
+                .as_bytes()
+                .iter()
+                .map(|b| match b.to_ascii_uppercase() {
+                    b'U' => b'T',
+                    other => other,
+                })
+                .collect::<Vec<_>>();
+            let tail = guide
+                .pam
+                .as_bytes()
+                .iter()
+                .map(|b| match b.to_ascii_uppercase() {
+                    b'U' => b'T',
+                    other => other,
+                })
+                .collect::<Vec<_>>();
+
+            let mut row = GuidePracticalFilterResult {
+                guide_id: guide.guide_id.clone(),
+                passed: true,
+                reasons: vec![],
+                warnings: vec![],
+                metrics: HashMap::new(),
+            };
+
+            if config.reject_ambiguous_bases && Self::has_ambiguous_bases(&spacer) {
+                row.reasons.push(GuideFilterReason {
+                    code: "contains_ambiguous_base".to_string(),
+                    message: "Protospacer contains non-ACGT bases".to_string(),
+                });
+            }
+
+            if config.gc_min.is_some() || config.gc_max.is_some() {
+                if let Some(gc) = Self::sequence_gc_fraction(&spacer) {
+                    row.metrics.insert("gc_fraction".to_string(), gc);
+                    if let Some(min) = config.gc_min {
+                        if gc < min {
+                            row.reasons.push(GuideFilterReason {
+                                code: "gc_too_low".to_string(),
+                                message: format!("GC fraction {:.3} is below minimum {:.3}", gc, min),
+                            });
+                        }
+                    }
+                    if let Some(max) = config.gc_max {
+                        if gc > max {
+                            row.reasons.push(GuideFilterReason {
+                                code: "gc_too_high".to_string(),
+                                message: format!("GC fraction {:.3} is above maximum {:.3}", gc, max),
+                            });
+                        }
+                    }
+                }
+            }
+
+            let max_run = Self::max_homopolymer_run(&spacer);
+            row.metrics
+                .insert("max_homopolymer_run".to_string(), max_run as f64);
+            if let Some(limit) = config.max_homopolymer_run {
+                if max_run > limit {
+                    row.reasons.push(GuideFilterReason {
+                        code: "homopolymer_run_exceeded".to_string(),
+                        message: format!(
+                            "Max homopolymer run {} exceeds configured limit {}",
+                            max_run, limit
+                        ),
+                    });
+                }
+            }
+            for (base, limit) in &config.max_homopolymer_run_per_base {
+                let probe = base.as_bytes()[0];
+                let observed = Self::max_homopolymer_run_for_base(&spacer, probe);
+                row.metrics.insert(
+                    format!("max_homopolymer_run_{}", base.to_ascii_lowercase()),
+                    observed as f64,
+                );
+                if observed > *limit {
+                    row.reasons.push(GuideFilterReason {
+                        code: "homopolymer_run_exceeded".to_string(),
+                        message: format!(
+                            "Homopolymer run for base '{}' ({}) exceeds configured limit {}",
+                            base, observed, limit
+                        ),
+                    });
+                }
+            }
+
+            if config.avoid_u6_terminator_tttt {
+                let mut window = spacer.clone();
+                if config.u6_terminator_window == GuideU6TerminatorWindow::SpacerPlusTail {
+                    window.extend_from_slice(&tail);
+                }
+                if Self::contains_u6_terminator_t4(&window) {
+                    row.reasons.push(GuideFilterReason {
+                        code: "u6_terminator_t4".to_string(),
+                        message: "Contains TTTT in configured U6 terminator scan window".to_string(),
+                    });
+                }
+            }
+
+            let max_repeat = Self::max_dinucleotide_repeat_units(&spacer);
+            row.metrics
+                .insert("max_dinucleotide_repeat_units".to_string(), max_repeat as f64);
+            if let Some(limit) = config.max_dinucleotide_repeat_units {
+                if max_repeat > limit {
+                    row.reasons.push(GuideFilterReason {
+                        code: "dinucleotide_repeat_exceeded".to_string(),
+                        message: format!(
+                            "Max dinucleotide repeat units {} exceeds configured limit {}",
+                            max_repeat, limit
+                        ),
+                    });
+                }
+            }
+
+            for motif in &config.forbidden_motifs {
+                if Self::contains_motif_any_strand(&spacer, motif)? {
+                    row.reasons.push(GuideFilterReason {
+                        code: "forbidden_motif_present".to_string(),
+                        message: format!("Protospacer contains forbidden motif '{}'", motif),
+                    });
+                }
+            }
+
+            if let Some(required_base) = config.required_5prime_base.as_ref() {
+                if let Some(actual) = spacer.first().map(|b| (*b as char).to_string()) {
+                    if actual != *required_base {
+                        if config.allow_5prime_g_extension && required_base == "G" {
+                            row.warnings.push(
+                                "Missing required 5' G but can be rescued by 5' G extension"
+                                    .to_string(),
+                            );
+                        } else {
+                            row.reasons.push(GuideFilterReason {
+                                code: "required_5prime_base_missing".to_string(),
+                                message: format!(
+                                    "Protospacer 5' base '{}' does not match required '{}'",
+                                    actual, required_base
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+
+            row.passed = row.reasons.is_empty();
+            if row.passed {
+                passed_guides.push(guide.clone());
+            }
+            rows.push(row);
+        }
+
+        let report = GuidePracticalFilterReport {
+            guide_set_id: guide_set_id.clone(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            config: config.clone(),
+            passed_count: passed_guides.len(),
+            rejected_count: rows.len().saturating_sub(passed_guides.len()),
+            results: rows,
+        };
+        store
+            .practical_filter_reports
+            .insert(guide_set_id.clone(), report.clone());
+
+        if let Some(output_guide_set_id) = output_guide_set_id {
+            let now = Self::now_unix_ms();
+            let created_at_unix_ms = store
+                .guide_sets
+                .get(&output_guide_set_id)
+                .map(|set| set.created_at_unix_ms)
+                .unwrap_or(now);
+            let replaced = store
+                .guide_sets
+                .insert(
+                    output_guide_set_id.clone(),
+                    GuideSet {
+                        guide_set_id: output_guide_set_id.clone(),
+                        guides: passed_guides.clone(),
+                        created_at_unix_ms,
+                        updated_at_unix_ms: now,
+                    },
+                )
+                .is_some();
+            result.messages.push(format!(
+                "Wrote passed guides to set '{}' ({} guide(s))",
+                output_guide_set_id,
+                passed_guides.len()
+            ));
+            if replaced {
+                result.warnings.push(format!(
+                    "Guide set '{}' replaced existing content",
+                    output_guide_set_id
+                ));
+            }
+        }
+
+        Self::append_guide_design_audit(
+            &mut store,
+            "FilterGuidesPractical",
+            &guide_set_id,
+            json!({
+                "passed_count": report.passed_count,
+                "rejected_count": report.rejected_count
+            }),
+        );
+        self.write_guide_design_store(store)?;
+        result.messages.push(format!(
+            "Filtered guide set '{}' (passed {}, rejected {})",
+            guide_set_id, report.passed_count, report.rejected_count
+        ));
+        Ok(())
+    }
+
+    fn op_generate_guide_oligos(
+        &mut self,
+        guide_set_id: String,
+        template_id: String,
+        apply_5prime_g_extension: Option<bool>,
+        output_oligo_set_id: Option<String>,
+        passed_only: Option<bool>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(&guide_set_id)?;
+        let template = Self::built_in_guide_oligo_template(&template_id).ok_or_else(|| {
+            EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Unknown guide oligo template '{}'; supported templates: lenti_bsmbi_u6_default, plain_forward_reverse",
+                    template_id
+                ),
+            }
+        })?;
+        let apply_5prime_g_extension = apply_5prime_g_extension.unwrap_or(false);
+        let passed_only = passed_only.unwrap_or(false);
+
+        let mut store = self.read_guide_design_store();
+        let guide_set = store
+            .guide_sets
+            .get(&guide_set_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide set '{}' not found", guide_set_id),
+            })?;
+        if guide_set.guides.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Guide set '{}' is empty", guide_set_id),
+            });
+        }
+
+        let passed_lookup = if passed_only {
+            let report = store
+                .practical_filter_reports
+                .get(&guide_set_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "No practical filter report found for '{}' (required because passed_only=true)",
+                        guide_set_id
+                    ),
+                })?;
+            Some(
+                report
+                    .results
+                    .iter()
+                    .filter(|r| r.passed)
+                    .map(|r| r.guide_id.clone())
+                    .collect::<HashSet<_>>(),
+            )
+        } else {
+            None
+        };
+
+        let mut guides = guide_set.guides.clone();
+        guides.sort_by(|a, b| {
+            a.rank
+                .unwrap_or(usize::MAX)
+                .cmp(&b.rank.unwrap_or(usize::MAX))
+                .then(a.guide_id.cmp(&b.guide_id))
+        });
+        let mut records = vec![];
+        for guide in &guides {
+            if let Some(lookup) = &passed_lookup {
+                if !lookup.contains(&guide.guide_id) {
+                    continue;
+                }
+            }
+            let mut notes = vec![];
+            let mut spacer = guide
+                .protospacer
+                .as_bytes()
+                .iter()
+                .map(|b| match b.to_ascii_uppercase() {
+                    b'U' => b'T',
+                    other => other,
+                } as char)
+                .collect::<String>();
+            if apply_5prime_g_extension && !spacer.starts_with('G') {
+                spacer = format!("G{spacer}");
+                notes.push("5' G extension applied".to_string());
+            }
+            let mut forward = format!(
+                "{}{}{}",
+                template.forward_prefix, spacer, template.forward_suffix
+            );
+            let reverse_spacer = if template.reverse_uses_reverse_complement_of_spacer {
+                Self::reverse_complement(&spacer)
+            } else {
+                spacer
+            };
+            let mut reverse = format!(
+                "{}{}{}",
+                template.reverse_prefix, reverse_spacer, template.reverse_suffix
+            );
+            if template.uppercase_output {
+                forward = forward.to_ascii_uppercase();
+                reverse = reverse.to_ascii_uppercase();
+            }
+            records.push(GuideOligoRecord {
+                guide_id: guide.guide_id.clone(),
+                rank: guide.rank,
+                forward_oligo: forward,
+                reverse_oligo: reverse,
+                notes,
+            });
+        }
+        if records.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "No guides selected for oligo generation in set '{}'",
+                    guide_set_id
+                ),
+            });
+        }
+
+        let now = Self::now_unix_ms();
+        let requested = output_oligo_set_id
+            .as_deref()
+            .map(Self::normalize_oligo_set_id)
+            .transpose()?;
+        let default_id = format!("{}_{}_{}", guide_set_id, template.template_id, now);
+        let oligo_set_id = Self::unique_oligo_set_id(
+            &store,
+            requested.as_deref().unwrap_or(default_id.as_str()),
+        );
+        store.latest_oligo_set_by_guide_set.insert(
+            guide_set_id.clone(),
+            oligo_set_id.clone(),
+        );
+        store.oligo_sets.insert(
+            oligo_set_id.clone(),
+            GuideOligoSet {
+                oligo_set_id: oligo_set_id.clone(),
+                guide_set_id: guide_set_id.clone(),
+                generated_at_unix_ms: now,
+                template: template.clone(),
+                apply_5prime_g_extension,
+                records: records.clone(),
+            },
+        );
+        Self::append_guide_design_audit(
+            &mut store,
+            "GenerateGuideOligos",
+            &guide_set_id,
+            json!({
+                "oligo_set_id": oligo_set_id,
+                "record_count": records.len(),
+                "template_id": template.template_id,
+                "passed_only": passed_only,
+                "apply_5prime_g_extension": apply_5prime_g_extension
+            }),
+        );
+        self.write_guide_design_store(store)?;
+        result.messages.push(format!(
+            "Generated oligos for guide set '{}' ({} guide(s), template '{}')",
+            guide_set_id,
+            records.len(),
+            template.template_id
+        ));
+        if passed_only {
+            result.messages.push(
+                "Oligo generation used only practical-filter passing guides".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    fn csv_escape(value: &str) -> String {
+        if value.contains(',') || value.contains('"') || value.contains('\n') {
+            format!("\"{}\"", value.replace('"', "\"\""))
+        } else {
+            value.to_string()
+        }
+    }
+
+    fn ensure_output_parent_dir(path: &str) -> Result<(), EngineError> {
+        let parent = Path::new(path)
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        std::fs::create_dir_all(&parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create output directory '{}' for export '{}': {e}",
+                parent.display(),
+                path
+            ),
+        })
+    }
+
+    fn op_export_guide_oligos(
+        &mut self,
+        guide_set_id: String,
+        oligo_set_id: Option<String>,
+        format: GuideOligoExportFormat,
+        path: String,
+        plate_format: Option<GuideOligoPlateFormat>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(&guide_set_id)?;
+        if path.trim().is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ExportGuideOligos requires non-empty path".to_string(),
+            });
+        }
+        let mut store = self.read_guide_design_store();
+        if !store.guide_sets.contains_key(&guide_set_id) {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide set '{}' not found", guide_set_id),
+            });
+        }
+        let oligo_set = Self::resolve_oligo_set_for_export(
+            &store,
+            &guide_set_id,
+            oligo_set_id.as_deref(),
+        )?;
+
+        let text = match format {
+            GuideOligoExportFormat::CsvTable => {
+                let mut rows = vec![
+                    "guide_id,rank,forward_oligo,reverse_oligo,notes".to_string()
+                ];
+                for record in &oligo_set.records {
+                    let rank = record.rank.map(|v| v.to_string()).unwrap_or_default();
+                    let notes = record.notes.join("; ");
+                    rows.push(format!(
+                        "{},{},{},{},{}",
+                        Self::csv_escape(&record.guide_id),
+                        Self::csv_escape(&rank),
+                        Self::csv_escape(&record.forward_oligo),
+                        Self::csv_escape(&record.reverse_oligo),
+                        Self::csv_escape(&notes),
+                    ));
+                }
+                rows.join("\n")
+            }
+            GuideOligoExportFormat::PlateCsv => {
+                let plate_format = plate_format.unwrap_or_default();
+                let (rows_per_plate, cols_per_plate) = plate_format.dimensions();
+                let capacity = rows_per_plate * cols_per_plate;
+                let mut rows = vec![
+                    "plate,well,guide_id,rank,forward_oligo,reverse_oligo,notes".to_string(),
+                ];
+                for (idx, record) in oligo_set.records.iter().enumerate() {
+                    let plate_index = idx / capacity + 1;
+                    let within_plate = idx % capacity;
+                    let row = within_plate / cols_per_plate;
+                    let col = within_plate % cols_per_plate + 1;
+                    let row_char = (b'A' + row as u8) as char;
+                    let well = format!("{row_char}{:02}", col);
+                    let rank = record.rank.map(|v| v.to_string()).unwrap_or_default();
+                    let notes = record.notes.join("; ");
+                    rows.push(format!(
+                        "{},{},{},{},{},{},{}",
+                        plate_index,
+                        Self::csv_escape(&well),
+                        Self::csv_escape(&record.guide_id),
+                        Self::csv_escape(&rank),
+                        Self::csv_escape(&record.forward_oligo),
+                        Self::csv_escape(&record.reverse_oligo),
+                        Self::csv_escape(&notes),
+                    ));
+                }
+                rows.join("\n")
+            }
+            GuideOligoExportFormat::Fasta => {
+                let mut out = String::new();
+                for record in &oligo_set.records {
+                    out.push_str(&format!(
+                        ">{}|forward\n{}\n",
+                        record.guide_id, record.forward_oligo
+                    ));
+                    out.push_str(&format!(
+                        ">{}|reverse\n{}\n",
+                        record.guide_id, record.reverse_oligo
+                    ));
+                }
+                out
+            }
+        };
+
+        Self::ensure_output_parent_dir(&path)?;
+        std::fs::write(&path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write oligo export '{}': {e}", path),
+        })?;
+
+        let report = GuideOligoExportReport {
+            guide_set_id: guide_set_id.clone(),
+            oligo_set_id: oligo_set.oligo_set_id.clone(),
+            format: format.as_str().to_string(),
+            path: path.clone(),
+            exported_records: oligo_set.records.len(),
+        };
+        Self::append_guide_design_audit(
+            &mut store,
+            "ExportGuideOligos",
+            &guide_set_id,
+            serde_json::to_value(&report).unwrap_or_else(|_| json!({ "path": path })),
+        );
+        self.write_guide_design_store(store)?;
+        result.messages.push(format!(
+            "Exported {} oligo records for '{}' to '{}' as {}",
+            report.exported_records, guide_set_id, report.path, report.format
+        ));
+        Ok(())
+    }
+
+    fn op_export_guide_protocol_text(
+        &mut self,
+        guide_set_id: String,
+        oligo_set_id: Option<String>,
+        path: String,
+        include_qc_checklist: Option<bool>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let guide_set_id = Self::normalize_guide_set_id(&guide_set_id)?;
+        if path.trim().is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ExportGuideProtocolText requires non-empty path".to_string(),
+            });
+        }
+        let mut store = self.read_guide_design_store();
+        if !store.guide_sets.contains_key(&guide_set_id) {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Guide set '{}' not found", guide_set_id),
+            });
+        }
+        let oligo_set = Self::resolve_oligo_set_for_export(
+            &store,
+            &guide_set_id,
+            oligo_set_id.as_deref(),
+        )?;
+        let include_qc = include_qc_checklist.unwrap_or(true);
+
+        let mut text = String::new();
+        text.push_str("GENtle Guide Oligo Protocol\n");
+        text.push_str("==========================\n\n");
+        text.push_str(&format!("Guide set: {}\n", guide_set_id));
+        text.push_str(&format!("Oligo set: {}\n", oligo_set.oligo_set_id));
+        text.push_str(&format!(
+            "Template: {} ({})\n",
+            oligo_set.template.template_id, oligo_set.template.description
+        ));
+        text.push_str(&format!(
+            "Generated guides: {}\n\n",
+            oligo_set.records.len()
+        ));
+        text.push_str("Suggested steps:\n");
+        text.push_str("1. Prepare oligo stocks according to ordering sheet.\n");
+        text.push_str("2. Anneal forward/reverse oligo pairs.\n");
+        text.push_str("3. Clone into vector backbone using template-defined overhang strategy.\n");
+        text.push_str("4. Transform, recover colonies, and verify insertion by sequencing.\n\n");
+        text.push_str("Guide oligos:\n");
+        for record in &oligo_set.records {
+            let rank = record
+                .rank
+                .map(|v| format!("rank={v}"))
+                .unwrap_or_else(|| "rank=-".to_string());
+            text.push_str(&format!(
+                "- {} ({})\n  forward: {}\n  reverse: {}\n",
+                record.guide_id, rank, record.forward_oligo, record.reverse_oligo
+            ));
+            if !record.notes.is_empty() {
+                text.push_str(&format!("  notes: {}\n", record.notes.join("; ")));
+            }
+        }
+        if include_qc {
+            text.push_str("\nQC checklist:\n");
+            text.push_str("- Confirm oligo lengths and overhang sequences.\n");
+            text.push_str("- Confirm no guide contains forbidden motifs for your cloning strategy.\n");
+            text.push_str("- Confirm expected insert size by colony PCR or digest.\n");
+            text.push_str("- Confirm sequence identity by Sanger/NGS.\n");
+        }
+
+        Self::ensure_output_parent_dir(&path)?;
+        std::fs::write(&path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write protocol export '{}': {e}", path),
+        })?;
+
+        let report = GuideProtocolExportReport {
+            guide_set_id: guide_set_id.clone(),
+            oligo_set_id: oligo_set.oligo_set_id.clone(),
+            path: path.clone(),
+            guide_count: oligo_set.records.len(),
+        };
+        Self::append_guide_design_audit(
+            &mut store,
+            "ExportGuideProtocolText",
+            &guide_set_id,
+            serde_json::to_value(&report).unwrap_or_else(|_| json!({ "path": path })),
+        );
+        self.write_guide_design_store(store)?;
+        result.messages.push(format!(
+            "Exported guide protocol text for '{}' to '{}'",
+            guide_set_id, report.path
+        ));
+        Ok(())
+    }
+
     fn op_delete_candidate_set(
         &mut self,
         set_name: String,
@@ -5943,6 +7822,134 @@ impl GentleEngine {
             result.warnings.push(format!(
                 "ParetoFrontierCandidateSet output '{}' replaced existing candidate set",
                 output_set
+            ));
+        }
+        Ok(())
+    }
+
+    fn op_upsert_workflow_macro_template(
+        &mut self,
+        name: String,
+        description: Option<String>,
+        parameters: Vec<WorkflowMacroTemplateParam>,
+        script: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let name = Self::normalize_workflow_macro_template_name(&name)?;
+        let script = script.trim();
+        if script.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Workflow macro template script cannot be empty".to_string(),
+            });
+        }
+
+        let mut normalized_parameters = Vec::with_capacity(parameters.len());
+        let mut seen = HashSet::new();
+        for parameter in parameters {
+            let param_name = Self::normalize_workflow_macro_param_name(&parameter.name)?;
+            if !seen.insert(param_name.clone()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' contains duplicate parameter '{}'",
+                        name, param_name
+                    ),
+                });
+            }
+            let default_value = parameter
+                .default_value
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let required = if default_value.is_some() {
+                false
+            } else {
+                parameter.required
+            };
+            normalized_parameters.push(WorkflowMacroTemplateParam {
+                name: param_name,
+                default_value,
+                required,
+            });
+        }
+
+        let declared = normalized_parameters
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .collect::<HashSet<_>>();
+        let placeholder_regex =
+            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not compile workflow macro placeholder regex: {e}"),
+            })?;
+        for captures in placeholder_regex.captures_iter(script) {
+            if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
+                if !declared.contains(param_name) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Workflow macro template '{}' references undeclared parameter '{}' in script",
+                            name, param_name
+                        ),
+                    });
+                }
+            }
+        }
+
+        let now = Self::now_unix_ms();
+        let mut store = self.read_workflow_macro_template_store();
+        let created_at_unix_ms = store
+            .templates
+            .get(&name)
+            .map(|template| template.created_at_unix_ms)
+            .unwrap_or(now);
+        let replaced = store
+            .templates
+            .insert(
+                name.clone(),
+                WorkflowMacroTemplate {
+                    name: name.clone(),
+                    description: description
+                        .map(|text| text.trim().to_string())
+                        .filter(|text| !text.is_empty()),
+                    parameters: normalized_parameters,
+                    template_schema: CLONING_MACRO_TEMPLATE_SCHEMA.to_string(),
+                    script: script.to_string(),
+                    created_at_unix_ms,
+                    updated_at_unix_ms: now,
+                },
+            )
+            .is_some();
+        self.write_workflow_macro_template_store(store)?;
+        if replaced {
+            result
+                .messages
+                .push(format!("Updated workflow macro template '{}'", name));
+        } else {
+            result
+                .messages
+                .push(format!("Added workflow macro template '{}'", name));
+        }
+        Ok(())
+    }
+
+    fn op_delete_workflow_macro_template(
+        &mut self,
+        name: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let name = Self::normalize_workflow_macro_template_name(&name)?;
+        let mut store = self.read_workflow_macro_template_store();
+        let removed = store.templates.remove(&name).is_some();
+        self.write_workflow_macro_template_store(store)?;
+        if removed {
+            result
+                .messages
+                .push(format!("Deleted workflow macro template '{}'", name));
+        } else {
+            result.warnings.push(format!(
+                "Workflow macro template '{}' was not present",
+                name
             ));
         }
         Ok(())
@@ -7765,6 +9772,90 @@ impl GentleEngine {
         }
     }
 
+    fn next_arrangement_id(&mut self) -> String {
+        loop {
+            self.state.container_state.next_arrangement_counter += 1;
+            let id = format!("arrangement-{}", self.state.container_state.next_arrangement_counter);
+            if !self.state.container_state.arrangements.contains_key(&id) {
+                return id;
+            }
+        }
+    }
+
+    fn add_serial_arrangement(
+        &mut self,
+        container_ids: &[ContainerId],
+        arrangement_id: Option<String>,
+        name: Option<String>,
+        ladders: Option<Vec<String>>,
+        created_by_op: Option<&str>,
+    ) -> Result<String, EngineError> {
+        if container_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "CreateArrangementSerial requires at least one container id".to_string(),
+            });
+        }
+        let mut lane_container_ids: Vec<ContainerId> = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        for container_id in container_ids {
+            let trimmed = container_id.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if !self.state.container_state.containers.contains_key(trimmed) {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Container '{trimmed}' not found"),
+                });
+            }
+            if seen.insert(trimmed.to_string()) {
+                lane_container_ids.push(trimmed.to_string());
+            }
+        }
+        if lane_container_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "CreateArrangementSerial requires at least one non-empty container id"
+                    .to_string(),
+            });
+        }
+        let arrangement_id = arrangement_id
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| self.next_arrangement_id());
+        if self
+            .state
+            .container_state
+            .arrangements
+            .contains_key(&arrangement_id)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Arrangement '{arrangement_id}' already exists"),
+            });
+        }
+        let arrangement = Arrangement {
+            arrangement_id: arrangement_id.clone(),
+            mode: ArrangementMode::Serial,
+            name: name.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            lane_container_ids,
+            ladders: ladders
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect::<Vec<_>>(),
+            created_by_op: created_by_op.map(ToString::to_string),
+            created_at_unix_ms: Self::now_unix_ms(),
+        };
+        self.state
+            .container_state
+            .arrangements
+            .insert(arrangement_id.clone(), arrangement);
+        Ok(arrangement_id)
+    }
+
     fn add_container(
         &mut self,
         members: &[SeqId],
@@ -8058,6 +10149,84 @@ impl GentleEngine {
         Ok(container.members.clone())
     }
 
+    fn gel_samples_from_container_ids(
+        &self,
+        container_ids: &[ContainerId],
+    ) -> Result<Vec<GelSampleInput>, EngineError> {
+        if container_ids.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "At least one container id is required for gel rendering".to_string(),
+            });
+        }
+        let mut samples: Vec<GelSampleInput> = vec![];
+        for container_id in container_ids {
+            let container = self
+                .state
+                .container_state
+                .containers
+                .get(container_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!("Container '{container_id}' not found"),
+                })?;
+            if container.members.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Container '{container_id}' has no members"),
+                });
+            }
+            let mut members: Vec<(String, usize)> = Vec::with_capacity(container.members.len());
+            for seq_id in &container.members {
+                let dna = self.state.sequences.get(seq_id).ok_or_else(|| EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Container '{container_id}' references unknown sequence '{seq_id}'"
+                    ),
+                })?;
+                members.push((seq_id.clone(), dna.len()));
+            }
+            let lane_name = container
+                .name
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(ToString::to_string)
+                .unwrap_or_else(|| container.container_id.clone());
+            samples.push(GelSampleInput {
+                name: lane_name,
+                members,
+            });
+        }
+        Ok(samples)
+    }
+
+    fn gel_samples_from_arrangement(
+        &self,
+        arrangement_id: &str,
+    ) -> Result<(Vec<GelSampleInput>, Vec<String>), EngineError> {
+        let arrangement = self
+            .state
+            .container_state
+            .arrangements
+            .get(arrangement_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Arrangement '{arrangement_id}' not found"),
+            })?;
+        if arrangement.mode != ArrangementMode::Serial {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Arrangement '{}' is mode '{:?}', only serial arrangements can render gels",
+                    arrangement_id, arrangement.mode
+                ),
+            });
+        }
+        let samples = self.gel_samples_from_container_ids(&arrangement.lane_container_ids)?;
+        Ok((samples, arrangement.ladders.clone()))
+    }
+
     fn flatten_container_members(
         &self,
         container_ids: &[ContainerId],
@@ -8166,11 +10335,28 @@ impl GentleEngine {
             .collect();
         containers.sort_by(|a, b| a.id.cmp(&b.id));
 
+        let mut arrangements: Vec<EngineArrangementSummary> = self
+            .state
+            .container_state
+            .arrangements
+            .iter()
+            .map(|(id, arrangement)| EngineArrangementSummary {
+                id: id.to_string(),
+                mode: format!("{:?}", arrangement.mode),
+                lane_count: arrangement.lane_container_ids.len(),
+                lane_container_ids: arrangement.lane_container_ids.clone(),
+                ladders: arrangement.ladders.clone(),
+            })
+            .collect();
+        arrangements.sort_by(|a, b| a.id.cmp(&b.id));
+
         EngineStateSummary {
             sequence_count: sequences.len(),
             sequences,
             container_count: containers.len(),
             containers,
+            arrangement_count: arrangements.len(),
+            arrangements,
             display: self.state.display.clone(),
         }
     }
@@ -9453,41 +11639,115 @@ impl GentleEngine {
                     .messages
                     .push(format!("Wrote lineage SVG to '{}'", path));
             }
+            Operation::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                name,
+                ladders,
+            } => {
+                let created_id = self.add_serial_arrangement(
+                    &container_ids,
+                    arrangement_id,
+                    name,
+                    ladders,
+                    Some(&result.op_id),
+                )?;
+                result.messages.push(format!(
+                    "Created serial arrangement '{}' with {} lane container(s)",
+                    created_id,
+                    self.state
+                        .container_state
+                        .arrangements
+                        .get(&created_id)
+                        .map(|a| a.lane_container_ids.len())
+                        .unwrap_or(0)
+                ));
+            }
             Operation::RenderPoolGelSvg {
                 inputs,
                 path,
                 ladders,
+                container_ids,
+                arrangement_id,
             } => {
-                if inputs.is_empty() {
-                    return Err(EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: "RenderPoolGelSvg requires at least one input sequence id"
-                            .to_string(),
-                    });
-                }
-                let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
-                for seq_id in &inputs {
-                    let dna = self
-                        .state
-                        .sequences
-                        .get(seq_id)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!("Sequence '{seq_id}' not found"),
-                        })?;
-                    members.push((seq_id.clone(), dna.len()));
-                }
-                let ladder_names = ladders
+                let mut ladder_names = ladders
                     .unwrap_or_default()
                     .into_iter()
                     .map(|v| v.trim().to_string())
                     .filter(|v| !v.is_empty())
                     .collect::<Vec<_>>();
-                let layout =
-                    build_pool_gel_layout(&members, &ladder_names).map_err(|e| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: e,
-                    })?;
+                let samples: Vec<GelSampleInput> =
+                    if let Some(arrangement_id) = arrangement_id.as_deref().map(str::trim) {
+                        if arrangement_id.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "arrangement_id cannot be empty".to_string(),
+                            });
+                        }
+                        let (arrangement_samples, arrangement_ladders) =
+                            self.gel_samples_from_arrangement(arrangement_id)?;
+                        if ladder_names.is_empty() {
+                            ladder_names = arrangement_ladders;
+                        }
+                        if !inputs.is_empty() {
+                            result.warnings.push(
+                                "RenderPoolGelSvg ignored 'inputs' because arrangement_id was provided"
+                                    .to_string(),
+                            );
+                        }
+                        if container_ids
+                            .as_ref()
+                            .is_some_and(|ids| !ids.is_empty())
+                        {
+                            result.warnings.push(
+                                "RenderPoolGelSvg ignored 'container_ids' because arrangement_id was provided"
+                                    .to_string(),
+                            );
+                        }
+                        arrangement_samples
+                    } else if let Some(container_ids) = container_ids {
+                        if container_ids.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "container_ids was provided but empty".to_string(),
+                            });
+                        }
+                        if !inputs.is_empty() {
+                            result.warnings.push(
+                                "RenderPoolGelSvg ignored 'inputs' because container_ids were provided"
+                                    .to_string(),
+                            );
+                        }
+                        self.gel_samples_from_container_ids(&container_ids)?
+                    } else {
+                        if inputs.is_empty() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "RenderPoolGelSvg requires either inputs, container_ids, or arrangement_id"
+                                    .to_string(),
+                            });
+                        }
+                        let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
+                        for seq_id in &inputs {
+                            let dna = self
+                                .state
+                                .sequences
+                                .get(seq_id)
+                                .ok_or_else(|| EngineError {
+                                    code: ErrorCode::NotFound,
+                                    message: format!("Sequence '{seq_id}' not found"),
+                                })?;
+                            members.push((seq_id.clone(), dna.len()));
+                        }
+                        vec![GelSampleInput {
+                            name: format!("Input tube (n={})", members.len()),
+                            members,
+                        }]
+                    };
+                let layout = build_serial_gel_layout(&samples, &ladder_names).map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: e,
+                })?;
                 let svg = export_pool_gel_svg(&layout);
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -9499,8 +11759,9 @@ impl GentleEngine {
                     layout.selected_ladders.join(" + ")
                 };
                 result.messages.push(format!(
-                    "Wrote pool gel SVG for {} sequence(s) to '{}' (ladders: {})",
-                    members.len(),
+                    "Wrote serial gel SVG for {} sample lane(s), {} sequence(s) to '{}' (ladders: {})",
+                    layout.sample_count,
+                    layout.pool_member_count,
                     path,
                     ladders_used
                 ));
@@ -11893,6 +14154,73 @@ impl GentleEngine {
             Operation::DeleteCandidateSet { set_name } => {
                 self.op_delete_candidate_set(set_name, &mut result)?;
             }
+            Operation::UpsertGuideSet {
+                guide_set_id,
+                guides,
+            } => {
+                self.op_upsert_guide_set(guide_set_id, guides, &mut result)?;
+            }
+            Operation::DeleteGuideSet { guide_set_id } => {
+                self.op_delete_guide_set(guide_set_id, &mut result)?;
+            }
+            Operation::FilterGuidesPractical {
+                guide_set_id,
+                config,
+                output_guide_set_id,
+            } => {
+                self.op_filter_guides_practical(
+                    guide_set_id,
+                    config,
+                    output_guide_set_id,
+                    &mut result,
+                )?;
+            }
+            Operation::GenerateGuideOligos {
+                guide_set_id,
+                template_id,
+                apply_5prime_g_extension,
+                output_oligo_set_id,
+                passed_only,
+            } => {
+                self.op_generate_guide_oligos(
+                    guide_set_id,
+                    template_id,
+                    apply_5prime_g_extension,
+                    output_oligo_set_id,
+                    passed_only,
+                    &mut result,
+                )?;
+            }
+            Operation::ExportGuideOligos {
+                guide_set_id,
+                oligo_set_id,
+                format,
+                path,
+                plate_format,
+            } => {
+                self.op_export_guide_oligos(
+                    guide_set_id,
+                    oligo_set_id,
+                    format,
+                    path,
+                    plate_format,
+                    &mut result,
+                )?;
+            }
+            Operation::ExportGuideProtocolText {
+                guide_set_id,
+                oligo_set_id,
+                path,
+                include_qc_checklist,
+            } => {
+                self.op_export_guide_protocol_text(
+                    guide_set_id,
+                    oligo_set_id,
+                    path,
+                    include_qc_checklist,
+                    &mut result,
+                )?;
+            }
             Operation::ScoreCandidateSetExpression {
                 set_name,
                 metric,
@@ -11995,6 +14323,23 @@ impl GentleEngine {
                     tie_break,
                     &mut result,
                 )?;
+            }
+            Operation::UpsertWorkflowMacroTemplate {
+                name,
+                description,
+                parameters,
+                script,
+            } => {
+                self.op_upsert_workflow_macro_template(
+                    name,
+                    description,
+                    parameters,
+                    script,
+                    &mut result,
+                )?;
+            }
+            Operation::DeleteWorkflowMacroTemplate { name } => {
+                self.op_delete_workflow_macro_template(name, &mut result)?;
             }
             Operation::UpsertCandidateMacroTemplate {
                 name,
@@ -12462,6 +14807,19 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Set parameter 'feature_details_font_size' to {:.2}",
                         self.state.display.feature_details_font_size
+                    ));
+                }
+                "regulatory_feature_max_view_span_bp"
+                | "regulatory_max_view_span_bp"
+                | "regulatory_max_span_bp" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a non-negative integer"),
+                    })?;
+                    self.state.display.regulatory_feature_max_view_span_bp = raw as usize;
+                    result.messages.push(format!(
+                        "Set parameter 'regulatory_feature_max_view_span_bp' to {}",
+                        self.state.display.regulatory_feature_max_view_span_bp
                     ));
                 }
                 "vcf_display_show_snp"
@@ -13303,6 +15661,22 @@ exit 2
             .iter()
             .any(|m| m.contains("feature_details_font_size")));
         assert!((engine.state().display.feature_details_font_size - 9.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_set_parameter_regulatory_feature_max_view_span_bp() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetParameter {
+                name: "regulatory_feature_max_view_span_bp".to_string(),
+                value: serde_json::json!(50000),
+            })
+            .unwrap();
+        assert!(res
+            .messages
+            .iter()
+            .any(|m| m.contains("regulatory_feature_max_view_span_bp")));
+        assert_eq!(engine.state().display.regulatory_feature_max_view_span_bp, 50_000);
     }
 
     #[test]
@@ -14488,12 +16862,14 @@ ORIGIN
                 inputs: vec!["a".to_string(), "b".to_string(), "c".to_string()],
                 path: path_text.clone(),
                 ladders: None,
+                container_ids: None,
+                arrangement_id: None,
             })
             .unwrap();
-        assert!(res.messages.iter().any(|m| m.contains("pool gel SVG")));
+        assert!(res.messages.iter().any(|m| m.contains("serial gel SVG")));
         let text = std::fs::read_to_string(path_text).unwrap();
         assert!(text.contains("<svg"));
-        assert!(text.contains("Pool Gel Preview"));
+        assert!(text.contains("Serial Gel Preview"));
     }
 
     #[test]
@@ -14509,6 +16885,8 @@ ORIGIN
                 inputs: vec!["missing".to_string()],
                 path: path_text,
                 ladders: None,
+                container_ids: None,
+                arrangement_id: None,
             })
             .unwrap_err();
         assert!(err.message.contains("not found"));
@@ -14800,6 +17178,20 @@ ORIGIN
         assert!(err
             .message
             .contains("feature_details_font_size must be between 8.0 and 24.0"));
+    }
+
+    #[test]
+    fn test_set_parameter_regulatory_feature_max_view_span_bp_invalid_type_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "regulatory_feature_max_view_span_bp".to_string(),
+                value: serde_json::json!("wide"),
+            })
+            .unwrap_err();
+        assert!(err
+            .message
+            .contains("regulatory_feature_max_view_span_bp requires a non-negative integer"));
     }
 
     #[test]
@@ -17327,6 +19719,217 @@ ORIGIN
             })
             .expect("delete template");
         assert!(engine.list_candidate_macro_templates().is_empty());
+    }
+
+    #[test]
+    fn test_workflow_macro_template_store_and_render() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        engine
+            .apply(Operation::UpsertWorkflowMacroTemplate {
+                name: "clone_step".to_string(),
+                description: Some("demo workflow template".to_string()),
+                parameters: vec![
+                    WorkflowMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    WorkflowMacroTemplateParam {
+                        name: "out_id".to_string(),
+                        default_value: Some("seqA_rev".to_string()),
+                        required: false,
+                    },
+                ],
+                script: "op {\"Reverse\":{\"input\":\"${seq_id}\",\"output_id\":\"${out_id}\"}}"
+                    .to_string(),
+            })
+            .expect("upsert workflow template");
+
+        let templates = engine.list_workflow_macro_templates();
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].name, "clone_step");
+        let template = engine
+            .get_workflow_macro_template("clone_step")
+            .expect("get workflow template");
+        assert_eq!(template.template_schema, CLONING_MACRO_TEMPLATE_SCHEMA);
+
+        let rendered = engine
+            .render_workflow_macro_template_script(
+                "clone_step",
+                &HashMap::from([("seq_id".to_string(), "seqX".to_string())]),
+            )
+            .expect("render workflow template");
+        assert_eq!(
+            rendered,
+            "op {\"Reverse\":{\"input\":\"seqX\",\"output_id\":\"seqA_rev\"}}"
+        );
+
+        engine
+            .apply(Operation::DeleteWorkflowMacroTemplate {
+                name: "clone_step".to_string(),
+            })
+            .expect("delete workflow template");
+        assert!(engine.list_workflow_macro_templates().is_empty());
+    }
+
+    #[test]
+    fn test_guide_design_filter_generate_and_export() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        engine
+            .apply(Operation::UpsertGuideSet {
+                guide_set_id: "tp73_guides".to_string(),
+                guides: vec![
+                    GuideCandidate {
+                        guide_id: "g1".to_string(),
+                        seq_id: "tp73".to_string(),
+                        start_0based: 100,
+                        end_0based_exclusive: 120,
+                        strand: "+".to_string(),
+                        protospacer: "GACCTGTTGACGATGTTCCA".to_string(),
+                        pam: "AGG".to_string(),
+                        nuclease: "SpCas9".to_string(),
+                        cut_offset_from_protospacer_start: 17,
+                        rank: Some(1),
+                    },
+                    GuideCandidate {
+                        guide_id: "g2".to_string(),
+                        seq_id: "tp73".to_string(),
+                        start_0based: 200,
+                        end_0based_exclusive: 220,
+                        strand: "+".to_string(),
+                        protospacer: "ATATATATATATATATATAT".to_string(),
+                        pam: "AGG".to_string(),
+                        nuclease: "SpCas9".to_string(),
+                        cut_offset_from_protospacer_start: 17,
+                        rank: Some(2),
+                    },
+                    GuideCandidate {
+                        guide_id: "g3".to_string(),
+                        seq_id: "tp73".to_string(),
+                        start_0based: 300,
+                        end_0based_exclusive: 320,
+                        strand: "+".to_string(),
+                        protospacer: "GACTTTTGACTGACTGACT".to_string(),
+                        pam: "AGG".to_string(),
+                        nuclease: "SpCas9".to_string(),
+                        cut_offset_from_protospacer_start: 17,
+                        rank: Some(3),
+                    },
+                ],
+            })
+            .expect("upsert guide set");
+
+        engine
+            .apply(Operation::FilterGuidesPractical {
+                guide_set_id: "tp73_guides".to_string(),
+                config: GuidePracticalFilterConfig {
+                    gc_min: Some(0.30),
+                    gc_max: Some(0.70),
+                    max_homopolymer_run: Some(4),
+                    max_homopolymer_run_per_base: HashMap::new(),
+                    reject_ambiguous_bases: true,
+                    avoid_u6_terminator_tttt: true,
+                    u6_terminator_window: GuideU6TerminatorWindow::SpacerPlusTail,
+                    max_dinucleotide_repeat_units: None,
+                    forbidden_motifs: vec![],
+                    required_5prime_base: None,
+                    allow_5prime_g_extension: true,
+                },
+                output_guide_set_id: Some("tp73_guides_pass".to_string()),
+            })
+            .expect("filter guides");
+        let report = engine
+            .get_guide_practical_filter_report("tp73_guides")
+            .expect("guide report");
+        assert_eq!(report.passed_count, 1);
+        assert_eq!(report.rejected_count, 2);
+
+        engine
+            .apply(Operation::GenerateGuideOligos {
+                guide_set_id: "tp73_guides".to_string(),
+                template_id: "lenti_bsmbi_u6_default".to_string(),
+                apply_5prime_g_extension: Some(true),
+                output_oligo_set_id: Some("tp73_oligos".to_string()),
+                passed_only: Some(true),
+            })
+            .expect("generate guide oligos");
+
+        let dir = tempdir().expect("tempdir");
+        let csv_path = dir.path().join("guides.csv").display().to_string();
+        let fasta_path = dir.path().join("guides.fa").display().to_string();
+        let protocol_path = dir.path().join("guides.protocol.txt").display().to_string();
+
+        engine
+            .apply(Operation::ExportGuideOligos {
+                guide_set_id: "tp73_guides".to_string(),
+                oligo_set_id: Some("tp73_oligos".to_string()),
+                format: GuideOligoExportFormat::CsvTable,
+                path: csv_path.clone(),
+                plate_format: None,
+            })
+            .expect("export guide oligos csv");
+        engine
+            .apply(Operation::ExportGuideOligos {
+                guide_set_id: "tp73_guides".to_string(),
+                oligo_set_id: Some("tp73_oligos".to_string()),
+                format: GuideOligoExportFormat::Fasta,
+                path: fasta_path.clone(),
+                plate_format: None,
+            })
+            .expect("export guide oligos fasta");
+        engine
+            .apply(Operation::ExportGuideProtocolText {
+                guide_set_id: "tp73_guides".to_string(),
+                oligo_set_id: Some("tp73_oligos".to_string()),
+                path: protocol_path.clone(),
+                include_qc_checklist: Some(true),
+            })
+            .expect("export guide protocol");
+
+        let csv = fs::read_to_string(csv_path).expect("read csv export");
+        assert!(csv.contains("guide_id,rank,forward_oligo,reverse_oligo,notes"));
+        assert!(csv.contains("g1"));
+        let fasta = fs::read_to_string(fasta_path).expect("read fasta export");
+        assert!(fasta.contains(">g1|forward"));
+        let protocol = fs::read_to_string(protocol_path).expect("read protocol export");
+        assert!(protocol.contains("GENtle Guide Oligo Protocol"));
+    }
+
+    #[test]
+    fn test_guide_set_duplicate_ids_rejected() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let err = engine
+            .apply(Operation::UpsertGuideSet {
+                guide_set_id: "dup".to_string(),
+                guides: vec![
+                    GuideCandidate {
+                        guide_id: "dup_1".to_string(),
+                        seq_id: "s1".to_string(),
+                        start_0based: 0,
+                        end_0based_exclusive: 20,
+                        strand: "+".to_string(),
+                        protospacer: "GACCTGTTGACGATGTTCCA".to_string(),
+                        pam: "AGG".to_string(),
+                        nuclease: "SpCas9".to_string(),
+                        cut_offset_from_protospacer_start: 17,
+                        rank: Some(1),
+                    },
+                    GuideCandidate {
+                        guide_id: "dup_1".to_string(),
+                        seq_id: "s1".to_string(),
+                        start_0based: 20,
+                        end_0based_exclusive: 40,
+                        strand: "+".to_string(),
+                        protospacer: "GACCTGTTGACGATGTTCCC".to_string(),
+                        pam: "AGG".to_string(),
+                        nuclease: "SpCas9".to_string(),
+                        cut_offset_from_protospacer_start: 17,
+                        rank: Some(2),
+                    },
+                ],
+            })
+            .expect_err("duplicate guide ids should be rejected");
+        assert!(err.message.contains("Duplicate guide_id"));
     }
 
     #[test]

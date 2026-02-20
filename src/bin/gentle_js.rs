@@ -1,7 +1,7 @@
 use gentle::about;
 use gentle::js_interface::JavaScriptInterface;
-use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 use std::{env, error::Error};
 
 #[derive(Debug, Default)]

@@ -52,6 +52,8 @@ Reference genome capability status:
 Agent-assistant capability status:
 
 - `gentle_cli`: supported via shared-shell command family (`agents list`, `agents ask`) and direct forwarding (`gentle_cli agents ...`)
+- `gentle_js`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
+- `gentle_lua`: supported via helper wrappers (`list_agent_systems`, `ask_agent_system`) over shared shell execution
 - GUI: supported via standalone `Agent Assistant` viewport using the same bridge and command executor
 
 Candidate-set capability status:
@@ -199,6 +201,18 @@ Exit methods:
 22. `set_vcf_display_filter(state, options)`
     - Convenience wrapper that updates one or more VCF display-filter parameters
       via `SetParameter` in one call.
+23. `list_agent_systems(catalog_path)`
+    - Lists configured agent systems from catalog JSON.
+    - `catalog_path` is optional (`null`/`""` uses `assets/agent_systems.json`).
+24. `ask_agent_system(state, system_id, prompt, options)`
+    - Invokes one configured agent system through shared shell execution.
+    - Returns `{ state, state_changed, output }`.
+    - `state` may be `null` to use an empty/default project state.
+    - `options` supports:
+      - `catalog_path`
+      - `allow_auto_exec` / `execute_all`
+      - `execute_indices` (1-based)
+      - `include_state_summary` (default `true`)
 
 ### JavaScript example
 
@@ -273,6 +287,13 @@ Exit methods:
 22. `set_vcf_display_filter(project, opts)`
     - Convenience wrapper that updates one or more VCF display-filter parameters
       via `SetParameter` in one call.
+23. `list_agent_systems([catalog_path])`
+    - Lists configured agent systems from catalog JSON.
+    - `catalog_path` is optional (defaults to `assets/agent_systems.json`).
+24. `ask_agent_system(project, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary])`
+    - Invokes one configured agent system through shared shell execution.
+    - Returns table with `state`, `state_changed`, and `output`.
+    - `project` may be `nil` to use an empty/default project state.
 
 ### Lua example
 
@@ -382,6 +403,8 @@ cargo run --bin gentle_cli -- candidates macro @candidate_flow.gsh
 cargo run --bin gentle_cli -- candidates macro --transactional --file candidate_flow.gsh
 cargo run --bin gentle_cli -- candidates template-put scan_tp53 --script 'generate ${set_name} ${seq_id} --length ${len} --step 1' --param set_name --param seq_id=grch38_tp53 --param len=20
 cargo run --bin gentle_cli -- candidates template-run scan_tp53 --bind set_name=tp53_candidates --transactional
+cargo run --bin gentle_cli -- shell 'macros template-list'
+cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_flow.gsh'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
 ```
@@ -453,6 +476,12 @@ Shared shell command:
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+    - `macros template-list`
+    - `macros template-show TEMPLATE_NAME`
+    - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+    - `macros template-delete TEMPLATE_NAME`
+    - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
     - `candidates list`
     - `candidates delete SET_NAME`
     - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
@@ -556,10 +585,16 @@ Agent bridge commands:
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--no-state-summary` disables project-context injection in the request.
+  - External adapter responses must be strict `gentle.agent_response.v1` JSON.
+  - Unknown canonical response fields are rejected (extensions must use `x_` or `x-` prefix).
+  - Adapter calls retry transient failures with exponential backoff before returning an error.
   - Suggested commands are executed only when explicitly selected
     (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled
     and the suggestion intent is `auto`.
   - Recursive `agents ask` execution from suggested commands is blocked by design.
+  - Failures use deterministic error prefixes for scripting, e.g.
+    `AGENT_ADAPTER_UNAVAILABLE`, `AGENT_ADAPTER_TRANSIENT`,
+    `AGENT_RESPONSE_PARSE`, `AGENT_RESPONSE_VALIDATION`.
 
 Genome convenience commands:
 
@@ -610,6 +645,26 @@ Helper convenience commands:
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
 - `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extend-anchor`, with helper-catalog default.
+
+Workflow macro commands (`gentle_cli shell 'macros ...'`):
+
+- `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+  - Executes semicolon/newline-separated shell statements.
+  - Supports transactional rollback (`--transactional`) when any statement fails.
+  - Designed for full cloning workflows through `op ...` and `workflow ...`
+    statements (Digest/Ligation/PCR/ExtractRegion/container ops, etc.).
+- `macros template-list`
+  - Lists persisted workflow macro templates.
+- `macros template-show TEMPLATE_NAME`
+  - Shows one persisted workflow template definition.
+- `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+  - Creates/updates a named workflow macro template in project metadata.
+  - Placeholders in script use `${param_name}` and must be declared via `--param`.
+- `macros template-delete TEMPLATE_NAME`
+  - Deletes one persisted workflow template.
+- `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
+  - Expands a named template with provided bindings/defaults, then executes it as
+    a workflow macro script.
 
 Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candidates ...'`):
 
@@ -674,7 +729,8 @@ Notes:
   project metadata stores a reference schema (`gentle.candidate_sets.ref.v1`).
 - On load, sidecar-backed candidate metadata is hydrated automatically.
 - `list/show/metrics` are read-only commands.
-- `delete/generate/generate-between-anchors/score/score-distance/score-weighted/top-k/pareto/filter/set-op/macro/template-put/template-delete/template-run`
+- `macros run/template-put/template-delete/template-run` and
+  `delete/generate/generate-between-anchors/score/score-distance/score-weighted/top-k/pareto/filter/set-op/macro/template-put/template-delete/template-run`
   mutate state and are available through CLI shell and GUI shell.
 
 Recommended suffixes:
@@ -897,6 +953,12 @@ Set feature-details font size used in the feature tree/details panel (valid rang
 
 ```json
 {"SetParameter":{"name":"feature_details_font_size","value":10.5}}
+```
+
+Set regulatory-overlay max linear view span threshold (`50000` recommended for anchored genome maps):
+
+```json
+{"SetParameter":{"name":"regulatory_feature_max_view_span_bp","value":50000}}
 ```
 
 Set VCF display filtering parameters shared by GUI and SVG export:

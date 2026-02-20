@@ -59,6 +59,8 @@ order. Durable architecture constraints and decisions remain in
 | Reference genome + track import surfaces | Done |
 | Shared shell parity across GUI/CLI | Done |
 | Candidate strand-relation controls across adapters | Done |
+| Cloning-mode macro presets (SnapGene-style workflows) | Planned |
+| Gel simulation realism and arrangement modeling | Partial |
 | Shared operation protocol usage | Partial |
 
 Notes:
@@ -82,6 +84,95 @@ Notes:
 - Auto-updated documentation with embedded graphics remains postponed.
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
+- Standardized cloning protocol macros are not yet packaged as first-class
+  reusable templates (restriction-only, Gibson, Golden Gate, Gateway, TOPO,
+  TA/GC, In-Fusion, NEBuilder HiFi).
+
+### SnapGene-parity benchmark track (new)
+
+Goal: align GENtle’s operation-level workflows and visual outputs with the
+major protocol families and usability expectations commonly seen in SnapGene,
+while keeping GENtle’s shared-engine and open-protocol architecture.
+
+#### A) Macro templates for major cloning modes (priority)
+
+- Restriction cloning:
+  - single-fragment insertion, multi-fragment insertion, linear ligation.
+- Gibson Assembly:
+  - one-insert, multi-insert, circularize-fragment workflows.
+- NEBuilder HiFi:
+  - one-insert and multi-insert assembly workflows.
+- In-Fusion:
+  - one-insert and multi-insert assembly workflows.
+- Golden Gate:
+  - Type IIS overhang-aware assembly templates.
+- Gateway:
+  - BP, LR, and BP+LR multi-insert workflows.
+- TOPO:
+  - TA TOPO, blunt TOPO, directional TOPO workflows.
+- TA/GC cloning:
+  - vector + PCR-fragment templates with orientation handling.
+
+Implementation note:
+
+- Each protocol ships as a macro template (`macros template-put`) backed only by
+  shared engine/shell operations, then exposed identically in GUI/CLI/JS/Lua.
+- Templates must emit auditable operation logs suitable for DALG-derived
+  protocol export.
+
+#### B) Agarose gel simulation improvements (high value)
+
+Current state is strong for ladder-aware pool preview and export, but still
+simplified relative to wet-lab interpretation.
+
+Planned upgrades:
+
+- Generalize virtual gels from pool-only usage to any container/tube:
+  - support one-lane "single-product proof" use cases
+  - support mixed cardinality lanes (single-sequence and pool containers)
+- Introduce arrangement nodes in lineage/DALG:
+  - arrangement is an explicit node type that groups multiple input tubes under
+    one experimental setup
+  - first arrangement mode: `serial` (gel lanes)
+  - later arrangement mode: `plate` (plate-reader/assay modeling)
+- Enforce same-setup semantics for one serial arrangement:
+  - all lanes in one virtual gel share one run configuration and one ladder
+    context
+  - no implicit "spliced gel from different runs" output in a single
+    arrangement
+- Multi-lane digest conditions with per-lane enzyme sets and batch
+  "apply-to-all" behavior.
+- Optional uncut/topology-aware migration model for circular DNA
+  (supercoiled/nicked/linearized lane behavior).
+- Band intensity based on estimated DNA mass per band, not only multiplicity.
+- Co-migration grouping thresholds and explicit merged-band annotation.
+- Lane-side fragment table with bp, estimated mass, source fragments, and
+  cut-site context.
+- Optional gel-conditions parameters (agarose %, buffer/model preset) with a
+  deterministic default profile.
+
+#### C) Sequence/map clarity benchmarking (high value)
+
+Use a small fixed corpus of examples to compare clarity of GENtle maps and SVG
+exports versus established readability patterns.
+
+Planned upgrades:
+
+- Build visual benchmark fixtures (sparse, dense annotations, dense RE sites,
+  promoter/regulatory-heavy loci).
+- Add explicit label-placement modes where useful (for example,
+  "inside-preferred" vs "outside-preferred" behavior by feature class).
+- Keep linear/circular/SVG parity for:
+  - label anchoring
+  - overlap resolution
+  - lane separation
+  - feature-to-label traceability
+- Add quantitative readability checks in snapshot tests:
+  - unresolved label overlaps
+  - clipped labels
+  - hidden high-priority labels (genes/CDS/ORFs/selected RE sites)
+- Continue node/table/sequence-window identity consistency
+  (`node_id <-> seq_id <-> open-window title`) for lineage traceability.
 
 ### UX declutter and readability improvements (planned)
 
@@ -163,6 +254,12 @@ Notes:
 
 - Keep adapter-level helpers thin and aligned with engine operations.
 - Continue parity checks as new operations are introduced.
+- Start with gel work:
+  - add arrangement-node model
+  - generalize gel rendering/operations from pools to any tube/container
+  - keep one-run/one-setup semantics per serial arrangement
+- Add protocol macro template packs for the cloning modes listed in Section 2.
+- Add visual benchmark fixtures and readability regression gates for map export.
 
 ### Phase B: GUI routing discipline
 

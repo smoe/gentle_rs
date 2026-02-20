@@ -30,6 +30,12 @@ impl Window {
         }
     }
 
+    pub fn sequence_id(&self) -> Option<String> {
+        match self {
+            Self::Dna(window) => window.sequence_id(),
+        }
+    }
+
     pub fn refresh_from_engine_settings(&mut self) {
         match self {
             Self::Dna(window) => window.refresh_from_engine_settings(),

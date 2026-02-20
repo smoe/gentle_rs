@@ -34,6 +34,16 @@ struct FeatureVm {
 }
 
 fn feature_name(feature: &Feature) -> String {
+    if is_regulatory_feature(feature) {
+        if let Some(reg_class) = feature_qualifier_text(feature, "regulatory_class") {
+            let note = feature_qualifier_text(feature, "note");
+            return if let Some(note) = note {
+                format!("{reg_class}: {note}")
+            } else {
+                reg_class
+            };
+        }
+    }
     for k in [
         "label",
         "name",
@@ -50,9 +60,6 @@ fn feature_name(feature: &Feature) -> String {
                 return label_text;
             }
         }
-    }
-    if is_regulatory_feature(feature) {
-        return String::new();
     }
     match feature.location.find_bounds() {
         Ok((from, to)) => format!("{from}..{to}"),
@@ -72,6 +79,17 @@ fn feature_color(feature: &Feature) -> &'static str {
             "SV" => "#5a5a1e",
             _ => "#5a5a5a",
         };
+    }
+    if is_regulatory_feature(feature) {
+        let regulatory_class = feature_qualifier_text(feature, "regulatory_class")
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if regulatory_class.contains("silencer") || regulatory_class.contains("repressor") {
+            return "#be3232";
+        }
+        if regulatory_class.contains("enhancer") || regulatory_class.contains("activator") {
+            return "#2d9641";
+        }
     }
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
         "CDS" => "#cc1f1f",
@@ -156,9 +174,9 @@ fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
 fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
     feature
         .qualifier_values(key.into())
-        .map(str::trim)
+        .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+        .map(|value| value.trim().to_string())
         .find(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
 }
 
 fn vcf_variant_class(feature: &Feature) -> Option<String> {
@@ -298,10 +316,31 @@ fn vcf_feature_passes_display_filter(feature: &Feature, display: &DisplaySetting
     true
 }
 
-fn collect_features(dna: &DNAsequence, display: &DisplaySettings) -> Vec<FeatureVm> {
+fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usize) -> usize {
+    let kind = feature.kind.to_string().to_ascii_uppercase();
+    if kind == "SOURCE" {
+        return 0;
+    }
+    if is_regulatory_feature(feature) {
+        return regulatory_max_view_span_bp;
+    }
+    match kind.as_str() {
+        "CDS" | "GENE" | "MRNA" => 2_000_000,
+        "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => 200_000,
+        "TRACK" => 250_000,
+        "RESTRICTION_SITE" => 100_000,
+        _ => 500_000,
+    }
+}
+
+fn collect_features(dna: &DNAsequence, display: &DisplaySettings, view_span_bp: usize) -> Vec<FeatureVm> {
     let mut ret = Vec::new();
     for feature in dna.features() {
         if feature.kind.to_string().to_ascii_uppercase() == "SOURCE" {
+            continue;
+        }
+        let max_view_span = feature_max_view_span_bp(feature, display.regulatory_feature_max_view_span_bp);
+        if max_view_span > 0 && view_span_bp > max_view_span {
             continue;
         }
         let kind = feature.kind.to_string().to_ascii_uppercase();
@@ -491,7 +530,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
 
     if display.show_features {
         let regulatory_tracks_near_baseline = display.regulatory_tracks_near_baseline;
-        let features = collect_features(dna, display);
+        let features = collect_features(dna, display, len);
         let mut lane_top_by_idx: Vec<usize> = vec![0; features.len()];
         let mut lane_bottom_by_idx: Vec<usize> = vec![0; features.len()];
         let mut lane_regulatory_top_by_idx: Vec<usize> = vec![0; features.len()];
@@ -887,7 +926,7 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     }
 
     if display.show_features {
-        for f in collect_features(dna, display) {
+        for f in collect_features(dna, display, len) {
             let mid = (f.from + f.to) / 2;
             let span = f.to.saturating_sub(f.from).saturating_add(1);
             let length_fraction = if len == 0 {

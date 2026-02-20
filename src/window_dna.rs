@@ -25,9 +25,11 @@ impl WindowDna {
     }
 
     pub fn name(&self) -> String {
-        self.main_area
-            .sequence_name()
-            .unwrap_or("<Unnamed sequence>".to_string())
+        self.main_area.window_title()
+    }
+
+    pub fn sequence_id(&self) -> Option<String> {
+        self.main_area.sequence_id().map(|v| v.to_string())
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {

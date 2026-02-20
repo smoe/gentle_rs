@@ -342,6 +342,18 @@ Execution safety model:
 - Nested/recursive `agents ask` execution is blocked in suggested-command runs.
 - Suggested commands are executed through the same shared shell parser/executor
   used by GUI shell and `gentle_cli shell`.
+- Protocol-level JSON shapes and exact command contract are specified in
+  `docs/protocol.md` (agent catalog/request/response schemas and execution
+  intent semantics).
+
+Minimal-success rollout profile (recommended):
+
+- Start with catalog-driven stdio adapters (for example OpenAI bridge command)
+  rather than ad-hoc RAG/training.
+- Keep default interaction mode at `chat` + `ask`; enable `auto` only for
+  tightly allowlisted low-risk commands.
+- Include compact machine context (`state_summary`) instead of large free-form
+  project dumps to keep prompts deterministic and understandable.
 
 ### Candidate query/optimization command contract (current)
 
@@ -366,6 +378,8 @@ Command surface:
 - `candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] ...`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
 - `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
+- `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+- `macros template-list|template-show|template-put|template-delete|template-run ...`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `candidates template-list|template-show|template-put|template-delete|template-run ...`
 - `set-param NAME JSON_VALUE`

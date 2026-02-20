@@ -5,12 +5,12 @@ use gentle::{
         OperationProgress, ProjectState, RenderSvgMode, TfbsProgress, Workflow,
     },
     engine_shell::{
-        execute_shell_command_with_options, parse_shell_line, parse_shell_tokens, shell_help_text,
-        ShellCommand, ShellExecutionOptions,
+        ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
+        parse_shell_tokens, shell_help_text,
     },
     genomes::{
-        GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeGeneRecord,
+        PrepareGenomeProgress,
     },
 };
 use regex::{Regex, RegexBuilder};
@@ -443,7 +443,8 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
-  gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\n  \
+  gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n\n  \
   gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
@@ -472,6 +473,9 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli agents list [--catalog PATH]\n  \
   gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
+  gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
   gentle_cli [--state PATH|--project PATH] candidates list\n  \
   gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
@@ -491,13 +495,23 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
   gentle_cli [--state PATH|--project PATH] candidates template-delete TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
+  gentle_cli [--state PATH|--project PATH] guides list\n  \
+  gentle_cli [--state PATH|--project PATH] guides show GUIDE_SET_ID [--limit N] [--offset N]\n  \
+  gentle_cli [--state PATH|--project PATH] guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)\n  \
+  gentle_cli [--state PATH|--project PATH] guides delete GUIDE_SET_ID\n  \
+  gentle_cli [--state PATH|--project PATH] guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] guides filter-show GUIDE_SET_ID\n  \
+  gentle_cli [--state PATH|--project PATH] guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]\n  \
+  gentle_cli [--state PATH|--project PATH] guides oligos-list [--guide-set GUIDE_SET_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] guides oligos-show OLIGO_SET_ID\n  \
+  gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
+  gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
   --project is an alias of --state for project.gentle.json files\n\n  \
   Shell help:\n  \
-  {shell_help}"
-        ,
+  {shell_help}",
         shell_help = shell_help_text()
     );
 }
@@ -508,12 +522,30 @@ fn is_shell_forwarded_command(command: &str) -> bool {
         "genomes"
             | "helpers"
             | "agents"
+            | "macros"
             | "resources"
             | "import-pool"
             | "ladders"
+            | "guides"
             | "tracks"
             | "screenshot-window"
     )
+}
+
+fn parse_forwarded_shell_command(
+    args: &[String],
+    cmd_idx: usize,
+) -> Result<Option<ShellCommand>, String> {
+    if args.len() <= cmd_idx {
+        return Ok(None);
+    }
+    let command = &args[cmd_idx];
+    if !is_shell_forwarded_command(command.as_str()) {
+        return Ok(None);
+    }
+    let tokens = args[cmd_idx..].to_vec();
+    let shell_command = parse_shell_tokens(&tokens)?;
+    Ok(Some(shell_command))
 }
 
 fn load_json_arg(value: &str) -> Result<String, String> {
@@ -887,9 +919,7 @@ fn run() -> Result<(), String> {
 
     let command = &args[cmd_idx];
 
-    if is_shell_forwarded_command(command.as_str()) {
-        let tokens = args[cmd_idx..].to_vec();
-        let shell_command = parse_shell_tokens(&tokens)?;
+    if let Some(shell_command) = parse_forwarded_shell_command(&args, cmd_idx)? {
         let mut engine = GentleEngine::from_state(load_state(&state_path)?);
         let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
         if run.state_changed {
@@ -941,7 +971,7 @@ fn run() -> Result<(), String> {
                                 idx += 2;
                             }
                             other => {
-                                return Err(format!("Unknown option '{}' for {label} list", other))
+                                return Err(format!("Unknown option '{}' for {label} list", other));
                             }
                         }
                     }
@@ -997,7 +1027,7 @@ fn run() -> Result<(), String> {
                                 return Err(format!(
                                     "Unknown option '{}' for {label} status",
                                     other
-                                ))
+                                ));
                             }
                         }
                     }
@@ -1088,7 +1118,9 @@ fn run() -> Result<(), String> {
                             }
                             "--limit" => {
                                 if idx + 1 >= args.len() {
-                                    return Err(format!("Missing N after --limit for {label} genes"));
+                                    return Err(format!(
+                                        "Missing N after --limit for {label} genes"
+                                    ));
                                 }
                                 limit = args[idx + 1].parse::<usize>().map_err(|e| {
                                     format!("Invalid --limit value '{}': {}", args[idx + 1], e)
@@ -1110,10 +1142,7 @@ fn run() -> Result<(), String> {
                                 idx += 2;
                             }
                             other => {
-                                return Err(format!(
-                                    "Unknown option '{}' for {label} genes",
-                                    other
-                                ))
+                                return Err(format!("Unknown option '{}' for {label} genes", other));
                             }
                         }
                     }
@@ -1224,7 +1253,7 @@ fn run() -> Result<(), String> {
                                 return Err(format!(
                                     "Unknown option '{}' for {label} prepare",
                                     other
-                                ))
+                                ));
                             }
                         }
                     }
@@ -1267,9 +1296,9 @@ fn run() -> Result<(), String> {
                     let start_1based = args[cmd_idx + 4].parse::<usize>().map_err(|e| {
                         format!("Invalid START coordinate '{}': {}", args[cmd_idx + 4], e)
                     })?;
-                    let end_1based = args[cmd_idx + 5]
-                        .parse::<usize>()
-                        .map_err(|e| format!("Invalid END coordinate '{}': {}", args[cmd_idx + 5], e))?;
+                    let end_1based = args[cmd_idx + 5].parse::<usize>().map_err(|e| {
+                        format!("Invalid END coordinate '{}': {}", args[cmd_idx + 5], e)
+                    })?;
                     let mut output_id: Option<String> = None;
                     let mut catalog_path: Option<String> = None;
                     let mut cache_dir: Option<String> = None;
@@ -1307,7 +1336,7 @@ fn run() -> Result<(), String> {
                                 return Err(format!(
                                     "Unknown option '{}' for {label} extract-region",
                                     other
-                                ))
+                                ));
                             }
                         }
                     }
@@ -1355,11 +1384,7 @@ fn run() -> Result<(), String> {
                                     ));
                                 }
                                 let occ = args[idx + 1].parse::<usize>().map_err(|e| {
-                                    format!(
-                                        "Invalid --occurrence value '{}': {}",
-                                        args[idx + 1],
-                                        e
-                                    )
+                                    format!("Invalid --occurrence value '{}': {}", args[idx + 1], e)
                                 })?;
                                 if occ == 0 {
                                     return Err("--occurrence must be >= 1".to_string());
@@ -1398,7 +1423,7 @@ fn run() -> Result<(), String> {
                                 return Err(format!(
                                     "Unknown option '{}' for {label} extract-gene",
                                     other
-                                ))
+                                ));
                             }
                         }
                     }
@@ -1632,7 +1657,7 @@ fn run() -> Result<(), String> {
                 _ => {
                     return Err(format!(
                         "Unknown render mode '{mode}', expected 'linear' or 'circular'"
-                    ))
+                    ));
                 }
             };
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
@@ -1712,21 +1737,23 @@ fn run() -> Result<(), String> {
             if args.len() <= cmd_idx + 2 {
                 usage();
                 return Err(
-                    "render-pool-gel-svg requires: IDS OUTPUT.svg [--ladders NAME[,NAME]]"
+                    "render-pool-gel-svg requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
                         .to_string(),
                 );
             }
-            let ids = args[cmd_idx + 1]
-                .split(',')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>();
-            if ids.is_empty() {
-                return Err("render-pool-gel-svg requires at least one sequence id".to_string());
-            }
+            let ids = match args[cmd_idx + 1].trim() {
+                "-" | "_" => vec![],
+                raw => raw
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            };
             let output = &args[cmd_idx + 2];
             let mut ladders: Option<Vec<String>> = None;
+            let mut container_ids: Option<Vec<String>> = None;
+            let mut arrangement_id: Option<String> = None;
             let mut idx = cmd_idx + 3;
             while idx < args.len() {
                 match args[idx].as_str() {
@@ -1745,18 +1772,137 @@ fn run() -> Result<(), String> {
                         }
                         idx += 2;
                     }
+                    "--containers" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --containers".to_string());
+                        }
+                        let parsed = args[idx + 1]
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>();
+                        if !parsed.is_empty() {
+                            container_ids = Some(parsed);
+                        }
+                        idx += 2;
+                    }
+                    "--arrangement" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --arrangement".to_string());
+                        }
+                        let value = args[idx + 1].trim();
+                        if !value.is_empty() {
+                            arrangement_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!(
-                        "Unknown argument '{other}' for render-pool-gel-svg (expected --ladders)"
-                    ))
+                            "Unknown argument '{other}' for render-pool-gel-svg (expected --ladders/--containers/--arrangement)"
+                        ));
                     }
                 }
+            }
+            if ids.is_empty()
+                && container_ids.as_ref().map_or(true, |v| v.is_empty())
+                && arrangement_id.is_none()
+            {
+                return Err(
+                    "render-pool-gel-svg requires sequence ids, --containers, or --arrangement"
+                        .to_string(),
+                );
             }
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let result = engine
                 .apply(Operation::RenderPoolGelSvg {
                     inputs: ids,
                     path: output.to_string(),
+                    ladders,
+                    container_ids,
+                    arrangement_id,
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            if let Some(msg) = result.messages.first() {
+                println!("{msg}");
+            }
+            Ok(())
+        }
+        "arrange-serial" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err(
+                    "arrange-serial requires: CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]"
+                        .to_string(),
+                );
+            }
+            let container_ids = args[cmd_idx + 1]
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>();
+            if container_ids.is_empty() {
+                return Err("arrange-serial requires at least one container id".to_string());
+            }
+            let mut arrangement_id: Option<String> = None;
+            let mut name: Option<String> = None;
+            let mut ladders: Option<Vec<String>> = None;
+            let mut idx = cmd_idx + 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--id" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --id".to_string());
+                        }
+                        let value = args[idx + 1].trim();
+                        if !value.is_empty() {
+                            arrangement_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--name" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --name".to_string());
+                        }
+                        let value = args[idx + 1].trim();
+                        if !value.is_empty() {
+                            name = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--ladders" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --ladders".to_string());
+                        }
+                        let parsed = args[idx + 1]
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>();
+                        if !parsed.is_empty() {
+                            ladders = Some(parsed);
+                        }
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for arrange-serial (expected --id/--name/--ladders)"
+                        ));
+                    }
+                }
+            }
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::CreateArrangementSerial {
+                    container_ids,
+                    arrangement_id,
+                    name,
                     ladders,
                 })
                 .map_err(|e| e.to_string())?;
@@ -2009,9 +2155,11 @@ T [ 0 0 0 10 ]
             "genomes",
             "helpers",
             "agents",
+            "macros",
             "resources",
             "import-pool",
             "ladders",
+            "guides",
             "tracks",
             "screenshot-window",
         ] {
@@ -2070,5 +2218,53 @@ T [ 0 0 0 10 ]
         ])
         .expect("parse agents ask");
         assert!(matches!(agents, ShellCommand::AgentsAsk { .. }));
+
+        let macros_template_run = parse_shell_tokens(&[
+            "macros".to_string(),
+            "template-run".to_string(),
+            "clone".to_string(),
+            "--bind".to_string(),
+            "seq_id=seqA".to_string(),
+        ])
+        .expect("parse macros template-run");
+        assert!(matches!(
+            macros_template_run,
+            ShellCommand::MacrosTemplateRun { .. }
+        ));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_resources_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "sync-rebase".to_string(),
+            "input.withrefm".to_string(),
+            "--bad-flag".to_string(),
+        ];
+        let err = parse_forwarded_shell_command(&args, 1).expect_err("expected parse failure");
+        assert!(
+            err.contains("Unknown option '--bad-flag' for resources sync-rebase"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_import_pool_through_shared_parser() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "import-pool".to_string(),
+            "demo.pool.gentle.json".to_string(),
+            "pref".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(matches!(parsed, Some(ShellCommand::ImportPool { .. })));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_non_forwarded_returns_none() {
+        let args = vec!["gentle_cli".to_string(), "state-summary".to_string()];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        assert!(parsed.is_none());
     }
 }

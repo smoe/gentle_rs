@@ -600,6 +600,7 @@ pub struct MainAreaDna {
     description_cache_feature_count: usize,
     description_cache_title: String,
     description_cache_range: Option<String>,
+    description_cache_details: Vec<String>,
 }
 
 impl MainAreaDna {
@@ -808,6 +809,7 @@ impl MainAreaDna {
             description_cache_feature_count: 0,
             description_cache_title: String::new(),
             description_cache_range: None,
+            description_cache_details: Vec::new(),
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -835,6 +837,15 @@ impl MainAreaDna {
             return false;
         };
         engine.describe_sequence_genome_anchor(seq_id).is_ok()
+    }
+
+    fn active_sequence_has_gene_annotations(&self) -> bool {
+        self.dna.read().map(|dna| {
+            dna.features()
+                .iter()
+                .any(|feature| RenderDna::is_gene_feature(feature))
+        })
+        .unwrap_or(false)
     }
 
     fn active_linear_viewport_range(&self) -> Option<(usize, usize)> {
@@ -920,19 +931,24 @@ impl MainAreaDna {
 
     fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
         let viewport = self.active_linear_viewport_range();
-        let (tfbs_display_criteria, vcf_display_criteria) = self
+        let (tfbs_display_criteria, vcf_display_criteria, regulatory_feature_max_view_span_bp) = self
             .dna_display
             .read()
             .map(|display| {
                 (
                     display.tfbs_display_criteria(),
                     display.vcf_display_criteria(),
+                    display.regulatory_feature_max_view_span_bp(),
                 )
             })
             .unwrap_or((
                 TfbsDisplayCriteria::default(),
                 VcfDisplayCriteria::default(),
+                50_000,
             ));
+        let view_span_bp = viewport
+            .map(|(start, end)| end.saturating_sub(start))
+            .unwrap_or(0);
 
         let mut counts = LayerVisibilityCounts::default();
         if let Ok(dna) = self.dna.read() {
@@ -946,6 +962,13 @@ impl MainAreaDna {
                     {
                         continue;
                     }
+                }
+                if !RenderDna::feature_visible_for_view_span(
+                    feature,
+                    view_span_bp,
+                    regulatory_feature_max_view_span_bp,
+                ) {
+                    continue;
                 }
                 let kind = feature.kind.to_string().trim().to_ascii_uppercase();
                 if kind.is_empty() {
@@ -1176,7 +1199,7 @@ impl MainAreaDna {
             .map(|display| {
                 (
                     display.show_features(),
-                    display.show_cds_features(),
+                    display.show_cds_features_effective(),
                     display.show_gene_features(),
                     display.show_mrna_features(),
                     display.show_tfbs(),
@@ -1565,17 +1588,27 @@ impl MainAreaDna {
                 self.apply_declutter_action(&layer_counts);
             }
 
-            let cds_active = self
+            let (cds_active, cds_suppressed_for_genes) = self
                 .dna_display
                 .read()
-                .expect("DNA display lock poisoned")
-                .show_cds_features();
+                .map(|display| {
+                    (
+                        display.show_cds_features_effective(),
+                        display.suppress_cds_features_for_gene_annotations(),
+                    )
+                })
+                .unwrap_or((false, false));
             let cds_count = layer_counts.kind_count("CDS");
-            let cds_response = ui
-                .selectable_label(cds_active, format!("CDS ({cds_count})"))
-                .on_hover_text(format!(
-                    "Show or hide CDS features ({cds_count} in current view)"
-                ));
+            let cds_button = egui::Button::new(format!("CDS ({cds_count})")).selected(cds_active);
+            let cds_response = ui.add_enabled(!cds_suppressed_for_genes, cds_button).on_hover_text(
+                if cds_suppressed_for_genes {
+                    format!(
+                        "CDS overlays are hidden while gene annotations are present ({cds_count} CDS in current view)"
+                    )
+                } else {
+                    format!("Show or hide CDS features ({cds_count} in current view)")
+                },
+            );
             if cds_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -1662,6 +1695,11 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .regulatory_tracks_near_baseline();
+            let regulatory_feature_max_view_span_bp = self
+                .dna_display
+                .read()
+                .expect("DNA display lock poisoned")
+                .regulatory_feature_max_view_span_bp();
             let regulatory_label = if regulatory_near_baseline {
                 "REG@DNA"
             } else {
@@ -1676,8 +1714,10 @@ impl MainAreaDna {
             let response = ui
                 .button(format!("{regulatory_label} ({regulatory_count})"))
                 .on_hover_text(format!(
-                    "{} ({} regulatory features in current view)",
-                    regulatory_tooltip, regulatory_count
+                    "{} ({} regulatory features in current view; hidden when view span exceeds {} bp)",
+                    regulatory_tooltip,
+                    regulatory_count,
+                    regulatory_feature_max_view_span_bp
                 ));
             if response.clicked() {
                 let new_value = !regulatory_near_baseline;
@@ -3403,6 +3443,7 @@ impl MainAreaDna {
         };
         let settings = guard.state().display.clone();
         let suppress_orf_for_anchor = self.active_sequence_is_genome_anchored(&guard);
+        let suppress_cds_for_gene_annotations = self.active_sequence_has_gene_annotations();
         drop(guard);
         self.show_sequence = settings.show_sequence_panel;
         self.show_map = settings.show_map_panel;
@@ -3440,8 +3481,11 @@ impl MainAreaDna {
         display.set_show_gc_contents(settings.show_gc_contents);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);
         display.set_suppress_open_reading_frames_for_genome_anchor(suppress_orf_for_anchor);
+        display.set_suppress_cds_features_for_gene_annotations(suppress_cds_for_gene_annotations);
         display.set_show_methylation_sites(settings.show_methylation_sites);
         display.set_regulatory_tracks_near_baseline(settings.regulatory_tracks_near_baseline);
+        display
+            .set_regulatory_feature_max_view_span_bp(settings.regulatory_feature_max_view_span_bp);
         display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
         display.set_feature_details_font_size(settings.feature_details_font_size);
     }
@@ -4269,6 +4313,8 @@ impl MainAreaDna {
             } else {
                 Some(ladders)
             },
+            container_ids: None,
+            arrangement_id: None,
         });
     }
 
@@ -6023,6 +6069,37 @@ impl MainAreaDna {
             .to_owned()
     }
 
+    pub fn sequence_id(&self) -> Option<&str> {
+        self.seq_id.as_deref()
+    }
+
+    fn lineage_node_id_for_seq_id(&self, seq_id: &str) -> Option<String> {
+        let engine = self.engine.as_ref()?;
+        let guard = engine.read().ok()?;
+        guard
+            .state()
+            .lineage
+            .nodes
+            .values()
+            .filter(|node| node.seq_id == seq_id)
+            .max_by_key(|node| node.created_at_unix_ms)
+            .map(|node| node.node_id.clone())
+    }
+
+    pub fn window_title(&self) -> String {
+        let display_name = self
+            .sequence_name()
+            .unwrap_or_else(|| "<Unnamed sequence>".to_string());
+        let Some(seq_id) = self.sequence_id() else {
+            return display_name;
+        };
+        if let Some(node_id) = self.lineage_node_id_for_seq_id(seq_id) {
+            format!("{display_name} [{node_id}] ({seq_id})")
+        } else {
+            format!("{display_name} ({seq_id})")
+        }
+    }
+
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         struct FeatureTreeEntry {
             id: usize,
@@ -6055,7 +6132,7 @@ impl MainAreaDna {
         ) = {
             let display = self.dna_display.read().expect("DNA display lock poisoned");
             (
-                display.show_cds_features(),
+                display.show_cds_features_effective(),
                 display.show_gene_features(),
                 display.show_mrna_features(),
                 display.show_tfbs(),
@@ -6132,10 +6209,14 @@ impl MainAreaDna {
                 } else {
                     feature.kind.to_string()
                 };
+                let kind_upper = feature.kind.to_string().to_ascii_uppercase();
                 let range_label = RenderDna::feature_range_text(feature);
                 let grouped_entry = subgroup_label.is_some();
                 let button_label = if grouped_entry && !range_label.is_empty() {
                     range_label.clone()
+                } else if matches!(kind_upper.as_str(), "MRNA" | "GENE") && !range_label.is_empty()
+                {
+                    format!("{feature_label} [{range_label}]")
                 } else {
                     feature_label.clone()
                 };
@@ -6306,15 +6387,18 @@ impl MainAreaDna {
                         label
                     };
                     self.description_cache_range = Some(RenderDna::feature_range_text(feature));
+                    self.description_cache_details = RenderDna::feature_detail_lines(feature);
                 } else {
                     clear_invalid_selection = true;
                     self.description_cache_selected_id = None;
                     self.description_cache_title = dna.description().join("\n");
                     self.description_cache_range = None;
+                    self.description_cache_details.clear();
                 }
             } else {
                 self.description_cache_title = dna.description().join("\n");
                 self.description_cache_range = None;
+                self.description_cache_details.clear();
             }
         }
         if clear_invalid_selection {
@@ -6330,6 +6414,13 @@ impl MainAreaDna {
             if let Some(range) = &self.description_cache_range {
                 ui.label(
                     egui::RichText::new(range)
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+            }
+            for detail in &self.description_cache_details {
+                ui.label(
+                    egui::RichText::new(detail)
                         .monospace()
                         .size(self.feature_details_font_size()),
                 );
@@ -6356,6 +6447,13 @@ impl MainAreaDna {
                     ui.set_width(320.0);
                     let tree_height = (ui.available_height() * 0.55).max(180.0);
                     egui::ScrollArea::vertical()
+                        .id_salt(format!(
+                            "feature_tree_scroll_{}",
+                            self.seq_id
+                                .as_deref()
+                                .unwrap_or("<no-seq-id>")
+                        ))
+                        .auto_shrink([false, false])
                         .max_height(tree_height)
                         .show(ui, |ui| {
                             self.render_features(ui);
@@ -6392,9 +6490,10 @@ impl MainAreaDna {
                                 text
                             }
                         };
-                        Some((name, feature.kind.to_string(), range))
+                        let details = RenderDna::feature_detail_lines(feature);
+                        Some((name, feature.kind.to_string(), range, details))
                     });
-                    if let Some((name, kind, range)) = hover_text {
+                    if let Some((name, kind, range, details)) = hover_text {
                         let detail_font_size = self.feature_details_font_size();
                         response.clone().on_hover_ui_at_pointer(|ui| {
                             ui.strong(name);
@@ -6403,6 +6502,13 @@ impl MainAreaDna {
                                     .monospace()
                                     .size(detail_font_size),
                             );
+                            for line in details.iter().take(4) {
+                                ui.label(
+                                    egui::RichText::new(line)
+                                        .monospace()
+                                        .size(detail_font_size),
+                                );
+                            }
                         });
                     }
                 }

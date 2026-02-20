@@ -29,9 +29,16 @@ pub struct PoolGelLane {
 pub struct PoolGelLayout {
     pub lanes: Vec<PoolGelLane>,
     pub selected_ladders: Vec<String>,
+    pub sample_count: usize,
     pub pool_member_count: usize,
     pub range_min_bp: usize,
     pub range_max_bp: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct GelSampleInput {
+    pub name: String,
+    pub members: Vec<(String, usize)>,
 }
 
 impl PoolGelLayout {
@@ -92,36 +99,71 @@ fn resolve_ladder_names(requested: &[String], min_bp: usize, max_bp: usize) -> V
     DNA_LADDERS.choose_for_range(min_bp, max_bp, 2)
 }
 
-pub fn build_pool_gel_layout(
-    pool_members: &[(String, usize)],
+fn sample_bands(members: &[(String, usize)]) -> Vec<PoolGelBand> {
+    let mut by_bp: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    for (id, bp) in members {
+        by_bp.entry(*bp).or_default().push(id.clone());
+    }
+    by_bp
+        .iter()
+        .rev()
+        .map(|(bp, ids)| {
+            let count = ids.len();
+            let intensity = (0.42 + (count as f32 * 0.2)).clamp(0.3, 1.0);
+            PoolGelBand {
+                bp: *bp,
+                intensity,
+                count,
+                labels: ids.clone(),
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+pub fn build_serial_gel_layout(
+    samples: &[GelSampleInput],
     requested_ladders: &[String],
 ) -> Result<PoolGelLayout, String> {
-    if pool_members.is_empty() {
-        return Err("Pool gel needs at least one sequence".to_string());
+    if samples.is_empty() {
+        return Err("Serial gel needs at least one sample lane".to_string());
     }
-    let mut valid_members = pool_members
-        .iter()
-        .filter(|(_, bp)| *bp > 0)
-        .cloned()
-        .collect::<Vec<_>>();
-    if valid_members.is_empty() {
-        return Err("Pool gel needs sequence lengths > 0 bp".to_string());
+    let mut normalized_samples: Vec<GelSampleInput> = vec![];
+    let mut all_members: Vec<(String, usize)> = vec![];
+    for (sample_idx, sample) in samples.iter().enumerate() {
+        let mut valid_members = sample
+            .members
+            .iter()
+            .filter(|(_, bp)| *bp > 0)
+            .cloned()
+            .collect::<Vec<_>>();
+        if valid_members.is_empty() {
+            return Err(format!(
+                "Sample lane {} has no sequence lengths > 0 bp",
+                sample_idx + 1
+            ));
+        }
+        valid_members.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        all_members.extend(valid_members.clone());
+        let lane_name = if sample.name.trim().is_empty() {
+            format!("Sample {} (n={})", sample_idx + 1, valid_members.len())
+        } else {
+            sample.name.clone()
+        };
+        normalized_samples.push(GelSampleInput {
+            name: lane_name,
+            members: valid_members,
+        });
     }
-    valid_members.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
-    let pool_min = valid_members.iter().map(|(_, bp)| *bp).min().unwrap_or(1);
-    let pool_max = valid_members
-        .iter()
-        .map(|(_, bp)| *bp)
-        .max()
-        .unwrap_or(pool_min);
+    let pool_min = all_members.iter().map(|(_, bp)| *bp).min().unwrap_or(1);
+    let pool_max = all_members.iter().map(|(_, bp)| *bp).max().unwrap_or(pool_min);
     let selected_ladders = resolve_ladder_names(requested_ladders, pool_min, pool_max);
     if selected_ladders.is_empty() {
         return Err("No DNA ladders available for pool-gel rendering".to_string());
     }
 
     let mut lanes: Vec<PoolGelLane> = vec![];
-    let mut all_band_bps: Vec<usize> = valid_members.iter().map(|(_, bp)| *bp).collect();
+    let mut all_band_bps: Vec<usize> = all_members.iter().map(|(_, bp)| *bp).collect();
 
     for ladder_name in &selected_ladders {
         let Some(ladder) = DNA_LADDERS.get(ladder_name) else {
@@ -160,29 +202,13 @@ pub fn build_pool_gel_layout(
         return Err("None of the selected DNA ladders could be resolved".to_string());
     }
 
-    let mut by_bp: BTreeMap<usize, Vec<String>> = BTreeMap::new();
-    for (id, bp) in &valid_members {
-        by_bp.entry(*bp).or_default().push(id.clone());
+    for sample in &normalized_samples {
+        lanes.push(PoolGelLane {
+            name: sample.name.clone(),
+            is_ladder: false,
+            bands: sample_bands(&sample.members),
+        });
     }
-    let pool_bands = by_bp
-        .iter()
-        .rev()
-        .map(|(bp, ids)| {
-            let count = ids.len();
-            let intensity = (0.42 + (count as f32 * 0.2)).clamp(0.3, 1.0);
-            PoolGelBand {
-                bp: *bp,
-                intensity,
-                count,
-                labels: ids.clone(),
-            }
-        })
-        .collect::<Vec<_>>();
-    lanes.push(PoolGelLane {
-        name: format!("Pool (n={})", valid_members.len()),
-        is_ladder: false,
-        bands: pool_bands,
-    });
 
     let min_band = all_band_bps.iter().copied().min().unwrap_or(pool_min);
     let max_band = all_band_bps.iter().copied().max().unwrap_or(pool_max);
@@ -195,10 +221,30 @@ pub fn build_pool_gel_layout(
     Ok(PoolGelLayout {
         lanes,
         selected_ladders,
-        pool_member_count: valid_members.len(),
+        sample_count: normalized_samples.len(),
+        pool_member_count: all_members.len(),
         range_min_bp,
         range_max_bp,
     })
+}
+
+pub fn build_pool_gel_layout(
+    pool_members: &[(String, usize)],
+    requested_ladders: &[String],
+) -> Result<PoolGelLayout, String> {
+    let members = pool_members
+        .iter()
+        .filter(|(_, bp)| *bp > 0)
+        .cloned()
+        .collect::<Vec<_>>();
+    if members.is_empty() {
+        return Err("Pool gel needs sequence lengths > 0 bp".to_string());
+    }
+    let sample = GelSampleInput {
+        name: format!("Pool (n={})", members.len()),
+        members,
+    };
+    build_serial_gel_layout(&[sample], requested_ladders)
 }
 
 pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
@@ -206,7 +252,12 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
     let lane_gap = (GEL_RIGHT - GEL_LEFT) / (lane_count as f32 + 1.0);
     let gel_width = GEL_RIGHT - GEL_LEFT;
     let gel_height = GEL_BOTTOM - GEL_TOP;
-    let pool_lane_idx = layout.lanes.iter().position(|l| !l.is_ladder);
+    let sample_lane_indices = layout
+        .lanes
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, lane)| (!lane.is_ladder).then_some(idx))
+        .collect::<Vec<_>>();
 
     let mut doc = Document::new()
         .set("viewBox", (0, 0, SVG_WIDTH, SVG_HEIGHT))
@@ -347,8 +398,8 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
         layout.selected_ladders.join(" + ")
     };
     let title = format!(
-        "Pool Gel Preview ({} members) | ladders: {}",
-        layout.pool_member_count, ladder_caption
+        "Serial Gel Preview ({} sample lane(s), {} member(s)) | ladders: {}",
+        layout.sample_count, layout.pool_member_count, ladder_caption
     );
     doc = doc
         .add(
@@ -371,8 +422,8 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
             .set("fill", "#334155"),
         );
 
-    if let Some(pool_idx) = pool_lane_idx {
-        let x = GEL_LEFT + lane_gap * (pool_idx as f32 + 1.0);
+    for sample_idx in sample_lane_indices {
+        let x = GEL_LEFT + lane_gap * (sample_idx as f32 + 1.0);
         doc = doc.add(
             Line::new()
                 .set("x1", x)
@@ -381,7 +432,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
                 .set("y2", GEL_BOTTOM)
                 .set("stroke", "#f59e0b")
                 .set("stroke-width", 1.5)
-                .set("opacity", 0.45),
+                .set("opacity", 0.25),
         );
     }
 
@@ -406,6 +457,7 @@ mod tests {
         assert!(!layout.selected_ladders.is_empty());
         assert!(layout.lanes.iter().any(|l| l.is_ladder));
         assert!(layout.lanes.iter().any(|l| !l.is_ladder));
+        assert_eq!(layout.sample_count, 1);
         assert!(layout.range_max_bp > layout.range_min_bp);
     }
 
@@ -419,7 +471,7 @@ mod tests {
         let layout = build_pool_gel_layout(&members, &[]).unwrap();
         let svg = export_pool_gel_svg(&layout);
         assert!(svg.contains("<svg"));
-        assert!(svg.contains("Pool Gel Preview"));
+        assert!(svg.contains("Serial Gel Preview"));
     }
 
     #[test]

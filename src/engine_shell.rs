@@ -1,23 +1,26 @@
 use crate::{
-    agent_bridge::{invoke_agent_support, load_agent_system_catalog, AgentExecutionIntent},
+    agent_bridge::{AgentExecutionIntent, invoke_agent_support, load_agent_system_catalog},
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
-        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Engine, GenomeAnchorSide,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, Operation, ProjectState,
-        RenderSvgMode, SequenceAnchor, Workflow, CANDIDATE_MACRO_TEMPLATES_METADATA_KEY,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
+        CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
+        CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
+        CandidateWeightedObjectiveTerm, Engine, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
+        ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
+        Workflow, WorkflowMacroTemplateParam,
     },
-    genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
+    genomes::{DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeGeneRecord},
     resource_sync,
     shell_docs::{
-        shell_help_json as render_shell_help_json,
+        HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
+        shell_topic_help_text as render_shell_topic_help_text,
     },
     tf_motifs,
 };
@@ -27,7 +30,7 @@ use objc2_app_kit::NSApplication;
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -73,6 +76,14 @@ pub enum ShellCommand {
     RenderPoolGelSvg {
         inputs: Vec<String>,
         output: String,
+        ladders: Option<Vec<String>>,
+        container_ids: Option<Vec<String>>,
+        arrangement_id: Option<String>,
+    },
+    CreateArrangementSerial {
+        container_ids: Vec<String>,
+        arrangement_id: Option<String>,
+        name: Option<String>,
         ladders: Option<Vec<String>>,
     },
     LaddersList {
@@ -230,6 +241,28 @@ pub enum ShellCommand {
         index: Option<usize>,
         only_new_anchors: bool,
     },
+    MacrosRun {
+        script: String,
+        transactional: bool,
+    },
+    MacrosTemplateList,
+    MacrosTemplateShow {
+        name: String,
+    },
+    MacrosTemplateUpsert {
+        name: String,
+        description: Option<String>,
+        parameters: Vec<WorkflowMacroTemplateParam>,
+        script: String,
+    },
+    MacrosTemplateDelete {
+        name: String,
+    },
+    MacrosTemplateRun {
+        name: String,
+        bindings: HashMap<String, String>,
+        transactional: bool,
+    },
     CandidatesList,
     CandidatesDelete {
         set_name: String,
@@ -336,6 +369,53 @@ pub enum ShellCommand {
         bindings: HashMap<String, String>,
         transactional: bool,
     },
+    GuidesList,
+    GuidesShow {
+        guide_set_id: String,
+        limit: usize,
+        offset: usize,
+    },
+    GuidesPut {
+        guide_set_id: String,
+        guides_json: String,
+    },
+    GuidesDelete {
+        guide_set_id: String,
+    },
+    GuidesFilter {
+        guide_set_id: String,
+        config_json: Option<String>,
+        output_guide_set_id: Option<String>,
+    },
+    GuidesFilterShow {
+        guide_set_id: String,
+    },
+    GuidesOligosGenerate {
+        guide_set_id: String,
+        template_id: String,
+        apply_5prime_g_extension: bool,
+        output_oligo_set_id: Option<String>,
+        passed_only: bool,
+    },
+    GuidesOligosList {
+        guide_set_id: Option<String>,
+    },
+    GuidesOligosShow {
+        oligo_set_id: String,
+    },
+    GuidesOligosExport {
+        guide_set_id: String,
+        oligo_set_id: Option<String>,
+        format: GuideOligoExportFormat,
+        path: String,
+        plate_format: Option<GuideOligoPlateFormat>,
+    },
+    GuidesProtocolExport {
+        guide_set_id: String,
+        oligo_set_id: Option<String>,
+        path: String,
+        include_qc_checklist: bool,
+    },
     SetParameter {
         name: String,
         value_json: String,
@@ -419,6 +499,7 @@ struct PoolExport {
 const CANDIDATE_SETS_METADATA_KEY: &str = "candidate_sets";
 const DEFAULT_CANDIDATE_PAGE_SIZE: usize = 100;
 const DEFAULT_CANDIDATE_SET_LIMIT: usize = 50_000;
+const DEFAULT_GUIDE_PAGE_SIZE: usize = 100;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CandidateSetOperator {
@@ -467,9 +548,7 @@ fn parse_candidate_feature_boundary_mode(
     match raw.trim().to_ascii_lowercase().as_str() {
         "any" => Ok(CandidateFeatureBoundaryMode::Any),
         "five_prime" | "five-prime" | "5p" | "5'" => Ok(CandidateFeatureBoundaryMode::FivePrime),
-        "three_prime" | "three-prime" | "3p" | "3'" => {
-            Ok(CandidateFeatureBoundaryMode::ThreePrime)
-        }
+        "three_prime" | "three-prime" | "3p" | "3'" => Ok(CandidateFeatureBoundaryMode::ThreePrime),
         "start" => Ok(CandidateFeatureBoundaryMode::Start),
         "end" => Ok(CandidateFeatureBoundaryMode::End),
         other => Err(format!(
@@ -585,7 +664,7 @@ fn parse_pareto_objective(raw: &str) -> Result<CandidateObjectiveSpec, String> {
     })
 }
 
-fn parse_template_param_spec(raw: &str) -> Result<CandidateMacroTemplateParam, String> {
+fn parse_template_param_spec_parts(raw: &str) -> Result<(String, Option<String>, bool), String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err("Template parameter cannot be empty".to_string());
@@ -598,18 +677,28 @@ fn parse_template_param_spec(raw: &str) -> Result<CandidateMacroTemplateParam, S
                 trimmed
             ));
         }
-        Ok(CandidateMacroTemplateParam {
-            name: name.to_string(),
-            default_value: Some(default_value.to_string()),
-            required: false,
-        })
+        Ok((name.to_string(), Some(default_value.to_string()), false))
     } else {
-        Ok(CandidateMacroTemplateParam {
-            name: trimmed.to_string(),
-            default_value: None,
-            required: true,
-        })
+        Ok((trimmed.to_string(), None, true))
     }
+}
+
+fn parse_candidate_template_param_spec(raw: &str) -> Result<CandidateMacroTemplateParam, String> {
+    let (name, default_value, required) = parse_template_param_spec_parts(raw)?;
+    Ok(CandidateMacroTemplateParam {
+        name,
+        default_value,
+        required,
+    })
+}
+
+fn parse_workflow_template_param_spec(raw: &str) -> Result<WorkflowMacroTemplateParam, String> {
+    let (name, default_value, required) = parse_template_param_spec_parts(raw)?;
+    Ok(WorkflowMacroTemplateParam {
+        name,
+        default_value,
+        required,
+    })
 }
 
 fn parse_template_binding(raw: &str) -> Result<(String, String), String> {
@@ -677,14 +766,44 @@ impl ShellCommand {
                 inputs,
                 output,
                 ladders,
+                container_ids,
+                arrangement_id,
             } => {
                 let ladders = ladders
                     .as_ref()
                     .map(|v| v.join(","))
                     .unwrap_or_else(|| "auto".to_string());
+                let containers = container_ids
+                    .as_ref()
+                    .map(|v| v.join(","))
+                    .unwrap_or_else(|| "-".to_string());
+                let arrangement = arrangement_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
                 format!(
-                    "render pool gel SVG from {} input(s) to '{output}' with ladders {ladders}",
-                    inputs.len()
+                    "render serial gel SVG to '{output}' (inputs={}, containers={}, arrangement={}, ladders={ladders})",
+                    inputs.len(),
+                    containers,
+                    arrangement
+                )
+            }
+            Self::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                name,
+                ladders,
+            } => {
+                let arrangement_id = arrangement_id.as_deref().unwrap_or("auto");
+                let name = name.as_deref().unwrap_or("-");
+                let ladders = ladders
+                    .as_ref()
+                    .map(|v| v.join(","))
+                    .unwrap_or_else(|| "auto".to_string());
+                format!(
+                    "create serial arrangement id={arrangement_id}, name={name}, lanes={} (ladders={ladders})",
+                    container_ids.len()
                 )
             }
             Self::LaddersList {
@@ -970,7 +1089,9 @@ impl ShellCommand {
                     query_sequence.len(),
                     target_seq_id,
                     task,
-                    track_name.clone().unwrap_or_else(|| "blast_hits".to_string()),
+                    track_name
+                        .clone()
+                        .unwrap_or_else(|| "blast_hits".to_string()),
                     clear_existing,
                     catalog,
                     cache
@@ -986,9 +1107,7 @@ impl ShellCommand {
             } => format!(
                 "import BED track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
                 path,
-                track_name
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                track_name.clone().unwrap_or_else(|| "-".to_string()),
                 min_score
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
@@ -1007,9 +1126,7 @@ impl ShellCommand {
             } => format!(
                 "import BigWig track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
                 path,
-                track_name
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                track_name.clone().unwrap_or_else(|| "-".to_string()),
                 min_score
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
@@ -1028,9 +1145,7 @@ impl ShellCommand {
             } => format!(
                 "import VCF track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
                 path,
-                track_name
-                    .clone()
-                    .unwrap_or_else(|| "-".to_string()),
+                track_name.clone().unwrap_or_else(|| "-".to_string()),
                 min_score
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
@@ -1075,6 +1190,74 @@ impl ShellCommand {
                     only_new_anchors
                 ),
             },
+            Self::MacrosRun {
+                script,
+                transactional,
+            } => {
+                let trimmed = script.trim();
+                let preview = if trimmed.starts_with('@') {
+                    trimmed.to_string()
+                } else {
+                    let single_line = trimmed.replace('\n', " ");
+                    if single_line.len() > 80 {
+                        format!("{}...", &single_line[..80])
+                    } else {
+                        single_line
+                    }
+                };
+                let mode = if *transactional {
+                    "transactional"
+                } else {
+                    "best-effort"
+                };
+                format!("run {mode} workflow macro '{preview}'")
+            }
+            Self::MacrosTemplateList => "list workflow macro templates".to_string(),
+            Self::MacrosTemplateShow { name } => {
+                format!("show workflow macro template '{}'", name)
+            }
+            Self::MacrosTemplateUpsert {
+                name,
+                description,
+                parameters,
+                script,
+            } => format!(
+                "upsert workflow macro template '{}' (description='{}', params={}, script_len={})",
+                name,
+                description
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("-"),
+                parameters
+                    .iter()
+                    .map(|p| {
+                        if let Some(default_value) = &p.default_value {
+                            format!("{}={}", p.name, default_value)
+                        } else {
+                            p.name.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(","),
+                script.len()
+            ),
+            Self::MacrosTemplateDelete { name } => {
+                format!("delete workflow macro template '{}'", name)
+            }
+            Self::MacrosTemplateRun {
+                name,
+                bindings,
+                transactional,
+            } => format!(
+                "run workflow macro template '{}' (bindings={}, transactional={})",
+                name,
+                bindings
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                transactional
+            ),
             Self::CandidatesList => "list persisted candidate sets".to_string(),
             Self::CandidatesDelete { set_name } => {
                 format!("delete candidate set '{set_name}'")
@@ -1184,8 +1367,10 @@ impl ShellCommand {
                 max_quantile,
             } => format!(
                 "filter candidate set '{input_set}' by metric '{metric}' into '{output_set}' (min={}, max={}, min_quantile={}, max_quantile={})",
-                min.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
-                max.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
+                min.map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                max.map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
                 min_quantile
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string()),
@@ -1216,7 +1401,12 @@ impl ShellCommand {
                 set_name,
                 objectives
                     .iter()
-                    .map(|term| format!("{}:{}:{}", term.metric, term.weight, term.direction.as_str()))
+                    .map(|term| format!(
+                        "{}:{}:{}",
+                        term.metric,
+                        term.weight,
+                        term.direction.as_str()
+                    ))
                     .collect::<Vec<_>>()
                     .join(","),
                 normalize_metrics
@@ -1249,7 +1439,11 @@ impl ShellCommand {
                 output_set,
                 objectives
                     .iter()
-                    .map(|objective| format!("{}:{}", objective.metric, objective.direction.as_str()))
+                    .map(|objective| format!(
+                        "{}:{}",
+                        objective.metric,
+                        objective.direction.as_str()
+                    ))
                     .collect::<Vec<_>>()
                     .join(","),
                 max_candidates
@@ -1325,6 +1519,104 @@ impl ShellCommand {
                     .join(","),
                 transactional
             ),
+            Self::GuidesList => "list persisted guide sets".to_string(),
+            Self::GuidesShow {
+                guide_set_id,
+                limit,
+                offset,
+            } => format!(
+                "show guide set '{}' (limit={}, offset={})",
+                guide_set_id, limit, offset
+            ),
+            Self::GuidesPut {
+                guide_set_id,
+                guides_json,
+            } => format!(
+                "upsert guide set '{}' from JSON payload (len={})",
+                guide_set_id,
+                guides_json.len()
+            ),
+            Self::GuidesDelete { guide_set_id } => {
+                format!("delete guide set '{}'", guide_set_id)
+            }
+            Self::GuidesFilter {
+                guide_set_id,
+                config_json,
+                output_guide_set_id,
+            } => format!(
+                "filter practical guide constraints for '{}' (config_len={}, output_set='{}')",
+                guide_set_id,
+                config_json.as_ref().map(|v| v.len()).unwrap_or(2),
+                output_guide_set_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-")
+            ),
+            Self::GuidesFilterShow { guide_set_id } => format!(
+                "show practical guide filter report for '{}'",
+                guide_set_id
+            ),
+            Self::GuidesOligosGenerate {
+                guide_set_id,
+                template_id,
+                apply_5prime_g_extension,
+                output_oligo_set_id,
+                passed_only,
+            } => format!(
+                "generate guide oligos for '{}' (template='{}', apply_5prime_g_extension={}, output_oligo_set='{}', passed_only={})",
+                guide_set_id,
+                template_id,
+                apply_5prime_g_extension,
+                output_oligo_set_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-"),
+                passed_only
+            ),
+            Self::GuidesOligosList { guide_set_id } => format!(
+                "list guide oligo sets{}",
+                guide_set_id
+                    .as_deref()
+                    .map(|id| format!(" for '{}'", id))
+                    .unwrap_or_default()
+            ),
+            Self::GuidesOligosShow { oligo_set_id } => {
+                format!("show guide oligo set '{}'", oligo_set_id)
+            }
+            Self::GuidesOligosExport {
+                guide_set_id,
+                oligo_set_id,
+                format,
+                path,
+                plate_format,
+            } => format!(
+                "export guide oligos for '{}' to '{}' (oligo_set='{}', format={}, plate={})",
+                guide_set_id,
+                path,
+                oligo_set_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-"),
+                format.as_str(),
+                plate_format
+                    .map(|v| v.as_str().to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+            Self::GuidesProtocolExport {
+                guide_set_id,
+                oligo_set_id,
+                path,
+                include_qc_checklist,
+            } => format!(
+                "export guide protocol text for '{}' to '{}' (oligo_set='{}', include_qc_checklist={})",
+                guide_set_id,
+                path,
+                oligo_set_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-"),
+                include_qc_checklist
+            ),
             Self::SetParameter { name, value_json } => {
                 format!("set parameter '{}' to {}", name, value_json)
             }
@@ -1350,6 +1642,10 @@ impl ShellCommand {
                 | Self::TracksTrackedRemove { .. }
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
+                | Self::MacrosRun { .. }
+                | Self::MacrosTemplateUpsert { .. }
+                | Self::MacrosTemplateDelete { .. }
+                | Self::MacrosTemplateRun { .. }
                 | Self::CandidatesDelete { .. }
                 | Self::CandidatesGenerate { .. }
                 | Self::CandidatesGenerateBetweenAnchors { .. }
@@ -1364,6 +1660,12 @@ impl ShellCommand {
                 | Self::CandidatesTemplateUpsert { .. }
                 | Self::CandidatesTemplateDelete { .. }
                 | Self::CandidatesTemplateRun { .. }
+                | Self::GuidesPut { .. }
+                | Self::GuidesDelete { .. }
+                | Self::GuidesFilter { .. }
+                | Self::GuidesOligosGenerate { .. }
+                | Self::GuidesOligosExport { .. }
+                | Self::GuidesProtocolExport { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -1551,6 +1853,27 @@ fn parse_ladder_molecule(value: &str) -> Result<LadderMolecule, String> {
         .ok_or_else(|| format!("Unknown ladder molecule '{value}', expected 'dna' or 'rna'"))
 }
 
+fn parse_guide_export_format(value: &str) -> Result<GuideOligoExportFormat, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "csv_table" | "csv" | "table" => Ok(GuideOligoExportFormat::CsvTable),
+        "plate_csv" | "plate" => Ok(GuideOligoExportFormat::PlateCsv),
+        "fasta" | "fa" => Ok(GuideOligoExportFormat::Fasta),
+        other => Err(format!(
+            "Unsupported guide export format '{other}' (expected csv_table|plate_csv|fasta)"
+        )),
+    }
+}
+
+fn parse_guide_plate_format(value: &str) -> Result<GuideOligoPlateFormat, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "96" | "plate96" | "p96" => Ok(GuideOligoPlateFormat::Plate96),
+        "384" | "plate384" | "p384" => Ok(GuideOligoPlateFormat::Plate384),
+        other => Err(format!(
+            "Unsupported plate format '{other}' (expected 96|384)"
+        )),
+    }
+}
+
 fn parse_anchor_side(value: &str) -> Result<GenomeAnchorSide, String> {
     match value.trim().to_ascii_lowercase().as_str() {
         "5" | "5p" | "5prime" | "5'" | "five_prime" | "five-prime" => {
@@ -1717,7 +2040,8 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--catalog" => {
-                        catalog_path = Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} list"));
@@ -1735,7 +2059,8 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--catalog" => {
-                        catalog_path = Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     other => {
                         return Err(format!(
@@ -1766,12 +2091,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} status"));
@@ -1806,16 +2126,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
-                    "--filter" => {
-                        filter = parse_option_path(tokens, &mut idx, "--filter", label)?
-                    }
+                    "--filter" => filter = parse_option_path(tokens, &mut idx, "--filter", label)?,
                     "--biotype" => {
                         let biotype = parse_option_path(tokens, &mut idx, "--biotype", label)?;
                         let trimmed = biotype.trim();
@@ -1872,12 +2185,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     "--timeout-secs" => {
                         let raw = parse_option_path(tokens, &mut idx, "--timeout-secs", label)?;
@@ -1936,7 +2244,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                                 return Err(format!(
                                     "Unsupported --task value '{}'; expected blastn-short or blastn",
                                     raw
-                                ))
+                                ));
                             }
                         }
                     }
@@ -1945,12 +2253,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} blast"));
@@ -2003,7 +2306,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                                 return Err(format!(
                                     "Unsupported --task value '{}'; expected blastn-short or blastn",
                                     raw
-                                ))
+                                ));
                             }
                         }
                     }
@@ -2020,12 +2323,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} blast-track"));
@@ -2066,24 +2364,14 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--output-id" => {
-                        output_id = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--output-id",
-                            label,
-                        )?)
+                        output_id = Some(parse_option_path(tokens, &mut idx, "--output-id", label)?)
                     }
                     "--catalog" => {
                         catalog_path =
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     other => {
                         return Err(format!(
@@ -2129,24 +2417,14 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         occurrence = Some(value);
                     }
                     "--output-id" => {
-                        output_id = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--output-id",
-                            label,
-                        )?)
+                        output_id = Some(parse_option_path(tokens, &mut idx, "--output-id", label)?)
                     }
                     "--catalog" => {
                         catalog_path =
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} extract-gene"));
@@ -2191,12 +2469,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
                     }
                     "--cache-dir" => {
-                        cache_dir = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--cache-dir",
-                            label,
-                        )?)
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     other => {
                         return Err(format!(
@@ -2317,10 +2590,10 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--max-distance",
                             "candidates generate",
                         )?;
-                        max_distance_bp = Some(
-                            raw.parse::<usize>()
-                                .map_err(|e| format!("Invalid --max-distance value '{raw}': {e}"))?,
-                        );
+                        max_distance_bp =
+                            Some(raw.parse::<usize>().map_err(|e| {
+                                format!("Invalid --max-distance value '{raw}': {e}")
+                            })?);
                     }
                     "--feature-geometry" => {
                         let raw = parse_option_path(
@@ -2361,9 +2634,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown option '{other}' for candidates generate"
-                        ));
+                        return Err(format!("Unknown option '{other}' for candidates generate"));
                     }
                 }
             }
@@ -2528,7 +2799,9 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "show" => {
             if tokens.len() < 3 {
-                return Err("candidates show requires SET_NAME [--limit N] [--offset N]".to_string());
+                return Err(
+                    "candidates show requires SET_NAME [--limit N] [--offset N]".to_string()
+                );
             }
             let set_name = tokens[2].clone();
             let mut limit = DEFAULT_CANDIDATE_PAGE_SIZE;
@@ -2537,7 +2810,8 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--limit" => {
-                        let raw = parse_option_path(tokens, &mut idx, "--limit", "candidates show")?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--limit", "candidates show")?;
                         limit = raw
                             .parse::<usize>()
                             .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
@@ -2746,8 +3020,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?);
                     }
                     "--k" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--k", "candidates top-k")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--k", "candidates top-k")?;
                         let parsed = raw
                             .parse::<usize>()
                             .map_err(|e| format!("Invalid --k value '{raw}': {e}"))?;
@@ -2757,21 +3030,13 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         k = Some(parsed);
                     }
                     "--direction" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--direction",
-                            "candidates top-k",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--direction", "candidates top-k")?;
                         direction = parse_candidate_objective_direction(&raw)?;
                     }
                     "--tie-break" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--tie-break",
-                            "candidates top-k",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--tie-break", "candidates top-k")?;
                         tie_break = parse_candidate_tie_break_policy(&raw)?;
                     }
                     other => return Err(format!("Unknown option '{other}' for candidates top-k")),
@@ -2898,9 +3163,10 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--min-quantile",
                             "candidates filter",
                         )?;
-                        min_quantile = Some(raw.parse::<f64>().map_err(|e| {
-                            format!("Invalid --min-quantile value '{raw}': {e}")
-                        })?);
+                        min_quantile =
+                            Some(raw.parse::<f64>().map_err(|e| {
+                                format!("Invalid --min-quantile value '{raw}': {e}")
+                            })?);
                     }
                     "--max-quantile" => {
                         let raw = parse_option_path(
@@ -2909,9 +3175,10 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--max-quantile",
                             "candidates filter",
                         )?;
-                        max_quantile = Some(raw.parse::<f64>().map_err(|e| {
-                            format!("Invalid --max-quantile value '{raw}': {e}")
-                        })?);
+                        max_quantile =
+                            Some(raw.parse::<f64>().map_err(|e| {
+                                format!("Invalid --max-quantile value '{raw}': {e}")
+                            })?);
                     }
                     other => {
                         return Err(format!("Unknown option '{other}' for candidates filter"));
@@ -2919,11 +3186,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 }
             }
             let metric = metric.ok_or_else(|| "candidates filter requires --metric".to_string())?;
-            if min
-                .zip(max)
-                .map(|(lo, hi)| lo > hi)
-                .unwrap_or(false)
-            {
+            if min.zip(max).map(|(lo, hi)| lo > hi).unwrap_or(false) {
                 return Err("--min must be <= --max".to_string());
             }
             if min_quantile
@@ -2933,7 +3196,10 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
             {
                 return Err("--min-quantile must be <= --max-quantile".to_string());
             }
-            for (name, value) in [("min-quantile", min_quantile), ("max-quantile", max_quantile)] {
+            for (name, value) in [
+                ("min-quantile", min_quantile),
+                ("max-quantile", max_quantile),
+            ] {
                 if let Some(q) = value {
                     if !(0.0..=1.0).contains(&q) {
                         return Err(format!("--{name} must be between 0 and 1"));
@@ -2994,7 +3260,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     "--file" => {
                         if script_file.is_some() {
                             return Err(
-                                "candidates macro --file may only be specified once".to_string(),
+                                "candidates macro --file may only be specified once".to_string()
                             );
                         }
                         idx += 1;
@@ -3072,12 +3338,12 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--param",
                             "candidates template-put",
                         )?;
-                        parameters.push(parse_template_param_spec(&raw)?);
+                        parameters.push(parse_candidate_template_param_spec(&raw)?);
                     }
                     "--script" => {
                         if script.is_some() {
                             return Err(
-                                "candidates template-put script was already specified".to_string(),
+                                "candidates template-put script was already specified".to_string()
                             );
                         }
                         script = Some(parse_option_path(
@@ -3090,7 +3356,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     "--file" => {
                         if script.is_some() {
                             return Err(
-                                "candidates template-put script was already specified".to_string(),
+                                "candidates template-put script was already specified".to_string()
                             );
                         }
                         let path = parse_option_path(
@@ -3174,6 +3440,534 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         other => Err(format!(
             "Unknown candidates subcommand '{other}' (expected list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, score-weighted, top-k, pareto, filter, set-op, macro, template-list, template-show, template-put, template-delete, template-run)"
+        )),
+    }
+}
+
+fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "guides requires a subcommand: list, show, put, delete, filter, filter-show, oligos-generate, oligos-list, oligos-show, oligos-export, protocol-export"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("guides list takes no options".to_string());
+            }
+            Ok(ShellCommand::GuidesList)
+        }
+        "show" => {
+            if tokens.len() < 3 {
+                return Err("guides show requires GUIDE_SET_ID [--limit N] [--offset N]".to_string());
+            }
+            let guide_set_id = tokens[2].clone();
+            let mut limit = DEFAULT_GUIDE_PAGE_SIZE;
+            let mut offset = 0usize;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--limit" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--limit", "guides show")?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--offset" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--offset", "guides show")?;
+                        offset = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides show")),
+                }
+            }
+            Ok(ShellCommand::GuidesShow {
+                guide_set_id,
+                limit,
+                offset,
+            })
+        }
+        "put" | "upsert" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides put requires GUIDE_SET_ID (--json JSON|@FILE | --file PATH)"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let mut guides_json: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--json" => {
+                        if guides_json.is_some() {
+                            return Err("guides put JSON payload was already specified".to_string());
+                        }
+                        guides_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--json",
+                            "guides put",
+                        )?);
+                    }
+                    "--file" => {
+                        if guides_json.is_some() {
+                            return Err("guides put JSON payload was already specified".to_string());
+                        }
+                        let path =
+                            parse_option_path(tokens, &mut idx, "--file", "guides put")?;
+                        guides_json = Some(format!("@{path}"));
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides put")),
+                }
+            }
+            let guides_json = guides_json.ok_or_else(|| {
+                "guides put requires --json JSON|@FILE or --file PATH".to_string()
+            })?;
+            Ok(ShellCommand::GuidesPut {
+                guide_set_id,
+                guides_json,
+            })
+        }
+        "delete" => {
+            if tokens.len() != 3 {
+                return Err("guides delete requires GUIDE_SET_ID".to_string());
+            }
+            Ok(ShellCommand::GuidesDelete {
+                guide_set_id: tokens[2].clone(),
+            })
+        }
+        "filter" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "guides filter requires GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let mut config_json: Option<String> = None;
+            let mut output_guide_set_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--config" => {
+                        if config_json.is_some() {
+                            return Err("guides filter config was already specified".to_string());
+                        }
+                        config_json = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--config",
+                            "guides filter",
+                        )?);
+                    }
+                    "--config-file" => {
+                        if config_json.is_some() {
+                            return Err("guides filter config was already specified".to_string());
+                        }
+                        let path = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--config-file",
+                            "guides filter",
+                        )?;
+                        config_json = Some(format!("@{path}"));
+                    }
+                    "--output-set" => {
+                        output_guide_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-set",
+                            "guides filter",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides filter")),
+                }
+            }
+            Ok(ShellCommand::GuidesFilter {
+                guide_set_id,
+                config_json,
+                output_guide_set_id,
+            })
+        }
+        "filter-show" => {
+            if tokens.len() != 3 {
+                return Err("guides filter-show requires GUIDE_SET_ID".to_string());
+            }
+            Ok(ShellCommand::GuidesFilterShow {
+                guide_set_id: tokens[2].clone(),
+            })
+        }
+        "oligos-generate" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides oligos-generate requires GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let template_id = tokens[3].clone();
+            let mut apply_5prime_g_extension = false;
+            let mut output_oligo_set_id: Option<String> = None;
+            let mut passed_only = false;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--apply-5prime-g-extension" => {
+                        apply_5prime_g_extension = true;
+                        idx += 1;
+                    }
+                    "--output-oligo-set" => {
+                        output_oligo_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-oligo-set",
+                            "guides oligos-generate",
+                        )?);
+                    }
+                    "--passed-only" => {
+                        passed_only = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for guides oligos-generate"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesOligosGenerate {
+                guide_set_id,
+                template_id,
+                apply_5prime_g_extension,
+                output_oligo_set_id,
+                passed_only,
+            })
+        }
+        "oligos-list" => {
+            let mut guide_set_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--guide-set" => {
+                        guide_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--guide-set",
+                            "guides oligos-list",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for guides oligos-list")),
+                }
+            }
+            Ok(ShellCommand::GuidesOligosList { guide_set_id })
+        }
+        "oligos-show" => {
+            if tokens.len() != 3 {
+                return Err("guides oligos-show requires OLIGO_SET_ID".to_string());
+            }
+            Ok(ShellCommand::GuidesOligosShow {
+                oligo_set_id: tokens[2].clone(),
+            })
+        }
+        "oligos-export" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides oligos-export requires GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut format = GuideOligoExportFormat::CsvTable;
+            let mut plate_format: Option<GuideOligoPlateFormat> = None;
+            let mut oligo_set_id: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--format" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--format",
+                            "guides oligos-export",
+                        )?;
+                        format = parse_guide_export_format(&raw)?;
+                    }
+                    "--plate" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--plate",
+                            "guides oligos-export",
+                        )?;
+                        plate_format = Some(parse_guide_plate_format(&raw)?);
+                    }
+                    "--oligo-set" => {
+                        oligo_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--oligo-set",
+                            "guides oligos-export",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for guides oligos-export"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesOligosExport {
+                guide_set_id,
+                oligo_set_id,
+                format,
+                path,
+                plate_format,
+            })
+        }
+        "protocol-export" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "guides protocol-export requires GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]"
+                        .to_string(),
+                );
+            }
+            let guide_set_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut oligo_set_id: Option<String> = None;
+            let mut include_qc_checklist = true;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--oligo-set" => {
+                        oligo_set_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--oligo-set",
+                            "guides protocol-export",
+                        )?);
+                    }
+                    "--no-qc" => {
+                        include_qc_checklist = false;
+                        idx += 1;
+                    }
+                    "--with-qc" => {
+                        include_qc_checklist = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for guides protocol-export"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::GuidesProtocolExport {
+                guide_set_id,
+                oligo_set_id,
+                path,
+                include_qc_checklist,
+            })
+        }
+        other => Err(format!(
+            "Unknown guides subcommand '{other}' (expected list, show, put, delete, filter, filter-show, oligos-generate, oligos-list, oligos-show, oligos-export, protocol-export)"
+        )),
+    }
+}
+
+fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "macros requires a subcommand: run, template-list, template-show, template-put, template-delete, template-run"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "macros run requires SCRIPT_OR_@FILE (or --file PATH), optionally with --transactional".to_string(),
+                );
+            }
+            let mut idx = 2usize;
+            let mut transactional = false;
+            let mut script_file: Option<String> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    "--file" => {
+                        if script_file.is_some() {
+                            return Err("macros run --file may only be specified once".to_string());
+                        }
+                        idx += 1;
+                        if idx >= tokens.len() {
+                            return Err("macros run --file requires PATH".to_string());
+                        }
+                        script_file = Some(tokens[idx].trim().to_string());
+                        idx += 1;
+                    }
+                    _ => break,
+                }
+            }
+            let script = if let Some(path) = script_file {
+                if idx != tokens.len() {
+                    return Err(
+                        "macros run does not accept inline script after --file PATH".to_string()
+                    );
+                }
+                format!("@{path}")
+            } else {
+                if idx >= tokens.len() {
+                    return Err("macros run requires SCRIPT_OR_@FILE".to_string());
+                }
+                tokens[idx..].join(" ")
+            };
+            if script.trim().is_empty() {
+                return Err("macros run requires non-empty script".to_string());
+            }
+            Ok(ShellCommand::MacrosRun {
+                script,
+                transactional,
+            })
+        }
+        "template-list" => {
+            if tokens.len() != 2 {
+                return Err("macros template-list takes no options".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateList)
+        }
+        "template-show" => {
+            if tokens.len() != 3 {
+                return Err("macros template-show requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateShow {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-put" | "template-upsert" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "macros template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut description: Option<String> = None;
+            let mut parameters: Vec<WorkflowMacroTemplateParam> = vec![];
+            let mut script: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--description" => {
+                        description = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--description",
+                            "macros template-put",
+                        )?);
+                    }
+                    "--param" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--param", "macros template-put")?;
+                        parameters.push(parse_workflow_template_param_spec(&raw)?);
+                    }
+                    "--script" => {
+                        if script.is_some() {
+                            return Err(
+                                "macros template-put script was already specified".to_string()
+                            );
+                        }
+                        script = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--script",
+                            "macros template-put",
+                        )?);
+                    }
+                    "--file" => {
+                        if script.is_some() {
+                            return Err(
+                                "macros template-put script was already specified".to_string()
+                            );
+                        }
+                        let path =
+                            parse_option_path(tokens, &mut idx, "--file", "macros template-put")?;
+                        script = Some(format!("@{path}"));
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for macros template-put"));
+                    }
+                }
+            }
+            let script = script.ok_or_else(|| {
+                "macros template-put requires --script SCRIPT_OR_@FILE or --file PATH".to_string()
+            })?;
+            Ok(ShellCommand::MacrosTemplateUpsert {
+                name,
+                description,
+                parameters,
+                script,
+            })
+        }
+        "template-delete" => {
+            if tokens.len() != 3 {
+                return Err("macros template-delete requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateDelete {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "macros template-run requires TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut bindings: HashMap<String, String> = HashMap::new();
+            let mut transactional = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--bind" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--bind", "macros template-run")?;
+                        let (key, value) = parse_template_binding(&raw)?;
+                        if bindings.insert(key.clone(), value).is_some() {
+                            return Err(format!(
+                                "Duplicate --bind key '{}' in macros template-run",
+                                key
+                            ));
+                        }
+                    }
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for macros template-run"));
+                    }
+                }
+            }
+            Ok(ShellCommand::MacrosTemplateRun {
+                name,
+                bindings,
+                transactional,
+            })
+        }
+        other => Err(format!(
+            "Unknown macros subcommand '{other}' (expected run, template-list, template-show, template-put, template-delete, template-run)"
         )),
     }
 }
@@ -3376,12 +4170,14 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
             }
-            let inputs = split_ids(&tokens[1]);
-            if inputs.is_empty() {
-                return Err("render-pool-gel-svg requires at least one sequence id".to_string());
-            }
+            let inputs = match tokens[1].trim() {
+                "-" | "_" => vec![],
+                raw => split_ids(raw),
+            };
             let output = tokens[2].clone();
             let mut ladders: Option<Vec<String>> = None;
+            let mut container_ids: Option<Vec<String>> = None;
+            let mut arrangement_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -3395,6 +4191,26 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                         idx += 2;
                     }
+                    "--containers" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --containers".to_string());
+                        }
+                        let parsed = split_ids(&tokens[idx + 1]);
+                        if !parsed.is_empty() {
+                            container_ids = Some(parsed);
+                        }
+                        idx += 2;
+                    }
+                    "--arrangement" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --arrangement".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            arrangement_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown argument '{other}' for render-pool-gel-svg"
@@ -3402,9 +4218,81 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                 }
             }
+            if inputs.is_empty()
+                && container_ids.as_ref().map_or(true, |v| v.is_empty())
+                && arrangement_id.is_none()
+            {
+                return Err(
+                    "render-pool-gel-svg requires inputs, --containers, or --arrangement"
+                        .to_string(),
+                );
+            }
             Ok(ShellCommand::RenderPoolGelSvg {
                 inputs,
                 output,
+                ladders,
+                container_ids,
+                arrangement_id,
+            })
+        }
+        "arrange-serial" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "arrange-serial requires: CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]"
+                        .to_string(),
+                );
+            }
+            let container_ids = split_ids(&tokens[1]);
+            if container_ids.is_empty() {
+                return Err("arrange-serial requires at least one container id".to_string());
+            }
+            let mut arrangement_id: Option<String> = None;
+            let mut name: Option<String> = None;
+            let mut ladders: Option<Vec<String>> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--id" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --id".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            arrangement_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--name" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --name".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            name = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    "--ladders" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --ladders".to_string());
+                        }
+                        let parsed = split_ids(&tokens[idx + 1]);
+                        if !parsed.is_empty() {
+                            ladders = Some(parsed);
+                        }
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for arrange-serial"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                name,
                 ladders,
             })
         }
@@ -3859,7 +4747,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                                 return Err(format!(
                                                     "Unsupported --source value '{}'; expected auto|bed|bigwig|vcf",
                                                     raw
-                                                ))
+                                                ));
                                             }
                                         });
                                     }
@@ -3912,7 +4800,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                 return Err("--min-score must be <= --max-score".to_string());
                             }
                             let subscription = GenomeTrackSubscription {
-                                source: source.unwrap_or_else(|| GenomeTrackSource::from_path(&path)),
+                                source: source
+                                    .unwrap_or_else(|| GenomeTrackSource::from_path(&path)),
                                 path,
                                 track_name,
                                 min_score,
@@ -3923,9 +4812,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                         "remove" => {
                             if tokens.len() != 4 {
-                                return Err(
-                                    "tracks tracked remove requires INDEX".to_string(),
-                                );
+                                return Err("tracks tracked remove requires INDEX".to_string());
                             }
                             let index = tokens[3]
                                 .parse::<usize>()
@@ -3992,7 +4879,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
+        "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
+        "guides" => parse_guides_command(tokens),
         "set-param" => {
             if tokens.len() < 3 {
                 return Err("set-param requires NAME JSON_VALUE".to_string());
@@ -4094,21 +4983,28 @@ pub fn split_shell_words(line: &str) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-fn load_candidates_macro_script(script_or_ref: &str) -> Result<String, String> {
+fn load_macro_script(script_or_ref: &str, label: &str) -> Result<String, String> {
     let trimmed = script_or_ref.trim();
     if let Some(path) = trimmed.strip_prefix('@') {
         let path = path.trim();
         if path.is_empty() {
-            return Err("candidates macro @FILE requires a non-empty file path".to_string());
+            return Err(format!("{label} @FILE requires a non-empty file path"));
         }
-        fs::read_to_string(path)
-            .map_err(|e| format!("Could not read candidates macro file '{path}': {e}"))
+        fs::read_to_string(path).map_err(|e| format!("Could not read {label} file '{path}': {e}"))
     } else {
         Ok(trimmed.to_string())
     }
 }
 
-fn split_candidates_macro_statements(script: &str) -> Result<Vec<String>, String> {
+fn load_candidates_macro_script(script_or_ref: &str) -> Result<String, String> {
+    load_macro_script(script_or_ref, "candidates macro")
+}
+
+fn load_workflow_macro_script(script_or_ref: &str) -> Result<String, String> {
+    load_macro_script(script_or_ref, "macros run")
+}
+
+fn split_macro_statements(script: &str) -> Result<Vec<String>, String> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Mode {
         Normal,
@@ -4179,6 +5075,10 @@ fn split_candidates_macro_statements(script: &str) -> Result<Vec<String>, String
     Ok(out)
 }
 
+fn split_candidates_macro_statements(script: &str) -> Result<Vec<String>, String> {
+    split_macro_statements(script)
+}
+
 fn run_candidates_macro(
     engine: &mut GentleEngine,
     script_or_ref: &str,
@@ -4212,7 +5112,10 @@ fn run_candidates_macro(
         let cmd = parse_candidates_command(&tokens)?;
         if matches!(
             cmd,
-            ShellCommand::CandidatesMacro { .. } | ShellCommand::CandidatesTemplateRun { .. }
+            ShellCommand::CandidatesMacro { .. }
+                | ShellCommand::CandidatesTemplateRun { .. }
+                | ShellCommand::MacrosRun { .. }
+                | ShellCommand::MacrosTemplateRun { .. }
         ) {
             return Err("Nested candidates macro/template-run calls are not allowed".to_string());
         }
@@ -4246,6 +5149,101 @@ fn run_candidates_macro(
     }
     if executed == 0 {
         return Err("candidates macro script has no executable statements".to_string());
+    }
+    Ok(ShellRunResult {
+        state_changed: changed,
+        output: json!({
+            "executed": executed,
+            "transactional": transactional,
+            "state_changed": changed,
+            "results": rows
+        }),
+    })
+}
+
+fn run_workflow_macro(
+    engine: &mut GentleEngine,
+    script_or_ref: &str,
+    transactional: bool,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let script = load_workflow_macro_script(script_or_ref)?;
+    let statements = split_macro_statements(&script)?;
+    if statements.is_empty() {
+        return Err("macros run script is empty".to_string());
+    }
+    let rollback_state = if transactional {
+        Some(engine.state().clone())
+    } else {
+        None
+    };
+    let mut executed = 0usize;
+    let mut changed = false;
+    let mut rows: Vec<Value> = vec![];
+    for statement in statements {
+        let statement = statement.trim();
+        if statement.is_empty() {
+            continue;
+        }
+        let cmd = if let Some(raw_payload) = statement.strip_prefix("op ") {
+            let payload = raw_payload.trim();
+            if payload.is_empty() {
+                return Err("macros run statement 'op' requires a JSON payload".to_string());
+            }
+            ShellCommand::Op {
+                payload: payload.to_string(),
+            }
+        } else if let Some(raw_payload) = statement.strip_prefix("workflow ") {
+            let payload = raw_payload.trim();
+            if payload.is_empty() {
+                return Err("macros run statement 'workflow' requires a JSON payload".to_string());
+            }
+            ShellCommand::Workflow {
+                payload: payload.to_string(),
+            }
+        } else {
+            let tokens = split_shell_words(statement)?;
+            parse_shell_tokens(&tokens)?
+        };
+        if matches!(
+            cmd,
+            ShellCommand::CandidatesMacro { .. }
+                | ShellCommand::CandidatesTemplateRun { .. }
+                | ShellCommand::MacrosRun { .. }
+                | ShellCommand::MacrosTemplateRun { .. }
+        ) {
+            return Err("Nested macros/template-run calls are not allowed".to_string());
+        }
+        let run = match execute_shell_command_with_options(engine, &cmd, options) {
+            Ok(run) => run,
+            Err(err) => {
+                if transactional {
+                    if let Some(state) = rollback_state {
+                        *engine = GentleEngine::from_state(state);
+                    }
+                    return Err(format!(
+                        "macros run failed at statement {} ('{}'): {err}; all macro changes were rolled back",
+                        executed + 1,
+                        statement
+                    ));
+                }
+                return Err(format!(
+                    "macros run failed at statement {} ('{}'): {err}",
+                    executed + 1,
+                    statement
+                ));
+            }
+        };
+        executed = executed.saturating_add(1);
+        changed |= run.state_changed;
+        rows.push(json!({
+            "statement": statement,
+            "state_changed": run.state_changed,
+            "output": run.output
+        }));
+    }
+    if executed == 0 {
+        return Err("macros run script has no executable statements".to_string());
     }
     Ok(ShellRunResult {
         state_changed: changed,
@@ -4542,16 +5540,39 @@ pub fn execute_shell_command_with_options(
             inputs,
             output,
             ladders,
+            container_ids,
+            arrangement_id,
         } => {
             let op_result = engine
                 .apply(Operation::RenderPoolGelSvg {
                     inputs: inputs.clone(),
                     path: output.clone(),
                     ladders: ladders.clone(),
+                    container_ids: container_ids.clone(),
+                    arrangement_id: arrangement_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::CreateArrangementSerial {
+            container_ids,
+            arrangement_id,
+            name,
+            ladders,
+        } => {
+            let op_result = engine
+                .apply(Operation::CreateArrangementSerial {
+                    container_ids: container_ids.clone(),
+                    arrangement_id: arrangement_id.clone(),
+                    name: name.clone(),
+                    ladders: ladders.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
                 output: json!({ "result": op_result }),
             }
         }
@@ -5269,6 +6290,107 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::MacrosRun {
+            script,
+            transactional,
+        } => run_workflow_macro(engine, script, *transactional, options)?,
+        ShellCommand::MacrosTemplateList => {
+            let templates = engine.list_workflow_macro_templates();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.workflow_macro_templates.v1",
+                    "template_count": templates.len(),
+                    "templates": templates
+                }),
+            }
+        }
+        ShellCommand::MacrosTemplateShow { name } => {
+            let template = engine
+                .get_workflow_macro_template(name)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "template": template
+                }),
+            }
+        }
+        ShellCommand::MacrosTemplateUpsert {
+            name,
+            description,
+            parameters,
+            script,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let loaded_script = load_workflow_macro_script(script)?;
+            let op_result = engine
+                .apply(Operation::UpsertWorkflowMacroTemplate {
+                    name: name.clone(),
+                    description: description.clone(),
+                    parameters: parameters.clone(),
+                    script: loaded_script.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "description": description,
+                    "parameter_count": parameters.len(),
+                    "script_length": loaded_script.len(),
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::MacrosTemplateDelete { name } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteWorkflowMacroTemplate { name: name.clone() })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(WORKFLOW_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::MacrosTemplateRun {
+            name,
+            bindings,
+            transactional,
+        } => {
+            let script = engine
+                .render_workflow_macro_template_script(name, bindings)
+                .map_err(|e| e.to_string())?;
+            let mut run = run_workflow_macro(engine, &script, *transactional, options)?;
+            run.output = json!({
+                "template_name": name,
+                "bindings": bindings,
+                "expanded_script": script,
+                "run": run.output
+            });
+            run
+        }
         ShellCommand::CandidatesList => {
             let sets = engine.list_candidate_sets();
             ShellRunResult {
@@ -5817,6 +6939,223 @@ pub fn execute_shell_command_with_options(
             });
             run
         }
+        ShellCommand::GuidesList => {
+            let sets = engine.list_guide_sets();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.guide_design.v1",
+                    "set_count": sets.len(),
+                    "sets": sets
+                }),
+            }
+        }
+        ShellCommand::GuidesShow {
+            guide_set_id,
+            limit,
+            offset,
+        } => {
+            let (set, total, clamped_offset) = engine
+                .inspect_guide_set_page(guide_set_id, *limit, *offset)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "guide_set_id": set.guide_set_id,
+                    "guide_count": total,
+                    "limit": limit,
+                    "offset": clamped_offset,
+                    "returned": set.guides.len(),
+                    "created_at_unix_ms": set.created_at_unix_ms,
+                    "updated_at_unix_ms": set.updated_at_unix_ms,
+                    "guides": set.guides,
+                }),
+            }
+        }
+        ShellCommand::GuidesPut {
+            guide_set_id,
+            guides_json,
+        } => {
+            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let raw = parse_json_payload(guides_json)?;
+            let guides: Vec<GuideCandidate> = serde_json::from_str(&raw)
+                .map_err(|e| format!("Invalid guides JSON payload: {e}"))?;
+            let op_result = engine
+                .apply(Operation::UpsertGuideSet {
+                    guide_set_id: guide_set_id.clone(),
+                    guides,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::GuidesDelete { guide_set_id } => {
+            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let op_result = engine
+                .apply(Operation::DeleteGuideSet {
+                    guide_set_id: guide_set_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::GuidesFilter {
+            guide_set_id,
+            config_json,
+            output_guide_set_id,
+        } => {
+            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let config = if let Some(raw) = config_json {
+                let loaded = parse_json_payload(raw)?;
+                serde_json::from_str::<GuidePracticalFilterConfig>(&loaded)
+                    .map_err(|e| format!("Invalid practical guide filter config JSON: {e}"))?
+            } else {
+                GuidePracticalFilterConfig::default()
+            };
+            let op_result = engine
+                .apply(Operation::FilterGuidesPractical {
+                    guide_set_id: guide_set_id.clone(),
+                    config,
+                    output_guide_set_id: output_guide_set_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "output_guide_set_id": output_guide_set_id,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::GuidesFilterShow { guide_set_id } => {
+            let report = engine
+                .get_guide_practical_filter_report(guide_set_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report
+                }),
+            }
+        }
+        ShellCommand::GuidesOligosGenerate {
+            guide_set_id,
+            template_id,
+            apply_5prime_g_extension,
+            output_oligo_set_id,
+            passed_only,
+        } => {
+            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let op_result = engine
+                .apply(Operation::GenerateGuideOligos {
+                    guide_set_id: guide_set_id.clone(),
+                    template_id: template_id.clone(),
+                    apply_5prime_g_extension: Some(*apply_5prime_g_extension),
+                    output_oligo_set_id: output_oligo_set_id.clone(),
+                    passed_only: Some(*passed_only),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "template_id": template_id,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::GuidesOligosList { guide_set_id } => {
+            let sets = engine.list_guide_oligo_sets(guide_set_id.as_deref());
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.guide_design.v1",
+                    "oligo_set_count": sets.len(),
+                    "oligo_sets": sets
+                }),
+            }
+        }
+        ShellCommand::GuidesOligosShow { oligo_set_id } => {
+            let set = engine
+                .get_guide_oligo_set(oligo_set_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "oligo_set": set
+                }),
+            }
+        }
+        ShellCommand::GuidesOligosExport {
+            guide_set_id,
+            oligo_set_id,
+            format,
+            path,
+            plate_format,
+        } => {
+            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let op_result = engine
+                .apply(Operation::ExportGuideOligos {
+                    guide_set_id: guide_set_id.clone(),
+                    oligo_set_id: oligo_set_id.clone(),
+                    format: *format,
+                    path: path.clone(),
+                    plate_format: *plate_format,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "oligo_set_id": oligo_set_id,
+                    "format": format.as_str(),
+                    "path": path,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::GuidesProtocolExport {
+            guide_set_id,
+            oligo_set_id,
+            path,
+            include_qc_checklist,
+        } => {
+            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let op_result = engine
+                .apply(Operation::ExportGuideProtocolText {
+                    guide_set_id: guide_set_id.clone(),
+                    oligo_set_id: oligo_set_id.clone(),
+                    path: path.clone(),
+                    include_qc_checklist: Some(*include_qc_checklist),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "guide_set_id": guide_set_id,
+                    "oligo_set_id": oligo_set_id,
+                    "path": path,
+                    "result": op_result
+                }),
+            }
+        }
         ShellCommand::SetParameter { name, value_json } => {
             let raw = parse_json_payload(value_json)?;
             let value: serde_json::Value = serde_json::from_str(&raw)
@@ -5931,10 +7270,61 @@ mod tests {
                 inputs,
                 output,
                 ladders,
+                container_ids,
+                arrangement_id,
             } => {
                 assert_eq!(inputs, vec!["a".to_string(), "b".to_string()]);
                 assert_eq!(output, "out.svg".to_string());
                 assert_eq!(ladders, Some(vec!["1kb".to_string(), "100bp".to_string()]));
+                assert_eq!(container_ids, None);
+                assert_eq!(arrangement_id, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_render_pool_gel_from_arrangement() {
+        let cmd = parse_shell_line("render-pool-gel-svg - out.svg --arrangement arrangement-2")
+            .expect("parse command");
+        match cmd {
+            ShellCommand::RenderPoolGelSvg {
+                inputs,
+                output,
+                ladders,
+                container_ids,
+                arrangement_id,
+            } => {
+                assert!(inputs.is_empty());
+                assert_eq!(output, "out.svg".to_string());
+                assert_eq!(ladders, None);
+                assert_eq!(container_ids, None);
+                assert_eq!(arrangement_id, Some("arrangement-2".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_arrange_serial_command() {
+        let cmd = parse_shell_line(
+            "arrange-serial container-1,container-2 --id arr-x --name test --ladders 100bp,1kb",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::CreateArrangementSerial {
+                container_ids,
+                arrangement_id,
+                name,
+                ladders,
+            } => {
+                assert_eq!(
+                    container_ids,
+                    vec!["container-1".to_string(), "container-2".to_string()]
+                );
+                assert_eq!(arrangement_id, Some("arr-x".to_string()));
+                assert_eq!(name, Some("test".to_string()));
+                assert_eq!(ladders, Some(vec!["100bp".to_string(), "1kb".to_string()]));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -6599,6 +7989,62 @@ mod tests {
     }
 
     #[test]
+    fn parse_macros_run_and_template_commands() {
+        let run =
+            parse_shell_line("macros run --transactional --file test_files/workflow_plan.gsh")
+                .expect("parse macros run");
+        match run {
+            ShellCommand::MacrosRun {
+                script,
+                transactional,
+            } => {
+                assert_eq!(script, "@test_files/workflow_plan.gsh");
+                assert!(transactional);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let put = parse_shell_line(
+            r#"macros template-put clone --script 'op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}' --param seq_id --param out_id=seqA_rev"#,
+        )
+        .expect("parse macros template-put");
+        match put {
+            ShellCommand::MacrosTemplateUpsert {
+                name,
+                parameters,
+                script,
+                ..
+            } => {
+                assert_eq!(name, "clone");
+                assert_eq!(parameters.len(), 2);
+                assert_eq!(
+                    script,
+                    r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}"#
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let run_template = parse_shell_line(
+            "macros template-run clone --bind seq_id=seqB --bind out_id=seqB_rev --transactional",
+        )
+        .expect("parse macros template-run");
+        match run_template {
+            ShellCommand::MacrosTemplateRun {
+                name,
+                bindings,
+                transactional,
+            } => {
+                assert_eq!(name, "clone");
+                assert_eq!(bindings.get("seq_id"), Some(&"seqB".to_string()));
+                assert_eq!(bindings.get("out_id"), Some(&"seqB_rev".to_string()));
+                assert!(transactional);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_candidates_macro_file_reference() {
         let cmd = parse_shell_line("candidates macro --file test_files/candidates_plan.gsh")
             .expect("parse candidates macro --file");
@@ -6679,10 +8125,12 @@ filter set1 set2 --metric score --min 10
         .expect("generate candidates");
         assert!(generated.state_changed);
         assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
-        assert!(generated.output["result"]["messages"]
-            .as_array()
-            .map(|messages| !messages.is_empty())
-            .unwrap_or(false));
+        assert!(
+            generated.output["result"]["messages"]
+                .as_array()
+                .map(|messages| !messages.is_empty())
+                .unwrap_or(false)
+        );
 
         let score_distance = execute_shell_command(
             &mut engine,
@@ -7048,10 +8496,93 @@ filter set1 set2 --metric score --min 10
         .expect("run template");
         assert!(run.state_changed);
         assert_eq!(run.output["template_name"].as_str(), Some("scan"));
-        assert!(engine
-            .list_candidate_sets()
-            .iter()
-            .any(|set| set.name == "hits"));
+        assert!(
+            engine
+                .list_candidate_sets()
+                .iter()
+                .any(|set| set.name == "hits")
+        );
+    }
+
+    #[test]
+    fn execute_macros_template_registry_and_run() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateUpsert {
+                name: "clone".to_string(),
+                description: Some("reverse helper".to_string()),
+                parameters: vec![
+                    WorkflowMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    WorkflowMacroTemplateParam {
+                        name: "out_id".to_string(),
+                        default_value: Some("seqA_rev".to_string()),
+                        required: false,
+                    },
+                ],
+                script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}"#
+                    .to_string(),
+            },
+        )
+        .expect("upsert macros template");
+
+        let listed = execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateList)
+            .expect("list macros templates");
+        assert_eq!(listed.output["template_count"].as_u64(), Some(1));
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "clone".to_string(),
+                bindings: HashMap::from([("seq_id".to_string(), "seqA".to_string())]),
+                transactional: false,
+            },
+        )
+        .expect("run macros template");
+        assert!(run.state_changed);
+        assert_eq!(run.output["template_name"].as_str(), Some("clone"));
+        assert!(engine.state().sequences.contains_key("seqA_rev"));
+    }
+
+    #[test]
+    fn execute_macros_template_cloning_digest_ligation_extract_fixture() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "x".to_string(),
+            DNAsequence::from_sequence("ATGGATCCGCATGGATCCGCATGGATCCGC").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let put = parse_shell_line(
+            "macros template-put clone_slice --file test_files/cloning_digest_ligation_extract.gsh --param seq_id=x --param digest_prefix=d --param ligation_prefix=lig --param extract_from=0 --param extract_to=1 --param output_id=slice",
+        )
+        .expect("parse macros template-put clone fixture");
+        let upsert = execute_shell_command(&mut engine, &put).expect("upsert clone fixture template");
+        assert!(upsert.state_changed);
+
+        let run_cmd = parse_shell_line("macros template-run clone_slice --transactional")
+            .expect("parse macros template-run clone fixture");
+        let run = execute_shell_command(&mut engine, &run_cmd).expect("run clone fixture template");
+        assert!(run.state_changed);
+        assert_eq!(run.output["template_name"].as_str(), Some("clone_slice"));
+        assert!(engine.state().sequences.contains_key("d_1"));
+        assert!(engine.state().sequences.contains_key("lig_1"));
+        let slice = engine
+            .state()
+            .sequences
+            .get("slice")
+            .expect("expected extracted slice output");
+        assert_eq!(slice.len(), 1);
     }
 
     #[test]
@@ -7114,6 +8645,28 @@ filter set1 set2 --metric score --min 10
         )
         .unwrap_err();
         assert!(err.contains("Nested candidates macro"));
+    }
+
+    #[test]
+    fn execute_workflow_macro_transactional_rolls_back_on_error() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosRun {
+                script: r#"op {"Reverse":{"input":"seqA","output_id":"tmp_rev"}}
+op {"Reverse":{"input":"missing","output_id":"bad"}}"#
+                    .to_string(),
+                transactional: true,
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("rolled back"));
+        assert!(!engine.state().sequences.contains_key("tmp_rev"));
     }
 
     #[test]
@@ -7487,9 +9040,11 @@ filter set1 set2 --metric score --min 10
             .and_then(|v| v.get("created_seq_ids"))
             .and_then(|v| v.as_array())
             .expect("created_seq_ids");
-        assert!(created
-            .iter()
-            .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false)));
+        assert!(
+            created
+                .iter()
+                .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false))
+        );
         let seq = engine
             .state()
             .sequences

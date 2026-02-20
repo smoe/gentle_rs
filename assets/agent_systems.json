@@ -1,0 +1,31 @@
+{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "builtin_echo",
+      "label": "Built-in Echo (demo)",
+      "description": "Offline demo system that echoes the prompt and can parse 'auto:'/'ask:' demo command lines.",
+      "transport": "builtin_echo"
+    },
+    {
+      "id": "custom_json_stdio",
+      "label": "Custom JSON stdio agent",
+      "description": "Template entry for an external agent process. The process receives JSON on stdin and should return JSON/text on stdout.",
+      "transport": "external_json_stdio",
+      "command": [
+        "agent-json-bridge"
+      ]
+    },
+    {
+      "id": "openai_gpt5_stdio",
+      "label": "OpenAI GPT-5 (stdio bridge)",
+      "description": "OpenAI-backed agent bridge over JSON stdio. Requires an external adapter executable and OPENAI_API_KEY in the environment.",
+      "transport": "external_json_stdio",
+      "command": [
+        "openai-agent-bridge",
+        "--model",
+        "gpt-5"
+      ]
+    }
+  ]
+}

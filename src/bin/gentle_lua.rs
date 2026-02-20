@@ -1,8 +1,8 @@
 use gentle::about;
 use gentle::lua_interface::LuaInterface;
 use mlua::Value as LuaValue;
-use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 use std::{env, error::Error};
 
 #[derive(Debug, Default)]

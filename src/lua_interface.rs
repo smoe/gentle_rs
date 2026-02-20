@@ -85,6 +85,10 @@ impl LuaInterface {
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
         println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
+        println!("  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog");
+        println!(
+            "  - ask_agent_system(project_or_nil, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary]): Asks one configured AI system"
+        );
         println!(
             "  - is_reference_genome_prepared(genome_id, [catalog_path], [cache_dir]): Prepared check"
         );
@@ -186,6 +190,54 @@ impl LuaInterface {
             .map(str::trim)
             .filter(|v| !v.is_empty());
         GentleEngine::list_reference_genomes(catalog_path).map_err(|e| Self::err(&e.to_string()))
+    }
+
+    fn list_agent_systems(catalog_path: Option<String>) -> LuaResult<serde_json::Value> {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let command = ShellCommand::AgentsList {
+            catalog_path: catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("agents list failed: {e}")))?;
+        Ok(run.output)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn ask_agent_system(
+        state: Option<ProjectState>,
+        system_id: String,
+        prompt: String,
+        catalog_path: Option<String>,
+        allow_auto_exec: Option<bool>,
+        execute_all: Option<bool>,
+        execute_indices: Option<Vec<usize>>,
+        include_state_summary: Option<bool>,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state.unwrap_or_default());
+        let command = ShellCommand::AgentsAsk {
+            system_id,
+            prompt,
+            catalog_path: catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string),
+            include_state_summary: include_state_summary.unwrap_or(true),
+            allow_auto_exec: allow_auto_exec.unwrap_or(false),
+            execute_all: execute_all.unwrap_or(false),
+            execute_indices: execute_indices.unwrap_or_default(),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("agents ask failed: {e}")))?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
     }
 
     fn inspect_dna_ladders(
@@ -461,6 +513,61 @@ impl LuaInterface {
                     let genomes = Self::list_reference_genomes(catalog_path)?;
                     lua.to_value(&genomes)
                 })?,
+        )?;
+
+        self.lua.globals().set(
+            "list_agent_systems",
+            self.lua
+                .create_function(|lua, catalog_path: Option<String>| {
+                    let systems = Self::list_agent_systems(catalog_path)?;
+                    lua.to_value(&systems)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "ask_agent_system",
+            self.lua.create_function(
+                |lua,
+                 (
+                    state,
+                    system_id,
+                    prompt,
+                    catalog_path,
+                    allow_auto_exec,
+                    execute_all,
+                    execute_indices,
+                    include_state_summary,
+                ): (
+                    Value,
+                    String,
+                    String,
+                    Option<String>,
+                    Option<bool>,
+                    Option<bool>,
+                    Option<Vec<usize>>,
+                    Option<bool>,
+                )| {
+                    let state = if matches!(state, Value::Nil) {
+                        None
+                    } else {
+                        Some(
+                            lua.from_value(state)
+                                .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?,
+                        )
+                    };
+                    let response = Self::ask_agent_system(
+                        state,
+                        system_id,
+                        prompt,
+                        catalog_path,
+                        allow_auto_exec,
+                        execute_all,
+                        execute_indices,
+                        include_state_summary,
+                    )?;
+                    lua.to_value(&response)
+                },
+            )?,
         )?;
 
         self.lua.globals().set(
@@ -983,6 +1090,8 @@ impl LuaInterface {
                             inputs,
                             path: output_svg,
                             ladders,
+                            container_ids: None,
+                            arrangement_id: None,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]
@@ -1184,5 +1293,99 @@ mod tests {
         assert_eq!(imported_ids.len(), 1);
         let imported_id = imported_ids[0].as_str().expect("imported id string");
         assert!(out.state.sequences.contains_key(imported_id));
+    }
+
+    #[test]
+    fn lua_list_agent_systems_wrapper_reads_catalog() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out =
+            LuaInterface::list_agent_systems(Some(catalog_path.to_string_lossy().to_string()))
+                .expect("list agent systems");
+        assert_eq!(out["schema"].as_str(), Some("gentle.agent_systems_list.v1"));
+        assert_eq!(out["system_count"].as_u64(), Some(1));
+        assert_eq!(out["systems"][0]["id"].as_str(), Some("builtin_echo"));
+    }
+
+    #[test]
+    fn lua_ask_agent_system_wrapper_uses_builtin_echo() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = LuaInterface::ask_agent_system(
+            Some(ProjectState::default()),
+            "builtin_echo".to_string(),
+            "hello".to_string(),
+            Some(catalog_path.to_string_lossy().to_string()),
+            Some(false),
+            Some(false),
+            Some(vec![]),
+            Some(true),
+        )
+        .expect("ask agent");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_ask_result.v1")
+        );
+        assert_eq!(
+            out.output["invocation"]["system_id"].as_str(),
+            Some("builtin_echo")
+        );
+    }
+
+    #[test]
+    fn lua_ask_agent_system_wrapper_accepts_nil_state() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("agents.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    { "id": "builtin_echo", "label": "Built-in Echo", "transport": "builtin_echo" }
+  ]
+}"#,
+        )
+        .expect("write agent catalog");
+        let out = LuaInterface::ask_agent_system(
+            None,
+            "builtin_echo".to_string(),
+            "hello".to_string(),
+            Some(catalog_path.to_string_lossy().to_string()),
+            Some(false),
+            Some(false),
+            Some(vec![]),
+            Some(true),
+        )
+        .expect("ask agent with nil state");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.agent_ask_result.v1")
+        );
+        assert_eq!(
+            out.output["invocation"]["system_id"].as_str(),
+            Some("builtin_echo")
+        );
     }
 }
