@@ -16,6 +16,9 @@ identifier = "com.example.gentle"
 icon = ["assets/icon.icns"]  # Path to your .icns file
 resources = ["assets/", "docs/", "Credits.rtf"]      # Additional resources if needed
 
+[package.metadata.bundle.windows]
+icon = ["assets/icon.ico"]
+
 
 [[bin]]
 name = "gentle"

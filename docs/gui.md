@@ -64,6 +64,18 @@ The project main window (lineage page) supports two views:
 - `Graph`: node/edge lineage visualization
 - `Containers`: container list with kind/member-count and open actions
 
+Global productivity controls:
+
+- Status bar (bottom of main window) shows:
+  - hovered control stable name (when available)
+  - undo/redo availability counters
+  - latest app/job status message
+- `Edit -> Undo` / `Redo` and `Window -> Show Operation History` expose
+  operation-level history controls.
+- `Window -> Show Background Jobs` opens a centralized progress panel for
+  long-running tasks (prepare/import/BLAST).
+- `Cmd/Ctrl+K` opens the Command Palette.
+
 Node click behavior in lineage `Graph` view:
 
 - Single-click: selects a node (highlight only).
@@ -187,13 +199,18 @@ Supported commands:
 - `candidates list`
 - `candidates delete SET_NAME`
 - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
+- `candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]`
 - `candidates show SET_NAME [--limit N] [--offset N]`
 - `candidates metrics SET_NAME`
 - `candidates score SET_NAME METRIC_NAME EXPRESSION`
 - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
+- `candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]`
+- `candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break ...]`
+- `candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break ...]`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
 - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+- `candidates template-list|template-show|template-put|template-delete|template-run ...`
 - `set-param NAME JSON_VALUE`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
@@ -223,25 +240,38 @@ Recommended flow in one sequence window:
 1. Generate a seed set:
    - Engine Ops panel: fill `set`, `seq`, `length`, `step`, optional feature filters, then `Generate`
    - Shell equivalent: `candidates generate sgrnas my_seq --length 20 --step 1 --limit 10000`
-2. Add derived metrics:
+2. Optionally generate a set between local anchors:
+   - Engine Ops panel: `Generate set between anchors` section (Anchor A/B by
+     position or feature boundary with `start|end|middle`)
+   - Shell equivalent: `candidates generate-between-anchors ...`
+3. Add derived metrics:
    - Engine Ops panel: `Score expr` and `Score distance`
    - Shell equivalents:
      - `candidates score sgrnas gc_bias "100 * (gc_fraction - at_fraction)"`
      - `candidates score-distance sgrnas dist_gene --feature-kind gene`
-3. Filter into explicit subsets:
+4. Run optimizer primitives (optional):
+   - Shell equivalents:
+     - `candidates score-weighted ...`
+     - `candidates top-k ...`
+     - `candidates pareto ...`
+5. Filter into explicit subsets:
    - Engine Ops panel: `Filter` with value and/or quantile bounds
    - Shell equivalents:
      - `candidates filter sgrnas sgrnas_gc_ok --metric gc_bias --min -20 --max 20`
      - `candidates filter sgrnas_gc_ok sgrnas_top --metric dist_gene --max-quantile 0.25`
-4. Combine subsets:
+6. Combine subsets:
    - Engine Ops panel: `Apply set-op` (`union`/`intersect`/`subtract`)
    - Shell equivalent: `candidates set-op intersect sgrnas_top other_set final_set`
-5. Inspect/paginate/export:
+7. Inspect/paginate/export:
    - Engine Ops panel: page controls (`limit`/`offset`, `Prev`/`Next`), local sort key, and `Export selected set as JSON`
    - Shell equivalent: `candidates show final_set --limit 50 --offset 0`
-6. Optional macro execution:
+8. Optional macro execution:
    - Engine Ops panel: `Run candidates macro` with multiline script
    - Shell equivalent: `candidates macro SCRIPT_OR_@FILE`
+9. Optional persistent macro templates:
+   - Shell equivalents:
+     - `candidates template-put ...`
+     - `candidates template-run ...`
 
 Persistence:
 
@@ -265,6 +295,18 @@ Two About entries exist on macOS:
 - app menu `GENtle -> About GENtle`: standard macOS About panel
 
 The custom window and CLI `--version` share the same text payload.
+
+## Open windows and focus
+
+GENtle now tracks open native windows and can raise a selected one to front.
+
+- Main project window menu: `Window -> Open Windows…`
+- Main project window menu: `Window -> <window name>` jumps directly to that window
+- Shortcut: `Cmd+Backtick` opens the window switcher dialog
+- macOS native menu bridge: `Window -> GENtle Open Windows…` opens the same switcher
+
+The switcher lists the project window, sequence windows, and open auxiliary
+native windows (Help, Configuration, Prepare Genome, BLAST, Track Import).
 
 ## Help manuals
 
@@ -359,6 +401,19 @@ Why zoom controls differ between views:
 - Lineage graph uses `Cmd/Ctrl + scroll` for zoom so plain scrolling remains
   available for navigating the larger graph canvas.
 
+## Command Palette and History/Jobs Panels
+
+- Command Palette:
+  - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`
+  - searchable action list for project, genome, help, and window actions
+  - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`)
+- Operation History panel:
+  - open via `Edit -> Operation History...` or `Window -> Show Operation History`
+  - includes undo/redo buttons and recent operation summaries
+- Background Jobs panel:
+  - open via `Window -> Show Background Jobs`
+  - central place for progress, cancel/retry actions, and recent completion/error events
+
 ## Linear map conventions
 
 Current linear map conventions are:
@@ -371,6 +426,11 @@ Current linear map conventions are:
 - `REG@TOP` / `REG@DNA` toggle in the map toolbar switches regulatory-feature
   placement between dedicated top lanes and a single near-baseline/GC-strip
   lane
+- lane packing uses tighter spacing and stronger non-overlap padding in dense
+  views
+- strict `REG@DNA` mode keeps regulatory tracks in one near-baseline lane with
+  enforced clearance from coding/gene lanes (no regulatory intrusion into gene
+  lanes)
 - Directional features use arrow-shaped ends
 - Feature labels are lane-packed to reduce overlap
 - Coordinate fallback labels are suppressed for unlabeled regulatory features
@@ -618,8 +678,17 @@ Recommended flow:
    - open `Genome -> Import Genome Track...`
    - this opens in its own floating window
    - optionally select a genome-anchored sequence (for one-sequence import)
+   - review the `Import Preflight` panel:
+     - detected selected anchor and strand
+     - anchor matching status across all anchored sequences
+     - projected target count + track name
+     - track-file existence check
    - choose a track file (`.bed`, `.bed.gz`, `.bw`, `.bigWig`, `.vcf`, or `.vcf.gz`)
    - optionally set track name and score filters
+   - optional preflight toggle:
+     - `Track this file for auto-sync`
+   - one-click preflight action:
+     - `Apply To All Anchored Now`
    - click one of:
      - `Import To Selected`: import onto only the currently selected anchored sequence
      - `Import To All Anchored (One-Time)`: import onto all currently anchored sequences without saving a subscription

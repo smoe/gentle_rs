@@ -20,6 +20,7 @@ use crate::{
         BlastHitFeatureInput, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
         GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
         GenomeTrackSyncReport, GentleEngine, OpResult, Operation, OperationProgress, ProjectState,
+        SequenceGenomeAnchorSummary,
         BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
     },
     enzymes,
@@ -49,6 +50,7 @@ const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace"
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 fn default_prepare_timeout_secs_string() -> String {
     env::var(PREPARE_GENOME_TIMEOUT_SECS_ENV)
@@ -64,6 +66,10 @@ pub fn request_open_help_from_native_menu() {
 
 pub fn request_open_settings_from_native_menu() {
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_windows_from_native_menu() {
+    NATIVE_WINDOWS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +134,7 @@ pub struct GENtleApp {
     update_has_run_before: bool,
     show_about_dialog: bool,
     show_help_dialog: bool,
+    show_window_switcher_dialog: bool,
     help_doc: HelpDoc,
     help_markdown_cache: CommonMarkCache,
     help_gui_markdown: String,
@@ -229,6 +236,16 @@ pub struct GENtleApp {
     tracked_autosync_last_op_count: Option<usize>,
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
+    show_command_palette_dialog: bool,
+    command_palette_query: String,
+    command_palette_selected: usize,
+    command_palette_focus_query: bool,
+    show_jobs_panel: bool,
+    show_history_panel: bool,
+    hover_status_name: String,
+    app_status: String,
+    job_event_log: Vec<String>,
+    genome_track_preflight_track_subscription: bool,
 }
 
 #[derive(Clone)]
@@ -345,6 +362,44 @@ struct ContainerRow {
     members: Vec<String>,
 }
 
+#[derive(Clone)]
+struct OpenWindowEntry {
+    viewport_id: ViewportId,
+    title: String,
+    detail: String,
+}
+
+#[derive(Clone, Copy)]
+enum CommandPaletteAction {
+    NewProject,
+    OpenProject,
+    SaveProject,
+    OpenSequence,
+    OpenConfiguration,
+    OpenPrepareGenome,
+    OpenRetrieveGenome,
+    OpenBlastGenome,
+    OpenGenomeTracks,
+    OpenPreparedInspector,
+    OpenGuiManual,
+    OpenCliManual,
+    ExportLineageSvg,
+    ToggleJobsPanel,
+    ToggleHistoryPanel,
+    Undo,
+    Redo,
+    OpenWindowsDialog,
+    FocusViewport(ViewportId),
+}
+
+#[derive(Clone)]
+struct CommandPaletteEntry {
+    title: String,
+    detail: String,
+    keywords: String,
+    action: CommandPaletteAction,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct PersistedLineageGraphWorkspace {
@@ -380,6 +435,7 @@ impl Default for GENtleApp {
             update_has_run_before: false,
             show_about_dialog: false,
             show_help_dialog: false,
+            show_window_switcher_dialog: false,
             help_doc: HelpDoc::Gui,
             help_markdown_cache: CommonMarkCache::default(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
@@ -482,6 +538,16 @@ impl Default for GENtleApp {
             genome_bed_track_subscriptions: vec![],
             genome_track_autosync_status: String::new(),
             tracked_autosync_last_op_count: None,
+            show_command_palette_dialog: false,
+            command_palette_query: String::new(),
+            command_palette_selected: 0,
+            command_palette_focus_query: false,
+            show_jobs_panel: false,
+            show_history_panel: false,
+            hover_status_name: String::new(),
+            app_status: String::new(),
+            job_event_log: vec![],
+            genome_track_preflight_track_subscription: true,
         }
     }
 }
@@ -949,6 +1015,12 @@ impl GENtleApp {
         }
     }
 
+    fn consume_native_windows_request(&mut self) {
+        if NATIVE_WINDOWS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            self.show_window_switcher_dialog = true;
+        }
+    }
+
     fn resolved_rnapkin_executable(&self) -> String {
         let configured = self.configuration_rnapkin_executable.trim();
         if configured.is_empty() {
@@ -1112,6 +1184,278 @@ impl GENtleApp {
         self.configuration_tab = ConfigurationTab::ExternalApplications;
         self.show_configuration_dialog = true;
         self.configuration_status.clear();
+    }
+
+    fn open_window_switcher_dialog(&mut self) {
+        self.show_window_switcher_dialog = true;
+    }
+
+    fn open_command_palette_dialog(&mut self) {
+        self.show_command_palette_dialog = true;
+        self.command_palette_focus_query = true;
+    }
+
+    fn track_hover_status<S: Into<String>>(
+        &mut self,
+        response: egui::Response,
+        stable_name: S,
+    ) -> egui::Response {
+        if response.hovered() {
+            self.hover_status_name = stable_name.into();
+        }
+        response
+    }
+
+    fn push_job_event(&mut self, event: String) {
+        let trimmed = event.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.job_event_log.push(trimmed.to_string());
+        if self.job_event_log.len() > 200 {
+            let drain_len = self.job_event_log.len() - 200;
+            self.job_event_log.drain(0..drain_len);
+        }
+    }
+
+    fn has_active_background_jobs(&self) -> bool {
+        self.genome_prepare_task.is_some()
+            || self.genome_blast_task.is_some()
+            || self.genome_track_import_task.is_some()
+    }
+
+    fn refresh_sequence_windows_from_engine_state(&mut self) {
+        for window in self.windows.values() {
+            if let Ok(mut guard) = window.write() {
+                guard.refresh_from_engine_settings();
+            }
+        }
+    }
+
+    fn handle_engine_state_after_history_transition(&mut self) {
+        self.lineage_cache_valid = false;
+        self.lineage_rows.clear();
+        self.lineage_edges.clear();
+        self.lineage_op_label_by_id.clear();
+        self.lineage_containers.clear();
+        self.load_bed_track_subscriptions_from_state();
+        self.tracked_autosync_last_op_count = None;
+        self.genome_track_autosync_status.clear();
+        self.refresh_sequence_windows_from_engine_state();
+    }
+
+    fn undo_last_operation(&mut self) {
+        if self.has_active_background_jobs() {
+            self.app_status =
+                "Undo is disabled while background jobs are active (prepare/blast/import)."
+                    .to_string();
+            return;
+        }
+        let outcome = self
+            .engine
+            .write()
+            .map_err(|_| EngineError {
+                code: ErrorCode::Internal,
+                message: "Engine lock poisoned".to_string(),
+            })
+            .and_then(|mut engine| engine.undo_last_operation());
+        match outcome {
+            Ok(()) => {
+                self.handle_engine_state_after_history_transition();
+                self.app_status = "Undo applied".to_string();
+            }
+            Err(e) => {
+                self.app_status = format!("Undo unavailable: {}", e.message);
+            }
+        }
+    }
+
+    fn redo_last_operation(&mut self) {
+        if self.has_active_background_jobs() {
+            self.app_status =
+                "Redo is disabled while background jobs are active (prepare/blast/import)."
+                    .to_string();
+            return;
+        }
+        let outcome = self
+            .engine
+            .write()
+            .map_err(|_| EngineError {
+                code: ErrorCode::Internal,
+                message: "Engine lock poisoned".to_string(),
+            })
+            .and_then(|mut engine| engine.redo_last_operation());
+        match outcome {
+            Ok(()) => {
+                self.handle_engine_state_after_history_transition();
+                self.app_status = "Redo applied".to_string();
+            }
+            Err(e) => {
+                self.app_status = format!("Redo unavailable: {}", e.message);
+            }
+        }
+    }
+
+    fn collect_command_palette_entries(&self) -> Vec<CommandPaletteEntry> {
+        let mut entries = vec![
+            CommandPaletteEntry {
+                title: "New Project".to_string(),
+                detail: "Create a new empty project".to_string(),
+                keywords: "file project new".to_string(),
+                action: CommandPaletteAction::NewProject,
+            },
+            CommandPaletteEntry {
+                title: "Open Project".to_string(),
+                detail: "Open an existing project file".to_string(),
+                keywords: "file project open".to_string(),
+                action: CommandPaletteAction::OpenProject,
+            },
+            CommandPaletteEntry {
+                title: "Save Project".to_string(),
+                detail: "Save current project state".to_string(),
+                keywords: "file project save".to_string(),
+                action: CommandPaletteAction::SaveProject,
+            },
+            CommandPaletteEntry {
+                title: "Open Sequence".to_string(),
+                detail: "Import a sequence file into project".to_string(),
+                keywords: "sequence import load".to_string(),
+                action: CommandPaletteAction::OpenSequence,
+            },
+            CommandPaletteEntry {
+                title: "Undo Last Operation".to_string(),
+                detail: "Restore previous project state".to_string(),
+                keywords: "undo history edit".to_string(),
+                action: CommandPaletteAction::Undo,
+            },
+            CommandPaletteEntry {
+                title: "Redo Last Operation".to_string(),
+                detail: "Re-apply previously undone state".to_string(),
+                keywords: "redo history edit".to_string(),
+                action: CommandPaletteAction::Redo,
+            },
+            CommandPaletteEntry {
+                title: "Configuration".to_string(),
+                detail: "Open global app configuration".to_string(),
+                keywords: "settings config preferences".to_string(),
+                action: CommandPaletteAction::OpenConfiguration,
+            },
+            CommandPaletteEntry {
+                title: "Prepare Reference Genome".to_string(),
+                detail: "Download/index selected genome".to_string(),
+                keywords: "genome prepare reference".to_string(),
+                action: CommandPaletteAction::OpenPrepareGenome,
+            },
+            CommandPaletteEntry {
+                title: "Retrieve Genome Sequence".to_string(),
+                detail: "Extract region/gene from prepared genome".to_string(),
+                keywords: "genome retrieve extract anchor".to_string(),
+                action: CommandPaletteAction::OpenRetrieveGenome,
+            },
+            CommandPaletteEntry {
+                title: "BLAST Genome Sequence".to_string(),
+                detail: "Run BLAST against prepared genome indices".to_string(),
+                keywords: "genome blast".to_string(),
+                action: CommandPaletteAction::OpenBlastGenome,
+            },
+            CommandPaletteEntry {
+                title: "Import Genome Tracks".to_string(),
+                detail: "Import BED/BigWig/VCF onto anchored sequences".to_string(),
+                keywords: "genome tracks bed bigwig vcf".to_string(),
+                action: CommandPaletteAction::OpenGenomeTracks,
+            },
+            CommandPaletteEntry {
+                title: "Prepared References".to_string(),
+                detail: "Inspect prepared genome installs".to_string(),
+                keywords: "genome inspector prepared".to_string(),
+                action: CommandPaletteAction::OpenPreparedInspector,
+            },
+            CommandPaletteEntry {
+                title: "GUI Manual".to_string(),
+                detail: "Open in-app GUI help".to_string(),
+                keywords: "help gui manual docs".to_string(),
+                action: CommandPaletteAction::OpenGuiManual,
+            },
+            CommandPaletteEntry {
+                title: "CLI Manual".to_string(),
+                detail: "Open in-app CLI help".to_string(),
+                keywords: "help cli manual docs".to_string(),
+                action: CommandPaletteAction::OpenCliManual,
+            },
+            CommandPaletteEntry {
+                title: "Export DALG SVG".to_string(),
+                detail: "Export lineage graph as SVG".to_string(),
+                keywords: "export lineage svg".to_string(),
+                action: CommandPaletteAction::ExportLineageSvg,
+            },
+            CommandPaletteEntry {
+                title: "Toggle Background Jobs Panel".to_string(),
+                detail: "Show or hide centralized jobs panel".to_string(),
+                keywords: "jobs progress background".to_string(),
+                action: CommandPaletteAction::ToggleJobsPanel,
+            },
+            CommandPaletteEntry {
+                title: "Toggle History Panel".to_string(),
+                detail: "Show or hide operation history".to_string(),
+                keywords: "history undo redo".to_string(),
+                action: CommandPaletteAction::ToggleHistoryPanel,
+            },
+            CommandPaletteEntry {
+                title: "Open Windows".to_string(),
+                detail: "Show window switcher".to_string(),
+                keywords: "window switcher".to_string(),
+                action: CommandPaletteAction::OpenWindowsDialog,
+            },
+        ];
+        for entry in self.collect_open_window_entries() {
+            entries.push(CommandPaletteEntry {
+                title: format!("Focus: {}", entry.title),
+                detail: entry.detail,
+                keywords: "focus window".to_string(),
+                action: CommandPaletteAction::FocusViewport(entry.viewport_id),
+            });
+        }
+        entries
+    }
+
+    fn execute_command_palette_action(
+        &mut self,
+        ctx: &egui::Context,
+        action: CommandPaletteAction,
+    ) {
+        match action {
+            CommandPaletteAction::NewProject => self.request_project_action(ProjectAction::New),
+            CommandPaletteAction::OpenProject => self.request_project_action(ProjectAction::Open),
+            CommandPaletteAction::SaveProject => {
+                let _ = self.save_current_project();
+            }
+            CommandPaletteAction::OpenSequence => self.prompt_open_sequence(),
+            CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
+            CommandPaletteAction::OpenPrepareGenome => self.open_reference_genome_prepare_dialog(),
+            CommandPaletteAction::OpenRetrieveGenome => {
+                self.open_reference_genome_retrieve_dialog()
+            }
+            CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
+            CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
+            CommandPaletteAction::OpenPreparedInspector => {
+                self.open_reference_genome_inspector_dialog()
+            }
+            CommandPaletteAction::OpenGuiManual => self.open_help_doc(HelpDoc::Gui),
+            CommandPaletteAction::OpenCliManual => self.open_help_doc(HelpDoc::Cli),
+            CommandPaletteAction::ExportLineageSvg => self.prompt_export_lineage_svg(),
+            CommandPaletteAction::ToggleJobsPanel => {
+                self.show_jobs_panel = !self.show_jobs_panel;
+            }
+            CommandPaletteAction::ToggleHistoryPanel => {
+                self.show_history_panel = !self.show_history_panel;
+            }
+            CommandPaletteAction::Undo => self.undo_last_operation(),
+            CommandPaletteAction::Redo => self.redo_last_operation(),
+            CommandPaletteAction::OpenWindowsDialog => self.open_window_switcher_dialog(),
+            CommandPaletteAction::FocusViewport(viewport_id) => {
+                self.focus_window_viewport(ctx, viewport_id);
+            }
+        }
     }
 
     fn open_help_doc(&mut self, doc: HelpDoc) {
@@ -1612,11 +1956,11 @@ impl GENtleApp {
         }
     }
 
-    fn anchored_sequence_ids_for_tracks(&self) -> Vec<String> {
+    fn anchored_sequence_anchor_summaries_for_tracks(&self) -> Vec<SequenceGenomeAnchorSummary> {
         self.engine
             .read()
             .unwrap()
-            .list_sequences_with_genome_anchor()
+            .list_sequence_genome_anchor_summaries()
     }
 
     fn describe_sequence_genome_anchor(&self, seq_id: &str) -> Option<String> {
@@ -1646,6 +1990,19 @@ impl GENtleApp {
                 .parse::<f64>()
                 .map(Some)
                 .map_err(|e| anyhow!("Invalid {label} value '{trimmed}': {e}"))
+        }
+    }
+
+    fn anchors_share_mapping_group(
+        left: &SequenceGenomeAnchorSummary,
+        right: &SequenceGenomeAnchorSummary,
+    ) -> bool {
+        if left.genome_id != right.genome_id || left.chromosome != right.chromosome {
+            return false;
+        }
+        match (left.strand, right.strand) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
         }
     }
 
@@ -1734,6 +2091,10 @@ impl GENtleApp {
             "Importing {source_label} track in background: '{}' -> '{}'",
             path_label, seq_id
         );
+        self.push_job_event(format!(
+            "Track import started: {} '{}' -> {}",
+            source_label, path_label, seq_id
+        ));
         self.genome_track_import_task = Some(GenomeTrackImportTask {
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
@@ -1881,10 +2242,21 @@ impl GENtleApp {
                     ),
                     tracked_note
                 );
+                self.push_job_event(format!(
+                    "{} import (all anchored): applied={}, failed={}",
+                    subscription.source.label(),
+                    report.applied_imports,
+                    report.failed_imports
+                ));
                 self.load_bed_track_subscriptions_from_state();
             }
             Err(e) => {
                 self.genome_track_status = format!("Import track failed: {}", e.message);
+                self.push_job_event(format!(
+                    "{} import (all anchored) failed: {}",
+                    subscription.source.label(),
+                    e.message
+                ));
             }
         }
     }
@@ -1916,10 +2288,21 @@ impl GENtleApp {
                     ),
                     &report,
                 );
+                self.push_job_event(format!(
+                    "Re-applied tracked {} '{}': applied={}, failed={}",
+                    subscription.source.label(),
+                    subscription.path,
+                    report.applied_imports,
+                    report.failed_imports
+                ));
             }
             Err(e) => {
                 self.genome_track_status =
                     format!("Could not re-apply tracked subscription: {}", e.message);
+                self.push_job_event(format!(
+                    "Tracked subscription apply failed: {}",
+                    e.message
+                ));
             }
         }
     }
@@ -1937,22 +2320,28 @@ impl GENtleApp {
             return;
         }
         self.tracked_autosync_last_op_count = Some(operation_count);
-        match self
-            .engine
-            .write()
-            .unwrap()
-            .sync_tracked_genome_track_subscriptions(true)
-        {
+        let sync_result = {
+            self.engine
+                .write()
+                .unwrap()
+                .sync_tracked_genome_track_subscriptions(true)
+        };
+        match sync_result {
             Ok(report) => {
                 if report.applied_imports > 0 || report.failed_imports > 0 {
                     self.genome_track_autosync_status =
                         Self::format_track_sync_status("Auto-sync", &report);
+                    self.push_job_event(format!(
+                        "Auto-sync: applied={}, failed={}",
+                        report.applied_imports, report.failed_imports
+                    ));
                 }
                 self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             }
             Err(e) => {
                 self.genome_track_autosync_status =
                     format!("Auto-sync failed unexpectedly: {}", e.message);
+                self.push_job_event(format!("Auto-sync failed: {}", e.message));
                 self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             }
         }
@@ -2308,6 +2697,7 @@ impl GENtleApp {
         } else {
             format!("Preparing genome '{genome_id}' in background. You can keep using the UI.")
         };
+        self.push_job_event(format!("Prepare genome started: {}", genome_id));
         self.genome_prepare_task = Some(GenomePrepareTask {
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
@@ -2425,6 +2815,7 @@ impl GENtleApp {
                         elapsed
                     );
                     self.invalidate_genome_genes();
+                    self.push_job_event(format!("Prepare genome completed in {:.1}s", elapsed));
                 }
                 Err(e) => {
                     let lower = e.message.to_ascii_lowercase();
@@ -2442,6 +2833,10 @@ impl GENtleApp {
                         self.genome_prepare_status =
                             format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
                     }
+                    self.push_job_event(format!(
+                        "Prepare genome ended in {:.1}s: {}",
+                        elapsed, e.message
+                    ));
                 }
             }
         }
@@ -2520,10 +2915,15 @@ impl GENtleApp {
                         ),
                         elapsed
                     );
+                    self.push_job_event(format!("{prefix} in {:.1}s", elapsed));
                 }
                 Err(e) => {
                     self.genome_track_status =
                         format!("Import track failed after {:.1}s: {}", elapsed, e.message);
+                    self.push_job_event(format!(
+                        "Track import failed in {:.1}s: {}",
+                        elapsed, e.message
+                    ));
                 }
             }
         }
@@ -2633,6 +3033,10 @@ impl GENtleApp {
             total_queries,
             if total_queries == 1 { "y" } else { "ies" }
         );
+        self.push_job_event(format!(
+            "BLAST started: genome='{}', queries={}, max_hits={}",
+            genome_id, total_queries, max_hits
+        ));
         self.genome_blast_task = Some(GenomeBlastTask {
             started: Instant::now(),
             receiver: rx,
@@ -2757,6 +3161,12 @@ impl GENtleApp {
                             self.genome_blast_results.len(),
                             hit_total
                         );
+                        self.push_job_event(format!(
+                            "BLAST completed in {:.1}s: {} result(s), {} hit(s)",
+                            elapsed,
+                            self.genome_blast_results.len(),
+                            hit_total
+                        ));
                     } else {
                         self.genome_blast_status = format!(
                             "BLAST finished in {:.1}s: {} query result(s), {} total hit(s), {} failed query(ies): {}",
@@ -2766,12 +3176,23 @@ impl GENtleApp {
                             batch.failed_queries.len(),
                             batch.failed_queries.join(" | ")
                         );
+                        self.push_job_event(format!(
+                            "BLAST completed in {:.1}s with {} failed quer{}",
+                            elapsed,
+                            batch.failed_queries.len(),
+                            if batch.failed_queries.len() == 1 {
+                                "y"
+                            } else {
+                                "ies"
+                            }
+                        ));
                     }
                 }
                 Err(e) => {
                     self.genome_blast_results.clear();
                     self.genome_blast_selected_result = 0;
                     self.genome_blast_status = format!("BLAST failed after {:.1}s: {}", elapsed, e);
+                    self.push_job_event(format!("BLAST failed in {:.1}s: {}", elapsed, e));
                 }
             }
         }
@@ -4174,7 +4595,11 @@ impl GENtleApp {
     }
 
     fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) {
-        let anchored_seq_ids = self.anchored_sequence_ids_for_tracks();
+        let anchor_summaries = self.anchored_sequence_anchor_summaries_for_tracks();
+        let anchored_seq_ids = anchor_summaries
+            .iter()
+            .map(|summary| summary.seq_id.clone())
+            .collect::<Vec<_>>();
         let import_running = self.genome_track_import_task.is_some();
         if !anchored_seq_ids.is_empty() && !anchored_seq_ids.contains(&self.genome_track_seq_id) {
             self.genome_track_seq_id = anchored_seq_ids[0].clone();
@@ -4249,10 +4674,12 @@ impl GENtleApp {
         ui.horizontal(|ui| {
             ui.label("track_path");
             ui.text_edit_singleline(&mut self.genome_track_path);
-            if ui
-                .button("Browse...")
-                .on_hover_text("Browse filesystem and fill this path")
-                .clicked()
+            let browse_track_resp = self.track_hover_status(
+                ui.button("Browse...")
+                    .on_hover_text("Browse filesystem and fill this path"),
+                "Genome Tracks > Browse Track Path",
+            );
+            if browse_track_resp.clicked()
             {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig", "vcf"])
@@ -4288,10 +4715,103 @@ impl GENtleApp {
             &mut self.genome_track_clear_existing,
             "Clear existing imported track features first",
         );
-        if let Some(task) = &self.genome_track_import_task {
+        if let Some(selected_anchor) = anchor_summaries
+            .iter()
+            .find(|summary| summary.seq_id == self.genome_track_seq_id)
+        {
+            let matching_anchor_count = anchor_summaries
+                .iter()
+                .filter(|candidate| Self::anchors_share_mapping_group(candidate, selected_anchor))
+                .count();
+            let projected_targets = anchored_seq_ids.len();
+            let mapping_status = if matching_anchor_count == projected_targets {
+                "all anchored sequences match selected genome/chromosome"
+            } else {
+                "mixed anchors detected; import still applies to all anchored sequences"
+            };
+            let track_path = self.genome_track_path.trim().to_string();
+            let path_exists = !track_path.is_empty() && Path::new(&track_path).is_file();
+            let projected_track_name = {
+                let trimmed = self.genome_track_name.trim();
+                if trimmed.is_empty() {
+                    resolved_source.label().to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            };
+
+            ui.group(|ui| {
+                ui.strong("Import Preflight");
+                ui.small(format!(
+                    "anchor: {}:{}:{}..{} (strand {})",
+                    selected_anchor.genome_id,
+                    selected_anchor.chromosome,
+                    selected_anchor.start_1based,
+                    selected_anchor.end_1based,
+                    selected_anchor
+                        .strand
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "?".to_string())
+                ));
+                ui.small(format!(
+                    "matching status: {} / {} anchored sequences share this mapping group ({})",
+                    matching_anchor_count, projected_targets, mapping_status
+                ));
+                ui.small(format!(
+                    "projected tracks: {} target sequence(s) with track '{}'",
+                    projected_targets, projected_track_name
+                ));
+                if path_exists {
+                    ui.small(format!("track file: {}", track_path));
+                } else {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "track file: missing or unreadable path",
+                    );
+                }
+                ui.horizontal(|ui| {
+                    let toggle_resp = ui
+                        .checkbox(
+                            &mut self.genome_track_preflight_track_subscription,
+                            "Track this file for auto-sync",
+                        )
+                        .on_hover_text(
+                            "When enabled, this file is added to tracked subscriptions and auto-applied to newly anchored sequences.",
+                        );
+                    if toggle_resp.hovered() {
+                        self.hover_status_name =
+                            "Genome Tracks > Track Subscription Toggle".to_string();
+                    }
+                    let response = ui
+                        .add_enabled(
+                            !anchored_seq_ids.is_empty() && !import_running && path_exists,
+                            egui::Button::new("Apply To All Anchored Now"),
+                        )
+                        .on_hover_text(
+                            "One-click import to all anchored sequences using the current preflight settings.",
+                        );
+                    let response = self.track_hover_status(
+                        response,
+                        "Genome Tracks > Apply To All Anchored Now",
+                    );
+                    if response.clicked() {
+                        self.import_genome_bed_track_for_all_anchored_sequences(
+                            self.genome_track_preflight_track_subscription,
+                        );
+                    }
+                });
+            });
+        }
+        if self.genome_track_import_task.is_some() {
+            let elapsed_secs = self
+                .genome_track_import_task
+                .as_ref()
+                .map(|task| task.started.elapsed().as_secs_f32())
+                .unwrap_or(0.0);
+            let progress_snapshot = self.genome_track_import_progress.clone();
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
-                if let Some(progress) = &self.genome_track_import_progress {
+                if let Some(progress) = &progress_snapshot {
                     ui.label(format!(
                         "Running import: {} '{}' parsed={} imported={} skipped={} ({:.1}s)",
                         progress.source,
@@ -4299,60 +4819,66 @@ impl GENtleApp {
                         progress.parsed_records,
                         progress.imported_features,
                         progress.skipped_records,
-                        task.started.elapsed().as_secs_f32()
+                        elapsed_secs
                     ));
                 } else {
-                    ui.label(format!(
-                        "Running import task... ({:.1}s)",
-                        task.started.elapsed().as_secs_f32()
-                    ));
+                    ui.label(format!("Running import task... ({:.1}s)", elapsed_secs));
                 }
-                if ui
-                    .button("Cancel Import")
-                    .on_hover_text(
+                let cancel_import_resp = self.track_hover_status(
+                    ui.button("Cancel Import").on_hover_text(
                         "Request cancellation. Imported features up to the cancellation point are kept.",
-                    )
-                    .clicked()
+                    ),
+                    "Genome Tracks > Cancel Import",
+                );
+                if cancel_import_resp.clicked()
                 {
-                    task.cancel_requested.store(true, Ordering::Relaxed);
+                    if let Some(task) = &self.genome_track_import_task {
+                        task.cancel_requested.store(true, Ordering::Relaxed);
+                    }
                     self.genome_track_status = "Cancellation requested for running track import".to_string();
                 }
             });
         }
         ui.horizontal(|ui| {
-            if ui
-                .add_enabled(
+            let selected_resp = self.track_hover_status(
+                ui.add_enabled(
                     !anchored_seq_ids.is_empty() && !import_running,
                     egui::Button::new("Import To Selected"),
                 )
                 .on_hover_text(
                     "Import this BED/BigWig/VCF signal file onto only the currently selected anchored sequence.",
-                )
-                .clicked()
+                ),
+                "Genome Tracks > Import Selected",
+            );
+            if selected_resp.clicked()
             {
                 self.import_genome_bed_track_for_selected_sequence();
             }
-            if ui
-                .add_enabled(
+            let all_once_resp = self.track_hover_status(
+                ui.add_enabled(
                     !anchored_seq_ids.is_empty() && !import_running,
                     egui::Button::new("Import To All Anchored (One-Time)"),
                 )
                 .on_hover_text(
                     "Import once onto every currently anchored sequence. No subscription is saved for future extracts.",
-                )
-                .clicked()
+                ),
+                "Genome Tracks > Import All Anchored One-Time",
+            );
+            if all_once_resp.clicked()
             {
                 self.import_genome_bed_track_for_all_anchored_sequences(false);
             }
-            if ui
-                .add_enabled(
+            let all_track_resp = self.track_hover_status(
+                ui.add_enabled(
                     !anchored_seq_ids.is_empty() && !import_running,
                     egui::Button::new("Import To All Anchored + Track"),
                 )
                 .on_hover_text(
                     "Import onto all current anchored sequences and save this file as a tracked subscription for automatic future auto-sync.",
-                )
-                .clicked()
+                ),
+                "Genome Tracks > Import All Anchored And Track",
+            );
+            if all_track_resp.clicked()
             {
                 self.import_genome_bed_track_for_all_anchored_sequences(true);
             }
@@ -4366,6 +4892,7 @@ impl GENtleApp {
         if self.genome_bed_track_subscriptions.is_empty() {
             ui.small("No tracked files yet.");
         } else {
+            let subscription_rows = self.genome_bed_track_subscriptions.clone();
             egui::Grid::new("genome_bed_track_subscriptions_grid")
                 .striped(true)
                 .show(ui, |ui| {
@@ -4376,9 +4903,7 @@ impl GENtleApp {
                     ui.strong("Clear Existing");
                     ui.strong("Actions");
                     ui.end_row();
-                    for (index, subscription) in
-                        self.genome_bed_track_subscriptions.iter().enumerate()
-                    {
+                    for (index, subscription) in subscription_rows.iter().enumerate() {
                         ui.label(subscription.source.label());
                         ui.monospace(subscription.path.as_str());
                         ui.label(
@@ -4404,21 +4929,25 @@ impl GENtleApp {
                             "no"
                         });
                         ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(!import_running, egui::Button::new("Apply now"))
-                                .on_hover_text(
-                                    "Re-apply this tracked file to all currently anchored sequences now.",
-                                )
-                                .clicked()
+                            let apply_resp = self.track_hover_status(
+                                ui.add_enabled(!import_running, egui::Button::new("Apply now"))
+                                    .on_hover_text(
+                                        "Re-apply this tracked file to all currently anchored sequences now.",
+                                    ),
+                                "Genome Tracks > Apply Tracked File",
+                            );
+                            if apply_resp.clicked()
                             {
                                 apply_now_index = Some(index);
                             }
-                            if ui
-                                .add_enabled(!import_running, egui::Button::new("Remove"))
-                                .on_hover_text(
-                                    "Remove this tracked subscription (does not remove already imported features).",
-                                )
-                                .clicked()
+                            let remove_resp = self.track_hover_status(
+                                ui.add_enabled(!import_running, egui::Button::new("Remove"))
+                                    .on_hover_text(
+                                        "Remove this tracked subscription (does not remove already imported features).",
+                                    ),
+                                "Genome Tracks > Remove Tracked File",
+                            );
+                            if remove_resp.clicked()
                             {
                                 remove_index = Some(index);
                             }
@@ -4453,12 +4982,14 @@ impl GENtleApp {
             }
         }
         if !self.genome_bed_track_subscriptions.is_empty() {
-            if ui
-                .add_enabled(!import_running, egui::Button::new("Clear Tracked Files"))
-                .on_hover_text(
-                    "Remove all tracked subscriptions (does not remove already imported features).",
-                )
-                .clicked()
+            let clear_resp = self.track_hover_status(
+                ui.add_enabled(!import_running, egui::Button::new("Clear Tracked Files"))
+                    .on_hover_text(
+                        "Remove all tracked subscriptions (does not remove already imported features).",
+                    ),
+                "Genome Tracks > Clear Tracked Files",
+            );
+            if clear_resp.clicked()
             {
                 self.engine
                     .write()
@@ -4776,7 +5307,93 @@ impl GENtleApp {
         }
     }
 
+    fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
+        let mut entries = vec![OpenWindowEntry {
+            viewport_id: ViewportId::ROOT,
+            title: format!("Main Window — {}", self.current_project_name()),
+            detail: "Project workspace".to_string(),
+        }];
+
+        if self.show_configuration_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::configuration_viewport_id(),
+                title: "Configuration".to_string(),
+                detail: "External tools and graphics defaults".to_string(),
+            });
+        }
+        if self.show_help_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::help_viewport_id(),
+                title: format!("Help — {}", self.active_help_title()),
+                detail: "GUI/CLI manual".to_string(),
+            });
+        }
+        if self.show_reference_genome_prepare_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::prepare_genome_viewport_id(),
+                title: "Prepare Reference Genome".to_string(),
+                detail: "Reference/helper genome preparation".to_string(),
+            });
+        }
+        if self.show_reference_genome_blast_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::blast_genome_viewport_id(),
+                title: "BLAST Genome Sequence".to_string(),
+                detail: "BLAST against prepared genomes/helpers".to_string(),
+            });
+        }
+        if self.show_genome_bed_track_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::bed_track_viewport_id(),
+                title: "Import Genome Tracks".to_string(),
+                detail: "Import BED/BigWig/VCF track overlays".to_string(),
+            });
+        }
+
+        let mut sequence_windows = self
+            .windows
+            .iter()
+            .map(|(viewport_id, window)| {
+                let title = window
+                    .read()
+                    .map(|w| w.name())
+                    .unwrap_or_else(|_| "Sequence window".to_string());
+                OpenWindowEntry {
+                    viewport_id: *viewport_id,
+                    title,
+                    detail: "Sequence map window".to_string(),
+                }
+            })
+            .collect::<Vec<_>>();
+        sequence_windows.sort_by(|left, right| left.title.cmp(&right.title));
+        entries.extend(sequence_windows);
+        entries
+    }
+
+    fn focus_window_viewport(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {
+        if viewport_id == Self::configuration_viewport_id() {
+            self.show_configuration_dialog = true;
+        } else if viewport_id == Self::help_viewport_id() {
+            self.show_help_dialog = true;
+        } else if viewport_id == Self::prepare_genome_viewport_id() {
+            self.show_reference_genome_prepare_dialog = true;
+        } else if viewport_id == Self::blast_genome_viewport_id() {
+            self.show_reference_genome_blast_dialog = true;
+        } else if viewport_id == Self::bed_track_viewport_id() {
+            self.show_genome_bed_track_dialog = true;
+        }
+
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+    }
+
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
+        let open_window_entries = self.collect_open_window_entries();
+        let (undo_count, redo_count) = {
+            let engine = self.engine.read().expect("Engine lock poisoned");
+            (engine.undo_available(), engine.redo_available())
+        };
+        let history_ops_enabled = !self.has_active_background_jobs();
         menu::bar(ui, |ui| {
             ui.menu_button(TRANSLATIONS.get("m_file"), |ui| {
                 if ui
@@ -4961,6 +5578,56 @@ impl GENtleApp {
                     ui.close_menu();
                 }
             });
+            ui.menu_button("Edit", |ui| {
+                let undo_resp = self.track_hover_status(
+                    ui.add_enabled(
+                        history_ops_enabled && undo_count > 0,
+                        egui::Button::new("Undo"),
+                    )
+                    .on_hover_text("Undo the most recent operation-level state change"),
+                    "Edit > Undo",
+                );
+                if undo_resp.clicked() {
+                    self.undo_last_operation();
+                    ui.close_menu();
+                }
+                let redo_resp = self.track_hover_status(
+                    ui.add_enabled(
+                        history_ops_enabled && redo_count > 0,
+                        egui::Button::new("Redo"),
+                    )
+                    .on_hover_text("Redo the most recently undone operation"),
+                    "Edit > Redo",
+                );
+                if redo_resp.clicked() {
+                    self.redo_last_operation();
+                    ui.close_menu();
+                }
+                if !history_ops_enabled {
+                    ui.small("Undo/redo disabled while background jobs are running.");
+                } else {
+                    ui.small(format!("Undo {undo_count} | Redo {redo_count}"));
+                }
+                ui.separator();
+                let palette_resp = self.track_hover_status(
+                    ui.button("Command Palette...")
+                        .on_hover_text("Open searchable command palette (Cmd/Ctrl+K)"),
+                    "Edit > Command Palette",
+                );
+                if palette_resp.clicked() {
+                    self.open_command_palette_dialog();
+                    ui.close_menu();
+                }
+                let history_resp = self.track_hover_status(
+                    ui.button("Operation History...")
+                        .on_hover_text("Show operation history with undo/redo controls"),
+                    "Edit > Operation History",
+                );
+                if history_resp.clicked() {
+                    self.show_history_panel = true;
+                    ui.close_menu();
+                }
+            });
             ui.menu_button("Settings", |ui| {
                 if ui
                     .button("Configuration...")
@@ -5040,6 +5707,59 @@ impl GENtleApp {
                 {
                     self.open_helper_genome_blast_dialog();
                     ui.close_menu();
+                }
+            });
+            ui.menu_button("Window", |ui| {
+                let jobs_panel_resp = self.track_hover_status(
+                    ui.button(if self.show_jobs_panel {
+                        "Hide Background Jobs"
+                    } else {
+                        "Show Background Jobs"
+                    })
+                    .on_hover_text("Toggle centralized panel for progress/cancel/retry summaries"),
+                    "Window > Background Jobs Panel",
+                );
+                if jobs_panel_resp.clicked() {
+                    self.show_jobs_panel = !self.show_jobs_panel;
+                    ui.close_menu();
+                }
+                let history_panel_resp = self.track_hover_status(
+                    ui.button(if self.show_history_panel {
+                        "Hide Operation History"
+                    } else {
+                        "Show Operation History"
+                    })
+                    .on_hover_text("Toggle operation history panel with undo/redo"),
+                    "Window > History Panel",
+                );
+                if history_panel_resp.clicked() {
+                    self.show_history_panel = !self.show_history_panel;
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui
+                    .button("Open Windows…")
+                    .on_hover_text("Show all open GENtle windows and jump to one")
+                    .clicked()
+                {
+                    self.open_window_switcher_dialog();
+                    ui.close_menu();
+                }
+                ui.separator();
+                for entry in &open_window_entries {
+                    let label = if entry.viewport_id == ViewportId::ROOT {
+                        format!("Main: {}", entry.title)
+                    } else {
+                        entry.title.clone()
+                    };
+                    if ui
+                        .button(label)
+                        .on_hover_text(format!("Raise window: {}", entry.detail))
+                        .clicked()
+                    {
+                        self.focus_window_viewport(ui.ctx(), entry.viewport_id);
+                        ui.close_menu();
+                    }
                 }
             });
             ui.menu_button("Help", |ui| {
@@ -5517,38 +6237,48 @@ impl GENtleApp {
         ui.label(format!("Project: {}", self.current_project_name()));
         ui.label("Project-level sequence lineage (branch and merge aware)");
         ui.horizontal(|ui| {
-            if ui
-                .button("Prepare Reference Genome...")
-                .on_hover_text("Download and index reference genomes")
-                .clicked()
+            let prepare_resp = self.track_hover_status(
+                ui.button("Prepare Reference Genome...")
+                    .on_hover_text("Download and index reference genomes"),
+                "Lineage > Prepare Reference Genome",
+            );
+            if prepare_resp.clicked()
             {
                 self.open_reference_genome_prepare_dialog();
             }
-            if ui
-                .button("Retrieve Genome Sequence...")
-                .on_hover_text("Extract sequence regions from prepared genomes")
-                .clicked()
+            let retrieve_resp = self.track_hover_status(
+                ui.button("Retrieve Genome Sequence...")
+                    .on_hover_text("Extract sequence regions from prepared genomes"),
+                "Lineage > Retrieve Genome Sequence",
+            );
+            if retrieve_resp.clicked()
             {
                 self.open_reference_genome_retrieve_dialog();
             }
-            if ui
-                .button("BLAST Genome Sequence...")
-                .on_hover_text("Run BLAST against prepared genome indices")
-                .clicked()
+            let blast_resp = self.track_hover_status(
+                ui.button("BLAST Genome Sequence...")
+                    .on_hover_text("Run BLAST against prepared genome indices"),
+                "Lineage > BLAST Genome Sequence",
+            );
+            if blast_resp.clicked()
             {
                 self.open_reference_genome_blast_dialog();
             }
         });
         ui.horizontal(|ui| {
-            let table = ui
-                .selectable_label(!self.lineage_graph_view, "Table")
-                .on_hover_text("Show lineage as table");
+            let table = self.track_hover_status(
+                ui.selectable_label(!self.lineage_graph_view, "Table")
+                    .on_hover_text("Show lineage as table"),
+                "Lineage > View Table",
+            );
             if table.clicked() {
                 self.lineage_graph_view = false;
             }
-            let graph = ui
-                .selectable_label(self.lineage_graph_view, "Graph")
-                .on_hover_text("Show lineage as node graph");
+            let graph = self.track_hover_status(
+                ui.selectable_label(self.lineage_graph_view, "Graph")
+                    .on_hover_text("Show lineage as node graph"),
+                "Lineage > View Graph",
+            );
             if graph.clicked() {
                 self.lineage_graph_view = true;
             }
@@ -5611,9 +6341,6 @@ impl GENtleApp {
                 }
                 self.lineage_graph_offsets_synced_stamp = self.lineage_cache_stamp;
             }
-            let rows = &self.lineage_rows;
-            let lineage_edges = &self.lineage_edges;
-            let op_label_by_id = &self.lineage_op_label_by_id;
             let mut request_fit_zoom = false;
             let mut request_fit_origin = false;
             ui.horizontal(|ui| {
@@ -5624,27 +6351,43 @@ impl GENtleApp {
                     "◆ pool (n inside node)",
                 );
                 ui.separator();
-                if ui.button("−").on_hover_text("Zoom out").clicked() {
+                let zoom_out_resp = self.track_hover_status(
+                    ui.button("−").on_hover_text("Zoom out"),
+                    "Lineage Graph > Zoom Out",
+                );
+                if zoom_out_resp.clicked() {
                     graph_zoom = (graph_zoom / 1.15).clamp(0.35, 4.0);
                 }
-                if ui.button("+").on_hover_text("Zoom in").clicked() {
+                let zoom_in_resp = self.track_hover_status(
+                    ui.button("+").on_hover_text("Zoom in"),
+                    "Lineage Graph > Zoom In",
+                );
+                if zoom_in_resp.clicked() {
                     graph_zoom = (graph_zoom * 1.15).clamp(0.35, 4.0);
                 }
-                if ui.button("Reset").on_hover_text("Reset zoom").clicked() {
+                let zoom_reset_resp = self.track_hover_status(
+                    ui.button("Reset").on_hover_text("Reset zoom"),
+                    "Lineage Graph > Zoom Reset",
+                );
+                if zoom_reset_resp.clicked() {
                     graph_zoom = 1.0;
                 }
-                if ui
-                    .button("Fit")
-                    .on_hover_text("Fit full graph content into current graph area")
-                    .clicked()
+                let fit_resp = self.track_hover_status(
+                    ui.button("Fit")
+                        .on_hover_text("Fit full graph content into current graph area"),
+                    "Lineage Graph > Fit",
+                );
+                if fit_resp.clicked()
                 {
                     request_fit_zoom = true;
                     request_fit_origin = true;
                 }
-                if ui
-                    .button("Reset Layout")
-                    .on_hover_text("Reset manually moved node positions")
-                    .clicked()
+                let reset_layout_resp = self.track_hover_status(
+                    ui.button("Reset Layout")
+                        .on_hover_text("Reset manually moved node positions"),
+                    "Lineage Graph > Reset Layout",
+                );
+                if reset_layout_resp.clicked()
                 {
                     self.lineage_graph_node_offsets.clear();
                     self.lineage_graph_drag_origin = None;
@@ -5682,6 +6425,9 @@ impl GENtleApp {
                 }
             });
             ui.separator();
+            let rows = &self.lineage_rows;
+            let lineage_edges = &self.lineage_edges;
+            let op_label_by_id = &self.lineage_op_label_by_id;
             let graph_resize_max_height = ui.available_height().max(220.0);
             egui::Resize::default()
                 .id_salt("lineage_graph_area_resize")
@@ -6914,6 +7660,363 @@ impl GENtleApp {
             });
     }
 
+    fn render_window_switcher_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_window_switcher_dialog {
+            return;
+        }
+        let open_windows = self.collect_open_window_entries();
+        let mut open = self.show_window_switcher_dialog;
+        let mut selected_viewport: Option<ViewportId> = None;
+        egui::Window::new("Open Windows")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(460.0, 360.0))
+            .show(ctx, |ui| {
+                ui.label(format!("{} open window(s)", open_windows.len()));
+                ui.separator();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for entry in &open_windows {
+                        let label = format!("{} — {}", entry.title, entry.detail);
+                        if ui
+                            .button(label)
+                            .on_hover_text("Raise this window to the front")
+                            .clicked()
+                        {
+                            selected_viewport = Some(entry.viewport_id);
+                        }
+                    }
+                });
+            });
+        if let Some(viewport_id) = selected_viewport {
+            self.focus_window_viewport(ctx, viewport_id);
+            open = false;
+        }
+        self.show_window_switcher_dialog = open;
+    }
+
+    fn render_command_palette_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_command_palette_dialog {
+            return;
+        }
+
+        let mut entries = self.collect_command_palette_entries();
+        let query = self.command_palette_query.trim().to_ascii_lowercase();
+        if !query.is_empty() {
+            entries.retain(|entry| {
+                entry.title.to_ascii_lowercase().contains(&query)
+                    || entry.detail.to_ascii_lowercase().contains(&query)
+                    || entry.keywords.to_ascii_lowercase().contains(&query)
+            });
+        }
+        if entries.is_empty() {
+            self.command_palette_selected = 0;
+        } else if self.command_palette_selected >= entries.len() {
+            self.command_palette_selected = entries.len() - 1;
+        }
+
+        let mut open = self.show_command_palette_dialog;
+        let mut execute_action: Option<CommandPaletteAction> = None;
+        egui::Window::new("Command Palette")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(760.0, 520.0))
+            .show(ctx, |ui| {
+                ui.label("Search actions, settings, and help topics");
+                let input_id = ui.make_persistent_id("gentle_command_palette_search");
+                let search_response = ui.add(
+                    egui::TextEdit::singleline(&mut self.command_palette_query)
+                        .id(input_id)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Type action name (Cmd/Ctrl+K)"),
+                );
+                if self.command_palette_focus_query {
+                    search_response.request_focus();
+                    self.command_palette_focus_query = false;
+                }
+                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+                    if !entries.is_empty() {
+                        self.command_palette_selected =
+                            (self.command_palette_selected + 1) % entries.len();
+                    }
+                }
+                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
+                    if self.command_palette_selected == 0 {
+                        self.command_palette_selected = entries.len() - 1;
+                    } else {
+                        self.command_palette_selected -= 1;
+                    }
+                }
+                if ui.input(|i| i.key_pressed(Key::Enter))
+                    && !entries.is_empty()
+                    && self.command_palette_selected < entries.len()
+                {
+                    execute_action = Some(entries[self.command_palette_selected].action);
+                }
+
+                ui.separator();
+                if entries.is_empty() {
+                    ui.small("No matching commands");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .max_height(400.0)
+                        .show(ui, |ui| {
+                            for (idx, entry) in entries.iter().enumerate() {
+                                let selected = self.command_palette_selected == idx;
+                                let label = format!("{} — {}", entry.title, entry.detail);
+                                let response = ui.selectable_label(selected, label);
+                                if response.hovered() {
+                                    self.command_palette_selected = idx;
+                                    self.hover_status_name =
+                                        format!("Command palette: {}", entry.title);
+                                }
+                                if response.clicked() {
+                                    execute_action = Some(entry.action);
+                                }
+                            }
+                        });
+                }
+            });
+
+        if let Some(action) = execute_action {
+            self.execute_command_palette_action(ctx, action);
+            open = false;
+        }
+
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+
+        self.show_command_palette_dialog = open;
+    }
+
+    fn render_jobs_panel(&mut self, ctx: &egui::Context) {
+        if !self.show_jobs_panel {
+            return;
+        }
+        let mut open = self.show_jobs_panel;
+        egui::Window::new("Background Jobs")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(760.0, 480.0))
+            .show(ctx, |ui| {
+                ui.label("Centralized progress, cancellation, and completion summaries");
+                ui.separator();
+
+                ui.strong("Prepare Genome");
+                if let Some(task) = &self.genome_prepare_task {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        if let Some(progress) = &self.genome_prepare_progress {
+                            ui.label(format!(
+                                "{}: {} ({})",
+                                progress.genome_id, progress.phase, progress.item
+                            ));
+                        } else {
+                            ui.label("Running...");
+                        }
+                        if ui
+                            .button("Cancel")
+                            .on_hover_text("Request cancellation of genome prepare job")
+                            .clicked()
+                        {
+                            task.cancel_requested.store(true, Ordering::Relaxed);
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.small("Idle");
+                        if ui
+                            .button("Retry")
+                            .on_hover_text("Run prepare genome again using current dialog settings")
+                            .clicked()
+                        {
+                            self.start_prepare_reference_genome();
+                        }
+                    });
+                }
+                if !self.genome_prepare_status.trim().is_empty() {
+                    ui.small(self.genome_prepare_status.clone());
+                }
+
+                ui.separator();
+                ui.strong("BLAST");
+                if let Some(task) = &self.genome_blast_task {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        ui.label(format!("Running ({:.1}s)", task.started.elapsed().as_secs_f32()));
+                        ui.small("Cancellation is not yet available for BLAST jobs");
+                    });
+                    if let Some(fraction) = self.genome_blast_progress_fraction {
+                        ui.add(
+                            egui::ProgressBar::new(fraction.clamp(0.0, 1.0))
+                                .show_percentage()
+                                .text(self.genome_blast_progress_label.clone()),
+                            );
+                    }
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.small("Idle");
+                        if ui
+                            .button("Retry")
+                            .on_hover_text("Run BLAST again using current BLAST dialog settings")
+                            .clicked()
+                        {
+                            self.start_reference_genome_blast();
+                        }
+                    });
+                }
+                if !self.genome_blast_status.trim().is_empty() {
+                    ui.small(self.genome_blast_status.clone());
+                }
+
+                ui.separator();
+                ui.strong("Genome Track Import");
+                if let Some(task) = &self.genome_track_import_task {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        if let Some(progress) = &self.genome_track_import_progress {
+                            ui.label(format!(
+                                "{} '{}' parsed={} imported={} skipped={}",
+                                progress.source,
+                                progress.seq_id,
+                                progress.parsed_records,
+                                progress.imported_features,
+                                progress.skipped_records
+                            ));
+                        } else {
+                            ui.label("Running...");
+                        }
+                        if ui
+                            .button("Cancel")
+                            .on_hover_text("Request cancellation of running track-import job")
+                            .clicked()
+                        {
+                            task.cancel_requested.store(true, Ordering::Relaxed);
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.small("Idle");
+                        if ui
+                            .button("Retry")
+                            .on_hover_text(
+                                "Run track import again for the currently selected anchored sequence",
+                            )
+                            .clicked()
+                        {
+                            self.import_genome_bed_track_for_selected_sequence();
+                        }
+                    });
+                }
+                if !self.genome_track_status.trim().is_empty() {
+                    ui.small(self.genome_track_status.clone());
+                }
+
+                ui.separator();
+                ui.strong("Recent job events");
+                egui::ScrollArea::vertical()
+                    .max_height(180.0)
+                    .show(ui, |ui| {
+                        for event in self.job_event_log.iter().rev().take(40) {
+                            ui.small(event);
+                        }
+                    });
+            });
+        self.show_jobs_panel = open;
+    }
+
+    fn render_history_panel(&mut self, ctx: &egui::Context) {
+        if !self.show_history_panel {
+            return;
+        }
+        let mut open = self.show_history_panel;
+        let (undo_count, redo_count, history_rows) = {
+            let engine = self.engine.read().unwrap();
+            let rows = engine
+                .operation_log()
+                .iter()
+                .rev()
+                .take(120)
+                .map(|record| {
+                    (
+                        record.result.op_id.clone(),
+                        record.run_id.clone(),
+                        Self::summarize_operation(&record.op),
+                    )
+                })
+                .collect::<Vec<_>>();
+            (engine.undo_available(), engine.redo_available(), rows)
+        };
+
+        egui::Window::new("Operation History")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(820.0, 520.0))
+            .show(ctx, |ui| {
+                ui.label("Operation-level history with undo/redo");
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(undo_count > 0, egui::Button::new("Undo"))
+                        .on_hover_text("Undo the most recent operation-level state transition")
+                        .clicked()
+                    {
+                        self.undo_last_operation();
+                    }
+                    if ui
+                        .add_enabled(redo_count > 0, egui::Button::new("Redo"))
+                        .on_hover_text("Redo the most recently undone operation-level transition")
+                        .clicked()
+                    {
+                        self.redo_last_operation();
+                    }
+                    ui.small(format!(
+                        "undo available: {} | redo available: {}",
+                        undo_count, redo_count
+                    ));
+                });
+                ui.separator();
+                if history_rows.is_empty() {
+                    ui.small("No operations recorded yet.");
+                } else {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for (op_id, run_id, summary) in &history_rows {
+                            ui.monospace(format!("[{op_id}] run={run_id}"));
+                            ui.small(summary);
+                            ui.separator();
+                        }
+                    });
+                }
+            });
+        self.show_history_panel = open;
+    }
+
+    fn render_status_bar(&mut self, ctx: &egui::Context) {
+        let (undo_count, redo_count) = {
+            let engine = self.engine.read().unwrap();
+            (engine.undo_available(), engine.redo_available())
+        };
+        egui::TopBottomPanel::bottom("gentle_status_bar").show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let hover_text = if self.hover_status_name.trim().is_empty() {
+                    "Hover: -".to_string()
+                } else {
+                    format!("Hover: {}", self.hover_status_name)
+                };
+                ui.monospace(hover_text);
+                ui.separator();
+                ui.small(format!("Undo {undo_count} / Redo {redo_count}"));
+                if !self.app_status.trim().is_empty() {
+                    ui.separator();
+                    ui.small(self.app_status.clone());
+                }
+            });
+        });
+    }
+
     fn render_help_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_help_dialog {
             return;
@@ -7536,8 +8639,11 @@ impl eframe::App for GENtleApp {
             }
             about::install_native_help_menu_bridge();
             about::install_native_settings_menu_bridge();
+            about::install_native_windows_menu_bridge();
             self.consume_native_help_request();
             self.consume_native_settings_request();
+            self.consume_native_windows_request();
+            self.hover_status_name.clear();
             let project_dirty = self.is_project_dirty();
             let dirty_marker = if project_dirty { " *" } else { "" };
             let window_title = format!(
@@ -7567,6 +8673,12 @@ impl eframe::App for GENtleApp {
             let close_project =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
             let open_configuration = KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma);
+            let open_window_switcher = KeyboardShortcut::new(Modifiers::COMMAND, Key::Backtick);
+            let open_command_palette = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
+            let undo_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
+            let redo_shortcut_shift =
+                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+            let redo_shortcut_y = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y);
             if ctx.input_mut(|i| i.consume_shortcut(&new_project)) {
                 self.request_project_action(ProjectAction::New);
             }
@@ -7597,6 +8709,20 @@ impl eframe::App for GENtleApp {
             if ctx.input_mut(|i| i.consume_shortcut(&open_configuration)) {
                 self.open_configuration_dialog();
             }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_window_switcher)) {
+                self.open_window_switcher_dialog();
+            }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_command_palette)) {
+                self.open_command_palette_dialog();
+            }
+            if ctx.input_mut(|i| i.consume_shortcut(&undo_shortcut)) {
+                self.undo_last_operation();
+            }
+            if ctx.input_mut(|i| i.consume_shortcut(&redo_shortcut_shift))
+                || ctx.input_mut(|i| i.consume_shortcut(&redo_shortcut_y))
+            {
+                self.redo_last_operation();
+            }
 
             self.poll_prepare_reference_genome_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
@@ -7625,7 +8751,12 @@ impl eframe::App for GENtleApp {
             self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);
+            self.render_window_switcher_dialog(ctx);
+            self.render_command_palette_dialog(ctx);
+            self.render_jobs_panel(ctx);
+            self.render_history_panel(ctx);
             self.render_unsaved_changes_dialog(ctx);
+            self.render_status_bar(ctx);
 
             // Open new windows
             let mut new_windows: Vec<Window> = self.new_windows.drain(..).collect();

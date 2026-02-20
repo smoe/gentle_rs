@@ -51,6 +51,8 @@ const CANDIDATE_SETS_REF_SCHEMA: &str = "gentle.candidate_sets.ref.v1";
 const CANDIDATE_SETS_DISK_INDEX_SCHEMA: &str = "gentle.candidate_sets.disk_index.v1";
 const CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY: &str = "candidate_sets_load_warning";
 const CANDIDATE_STORE_STRICT_LOAD_ENV: &str = "GENTLE_CANDIDATE_STORE_STRICT_LOAD";
+pub const CANDIDATE_MACRO_TEMPLATES_METADATA_KEY: &str = "candidate_macro_templates";
+const CANDIDATE_MACRO_TEMPLATES_SCHEMA: &str = "gentle.candidate_macro_templates.v1";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
@@ -1240,6 +1242,97 @@ impl CandidateSetOperator {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateObjectiveDirection {
+    #[default]
+    Maximize,
+    Minimize,
+}
+
+impl CandidateObjectiveDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Maximize => "maximize",
+            Self::Minimize => "minimize",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateObjectiveSpec {
+    pub metric: String,
+    #[serde(default)]
+    pub direction: CandidateObjectiveDirection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateWeightedObjectiveTerm {
+    pub metric: String,
+    pub weight: f64,
+    #[serde(default)]
+    pub direction: CandidateObjectiveDirection,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateTieBreakPolicy {
+    #[default]
+    SeqStartEnd,
+    SeqEndStart,
+    LengthAscending,
+    LengthDescending,
+    SequenceLexicographic,
+}
+
+impl CandidateTieBreakPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SeqStartEnd => "seq_start_end",
+            Self::SeqEndStart => "seq_end_start",
+            Self::LengthAscending => "length_ascending",
+            Self::LengthDescending => "length_descending",
+            Self::SequenceLexicographic => "sequence_lexicographic",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CandidateMacroTemplateStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    templates: HashMap<String, CandidateMacroTemplate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CandidateMacroTemplate {
+    pub name: String,
+    pub description: Option<String>,
+    pub parameters: Vec<CandidateMacroTemplateParam>,
+    pub script: String,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CandidateMacroTemplateParam {
+    pub name: String,
+    pub default_value: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateMacroTemplateSummary {
+    pub name: String,
+    pub description: Option<String>,
+    pub parameter_count: usize,
+    pub created_at_unix_ms: u128,
+    pub updated_at_unix_ms: u128,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlastHitFeatureInput {
     pub subject_id: String,
@@ -1548,6 +1641,44 @@ pub enum Operation {
         right_set: String,
         output_set: String,
     },
+    ScoreCandidateSetWeightedObjective {
+        set_name: String,
+        metric: String,
+        #[serde(default)]
+        objectives: Vec<CandidateWeightedObjectiveTerm>,
+        #[serde(default)]
+        normalize_metrics: Option<bool>,
+    },
+    TopKCandidateSet {
+        input_set: String,
+        output_set: String,
+        metric: String,
+        k: usize,
+        #[serde(default)]
+        direction: Option<CandidateObjectiveDirection>,
+        #[serde(default)]
+        tie_break: Option<CandidateTieBreakPolicy>,
+    },
+    ParetoFrontierCandidateSet {
+        input_set: String,
+        output_set: String,
+        #[serde(default)]
+        objectives: Vec<CandidateObjectiveSpec>,
+        #[serde(default)]
+        max_candidates: Option<usize>,
+        #[serde(default)]
+        tie_break: Option<CandidateTieBreakPolicy>,
+    },
+    UpsertCandidateMacroTemplate {
+        name: String,
+        description: Option<String>,
+        #[serde(default)]
+        parameters: Vec<CandidateMacroTemplateParam>,
+        script: String,
+    },
+    DeleteCandidateMacroTemplate {
+        name: String,
+    },
     Reverse {
         input: SeqId,
         output_id: Option<SeqId>,
@@ -1716,6 +1847,16 @@ pub struct GenomeExtractionProvenance {
     pub annotation_sha1: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceGenomeAnchorSummary {
+    pub seq_id: String,
+    pub genome_id: String,
+    pub chromosome: String,
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub strand: Option<char>,
+}
+
 #[derive(Debug, Clone)]
 struct GenomeSequenceAnchor {
     genome_id: String,
@@ -1725,6 +1866,13 @@ struct GenomeSequenceAnchor {
     strand: Option<char>,
     catalog_path: Option<String>,
     cache_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct EngineHistoryCheckpoint {
+    state: ProjectState,
+    journal: Vec<OperationRecord>,
+    op_counter: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -2087,11 +2235,25 @@ pub struct GentleEngine {
     state: ProjectState,
     journal: Vec<OperationRecord>,
     op_counter: u64,
+    #[serde(skip, default)]
+    undo_stack: Vec<EngineHistoryCheckpoint>,
+    #[serde(skip, default)]
+    redo_stack: Vec<EngineHistoryCheckpoint>,
+    #[serde(skip, default = "GentleEngine::default_history_limit")]
+    history_limit: usize,
 }
 
 impl GentleEngine {
+    fn default_history_limit() -> usize {
+        256
+    }
+
     pub fn new() -> Self {
-        Self::default()
+        let mut ret = Self::default();
+        if ret.history_limit == 0 {
+            ret.history_limit = Self::default_history_limit();
+        }
+        ret
     }
 
     pub fn from_state(state: ProjectState) -> Self {
@@ -2099,6 +2261,9 @@ impl GentleEngine {
             state,
             ..Self::default()
         };
+        if ret.history_limit == 0 {
+            ret.history_limit = Self::default_history_limit();
+        }
         ret.reconcile_lineage_nodes();
         ret.reconcile_containers();
         ret
@@ -2128,6 +2293,30 @@ impl GentleEngine {
             "{}:{}-{} ({}, strand {})",
             anchor.chromosome, anchor.start_1based, anchor.end_1based, anchor.genome_id, strand
         ))
+    }
+
+    pub fn sequence_genome_anchor_summary(
+        &self,
+        seq_id: &str,
+    ) -> Result<SequenceGenomeAnchorSummary, EngineError> {
+        let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
+        Ok(SequenceGenomeAnchorSummary {
+            seq_id: seq_id.to_string(),
+            genome_id: anchor.genome_id,
+            chromosome: anchor.chromosome,
+            start_1based: anchor.start_1based,
+            end_1based: anchor.end_1based,
+            strand: anchor.strand,
+        })
+    }
+
+    pub fn list_sequence_genome_anchor_summaries(&self) -> Vec<SequenceGenomeAnchorSummary> {
+        let mut seq_ids: Vec<String> = self.state.sequences.keys().cloned().collect();
+        seq_ids.sort_unstable();
+        seq_ids
+            .into_iter()
+            .filter_map(|seq_id| self.sequence_genome_anchor_summary(&seq_id).ok())
+            .collect()
     }
 
     pub fn list_genome_track_subscriptions(&self) -> Vec<GenomeTrackSubscription> {
@@ -2338,6 +2527,11 @@ impl GentleEngine {
                 "ScoreCandidateSetDistance".to_string(),
                 "FilterCandidateSet".to_string(),
                 "CandidateSetOp".to_string(),
+                "ScoreCandidateSetWeightedObjective".to_string(),
+                "TopKCandidateSet".to_string(),
+                "ParetoFrontierCandidateSet".to_string(),
+                "UpsertCandidateMacroTemplate".to_string(),
+                "DeleteCandidateMacroTemplate".to_string(),
                 "Reverse".to_string(),
                 "Complement".to_string(),
                 "ReverseComplement".to_string(),
@@ -2808,6 +3002,102 @@ impl GentleEngine {
         &self.journal
     }
 
+    fn history_limit_or_default(&self) -> usize {
+        if self.history_limit == 0 {
+            Self::default_history_limit()
+        } else {
+            self.history_limit
+        }
+    }
+
+    fn capture_history_checkpoint(&self) -> EngineHistoryCheckpoint {
+        EngineHistoryCheckpoint {
+            state: self.state.clone(),
+            journal: self.journal.clone(),
+            op_counter: self.op_counter,
+        }
+    }
+
+    fn restore_history_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
+        self.state = checkpoint.state;
+        self.journal = checkpoint.journal;
+        self.op_counter = checkpoint.op_counter;
+        self.reconcile_lineage_nodes();
+        self.reconcile_containers();
+    }
+
+    fn op_records_history_checkpoint(op: &Operation) -> bool {
+        !matches!(
+            op,
+            Operation::SaveFile { .. }
+                | Operation::RenderSequenceSvg { .. }
+                | Operation::RenderRnaStructureSvg { .. }
+                | Operation::RenderLineageSvg { .. }
+                | Operation::RenderPoolGelSvg { .. }
+                | Operation::ExportDnaLadders { .. }
+                | Operation::ExportRnaLadders { .. }
+                | Operation::ExportPool { .. }
+        )
+    }
+
+    fn maybe_capture_checkpoint(&self, op: &Operation) -> Option<EngineHistoryCheckpoint> {
+        Self::op_records_history_checkpoint(op).then(|| self.capture_history_checkpoint())
+    }
+
+    fn push_undo_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
+        self.undo_stack.push(checkpoint);
+        let limit = self.history_limit_or_default();
+        if self.undo_stack.len() > limit {
+            let drain_len = self.undo_stack.len() - limit;
+            self.undo_stack.drain(0..drain_len);
+        }
+        self.redo_stack.clear();
+    }
+
+    pub fn undo_available(&self) -> usize {
+        self.undo_stack.len()
+    }
+
+    pub fn redo_available(&self) -> usize {
+        self.redo_stack.len()
+    }
+
+    pub fn undo_last_operation(&mut self) -> Result<(), EngineError> {
+        let Some(previous) = self.undo_stack.pop() else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No operation to undo".to_string(),
+            });
+        };
+        let current = self.capture_history_checkpoint();
+        self.redo_stack.push(current);
+        let limit = self.history_limit_or_default();
+        if self.redo_stack.len() > limit {
+            let drain_len = self.redo_stack.len() - limit;
+            self.redo_stack.drain(0..drain_len);
+        }
+        self.restore_history_checkpoint(previous);
+        Ok(())
+    }
+
+    pub fn redo_last_operation(&mut self) -> Result<(), EngineError> {
+        let Some(next) = self.redo_stack.pop() else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No operation to redo".to_string(),
+            });
+        };
+        let current = self.capture_history_checkpoint();
+        self.undo_stack.push(current);
+        let limit = self.history_limit_or_default();
+        if self.undo_stack.len() > limit {
+            let drain_len = self.undo_stack.len() - limit;
+            self.undo_stack.drain(0..drain_len);
+        }
+        self.restore_history_checkpoint(next);
+        Ok(())
+    }
+
     pub fn apply_with_progress<F>(
         &mut self,
         op: Operation,
@@ -2817,12 +3107,16 @@ impl GentleEngine {
         F: FnMut(OperationProgress) -> bool,
     {
         let run_id = "interactive".to_string();
+        let checkpoint = self.maybe_capture_checkpoint(&op);
         let result = self.apply_internal(op.clone(), &run_id, &mut on_progress)?;
         self.journal.push(OperationRecord {
             run_id,
             op,
             result: result.clone(),
         });
+        if let Some(checkpoint) = checkpoint {
+            self.push_undo_checkpoint(checkpoint);
+        }
         Ok(result)
     }
 
@@ -2836,12 +3130,16 @@ impl GentleEngine {
     {
         let mut results = Vec::new();
         for op in &wf.ops {
+            let checkpoint = self.maybe_capture_checkpoint(op);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut on_progress)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
                 op: op.clone(),
                 result: result.clone(),
             });
+            if let Some(checkpoint) = checkpoint {
+                self.push_undo_checkpoint(checkpoint);
+            }
             results.push(result);
         }
         Ok(results)
@@ -3251,6 +3549,205 @@ impl GentleEngine {
             .metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), value);
         Ok(())
+    }
+
+    fn normalize_candidate_macro_template_name(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Candidate macro template name cannot be empty".to_string(),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn normalize_candidate_macro_param_name(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Candidate macro parameter name cannot be empty".to_string(),
+            });
+        }
+        let valid = trimmed
+            .chars()
+            .enumerate()
+            .all(|(idx, ch)| match idx {
+                0 => ch.is_ascii_alphabetic() || ch == '_',
+                _ => ch.is_ascii_alphanumeric() || ch == '_',
+            });
+        if !valid {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid candidate macro parameter name '{}' (expected [A-Za-z_][A-Za-z0-9_]*)",
+                    trimmed
+                ),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn read_candidate_macro_template_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> CandidateMacroTemplateStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<CandidateMacroTemplateStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = CANDIDATE_MACRO_TEMPLATES_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_candidate_macro_template_store(&self) -> CandidateMacroTemplateStore {
+        Self::read_candidate_macro_template_store_from_metadata(
+            self.state
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY),
+        )
+    }
+
+    fn write_candidate_macro_template_store(
+        &mut self,
+        mut store: CandidateMacroTemplateStore,
+    ) -> Result<(), EngineError> {
+        if store.templates.is_empty() {
+            self.state
+                .metadata
+                .remove(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = CANDIDATE_MACRO_TEMPLATES_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize candidate macro template metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub fn list_candidate_macro_templates(&self) -> Vec<CandidateMacroTemplateSummary> {
+        let store = self.read_candidate_macro_template_store();
+        let mut names = store.templates.keys().cloned().collect::<Vec<_>>();
+        names.sort();
+        names
+            .into_iter()
+            .filter_map(|name| store.templates.get(&name))
+            .map(|template| CandidateMacroTemplateSummary {
+                name: template.name.clone(),
+                description: template.description.clone(),
+                parameter_count: template.parameters.len(),
+                created_at_unix_ms: template.created_at_unix_ms,
+                updated_at_unix_ms: template.updated_at_unix_ms,
+            })
+            .collect()
+    }
+
+    pub fn get_candidate_macro_template(
+        &self,
+        name: &str,
+    ) -> Result<CandidateMacroTemplate, EngineError> {
+        let name = Self::normalize_candidate_macro_template_name(name)?;
+        let store = self.read_candidate_macro_template_store();
+        store
+            .templates
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate macro template '{}' not found", name),
+            })
+    }
+
+    pub fn render_candidate_macro_template_script(
+        &self,
+        name: &str,
+        bindings: &HashMap<String, String>,
+    ) -> Result<String, EngineError> {
+        let template = self.get_candidate_macro_template(name)?;
+        let declared = template
+            .parameters
+            .iter()
+            .map(|p| p.name.clone())
+            .collect::<HashSet<_>>();
+        for key in bindings.keys() {
+            if !declared.contains(key) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate macro template '{}' does not define parameter '{}'",
+                        template.name, key
+                    ),
+                });
+            }
+        }
+
+        let mut resolved: HashMap<String, String> = HashMap::new();
+        for param in &template.parameters {
+            if let Some(value) = bindings.get(&param.name) {
+                resolved.insert(param.name.clone(), value.clone());
+            } else if let Some(default_value) = &param.default_value {
+                resolved.insert(param.name.clone(), default_value.clone());
+            } else if param.required {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate macro template '{}' is missing required parameter '{}'",
+                        template.name, param.name
+                    ),
+                });
+            }
+        }
+
+        let placeholder_regex = Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| {
+            EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not compile candidate macro placeholder regex: {e}"),
+            }
+        })?;
+        let mut missing: Vec<String> = vec![];
+        for captures in placeholder_regex.captures_iter(&template.script) {
+            if let Some(name) = captures.get(1).map(|m| m.as_str()) {
+                if !declared.contains(name) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate macro template '{}' references undeclared parameter '{}'",
+                            template.name, name
+                        ),
+                    });
+                }
+                if !resolved.contains_key(name) {
+                    missing.push(name.to_string());
+                }
+            }
+        }
+        if !missing.is_empty() {
+            missing.sort();
+            missing.dedup();
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Candidate macro template '{}' is missing parameter bindings for: {}",
+                    template.name,
+                    missing.join(", ")
+                ),
+            });
+        }
+
+        let rendered = placeholder_regex
+            .replace_all(&template.script, |captures: &regex::Captures<'_>| {
+                let key = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
+                resolved.get(key).cloned().unwrap_or_default()
+            })
+            .to_string();
+        Ok(rendered)
     }
 
     fn metric_names_for_candidate_set(set: &CandidateSet) -> Vec<String> {
@@ -4969,6 +5466,606 @@ impl GentleEngine {
             result.warnings.push(format!(
                 "CandidateSetOp output '{}' replaced existing candidate set",
                 output_set
+            ));
+        }
+        Ok(())
+    }
+
+    fn compare_candidates_by_tie_break(
+        a: &CandidateRecord,
+        b: &CandidateRecord,
+        policy: CandidateTieBreakPolicy,
+    ) -> Ordering {
+        let a_len = a.end_0based.saturating_sub(a.start_0based);
+        let b_len = b.end_0based.saturating_sub(b.start_0based);
+        match policy {
+            CandidateTieBreakPolicy::SeqStartEnd => a
+                .seq_id
+                .cmp(&b.seq_id)
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based.cmp(&b.end_0based))
+                .then(a.sequence.cmp(&b.sequence)),
+            CandidateTieBreakPolicy::SeqEndStart => a
+                .seq_id
+                .cmp(&b.seq_id)
+                .then(a.end_0based.cmp(&b.end_0based))
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.sequence.cmp(&b.sequence)),
+            CandidateTieBreakPolicy::LengthAscending => a_len
+                .cmp(&b_len)
+                .then(a.seq_id.cmp(&b.seq_id))
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based.cmp(&b.end_0based))
+                .then(a.sequence.cmp(&b.sequence)),
+            CandidateTieBreakPolicy::LengthDescending => b_len
+                .cmp(&a_len)
+                .then(a.seq_id.cmp(&b.seq_id))
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based.cmp(&b.end_0based))
+                .then(a.sequence.cmp(&b.sequence)),
+            CandidateTieBreakPolicy::SequenceLexicographic => a
+                .sequence
+                .cmp(&b.sequence)
+                .then(a.seq_id.cmp(&b.seq_id))
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based.cmp(&b.end_0based)),
+        }
+    }
+
+    fn op_score_candidate_set_weighted_objective(
+        &mut self,
+        set_name: String,
+        metric: String,
+        objectives: Vec<CandidateWeightedObjectiveTerm>,
+        normalize_metrics: Option<bool>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let set_name = Self::normalize_candidate_set_name(&set_name)?;
+        let metric_name = Self::normalize_metric_name(&metric);
+        if objectives.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ScoreCandidateSetWeightedObjective requires at least one objective term"
+                    .to_string(),
+            });
+        }
+        let normalize_metrics = normalize_metrics.unwrap_or(true);
+
+        let mut compiled = Vec::with_capacity(objectives.len());
+        for term in objectives {
+            let metric = Self::normalize_metric_name(&term.metric);
+            if !term.weight.is_finite() || term.weight <= 0.0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Invalid weighted objective term for metric '{}': weight must be finite and > 0",
+                        metric
+                    ),
+                });
+            }
+            compiled.push((metric, term.weight, term.direction));
+        }
+
+        let mut store = self.read_candidate_store();
+        let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Candidate set '{}' not found", set_name),
+        })?;
+        if set.candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Candidate set '{}' is empty", set_name),
+            });
+        }
+
+        let mut bounds = Vec::with_capacity(compiled.len());
+        for (metric_name, _, _) in &compiled {
+            let mut min_value = f64::INFINITY;
+            let mut max_value = f64::NEG_INFINITY;
+            for (idx, candidate) in set.candidates.iter().enumerate() {
+                let value = candidate.metrics.get(metric_name).copied().ok_or_else(|| {
+                    EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate {} in '{}' is missing metric '{}'",
+                            idx, set_name, metric_name
+                        ),
+                    }
+                })?;
+                if !value.is_finite() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate {} in '{}' has non-finite metric '{}'",
+                            idx, set_name, metric_name
+                        ),
+                    });
+                }
+                min_value = min_value.min(value);
+                max_value = max_value.max(value);
+            }
+            bounds.push((min_value, max_value));
+        }
+
+        let mut combined_values = Vec::with_capacity(set.candidates.len());
+        for candidate in &mut set.candidates {
+            let mut combined = 0.0f64;
+            for ((metric_name, weight, direction), (min_value, max_value)) in
+                compiled.iter().zip(bounds.iter())
+            {
+                let raw_value = candidate.metrics.get(metric_name).copied().ok_or_else(|| {
+                    EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate in '{}' is missing metric '{}'",
+                            set_name, metric_name
+                        ),
+                    }
+                })?;
+                let objective_value = if normalize_metrics {
+                    let scaled = if *max_value > *min_value {
+                        (raw_value - *min_value) / (*max_value - *min_value)
+                    } else {
+                        0.5
+                    };
+                    match direction {
+                        CandidateObjectiveDirection::Maximize => scaled,
+                        CandidateObjectiveDirection::Minimize => 1.0 - scaled,
+                    }
+                } else {
+                    match direction {
+                        CandidateObjectiveDirection::Maximize => raw_value,
+                        CandidateObjectiveDirection::Minimize => -raw_value,
+                    }
+                };
+                combined += *weight * objective_value;
+            }
+            candidate.metrics.insert(metric_name.clone(), combined);
+            combined_values.push(combined);
+        }
+
+        let min_combined = combined_values.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_combined = combined_values
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Scored candidate set '{}' with weighted objective metric '{}'",
+            set_name, metric_name
+        ));
+        result.messages.push(format!(
+            "Weighted objective mode for '{}': normalize_metrics={}",
+            set_name, normalize_metrics
+        ));
+        result.messages.push(format!(
+            "Metric '{}' range in '{}': [{:.6}, {:.6}]",
+            metric_name, set_name, min_combined, max_combined
+        ));
+        Ok(())
+    }
+
+    fn op_top_k_candidate_set(
+        &mut self,
+        input_set: String,
+        output_set: String,
+        metric: String,
+        k: usize,
+        direction: Option<CandidateObjectiveDirection>,
+        tie_break: Option<CandidateTieBreakPolicy>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let input_set = Self::normalize_candidate_set_name(&input_set)?;
+        let output_set = Self::normalize_candidate_set_name(&output_set)?;
+        let metric_name = Self::normalize_metric_name(&metric);
+        if k == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "TopKCandidateSet requires k >= 1".to_string(),
+            });
+        }
+        let direction = direction.unwrap_or_default();
+        let tie_break = tie_break.unwrap_or_default();
+
+        let mut store = self.read_candidate_store();
+        let input = store
+            .sets
+            .get(&input_set)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate set '{}' not found", input_set),
+            })?;
+        if input.candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Candidate set '{}' is empty", input_set),
+            });
+        }
+
+        let mut scored = Vec::with_capacity(input.candidates.len());
+        for (idx, candidate) in input.candidates.into_iter().enumerate() {
+            let value = candidate
+                .metrics
+                .get(&metric_name)
+                .copied()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate {} in '{}' is missing metric '{}'",
+                        idx, input_set, metric_name
+                    ),
+                })?;
+            if !value.is_finite() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate {} in '{}' has non-finite metric '{}'",
+                        idx, input_set, metric_name
+                    ),
+                });
+            }
+            scored.push((candidate, value));
+        }
+        scored.sort_by(|(left, left_value), (right, right_value)| {
+            let primary = match direction {
+                CandidateObjectiveDirection::Maximize => right_value
+                    .partial_cmp(left_value)
+                    .unwrap_or(Ordering::Equal),
+                CandidateObjectiveDirection::Minimize => left_value
+                    .partial_cmp(right_value)
+                    .unwrap_or(Ordering::Equal),
+            };
+            if primary == Ordering::Equal {
+                Self::compare_candidates_by_tie_break(left, right, tie_break)
+            } else {
+                primary
+            }
+        });
+
+        let selected = scored
+            .into_iter()
+            .take(k)
+            .map(|(candidate, _)| candidate)
+            .collect::<Vec<_>>();
+        let selected_count = selected.len();
+        let replaced_existing = store
+            .sets
+            .insert(
+                output_set.clone(),
+                CandidateSet {
+                    name: output_set.clone(),
+                    created_at_unix_ms: Self::now_unix_ms(),
+                    source_seq_ids: input.source_seq_ids,
+                    candidates: selected,
+                },
+            )
+            .is_some();
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Selected top {} candidate(s) from '{}' into '{}' by metric '{}' ({}, tie_break={})",
+            selected_count,
+            input_set,
+            output_set,
+            metric_name,
+            direction.as_str(),
+            tie_break.as_str()
+        ));
+        if replaced_existing {
+            result.warnings.push(format!(
+                "TopKCandidateSet output '{}' replaced existing candidate set",
+                output_set
+            ));
+        }
+        Ok(())
+    }
+
+    fn candidate_dominates(
+        left_values: &[f64],
+        right_values: &[f64],
+        objectives: &[CandidateObjectiveSpec],
+    ) -> bool {
+        let mut strictly_better = false;
+        for (idx, objective) in objectives.iter().enumerate() {
+            let left = left_values.get(idx).copied().unwrap_or(0.0);
+            let right = right_values.get(idx).copied().unwrap_or(0.0);
+            match objective.direction {
+                CandidateObjectiveDirection::Maximize => {
+                    if left < right {
+                        return false;
+                    }
+                    if left > right {
+                        strictly_better = true;
+                    }
+                }
+                CandidateObjectiveDirection::Minimize => {
+                    if left > right {
+                        return false;
+                    }
+                    if left < right {
+                        strictly_better = true;
+                    }
+                }
+            }
+        }
+        strictly_better
+    }
+
+    fn op_pareto_frontier_candidate_set(
+        &mut self,
+        input_set: String,
+        output_set: String,
+        objectives: Vec<CandidateObjectiveSpec>,
+        max_candidates: Option<usize>,
+        tie_break: Option<CandidateTieBreakPolicy>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let input_set = Self::normalize_candidate_set_name(&input_set)?;
+        let output_set = Self::normalize_candidate_set_name(&output_set)?;
+        if objectives.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ParetoFrontierCandidateSet requires at least one objective".to_string(),
+            });
+        }
+        if max_candidates == Some(0) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ParetoFrontierCandidateSet max_candidates must be >= 1".to_string(),
+            });
+        }
+        let tie_break = tie_break.unwrap_or_default();
+
+        let mut compiled = Vec::with_capacity(objectives.len());
+        for objective in objectives {
+            compiled.push(CandidateObjectiveSpec {
+                metric: Self::normalize_metric_name(&objective.metric),
+                direction: objective.direction,
+            });
+        }
+
+        let mut store = self.read_candidate_store();
+        let input = store
+            .sets
+            .get(&input_set)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate set '{}' not found", input_set),
+            })?;
+        if input.candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Candidate set '{}' is empty", input_set),
+            });
+        }
+
+        let mut objective_values: Vec<Vec<f64>> = vec![];
+        for (candidate_idx, candidate) in input.candidates.iter().enumerate() {
+            let mut row = Vec::with_capacity(compiled.len());
+            for objective in &compiled {
+                let value = candidate
+                    .metrics
+                    .get(&objective.metric)
+                    .copied()
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate {} in '{}' is missing metric '{}'",
+                            candidate_idx, input_set, objective.metric
+                        ),
+                    })?;
+                if !value.is_finite() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate {} in '{}' has non-finite metric '{}'",
+                            candidate_idx, input_set, objective.metric
+                        ),
+                    });
+                }
+                row.push(value);
+            }
+            objective_values.push(row);
+        }
+
+        let mut dominated = vec![false; input.candidates.len()];
+        for i in 0..input.candidates.len() {
+            if dominated[i] {
+                continue;
+            }
+            for j in 0..input.candidates.len() {
+                if i == j {
+                    continue;
+                }
+                if Self::candidate_dominates(&objective_values[j], &objective_values[i], &compiled)
+                {
+                    dominated[i] = true;
+                    break;
+                }
+            }
+        }
+
+        let mut frontier = input
+            .candidates
+            .into_iter()
+            .zip(dominated.into_iter())
+            .filter_map(|(candidate, is_dominated)| if is_dominated { None } else { Some(candidate) })
+            .collect::<Vec<_>>();
+        let raw_frontier_count = frontier.len();
+        if let Some(limit) = max_candidates {
+            if frontier.len() > limit {
+                frontier.sort_by(|a, b| Self::compare_candidates_by_tie_break(a, b, tie_break));
+                frontier.truncate(limit);
+                result.warnings.push(format!(
+                    "Pareto frontier for '{}' had {} candidates and was truncated to {} by tie-break policy '{}'",
+                    input_set,
+                    raw_frontier_count,
+                    limit,
+                    tie_break.as_str()
+                ));
+            }
+        }
+
+        let output_count = frontier.len();
+        let replaced_existing = store
+            .sets
+            .insert(
+                output_set.clone(),
+                CandidateSet {
+                    name: output_set.clone(),
+                    created_at_unix_ms: Self::now_unix_ms(),
+                    source_seq_ids: input.source_seq_ids,
+                    candidates: frontier,
+                },
+            )
+            .is_some();
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Computed Pareto frontier from '{}' into '{}' ({} candidate(s), objectives={})",
+            input_set,
+            output_set,
+            output_count,
+            compiled
+                .iter()
+                .map(|objective| format!("{}:{}", objective.metric, objective.direction.as_str()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        if replaced_existing {
+            result.warnings.push(format!(
+                "ParetoFrontierCandidateSet output '{}' replaced existing candidate set",
+                output_set
+            ));
+        }
+        Ok(())
+    }
+
+    fn op_upsert_candidate_macro_template(
+        &mut self,
+        name: String,
+        description: Option<String>,
+        parameters: Vec<CandidateMacroTemplateParam>,
+        script: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let name = Self::normalize_candidate_macro_template_name(&name)?;
+        let script = script.trim();
+        if script.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Candidate macro template script cannot be empty".to_string(),
+            });
+        }
+
+        let mut normalized_parameters = Vec::with_capacity(parameters.len());
+        let mut seen = HashSet::new();
+        for parameter in parameters {
+            let param_name = Self::normalize_candidate_macro_param_name(&parameter.name)?;
+            if !seen.insert(param_name.clone()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate macro template '{}' contains duplicate parameter '{}'",
+                        name, param_name
+                    ),
+                });
+            }
+            let default_value = parameter
+                .default_value
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            let required = if default_value.is_some() {
+                false
+            } else {
+                parameter.required
+            };
+            normalized_parameters.push(CandidateMacroTemplateParam {
+                name: param_name,
+                default_value,
+                required,
+            });
+        }
+
+        let declared = normalized_parameters
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .collect::<HashSet<_>>();
+        let placeholder_regex = Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| {
+            EngineError {
+                code: ErrorCode::Internal,
+                message: format!("Could not compile candidate macro placeholder regex: {e}"),
+            }
+        })?;
+        for captures in placeholder_regex.captures_iter(script) {
+            if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
+                if !declared.contains(param_name) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Candidate macro template '{}' references undeclared parameter '{}' in script",
+                            name, param_name
+                        ),
+                    });
+                }
+            }
+        }
+
+        let now = Self::now_unix_ms();
+        let mut store = self.read_candidate_macro_template_store();
+        let created_at_unix_ms = store
+            .templates
+            .get(&name)
+            .map(|template| template.created_at_unix_ms)
+            .unwrap_or(now);
+        let replaced = store
+            .templates
+            .insert(
+                name.clone(),
+                CandidateMacroTemplate {
+                    name: name.clone(),
+                    description: description
+                        .map(|text| text.trim().to_string())
+                        .filter(|text| !text.is_empty()),
+                    parameters: normalized_parameters,
+                    script: script.to_string(),
+                    created_at_unix_ms,
+                    updated_at_unix_ms: now,
+                },
+            )
+            .is_some();
+        self.write_candidate_macro_template_store(store)?;
+        if replaced {
+            result.messages.push(format!(
+                "Updated candidate macro template '{}'",
+                name
+            ));
+        } else {
+            result.messages.push(format!(
+                "Added candidate macro template '{}'",
+                name
+            ));
+        }
+        Ok(())
+    }
+
+    fn op_delete_candidate_macro_template(
+        &mut self,
+        name: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let name = Self::normalize_candidate_macro_template_name(&name)?;
+        let mut store = self.read_candidate_macro_template_store();
+        let removed = store.templates.remove(&name).is_some();
+        self.write_candidate_macro_template_store(store)?;
+        if removed {
+            result
+                .messages
+                .push(format!("Deleted candidate macro template '{}'", name));
+        } else {
+            result.warnings.push(format!(
+                "Candidate macro template '{}' was not present",
+                name
             ));
         }
         Ok(())
@@ -10848,6 +11945,71 @@ impl GentleEngine {
             } => {
                 self.op_candidate_set_op(op, left_set, right_set, output_set, &mut result)?;
             }
+            Operation::ScoreCandidateSetWeightedObjective {
+                set_name,
+                metric,
+                objectives,
+                normalize_metrics,
+            } => {
+                self.op_score_candidate_set_weighted_objective(
+                    set_name,
+                    metric,
+                    objectives,
+                    normalize_metrics,
+                    &mut result,
+                )?;
+            }
+            Operation::TopKCandidateSet {
+                input_set,
+                output_set,
+                metric,
+                k,
+                direction,
+                tie_break,
+            } => {
+                self.op_top_k_candidate_set(
+                    input_set,
+                    output_set,
+                    metric,
+                    k,
+                    direction,
+                    tie_break,
+                    &mut result,
+                )?;
+            }
+            Operation::ParetoFrontierCandidateSet {
+                input_set,
+                output_set,
+                objectives,
+                max_candidates,
+                tie_break,
+            } => {
+                self.op_pareto_frontier_candidate_set(
+                    input_set,
+                    output_set,
+                    objectives,
+                    max_candidates,
+                    tie_break,
+                    &mut result,
+                )?;
+            }
+            Operation::UpsertCandidateMacroTemplate {
+                name,
+                description,
+                parameters,
+                script,
+            } => {
+                self.op_upsert_candidate_macro_template(
+                    name,
+                    description,
+                    parameters,
+                    script,
+                    &mut result,
+                )?;
+            }
+            Operation::DeleteCandidateMacroTemplate { name } => {
+                self.op_delete_candidate_macro_template(name, &mut result)?;
+            }
             Operation::Reverse { input, output_id } => {
                 parent_seq_ids.push(input.clone());
                 let dna = self
@@ -11414,12 +12576,16 @@ impl Engine for GentleEngine {
     fn apply(&mut self, op: Operation) -> Result<OpResult, EngineError> {
         let run_id = "interactive".to_string();
         let mut noop = |_p: OperationProgress| true;
+        let checkpoint = self.maybe_capture_checkpoint(&op);
         let result = self.apply_internal(op.clone(), &run_id, &mut noop)?;
         self.journal.push(OperationRecord {
             run_id,
             op,
             result: result.clone(),
         });
+        if let Some(checkpoint) = checkpoint {
+            self.push_undo_checkpoint(checkpoint);
+        }
         Ok(result)
     }
 
@@ -11427,12 +12593,16 @@ impl Engine for GentleEngine {
         let mut results = Vec::new();
         for op in &wf.ops {
             let mut noop = |_p: OperationProgress| true;
+            let checkpoint = self.maybe_capture_checkpoint(op);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut noop)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
                 op: op.clone(),
                 result: result.clone(),
             });
+            if let Some(checkpoint) = checkpoint {
+                self.push_undo_checkpoint(checkpoint);
+            }
             results.push(result);
         }
         Ok(results)
@@ -15967,6 +17137,187 @@ ORIGIN
         assert_eq!(minus_any, 0.0);
         assert!(minus_same > 0.0);
         assert_eq!(minus_opposite, 0.0);
+    }
+
+    #[test]
+    fn test_candidate_optimizer_weighted_topk_and_pareto() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("GCATGAAA").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "cand".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 2,
+                step_bp: 2,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: Some(64),
+            })
+            .expect("generate candidates");
+
+        engine
+            .apply(Operation::ScoreCandidateSetWeightedObjective {
+                set_name: "cand".to_string(),
+                metric: "objective".to_string(),
+                objectives: vec![
+                    CandidateWeightedObjectiveTerm {
+                        metric: "gc_fraction".to_string(),
+                        weight: 0.7,
+                        direction: CandidateObjectiveDirection::Maximize,
+                    },
+                    CandidateWeightedObjectiveTerm {
+                        metric: "distance_to_seq_start_bp".to_string(),
+                        weight: 0.3,
+                        direction: CandidateObjectiveDirection::Minimize,
+                    },
+                ],
+                normalize_metrics: Some(true),
+            })
+            .expect("score weighted objective");
+
+        engine
+            .apply(Operation::TopKCandidateSet {
+                input_set: "cand".to_string(),
+                output_set: "cand_top1".to_string(),
+                metric: "objective".to_string(),
+                k: 1,
+                direction: Some(CandidateObjectiveDirection::Maximize),
+                tie_break: Some(CandidateTieBreakPolicy::SeqStartEnd),
+            })
+            .expect("top-k selection");
+        let (top_page, _, _) = engine
+            .inspect_candidate_set_page("cand_top1", 10, 0)
+            .expect("inspect top-k result");
+        assert_eq!(top_page.candidates.len(), 1);
+        assert_eq!(top_page.candidates[0].start_0based, 0);
+
+        engine
+            .apply(Operation::ParetoFrontierCandidateSet {
+                input_set: "cand".to_string(),
+                output_set: "cand_pareto".to_string(),
+                objectives: vec![
+                    CandidateObjectiveSpec {
+                        metric: "gc_fraction".to_string(),
+                        direction: CandidateObjectiveDirection::Maximize,
+                    },
+                    CandidateObjectiveSpec {
+                        metric: "distance_to_seq_start_bp".to_string(),
+                        direction: CandidateObjectiveDirection::Minimize,
+                    },
+                ],
+                max_candidates: None,
+                tie_break: Some(CandidateTieBreakPolicy::SeqStartEnd),
+            })
+            .expect("pareto frontier selection");
+        let pareto_summary = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|set| set.name == "cand_pareto")
+            .expect("pareto set summary");
+        assert_eq!(pareto_summary.candidate_count, 1);
+    }
+
+    #[test]
+    fn test_topk_tie_break_policy_is_deterministic() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "cand".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 2,
+                step_bp: 1,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: Some(64),
+            })
+            .expect("generate candidates");
+
+        engine
+            .apply(Operation::TopKCandidateSet {
+                input_set: "cand".to_string(),
+                output_set: "cand_top2".to_string(),
+                metric: "length_bp".to_string(),
+                k: 2,
+                direction: Some(CandidateObjectiveDirection::Maximize),
+                tie_break: Some(CandidateTieBreakPolicy::SeqStartEnd),
+            })
+            .expect("top-k tie-break");
+        let (page, _, _) = engine
+            .inspect_candidate_set_page("cand_top2", 10, 0)
+            .expect("inspect top2");
+        let starts = page
+            .candidates
+            .iter()
+            .map(|candidate| candidate.start_0based)
+            .collect::<Vec<_>>();
+        assert_eq!(starts, vec![0, 1]);
+    }
+
+    #[test]
+    fn test_candidate_macro_template_store_and_render() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        engine
+            .apply(Operation::UpsertCandidateMacroTemplate {
+                name: "scan_tp53".to_string(),
+                description: Some("demo template".to_string()),
+                parameters: vec![
+                    CandidateMacroTemplateParam {
+                        name: "set_name".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    CandidateMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: Some("seqA".to_string()),
+                        required: false,
+                    },
+                    CandidateMacroTemplateParam {
+                        name: "len".to_string(),
+                        default_value: Some("20".to_string()),
+                        required: false,
+                    },
+                ],
+                script: "generate ${set_name} ${seq_id} --length ${len} --step 1".to_string(),
+            })
+            .expect("upsert template");
+
+        let templates = engine.list_candidate_macro_templates();
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].name, "scan_tp53");
+
+        let rendered = engine
+            .render_candidate_macro_template_script(
+                "scan_tp53",
+                &HashMap::from([("set_name".to_string(), "tp53_hits".to_string())]),
+            )
+            .expect("render template");
+        assert_eq!(rendered, "generate tp53_hits seqA --length 20 --step 1");
+
+        engine
+            .apply(Operation::DeleteCandidateMacroTemplate {
+                name: "scan_tp53".to_string(),
+            })
+            .expect("delete template");
+        assert!(engine.list_candidate_macro_templates().is_empty());
     }
 
     #[test]

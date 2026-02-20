@@ -12,13 +12,15 @@ const W: f32 = 1200.0;
 const H: f32 = 700.0;
 const RE_LABEL_BASE_OFFSET: f32 = 76.0;
 const RE_LABEL_ROW_HEIGHT: f32 = 12.0;
-const FEATURE_SIDE_MARGIN: f32 = 28.0;
-const FEATURE_LANE_GAP: f32 = 16.0;
+const FEATURE_SIDE_MARGIN: f32 = 22.0;
+const FEATURE_LANE_GAP: f32 = 13.0;
 const FEATURE_BLOCK_HEIGHT: f32 = 10.0;
-const REGULATORY_SIDE_MARGIN: f32 = 6.0;
-const REGULATORY_LANE_GAP: f32 = 8.0;
-const REGULATORY_BLOCK_HEIGHT: f32 = 7.0;
-const REGULATORY_GROUP_GAP: f32 = 8.0;
+const REGULATORY_SIDE_MARGIN: f32 = 5.0;
+const REGULATORY_LANE_GAP: f32 = 6.0;
+const REGULATORY_BLOCK_HEIGHT: f32 = 6.0;
+const REGULATORY_GROUP_GAP: f32 = 5.0;
+const FEATURE_LANE_PADDING: f32 = 5.0;
+const REGULATORY_LANE_PADDING: f32 = 2.0;
 
 #[derive(Clone, Debug)]
 struct FeatureVm {
@@ -111,9 +113,31 @@ fn is_vcf_track_feature(feature: &Feature) -> bool {
         .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
 }
 
+fn has_regulatory_hint(feature: &Feature) -> bool {
+    for key in ["regulatory_class", "regulation", "function", "note", "label"] {
+        for value in feature.qualifier_values(key.into()) {
+            let lower = value.to_ascii_lowercase();
+            if lower.contains("regulatory")
+                || lower.contains("enhancer")
+                || lower.contains("promoter")
+                || lower.contains("silencer")
+                || lower.contains("insulator")
+                || lower.contains("atac")
+                || lower.contains("chip")
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn is_regulatory_feature(feature: &Feature) -> bool {
     let kind = feature.kind.to_string().to_ascii_uppercase();
-    is_tfbs_feature(feature) || kind.contains("REGULATORY") || is_track_feature(feature)
+    is_tfbs_feature(feature)
+        || kind.contains("REGULATORY")
+        || (kind == "MISC_FEATURE" && has_regulatory_hint(feature))
+        || is_track_feature(feature)
 }
 
 fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
@@ -485,13 +509,14 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let fb = &features[*b];
             let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
             let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-            span_b.cmp(&span_a).then(fa.from.cmp(&fb.from))
+            fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
         });
         for idx in top_order {
             let f = &features[idx];
             let x1 = bp_to_x(f.from, len, left, right);
             let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            lane_top_by_idx[idx] = lane_allocate(&mut top_lane_ends, x1, x2, 4.0);
+            lane_top_by_idx[idx] =
+                lane_allocate(&mut top_lane_ends, x1, x2, FEATURE_LANE_PADDING);
         }
 
         let mut bottom_order: Vec<usize> = features
@@ -510,13 +535,14 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let fb = &features[*b];
             let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
             let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-            span_b.cmp(&span_a).then(fa.from.cmp(&fb.from))
+            fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
         });
         for idx in bottom_order {
             let f = &features[idx];
             let x1 = bp_to_x(f.from, len, left, right);
             let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            lane_bottom_by_idx[idx] = lane_allocate(&mut bottom_lane_ends, x1, x2, 4.0);
+            lane_bottom_by_idx[idx] =
+                lane_allocate(&mut bottom_lane_ends, x1, x2, FEATURE_LANE_PADDING);
         }
 
         let mut regulatory_top_order: Vec<usize> = features
@@ -529,7 +555,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let fb = &features[*b];
             let span_a = fa.to.saturating_sub(fa.from).saturating_add(1);
             let span_b = fb.to.saturating_sub(fb.from).saturating_add(1);
-            span_b.cmp(&span_a).then(fa.from.cmp(&fb.from))
+            fa.from.cmp(&fb.from).then(span_b.cmp(&span_a))
         });
         for idx in regulatory_top_order {
             let f = &features[idx];
@@ -539,7 +565,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 let x1 = bp_to_x(f.from, len, left, right);
                 let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
                 lane_regulatory_top_by_idx[idx] =
-                    lane_allocate(&mut regulatory_top_lane_ends, x1, x2, 0.0);
+                    lane_allocate(&mut regulatory_top_lane_ends, x1, x2, REGULATORY_LANE_PADDING);
             }
         }
 
@@ -580,7 +606,15 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 (y, FEATURE_BLOCK_HEIGHT)
             } else {
                 let lane = lane_top_by_idx[idx];
-                let y = baseline - FEATURE_SIDE_MARGIN - lane as f32 * FEATURE_LANE_GAP;
+                let required_margin = if regulatory_tracks_near_baseline {
+                    REGULATORY_SIDE_MARGIN
+                        + REGULATORY_BLOCK_HEIGHT * 0.5
+                        + FEATURE_BLOCK_HEIGHT * 0.5
+                        + 1.0
+                } else {
+                    FEATURE_SIDE_MARGIN
+                };
+                let y = baseline - required_margin.max(FEATURE_SIDE_MARGIN) - lane as f32 * FEATURE_LANE_GAP;
                 (y, FEATURE_BLOCK_HEIGHT)
             };
             let half_height = block_height * 0.5;

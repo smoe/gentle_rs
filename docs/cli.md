@@ -51,7 +51,7 @@ Reference genome capability status:
 
 Candidate-set capability status:
 
-- `gentle_cli`: supported as first-class `candidates ...` commands and shared-shell `candidates ...` commands, backed by shared engine operations (`GenerateCandidateSet`, `DeleteCandidateSet`, `ScoreCandidateSetExpression`, `ScoreCandidateSetDistance`, `FilterCandidateSet`, `CandidateSetOp`)
+- `gentle_cli`: supported as first-class `candidates ...` commands and shared-shell `candidates ...` commands, backed by shared engine operations (`GenerateCandidateSet`, `GenerateCandidateSetBetweenAnchors`, `DeleteCandidateSet`, `ScoreCandidateSetExpression`, `ScoreCandidateSetDistance`, `ScoreCandidateSetWeightedObjective`, `TopKCandidateSet`, `ParetoFrontierCandidateSet`, `FilterCandidateSet`, `CandidateSetOp`, `UpsertCandidateMacroTemplate`, `DeleteCandidateMacroTemplate`)
 - `gentle_js`: supported via `apply_operation` with the same candidate-set operations
 - `gentle_lua`: supported via `apply_operation` with the same candidate-set operations
 
@@ -365,9 +365,14 @@ cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
 cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
+cargo run --bin gentle_cli -- candidates score-weighted sgrnas priority --term gc_fraction:0.7:max --term distance_to_seq_start_bp:0.3:min --normalize
+cargo run --bin gentle_cli -- candidates top-k sgrnas sgrnas_top --metric priority --k 100 --direction max
+cargo run --bin gentle_cli -- candidates pareto sgrnas sgrnas_front --objective gc_fraction:max --objective distance_to_seq_start_bp:min --max-candidates 200
 cargo run --bin gentle_cli -- candidates filter sgrnas sgrnas_q95 --metric gc_balance --min-quantile 0.95
 cargo run --bin gentle_cli -- candidates macro @candidate_flow.gsh
 cargo run --bin gentle_cli -- candidates macro --transactional --file candidate_flow.gsh
+cargo run --bin gentle_cli -- candidates template-put scan_tp53 --script 'generate ${set_name} ${seq_id} --length ${len} --step 1' --param set_name --param seq_id=grch38_tp53 --param len=20
+cargo run --bin gentle_cli -- candidates template-run scan_tp53 --bind set_name=tp53_candidates --transactional
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
 ```
@@ -445,9 +450,17 @@ Shared shell command:
     - `candidates metrics SET_NAME`
     - `candidates score SET_NAME METRIC_NAME EXPRESSION`
     - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]`
+    - `candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]`
+    - `candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]`
+    - `candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]`
     - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
     - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
     - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+    - `candidates template-list`
+    - `candidates template-show TEMPLATE_NAME`
+    - `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+    - `candidates template-delete TEMPLATE_NAME`
+    - `candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
     - `set-param NAME JSON_VALUE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
@@ -613,6 +626,16 @@ Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candi
   - Computes a derived metric expression for all records in a set.
 - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]`
   - Computes nearest-feature distance metric with optional feature filters.
+- `candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]`
+  - Computes one weighted objective metric from existing metrics.
+  - `--term` can be repeated; default direction is `max`.
+  - `--normalize` is enabled by default (min-max scaling per term).
+- `candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]`
+  - Materializes explicit top-k selection for a metric.
+  - deterministic tie-break policy avoids unstable ordering.
+- `candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]`
+  - Materializes a Pareto frontier for multi-objective optimization.
+  - optionally truncates with deterministic tie-break (`--max-candidates`).
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
   - Creates `OUTPUT_SET` by value and/or quantile thresholds.
 - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
@@ -620,6 +643,18 @@ Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candi
 - `candidates macro SCRIPT_OR_@FILE`
   - Runs multiple candidate statements in order (semicolon/newline separated).
   - Nested macro calls are rejected.
+- `candidates template-list`
+  - Lists persisted candidate macro templates.
+- `candidates template-show TEMPLATE_NAME`
+  - Shows one persisted template definition.
+- `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+  - Creates/updates a named template in project metadata.
+  - placeholders in script use `${param_name}` and must be declared via `--param`.
+- `candidates template-delete TEMPLATE_NAME`
+  - Deletes one persisted template.
+- `candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
+  - Expands a named template with provided bindings/defaults, then executes it as
+    a candidate macro script.
 
 Notes:
 
@@ -629,8 +664,8 @@ Notes:
   project metadata stores a reference schema (`gentle.candidate_sets.ref.v1`).
 - On load, sidecar-backed candidate metadata is hydrated automatically.
 - `list/show/metrics` are read-only commands.
-- `delete/generate/score/score-distance/filter/set-op` mutate state and are
-  available through CLI shell and GUI shell.
+- `delete/generate/generate-between-anchors/score/score-distance/score-weighted/top-k/pareto/filter/set-op/macro/template-put/template-delete/template-run`
+  mutate state and are available through CLI shell and GUI shell.
 
 Recommended suffixes:
 
@@ -781,6 +816,24 @@ Add distance-to-feature score:
 
 ```json
 {"ScoreCandidateSetDistance":{"set_name":"sgrna_windows","metric":"distance_to_cds_bp","feature_kinds":["CDS"],"feature_label_regex":null}}
+```
+
+Add a weighted multi-objective score:
+
+```json
+{"ScoreCandidateSetWeightedObjective":{"set_name":"sgrna_windows","metric":"priority_score","objectives":[{"metric":"gc_fraction","weight":0.7,"direction":"maximize"},{"metric":"distance_to_cds_bp","weight":0.3,"direction":"minimize"}],"normalize_metrics":true}}
+```
+
+Select top-k by one metric:
+
+```json
+{"TopKCandidateSet":{"input_set":"sgrna_windows","output_set":"sgrna_top20","metric":"priority_score","k":20,"direction":"maximize","tie_break":"seq_start_end"}}
+```
+
+Compute Pareto frontier for multiple objectives:
+
+```json
+{"ParetoFrontierCandidateSet":{"input_set":"sgrna_windows","output_set":"sgrna_frontier","objectives":[{"metric":"gc_fraction","direction":"maximize"},{"metric":"distance_to_cds_bp","direction":"minimize"}],"max_candidates":100,"tie_break":"seq_start_end"}}
 ```
 
 Filter by absolute value and quantiles into a new explicit set:

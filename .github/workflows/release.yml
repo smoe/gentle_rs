@@ -1,0 +1,179 @@
+name: Release Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (example: v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-installers:
+    name: Build Installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            bundle_format: dmg
+            extension: dmg
+            artifact_name: gentle-macos-installer
+          - os: windows-latest
+            platform: windows
+            bundle_format: msi
+            extension: msi
+            artifact_name: gentle-windows-installer
+
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: Install WiX Toolset (Windows only)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Install ImageMagick (Windows only)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: choco install imagemagick --no-progress -y
+
+      - name: Generate Windows .ico from PNG
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          magick assets/icon.png -define icon:auto-resize=256,128,64,48,32,16 assets/icon.ico
+          if (!(Test-Path "assets/icon.ico")) {
+            throw "assets/icon.ico was not generated"
+          }
+
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle --locked
+
+      - name: Build installer
+        run: cargo bundle --release --bin gentle --format ${{ matrix.bundle_format }}
+
+      - name: Collect installer path
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$(ls target/release/bundle/${{ matrix.bundle_format }}/*.${{ matrix.extension }} | head -n 1)"
+          echo "installer_path=$installer" >> "$GITHUB_OUTPUT"
+          echo "Installer: $installer"
+
+      - name: Smoke test macOS installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="${{ steps.collect.outputs.installer_path }}"
+          mount_point="$RUNNER_TEMP/gentle_dmg_mount"
+          mkdir -p "$mount_point"
+          hdiutil attach "$installer" -mountpoint "$mount_point" -nobrowse -quiet
+          app_path="$(find "$mount_point" -maxdepth 2 -name '*.app' | head -n 1)"
+          if [[ -z "$app_path" ]]; then
+            echo "No .app bundle found in mounted DMG"
+            exit 1
+          fi
+          test -f "$app_path/Contents/Info.plist"
+          hdiutil detach "$mount_point" -quiet
+
+      - name: Smoke test Windows installer
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $installer = "${{ steps.collect.outputs.installer_path }}"
+          $extract = Join-Path $env:RUNNER_TEMP "gentle_msi_extract"
+          New-Item -ItemType Directory -Path $extract -Force | Out-Null
+          Start-Process msiexec.exe -ArgumentList @("/a", "`"$installer`"", "/qn", "TARGETDIR=$extract") -Wait -NoNewWindow
+          $exe = Get-ChildItem -Path $extract -Filter gentle.exe -Recurse | Select-Object -First 1
+          if (-not $exe) {
+            throw "No gentle.exe found after MSI administrative extract"
+          }
+          if ($exe.Length -le 0) {
+            throw "Extracted gentle.exe is empty"
+          }
+
+      - name: Normalize installer filename
+        id: normalize
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#refs/tags/}"
+          arch="$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
+          out_dir="dist"
+          mkdir -p "$out_dir"
+          out_path="$out_dir/gentle-${tag}-${{ matrix.platform }}-${arch}.${{ matrix.extension }}"
+          cp "${{ steps.collect.outputs.installer_path }}" "$out_path"
+          echo "output_path=$out_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ steps.normalize.outputs.output_path }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-installers
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Download installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Show downloaded files
+        run: |
+          find dist -type f | sort
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist/**/*.dmg
+            dist/**/*.msi
+          fail_on_unmatched_files: true
+          generate_release_notes: true

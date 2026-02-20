@@ -1,5 +1,5 @@
 {
-   "command_count" : 59,
+   "command_count" : 67,
    "commands" : [
       {
          "aliases" : [
@@ -700,6 +700,48 @@
       {
          "aliases" : [],
          "engine_operations" : [
+            "ScoreCandidateSetWeightedObjective"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates score-weighted",
+         "summary" : "Compute weighted objective metric for candidate set.",
+         "usage" : "candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "TopKCandidateSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates top-k",
+         "summary" : "Select top-k candidates by metric with deterministic tie-break.",
+         "usage" : "candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ParetoFrontierCandidateSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates pareto",
+         "summary" : "Compute multi-objective Pareto frontier candidate set.",
+         "usage" : "candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
             "FilterCandidateSet"
          ],
          "interfaces" : [
@@ -732,9 +774,14 @@
             "GenerateCandidateSetBetweenAnchors",
             "ScoreCandidateSetExpression",
             "ScoreCandidateSetDistance",
+            "ScoreCandidateSetWeightedObjective",
+            "TopKCandidateSet",
+            "ParetoFrontierCandidateSet",
             "FilterCandidateSet",
             "CandidateSetOp",
-            "DeleteCandidateSet"
+            "DeleteCandidateSet",
+            "UpsertCandidateMacroTemplate",
+            "DeleteCandidateMacroTemplate"
          ],
          "interfaces" : [
             "cli-shell",
@@ -744,6 +791,72 @@
          "path" : "candidates macro",
          "summary" : "Execute multi-statement candidate workflow script.",
          "usage" : "candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates template-list",
+         "summary" : "List persisted candidate macro templates.",
+         "usage" : "candidates template-list"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates template-show",
+         "summary" : "Show one persisted candidate macro template.",
+         "usage" : "candidates template-show TEMPLATE_NAME"
+      },
+      {
+         "aliases" : [
+            "candidates template-upsert"
+         ],
+         "engine_operations" : [
+            "UpsertCandidateMacroTemplate"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates template-put",
+         "summary" : "Create or update a persisted candidate macro template.",
+         "usage" : "candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "DeleteCandidateMacroTemplate"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates template-delete",
+         "summary" : "Delete one persisted candidate macro template.",
+         "usage" : "candidates template-delete TEMPLATE_NAME"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates template-run",
+         "summary" : "Run one persisted candidate macro template with bindings.",
+         "usage" : "candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
       },
       {
          "aliases" : [],

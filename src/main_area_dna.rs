@@ -142,6 +142,40 @@ struct EngineOpsUiState {
     #[serde(default)]
     candidate_limit: String,
     #[serde(default)]
+    candidate_between_set_name: String,
+    #[serde(default)]
+    candidate_between_seq_id: String,
+    #[serde(default)]
+    candidate_between_length_bp: String,
+    #[serde(default)]
+    candidate_between_step_bp: String,
+    #[serde(default)]
+    candidate_between_limit: String,
+    #[serde(default = "default_true")]
+    candidate_between_anchor_a_mode_position: bool,
+    #[serde(default)]
+    candidate_between_anchor_a_position: String,
+    #[serde(default)]
+    candidate_between_anchor_a_feature_kind: String,
+    #[serde(default)]
+    candidate_between_anchor_a_feature_label: String,
+    #[serde(default = "default_anchor_boundary_start")]
+    candidate_between_anchor_a_boundary: AnchorBoundary,
+    #[serde(default)]
+    candidate_between_anchor_a_occurrence: String,
+    #[serde(default = "default_true")]
+    candidate_between_anchor_b_mode_position: bool,
+    #[serde(default)]
+    candidate_between_anchor_b_position: String,
+    #[serde(default)]
+    candidate_between_anchor_b_feature_kind: String,
+    #[serde(default)]
+    candidate_between_anchor_b_feature_label: String,
+    #[serde(default = "default_anchor_boundary_start")]
+    candidate_between_anchor_b_boundary: AnchorBoundary,
+    #[serde(default)]
+    candidate_between_anchor_b_occurrence: String,
+    #[serde(default)]
     candidate_selected_set: String,
     #[serde(default)]
     candidate_page_limit: String,
@@ -291,6 +325,10 @@ fn default_zero_f64() -> f64 {
 
 fn default_tfbs_quantile() -> f64 {
     0.95
+}
+
+fn default_anchor_boundary_start() -> AnchorBoundary {
+    AnchorBoundary::Start
 }
 
 const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
@@ -480,6 +518,23 @@ pub struct MainAreaDna {
     candidate_feature_strand_relation: CandidateFeatureStrandRelation,
     candidate_max_distance_bp: String,
     candidate_limit: String,
+    candidate_between_set_name: String,
+    candidate_between_seq_id: String,
+    candidate_between_length_bp: String,
+    candidate_between_step_bp: String,
+    candidate_between_limit: String,
+    candidate_between_anchor_a_mode_position: bool,
+    candidate_between_anchor_a_position: String,
+    candidate_between_anchor_a_feature_kind: String,
+    candidate_between_anchor_a_feature_label: String,
+    candidate_between_anchor_a_boundary: AnchorBoundary,
+    candidate_between_anchor_a_occurrence: String,
+    candidate_between_anchor_b_mode_position: bool,
+    candidate_between_anchor_b_position: String,
+    candidate_between_anchor_b_feature_kind: String,
+    candidate_between_anchor_b_feature_label: String,
+    candidate_between_anchor_b_boundary: AnchorBoundary,
+    candidate_between_anchor_b_occurrence: String,
     candidate_selected_set: String,
     candidate_page_limit: String,
     candidate_page_offset: String,
@@ -670,6 +725,23 @@ impl MainAreaDna {
             candidate_feature_strand_relation: CandidateFeatureStrandRelation::Any,
             candidate_max_distance_bp: String::new(),
             candidate_limit: "5000".to_string(),
+            candidate_between_set_name: "between_anchors".to_string(),
+            candidate_between_seq_id: seq_id_for_defaults.clone().unwrap_or_default(),
+            candidate_between_length_bp: "20".to_string(),
+            candidate_between_step_bp: "1".to_string(),
+            candidate_between_limit: "5000".to_string(),
+            candidate_between_anchor_a_mode_position: true,
+            candidate_between_anchor_a_position: "0".to_string(),
+            candidate_between_anchor_a_feature_kind: "gene".to_string(),
+            candidate_between_anchor_a_feature_label: String::new(),
+            candidate_between_anchor_a_boundary: AnchorBoundary::Start,
+            candidate_between_anchor_a_occurrence: "0".to_string(),
+            candidate_between_anchor_b_mode_position: true,
+            candidate_between_anchor_b_position: "100".to_string(),
+            candidate_between_anchor_b_feature_kind: "gene".to_string(),
+            candidate_between_anchor_b_feature_label: String::new(),
+            candidate_between_anchor_b_boundary: AnchorBoundary::End,
+            candidate_between_anchor_b_occurrence: "0".to_string(),
             candidate_selected_set: String::new(),
             candidate_page_limit: "50".to_string(),
             candidate_page_offset: "0".to_string(),
@@ -4224,6 +4296,47 @@ impl MainAreaDna {
         }
     }
 
+    fn parse_candidate_local_anchor(
+        mode_position: bool,
+        position: &str,
+        feature_kind: &str,
+        feature_label: &str,
+        boundary: &AnchorBoundary,
+        occurrence: &str,
+        anchor_name: &str,
+    ) -> Result<AnchoredRegionAnchor, String> {
+        if mode_position {
+            let zero_based = position.trim().parse::<usize>().map_err(|_| {
+                format!(
+                    "Invalid {anchor_name} anchor position (expected 0-based integer)"
+                )
+            })?;
+            Ok(AnchoredRegionAnchor::Position { zero_based })
+        } else {
+            let occurrence = if occurrence.trim().is_empty() {
+                None
+            } else {
+                Some(occurrence.trim().parse::<usize>().map_err(|_| {
+                    format!("Invalid {anchor_name} anchor occurrence (expected integer)")
+                })?)
+            };
+            Ok(AnchoredRegionAnchor::FeatureBoundary {
+                feature_kind: if feature_kind.trim().is_empty() {
+                    None
+                } else {
+                    Some(feature_kind.trim().to_string())
+                },
+                feature_label: if feature_label.trim().is_empty() {
+                    None
+                } else {
+                    Some(feature_label.trim().to_string())
+                },
+                boundary: boundary.clone(),
+                occurrence,
+            })
+        }
+    }
+
     fn candidate_metric_lookup(record: &CandidateRecord, key: &str) -> Option<f64> {
         if let Some(value) = record.metrics.get(key).copied() {
             return Some(value);
@@ -4298,6 +4411,9 @@ impl MainAreaDna {
         };
         if self.candidate_source_seq_id.trim().is_empty() {
             self.candidate_source_seq_id = self.seq_id.clone().unwrap_or_default();
+        }
+        if self.candidate_between_seq_id.trim().is_empty() {
+            self.candidate_between_seq_id = self.seq_id.clone().unwrap_or_default();
         }
 
         let (set_summaries, sequence_ids) = {
@@ -4457,6 +4573,226 @@ impl MainAreaDna {
                 }
             }
         });
+
+        ui.separator();
+        ui.label("Generate set between anchors");
+        ui.horizontal(|ui| {
+            ui.label("set");
+            ui.text_edit_singleline(&mut self.candidate_between_set_name);
+            ui.label("seq");
+            ui.text_edit_singleline(&mut self.candidate_between_seq_id);
+            if ui
+                .small_button("Use active")
+                .on_hover_text("Use currently active sequence ID for between-anchor generation")
+                .clicked()
+            {
+                self.candidate_between_seq_id = self.seq_id.clone().unwrap_or_default();
+            }
+        });
+        if !sequence_ids.is_empty() {
+            egui::ComboBox::from_id_salt(format!(
+                "candidate_between_seq_combo_{}",
+                self.seq_id.as_deref().unwrap_or("_global")
+            ))
+            .selected_text(if self.candidate_between_seq_id.trim().is_empty() {
+                "choose source sequence"
+            } else {
+                self.candidate_between_seq_id.as_str()
+            })
+            .show_ui(ui, |ui| {
+                for seq_id in &sequence_ids {
+                    if ui
+                        .selectable_label(self.candidate_between_seq_id == *seq_id, seq_id)
+                        .clicked()
+                    {
+                        self.candidate_between_seq_id = seq_id.clone();
+                    }
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            ui.label("length");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.candidate_between_length_bp).desired_width(64.0),
+            );
+            ui.label("step");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.candidate_between_step_bp).desired_width(64.0),
+            );
+            ui.label("limit");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.candidate_between_limit).desired_width(96.0),
+            );
+        });
+        ui.label("Anchor A");
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut self.candidate_between_anchor_a_mode_position,
+                "position (off = feature boundary)",
+            );
+            if self.candidate_between_anchor_a_mode_position {
+                ui.label("pos");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_a_position)
+                        .desired_width(96.0),
+                );
+            } else {
+                ui.label("kind");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_a_feature_kind)
+                        .desired_width(96.0),
+                );
+                ui.label("label");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_a_feature_label)
+                        .desired_width(120.0),
+                );
+                ui.label("boundary");
+                egui::ComboBox::from_id_salt(format!(
+                    "candidate_between_anchor_a_boundary_{}",
+                    self.seq_id.as_deref().unwrap_or("_global")
+                ))
+                .selected_text(match self.candidate_between_anchor_a_boundary {
+                    AnchorBoundary::Start => "start",
+                    AnchorBoundary::End => "end",
+                    AnchorBoundary::Middle => "middle",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.candidate_between_anchor_a_boundary,
+                        AnchorBoundary::Start,
+                        "start",
+                    );
+                    ui.selectable_value(
+                        &mut self.candidate_between_anchor_a_boundary,
+                        AnchorBoundary::End,
+                        "end",
+                    );
+                    ui.selectable_value(
+                        &mut self.candidate_between_anchor_a_boundary,
+                        AnchorBoundary::Middle,
+                        "middle",
+                    );
+                });
+                ui.label("occ");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_a_occurrence)
+                        .desired_width(64.0),
+                );
+            }
+        });
+        ui.label("Anchor B");
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut self.candidate_between_anchor_b_mode_position,
+                "position (off = feature boundary)",
+            );
+            if self.candidate_between_anchor_b_mode_position {
+                ui.label("pos");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_b_position)
+                        .desired_width(96.0),
+                );
+            } else {
+                ui.label("kind");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_b_feature_kind)
+                        .desired_width(96.0),
+                );
+                ui.label("label");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_b_feature_label)
+                        .desired_width(120.0),
+                );
+                ui.label("boundary");
+                egui::ComboBox::from_id_salt(format!(
+                    "candidate_between_anchor_b_boundary_{}",
+                    self.seq_id.as_deref().unwrap_or("_global")
+                ))
+                .selected_text(match self.candidate_between_anchor_b_boundary {
+                    AnchorBoundary::Start => "start",
+                    AnchorBoundary::End => "end",
+                    AnchorBoundary::Middle => "middle",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.candidate_between_anchor_b_boundary,
+                        AnchorBoundary::Start,
+                        "start",
+                    );
+                    ui.selectable_value(
+                        &mut self.candidate_between_anchor_b_boundary,
+                        AnchorBoundary::End,
+                        "end",
+                    );
+                    ui.selectable_value(
+                        &mut self.candidate_between_anchor_b_boundary,
+                        AnchorBoundary::Middle,
+                        "middle",
+                    );
+                });
+                ui.label("occ");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.candidate_between_anchor_b_occurrence)
+                        .desired_width(64.0),
+                );
+            }
+        });
+        if ui
+            .button("Generate Between Anchors")
+            .on_hover_text("Run GenerateCandidateSetBetweenAnchors")
+            .clicked()
+        {
+            let set_name = self.candidate_between_set_name.trim().to_string();
+            let seq_id = self.candidate_between_seq_id.trim().to_string();
+            let length_bp = self.candidate_between_length_bp.trim().parse::<usize>();
+            let step_bp = self.candidate_between_step_bp.trim().parse::<usize>();
+            let limit =
+                Self::parse_optional_usize_text(&self.candidate_between_limit, "candidate limit");
+            let anchor_a = Self::parse_candidate_local_anchor(
+                self.candidate_between_anchor_a_mode_position,
+                &self.candidate_between_anchor_a_position,
+                &self.candidate_between_anchor_a_feature_kind,
+                &self.candidate_between_anchor_a_feature_label,
+                &self.candidate_between_anchor_a_boundary,
+                &self.candidate_between_anchor_a_occurrence,
+                "anchor A",
+            );
+            let anchor_b = Self::parse_candidate_local_anchor(
+                self.candidate_between_anchor_b_mode_position,
+                &self.candidate_between_anchor_b_position,
+                &self.candidate_between_anchor_b_feature_kind,
+                &self.candidate_between_anchor_b_feature_label,
+                &self.candidate_between_anchor_b_boundary,
+                &self.candidate_between_anchor_b_occurrence,
+                "anchor B",
+            );
+            if set_name.is_empty() {
+                self.op_status = "Candidate set name cannot be empty".to_string();
+            } else if seq_id.is_empty() {
+                self.op_status = "Candidate source sequence ID cannot be empty".to_string();
+            } else if let (Ok(length_bp), Ok(step_bp), Ok(limit), Ok(anchor_a), Ok(anchor_b)) =
+                (length_bp, step_bp, limit, anchor_a, anchor_b)
+            {
+                self.apply_operation_with_feedback(Operation::GenerateCandidateSetBetweenAnchors {
+                    set_name: set_name.clone(),
+                    seq_id,
+                    anchor_a,
+                    anchor_b,
+                    length_bp,
+                    step_bp,
+                    limit,
+                });
+                self.candidate_selected_set = set_name.clone();
+                self.candidate_filter_input_set = set_name.clone();
+                if self.candidate_setop_left.trim().is_empty() {
+                    self.candidate_setop_left = set_name;
+                }
+            } else {
+                self.op_status =
+                    "Invalid between-anchor candidate generation parameters".to_string();
+            }
+        }
 
         ui.separator();
         ui.label("Score and transform sets");
@@ -5144,6 +5480,37 @@ impl MainAreaDna {
             candidate_feature_strand_relation: self.candidate_feature_strand_relation,
             candidate_max_distance_bp: self.candidate_max_distance_bp.clone(),
             candidate_limit: self.candidate_limit.clone(),
+            candidate_between_set_name: self.candidate_between_set_name.clone(),
+            candidate_between_seq_id: self.candidate_between_seq_id.clone(),
+            candidate_between_length_bp: self.candidate_between_length_bp.clone(),
+            candidate_between_step_bp: self.candidate_between_step_bp.clone(),
+            candidate_between_limit: self.candidate_between_limit.clone(),
+            candidate_between_anchor_a_mode_position: self
+                .candidate_between_anchor_a_mode_position,
+            candidate_between_anchor_a_position: self.candidate_between_anchor_a_position.clone(),
+            candidate_between_anchor_a_feature_kind: self
+                .candidate_between_anchor_a_feature_kind
+                .clone(),
+            candidate_between_anchor_a_feature_label: self
+                .candidate_between_anchor_a_feature_label
+                .clone(),
+            candidate_between_anchor_a_boundary: self.candidate_between_anchor_a_boundary.clone(),
+            candidate_between_anchor_a_occurrence: self
+                .candidate_between_anchor_a_occurrence
+                .clone(),
+            candidate_between_anchor_b_mode_position: self
+                .candidate_between_anchor_b_mode_position,
+            candidate_between_anchor_b_position: self.candidate_between_anchor_b_position.clone(),
+            candidate_between_anchor_b_feature_kind: self
+                .candidate_between_anchor_b_feature_kind
+                .clone(),
+            candidate_between_anchor_b_feature_label: self
+                .candidate_between_anchor_b_feature_label
+                .clone(),
+            candidate_between_anchor_b_boundary: self.candidate_between_anchor_b_boundary.clone(),
+            candidate_between_anchor_b_occurrence: self
+                .candidate_between_anchor_b_occurrence
+                .clone(),
             candidate_selected_set: self.candidate_selected_set.clone(),
             candidate_page_limit: self.candidate_page_limit.clone(),
             candidate_page_offset: self.candidate_page_offset.clone(),
@@ -5285,6 +5652,23 @@ impl MainAreaDna {
         self.candidate_feature_strand_relation = s.candidate_feature_strand_relation;
         self.candidate_max_distance_bp = s.candidate_max_distance_bp;
         self.candidate_limit = s.candidate_limit;
+        self.candidate_between_set_name = s.candidate_between_set_name;
+        self.candidate_between_seq_id = s.candidate_between_seq_id;
+        self.candidate_between_length_bp = s.candidate_between_length_bp;
+        self.candidate_between_step_bp = s.candidate_between_step_bp;
+        self.candidate_between_limit = s.candidate_between_limit;
+        self.candidate_between_anchor_a_mode_position = s.candidate_between_anchor_a_mode_position;
+        self.candidate_between_anchor_a_position = s.candidate_between_anchor_a_position;
+        self.candidate_between_anchor_a_feature_kind = s.candidate_between_anchor_a_feature_kind;
+        self.candidate_between_anchor_a_feature_label = s.candidate_between_anchor_a_feature_label;
+        self.candidate_between_anchor_a_boundary = s.candidate_between_anchor_a_boundary;
+        self.candidate_between_anchor_a_occurrence = s.candidate_between_anchor_a_occurrence;
+        self.candidate_between_anchor_b_mode_position = s.candidate_between_anchor_b_mode_position;
+        self.candidate_between_anchor_b_position = s.candidate_between_anchor_b_position;
+        self.candidate_between_anchor_b_feature_kind = s.candidate_between_anchor_b_feature_kind;
+        self.candidate_between_anchor_b_feature_label = s.candidate_between_anchor_b_feature_label;
+        self.candidate_between_anchor_b_boundary = s.candidate_between_anchor_b_boundary;
+        self.candidate_between_anchor_b_occurrence = s.candidate_between_anchor_b_occurrence;
         self.candidate_selected_set = s.candidate_selected_set;
         self.candidate_page_limit = s.candidate_page_limit;
         self.candidate_page_offset = s.candidate_page_offset;

@@ -477,9 +477,17 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION\n  \
   gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic]\n  \
   gentle_cli [--state PATH|--project PATH] candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n  \
   gentle_cli [--state PATH|--project PATH] candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n  \
-  gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n\n  \
+  gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n  \
+  gentle_cli [--state PATH|--project PATH] candidates template-list\n  \
+  gentle_cli [--state PATH|--project PATH] candidates template-show TEMPLATE_NAME\n  \
+  gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates template-delete TEMPLATE_NAME\n  \
+  gentle_cli [--state PATH|--project PATH] candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -1549,9 +1557,17 @@ fn run() -> Result<(), String> {
                     | ShellCommand::CandidatesMetrics { .. }
                     | ShellCommand::CandidatesScoreExpression { .. }
                     | ShellCommand::CandidatesScoreDistance { .. }
+                    | ShellCommand::CandidatesScoreWeightedObjective { .. }
+                    | ShellCommand::CandidatesTopK { .. }
+                    | ShellCommand::CandidatesParetoFrontier { .. }
                     | ShellCommand::CandidatesFilter { .. }
                     | ShellCommand::CandidatesSetOp { .. }
                     | ShellCommand::CandidatesMacro { .. }
+                    | ShellCommand::CandidatesTemplateList
+                    | ShellCommand::CandidatesTemplateShow { .. }
+                    | ShellCommand::CandidatesTemplateUpsert { .. }
+                    | ShellCommand::CandidatesTemplateDelete { .. }
+                    | ShellCommand::CandidatesTemplateRun { .. }
             );
             if !is_candidates_command {
                 return Err("Expected a candidates subcommand".to_string());

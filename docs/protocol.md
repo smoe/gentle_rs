@@ -101,6 +101,11 @@ Current draft operations:
 - `ScoreCandidateSetDistance { set_name, metric, feature_kinds[], feature_label_regex?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation? }`
 - `FilterCandidateSet { input_set, output_set, metric, min?, max?, min_quantile?, max_quantile? }`
 - `CandidateSetOp { op: union|intersect|subtract, left_set, right_set, output_set }`
+- `ScoreCandidateSetWeightedObjective { set_name, metric, objectives[], normalize_metrics? }`
+- `TopKCandidateSet { input_set, output_set, metric, k, direction?, tie_break? }`
+- `ParetoFrontierCandidateSet { input_set, output_set, objectives[], max_candidates?, tie_break? }`
+- `UpsertCandidateMacroTemplate { name, description?, parameters[], script }`
+- `DeleteCandidateMacroTemplate { name }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
 - `FilterByDesignConstraints { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
 - `Reverse { input, output_id? }`
@@ -225,6 +230,18 @@ Candidate-set semantics:
   bounds for a named metric.
 - `CandidateSetOp` supports set algebra (`union`, `intersect`, `subtract`) over
   candidate identity (`seq_id`, `start_0based`, `end_0based`).
+- `ScoreCandidateSetWeightedObjective` computes one metric from weighted
+  objective terms (`maximize`/`minimize` per term, optional normalization).
+- `TopKCandidateSet` selects an explicit top-k subset for one metric with a
+  deterministic tie-break policy.
+- `ParetoFrontierCandidateSet` keeps non-dominated candidates for multiple
+  objectives (`maximize`/`minimize` per objective), with optional tie-break
+  truncation.
+- Candidate macro templates are persisted in project metadata:
+  - `UpsertCandidateMacroTemplate` stores/replaces named templates
+  - `DeleteCandidateMacroTemplate` removes templates
+  - template expansion/binding is exposed through adapter command surfaces
+    (`candidates template-*`)
 - Between-anchor generation augments baseline metrics with anchor-aware fields
   (`distance_to_anchor_a_bp`, `distance_to_anchor_b_bp`,
   `distance_to_nearest_anchor_bp`, interval span metadata).

@@ -15,14 +15,14 @@ use std::sync::{Arc, RwLock};
 
 const BASELINE_STROKE: f32 = 2.0;
 const FEATURE_HEIGHT: f32 = 12.0;
-const FEATURE_GAP: f32 = 18.0;
-const BASELINE_MARGIN: f32 = 30.0;
+const FEATURE_GAP: f32 = 14.0;
+const BASELINE_MARGIN: f32 = 24.0;
 const MIN_FEATURE_HEIGHT: f32 = 6.0;
 const MIN_FEATURE_GAP: f32 = 4.0;
 const MIN_BASELINE_MARGIN: f32 = 8.0;
 const BASELINE_TOP_PADDING: f32 = 26.0;
 const BASELINE_BOTTOM_PADDING: f32 = 24.0;
-const BASELINE_SIDE_MIN_EXTENT: f32 = 36.0;
+const BASELINE_SIDE_MIN_EXTENT: f32 = 20.0;
 const LABEL_ROW_HEIGHT: f32 = 12.0;
 const LABEL_CHAR_WIDTH: f32 = 6.5;
 const ORF_HEIGHT: f32 = 6.0;
@@ -36,13 +36,15 @@ const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
 const ORF_MAX_BP_PER_PX: f32 = 18.0;
 const FEATURE_LABEL_PADDING_X: f32 = 3.0;
 const FEATURE_LABEL_MAX_EXPANSION_PX: f32 = 120.0;
-const REGULATORY_BASELINE_MARGIN: f32 = 6.0;
-const REGULATORY_FEATURE_GAP: f32 = 8.0;
-const REGULATORY_FEATURE_HEIGHT: f32 = 7.0;
-const REGULATORY_GROUP_GAP: f32 = 8.0;
+const REGULATORY_BASELINE_MARGIN: f32 = 5.0;
+const REGULATORY_FEATURE_GAP: f32 = 6.0;
+const REGULATORY_FEATURE_HEIGHT: f32 = 6.0;
+const REGULATORY_GROUP_GAP: f32 = 5.0;
 const MIN_REGULATORY_BASELINE_MARGIN: f32 = 2.0;
 const MIN_REGULATORY_FEATURE_GAP: f32 = 3.0;
 const MIN_REGULATORY_FEATURE_HEIGHT: f32 = 4.0;
+const FEATURE_LANE_PADDING: f32 = 5.0;
+const REGULATORY_LANE_PADDING: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -597,16 +599,19 @@ impl RenderDnaLinear {
         let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
         let mut lane_order = seeds.clone();
         lane_order.sort_by(|a, b| {
-            a.is_regulatory.cmp(&b.is_regulatory).then_with(|| {
-                (b.x2 - b.x1)
-                    .total_cmp(&(a.x2 - a.x1))
-                    .then_with(|| a.x1.total_cmp(&b.x1))
-                    .then_with(|| a.feature_number.cmp(&b.feature_number))
-            })
+            a.is_regulatory
+                .cmp(&b.is_regulatory)
+                .then_with(|| a.x1.total_cmp(&b.x1))
+                .then_with(|| (b.x2 - b.x1).total_cmp(&(a.x2 - a.x1)))
+                .then_with(|| a.feature_number.cmp(&b.feature_number))
         });
 
         for seed in lane_order {
-            let lane_padding = if seed.is_regulatory { 0.0 } else { 3.0 };
+            let lane_padding = if seed.is_regulatory {
+                REGULATORY_LANE_PADDING
+            } else {
+                FEATURE_LANE_PADDING
+            };
             let (lane_side, feature_lane) = if seed.is_regulatory {
                 if regulatory_tracks_near_baseline {
                     (LaneSide::RegulatoryNearBaseline, 0)
@@ -736,7 +741,16 @@ impl RenderDnaLinear {
             };
             let center_y = match item.lane_side {
                 LaneSide::Top => {
-                    self.baseline_y() - side_style.margin - side_style.gap * feature_lane as f32
+                    let required_clearance = if regulatory_tracks_near_baseline {
+                        let regulatory_outer =
+                            REGULATORY_BASELINE_MARGIN + REGULATORY_FEATURE_HEIGHT * 0.5;
+                        regulatory_outer + side_style.height * 0.5 + 1.0
+                    } else {
+                        0.0
+                    };
+                    self.baseline_y()
+                        - side_style.margin.max(required_clearance)
+                        - side_style.gap * feature_lane as f32
                 }
                 LaneSide::Bottom => {
                     self.baseline_y() + side_style.margin + side_style.gap * feature_lane as f32
@@ -752,6 +766,7 @@ impl RenderDnaLinear {
                 LaneSide::RegulatoryNearBaseline => self.baseline_y() - side_style.margin,
             };
             let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
+            let suppress_introns = matches!(item.lane_side, LaneSide::RegulatoryNearBaseline);
             let exon_rects: Vec<Rect> = seed
                 .exon_segments
                 .iter()
@@ -776,15 +791,17 @@ impl RenderDnaLinear {
                 center_y - connector_delta
             };
             let mut intron_connectors: Vec<[Pos2; 3]> = Vec::new();
-            for (left, right) in exon_rects.iter().zip(exon_rects.iter().skip(1)) {
-                if right.left() <= left.right() {
-                    continue;
+            if !suppress_introns {
+                for (left, right) in exon_rects.iter().zip(exon_rects.iter().skip(1)) {
+                    if right.left() <= left.right() {
+                        continue;
+                    }
+                    let start = Pos2::new(left.right(), center_y);
+                    let end = Pos2::new(right.left(), center_y);
+                    let apex_x = (start.x + end.x) * 0.5;
+                    let apex = Pos2::new(apex_x, connector_apex_y);
+                    intron_connectors.push([start, apex, end]);
                 }
-                let start = Pos2::new(left.right(), center_y);
-                let end = Pos2::new(right.left(), center_y);
-                let apex_x = (start.x + end.x) * 0.5;
-                let apex = Pos2::new(apex_x, connector_apex_y);
-                intron_connectors.push([start, apex, end]);
             }
 
             self.features.push(FeaturePosition {
@@ -793,7 +810,7 @@ impl RenderDnaLinear {
                 to: seed.to,
                 label: seed.label,
                 color: seed.color,
-                is_pointy: seed.is_pointy,
+                is_pointy: seed.is_pointy && !seed.is_regulatory,
                 is_reverse: seed.is_reverse,
                 rect,
                 exon_rects,

@@ -243,10 +243,30 @@ impl RenderDna {
             .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
     }
 
+    fn has_regulatory_hint(feature: &Feature) -> bool {
+        for key in ["regulatory_class", "regulation", "function", "note", "label"] {
+            for value in feature.qualifier_values(key.into()) {
+                let lower = value.to_ascii_lowercase();
+                if lower.contains("regulatory")
+                    || lower.contains("enhancer")
+                    || lower.contains("promoter")
+                    || lower.contains("silencer")
+                    || lower.contains("insulator")
+                    || lower.contains("atac")
+                    || lower.contains("chip")
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn is_regulatory_feature(feature: &Feature) -> bool {
         let kind = feature.kind.to_string().to_ascii_uppercase();
         Self::is_tfbs_feature(feature)
             || kind.contains("REGULATORY")
+            || (kind == "MISC_FEATURE" && Self::has_regulatory_hint(feature))
             || Self::is_track_feature(feature)
     }
 

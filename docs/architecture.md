@@ -71,6 +71,15 @@ Visual consistency rule:
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
 
+Discoverability rule:
+
+- High-frequency actions must be reachable from both menus and searchable
+  command surfaces (Command Palette).
+- GUI status reporting should be centralized (status bar + background jobs
+  panel) so long-running work is visible and cancellable.
+- Hovered actionable controls should expose a stable human-readable name for
+  shared debugging/support language.
+
 ## 2. Core architecture rule
 
 GENtle should follow a single-engine architecture:
@@ -137,7 +146,7 @@ This enables:
 - reproducibility
 - auditability
 - machine-to-machine use
-- eventual undo/replay support
+- operation-level undo/redo and replay support
 
 Progress/cancellation contract:
 
@@ -152,6 +161,14 @@ Progress/cancellation contract:
 - Annotation parsing during genome preparation is fault-tolerant: malformed
   tabular annotation lines are skipped, summarized, and reported with capped
   file/line examples in warnings.
+
+Interactive orchestration contract:
+
+- Long-running jobs are surfaced in one GUI background-jobs panel with progress
+  snapshots and cancel/retry controls where the engine callback contract
+  supports cancellation.
+- Operation history is surfaced in a dedicated GUI panel backed by engine
+  operation journal + checkpoint stacks.
 
 ### Provenance and DAG (recommended)
 
@@ -194,6 +211,10 @@ Practical rule:
 - Convert UI events to engine operations
 - Render state and selections
 - Never duplicate biology logic
+- Provide searchable action routing (Command Palette) that dispatches only to
+  existing engine/adaptor actions (no duplicate logic path).
+- Keep anchored-data imports preflighted in UI (detected anchor, matching
+  status, projected targets), while execution remains engine-owned.
 
 ### JavaScript/Lua shells
 
@@ -309,17 +330,22 @@ Command surface:
 - `candidates generate-between-anchors SET_NAME SEQ_ID --length N ...`
 - `candidates score SET_NAME METRIC_NAME EXPRESSION`
 - `candidates score-distance SET_NAME METRIC_NAME ...`
+- `candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] ...`
+- `candidates top-k INPUT_SET OUTPUT_SET --metric METRIC --k N ...`
+- `candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] ...`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
 - `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+- `candidates template-list|template-show|template-put|template-delete|template-run ...`
 - `set-param NAME JSON_VALUE`
 
 This enables reusable query composition:
 
 1. generate explicit candidate sets
 2. attach base/derived scores
-3. filter by absolute threshold and/or quantile
-4. intersect/union/subtract with other candidate sets
+3. run explicit optimizer primitives (weighted objective, top-k, Pareto frontier)
+4. filter by absolute threshold and/or quantile
+5. intersect/union/subtract with other candidate sets
 
 Local anchor model (for candidate/extraction workflows):
 

@@ -3,8 +3,11 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
-        Engine, GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
-        Operation, ProjectState, RenderSvgMode, SequenceAnchor, Workflow,
+        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, Engine, GenomeAnchorSide, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, Operation, ProjectState, RenderSvgMode,
+        SequenceAnchor, Workflow,
     },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync,
@@ -29,7 +32,10 @@ use serde_json::{json, Value};
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
-use std::{collections::BTreeSet, fs};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs,
+};
 
 #[derive(Debug, Clone)]
 pub enum ShellCommand {
@@ -275,8 +281,47 @@ pub enum ShellCommand {
         right_set: String,
         output_set: String,
     },
+    CandidatesScoreWeightedObjective {
+        set_name: String,
+        metric: String,
+        objectives: Vec<CandidateWeightedObjectiveTerm>,
+        normalize_metrics: bool,
+    },
+    CandidatesTopK {
+        input_set: String,
+        output_set: String,
+        metric: String,
+        k: usize,
+        direction: CandidateObjectiveDirection,
+        tie_break: CandidateTieBreakPolicy,
+    },
+    CandidatesParetoFrontier {
+        input_set: String,
+        output_set: String,
+        objectives: Vec<CandidateObjectiveSpec>,
+        max_candidates: Option<usize>,
+        tie_break: CandidateTieBreakPolicy,
+    },
     CandidatesMacro {
         script: String,
+        transactional: bool,
+    },
+    CandidatesTemplateList,
+    CandidatesTemplateShow {
+        name: String,
+    },
+    CandidatesTemplateUpsert {
+        name: String,
+        description: Option<String>,
+        parameters: Vec<CandidateMacroTemplateParam>,
+        script: String,
+    },
+    CandidatesTemplateDelete {
+        name: String,
+    },
+    CandidatesTemplateRun {
+        name: String,
+        bindings: HashMap<String, String>,
         transactional: bool,
     },
     SetParameter {
@@ -432,6 +477,142 @@ fn parse_candidate_feature_strand_relation(
             "Unsupported strand relation '{other}' (expected any|same|opposite)"
         )),
     }
+}
+
+fn parse_candidate_objective_direction(raw: &str) -> Result<CandidateObjectiveDirection, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "max" | "maximize" => Ok(CandidateObjectiveDirection::Maximize),
+        "min" | "minimize" => Ok(CandidateObjectiveDirection::Minimize),
+        other => Err(format!(
+            "Unsupported objective direction '{other}' (expected max|min)"
+        )),
+    }
+}
+
+fn parse_candidate_tie_break_policy(raw: &str) -> Result<CandidateTieBreakPolicy, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "seq_start_end" | "default" | "seq" => Ok(CandidateTieBreakPolicy::SeqStartEnd),
+        "seq_end_start" => Ok(CandidateTieBreakPolicy::SeqEndStart),
+        "length_ascending" | "length_asc" | "shortest" => {
+            Ok(CandidateTieBreakPolicy::LengthAscending)
+        }
+        "length_descending" | "length_desc" | "longest" => {
+            Ok(CandidateTieBreakPolicy::LengthDescending)
+        }
+        "sequence_lexicographic" | "sequence" | "lexicographic" => {
+            Ok(CandidateTieBreakPolicy::SequenceLexicographic)
+        }
+        other => Err(format!(
+            "Unsupported tie-break policy '{other}' (expected seq_start_end|seq_end_start|length_ascending|length_descending|sequence_lexicographic)"
+        )),
+    }
+}
+
+fn parse_weighted_objective_term(raw: &str) -> Result<CandidateWeightedObjectiveTerm, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Weighted objective term cannot be empty".to_string());
+    }
+    let parts = trimmed.split(':').collect::<Vec<_>>();
+    if parts.len() < 2 || parts.len() > 3 {
+        return Err(format!(
+            "Invalid weighted objective term '{}'; expected METRIC:WEIGHT[:max|min]",
+            trimmed
+        ));
+    }
+    let metric = parts[0].trim();
+    if metric.is_empty() {
+        return Err(format!(
+            "Invalid weighted objective term '{}': missing metric",
+            trimmed
+        ));
+    }
+    let weight_raw = parts[1].trim();
+    let weight = weight_raw
+        .parse::<f64>()
+        .map_err(|e| format!("Invalid weighted objective weight '{}': {e}", weight_raw))?;
+    let direction = if parts.len() == 3 {
+        parse_candidate_objective_direction(parts[2])?
+    } else {
+        CandidateObjectiveDirection::Maximize
+    };
+    Ok(CandidateWeightedObjectiveTerm {
+        metric: metric.to_string(),
+        weight,
+        direction,
+    })
+}
+
+fn parse_pareto_objective(raw: &str) -> Result<CandidateObjectiveSpec, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Pareto objective cannot be empty".to_string());
+    }
+    let parts = trimmed.split(':').collect::<Vec<_>>();
+    if parts.is_empty() || parts.len() > 2 {
+        return Err(format!(
+            "Invalid Pareto objective '{}'; expected METRIC[:max|min]",
+            trimmed
+        ));
+    }
+    let metric = parts[0].trim();
+    if metric.is_empty() {
+        return Err(format!(
+            "Invalid Pareto objective '{}': missing metric",
+            trimmed
+        ));
+    }
+    let direction = if parts.len() == 2 {
+        parse_candidate_objective_direction(parts[1])?
+    } else {
+        CandidateObjectiveDirection::Maximize
+    };
+    Ok(CandidateObjectiveSpec {
+        metric: metric.to_string(),
+        direction,
+    })
+}
+
+fn parse_template_param_spec(raw: &str) -> Result<CandidateMacroTemplateParam, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Template parameter cannot be empty".to_string());
+    }
+    if let Some((name, default_value)) = trimmed.split_once('=') {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(format!(
+                "Invalid template parameter '{}': missing parameter name",
+                trimmed
+            ));
+        }
+        Ok(CandidateMacroTemplateParam {
+            name: name.to_string(),
+            default_value: Some(default_value.to_string()),
+            required: false,
+        })
+    } else {
+        Ok(CandidateMacroTemplateParam {
+            name: trimmed.to_string(),
+            default_value: None,
+            required: true,
+        })
+    }
+}
+
+fn parse_template_binding(raw: &str) -> Result<(String, String), String> {
+    let trimmed = raw.trim();
+    let (key, value) = trimmed
+        .split_once('=')
+        .ok_or_else(|| format!("Invalid --bind '{}': expected KEY=VALUE", raw))?;
+    let key = key.trim();
+    if key.is_empty() {
+        return Err(format!(
+            "Invalid --bind '{}': binding key cannot be empty",
+            raw
+        ));
+    }
+    Ok((key.to_string(), value.to_string()))
 }
 
 fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAnchor, String> {
@@ -979,6 +1160,58 @@ impl ShellCommand {
                 right_set,
                 output_set
             ),
+            Self::CandidatesScoreWeightedObjective {
+                set_name,
+                metric,
+                objectives,
+                normalize_metrics,
+            } => format!(
+                "compute weighted objective metric '{}' for candidate set '{}' (terms={}, normalize_metrics={})",
+                metric,
+                set_name,
+                objectives
+                    .iter()
+                    .map(|term| format!("{}:{}:{}", term.metric, term.weight, term.direction.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                normalize_metrics
+            ),
+            Self::CandidatesTopK {
+                input_set,
+                output_set,
+                metric,
+                k,
+                direction,
+                tie_break,
+            } => format!(
+                "select top-k candidate set from '{}' into '{}' by metric '{}' (k={}, direction={}, tie_break={})",
+                input_set,
+                output_set,
+                metric,
+                k,
+                direction.as_str(),
+                tie_break.as_str()
+            ),
+            Self::CandidatesParetoFrontier {
+                input_set,
+                output_set,
+                objectives,
+                max_candidates,
+                tie_break,
+            } => format!(
+                "compute pareto frontier from '{}' into '{}' (objectives={}, max_candidates={}, tie_break={})",
+                input_set,
+                output_set,
+                objectives
+                    .iter()
+                    .map(|objective| format!("{}:{}", objective.metric, objective.direction.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                max_candidates
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                tie_break.as_str()
+            ),
             Self::CandidatesMacro {
                 script,
                 transactional,
@@ -1001,6 +1234,52 @@ impl ShellCommand {
                 };
                 format!("run {mode} candidates macro '{preview}'")
             }
+            Self::CandidatesTemplateList => "list candidate macro templates".to_string(),
+            Self::CandidatesTemplateShow { name } => {
+                format!("show candidate macro template '{}'", name)
+            }
+            Self::CandidatesTemplateUpsert {
+                name,
+                description,
+                parameters,
+                script,
+            } => format!(
+                "upsert candidate macro template '{}' (description='{}', params={}, script_len={})",
+                name,
+                description
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("-"),
+                parameters
+                    .iter()
+                    .map(|p| {
+                        if let Some(default_value) = &p.default_value {
+                            format!("{}={}", p.name, default_value)
+                        } else {
+                            p.name.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(","),
+                script.len()
+            ),
+            Self::CandidatesTemplateDelete { name } => {
+                format!("delete candidate macro template '{}'", name)
+            }
+            Self::CandidatesTemplateRun {
+                name,
+                bindings,
+                transactional,
+            } => format!(
+                "run candidate macro template '{}' (bindings={}, transactional={})",
+                name,
+                bindings
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                transactional
+            ),
             Self::SetParameter { name, value_json } => {
                 format!("set parameter '{}' to {}", name, value_json)
             }
@@ -1033,7 +1312,13 @@ impl ShellCommand {
                 | Self::CandidatesScoreDistance { .. }
                 | Self::CandidatesFilter { .. }
                 | Self::CandidatesSetOp { .. }
+                | Self::CandidatesScoreWeightedObjective { .. }
+                | Self::CandidatesTopK { .. }
+                | Self::CandidatesParetoFrontier { .. }
                 | Self::CandidatesMacro { .. }
+                | Self::CandidatesTemplateUpsert { .. }
+                | Self::CandidatesTemplateDelete { .. }
+                | Self::CandidatesTemplateRun { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -1894,7 +2179,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
 fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "candidates requires a subcommand: list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, filter, set-op, macro"
+            "candidates requires a subcommand: list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, score-weighted, top-k, pareto, filter, set-op, macro, template-list, template-show, template-put, template-delete, template-run"
                 .to_string(),
         );
     }
@@ -2340,6 +2625,189 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 feature_strand_relation,
             })
         }
+        "score-weighted" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "candidates score-weighted requires SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let metric = tokens[3].clone();
+            let mut objectives: Vec<CandidateWeightedObjectiveTerm> = vec![];
+            let mut normalize_metrics = true;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--term" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--term",
+                            "candidates score-weighted",
+                        )?;
+                        objectives.push(parse_weighted_objective_term(&raw)?);
+                    }
+                    "--normalize" => {
+                        normalize_metrics = true;
+                        idx += 1;
+                    }
+                    "--no-normalize" => {
+                        normalize_metrics = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates score-weighted"
+                        ));
+                    }
+                }
+            }
+            if objectives.is_empty() {
+                return Err(
+                    "candidates score-weighted requires at least one --term METRIC:WEIGHT[:max|min]"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CandidatesScoreWeightedObjective {
+                set_name,
+                metric,
+                objectives,
+                normalize_metrics,
+            })
+        }
+        "top-k" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates top-k requires INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break POLICY]"
+                        .to_string(),
+                );
+            }
+            let input_set = tokens[2].clone();
+            let output_set = tokens[3].clone();
+            let mut metric: Option<String> = None;
+            let mut k: Option<usize> = None;
+            let mut direction = CandidateObjectiveDirection::Maximize;
+            let mut tie_break = CandidateTieBreakPolicy::SeqStartEnd;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--metric" => {
+                        metric = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--metric",
+                            "candidates top-k",
+                        )?);
+                    }
+                    "--k" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--k", "candidates top-k")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --k value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--k must be >= 1".to_string());
+                        }
+                        k = Some(parsed);
+                    }
+                    "--direction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--direction",
+                            "candidates top-k",
+                        )?;
+                        direction = parse_candidate_objective_direction(&raw)?;
+                    }
+                    "--tie-break" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tie-break",
+                            "candidates top-k",
+                        )?;
+                        tie_break = parse_candidate_tie_break_policy(&raw)?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for candidates top-k")),
+                }
+            }
+            let metric = metric.ok_or_else(|| "candidates top-k requires --metric".to_string())?;
+            let k = k.ok_or_else(|| "candidates top-k requires --k N".to_string())?;
+            Ok(ShellCommand::CandidatesTopK {
+                input_set,
+                output_set,
+                metric,
+                k,
+                direction,
+                tie_break,
+            })
+        }
+        "pareto" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates pareto requires INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break POLICY]"
+                        .to_string(),
+                );
+            }
+            let input_set = tokens[2].clone();
+            let output_set = tokens[3].clone();
+            let mut objectives: Vec<CandidateObjectiveSpec> = vec![];
+            let mut max_candidates: Option<usize> = None;
+            let mut tie_break = CandidateTieBreakPolicy::SeqStartEnd;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--objective" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--objective",
+                            "candidates pareto",
+                        )?;
+                        objectives.push(parse_pareto_objective(&raw)?);
+                    }
+                    "--max-candidates" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-candidates",
+                            "candidates pareto",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-candidates value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--max-candidates must be >= 1".to_string());
+                        }
+                        max_candidates = Some(parsed);
+                    }
+                    "--tie-break" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tie-break",
+                            "candidates pareto",
+                        )?;
+                        tie_break = parse_candidate_tie_break_policy(&raw)?;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for candidates pareto")),
+                }
+            }
+            if objectives.is_empty() {
+                return Err(
+                    "candidates pareto requires at least one --objective METRIC[:max|min]"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CandidatesParetoFrontier {
+                input_set,
+                output_set,
+                objectives,
+                max_candidates,
+                tie_break,
+            })
+        }
         "filter" => {
             if tokens.len() < 5 {
                 return Err("candidates filter requires INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]".to_string());
@@ -2516,8 +2984,151 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 transactional,
             })
         }
+        "template-list" => {
+            if tokens.len() != 2 {
+                return Err("candidates template-list takes no options".to_string());
+            }
+            Ok(ShellCommand::CandidatesTemplateList)
+        }
+        "template-show" => {
+            if tokens.len() != 3 {
+                return Err("candidates template-show requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesTemplateShow {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-put" | "template-upsert" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut description: Option<String> = None;
+            let mut parameters: Vec<CandidateMacroTemplateParam> = vec![];
+            let mut script: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--description" => {
+                        description = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--description",
+                            "candidates template-put",
+                        )?);
+                    }
+                    "--param" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--param",
+                            "candidates template-put",
+                        )?;
+                        parameters.push(parse_template_param_spec(&raw)?);
+                    }
+                    "--script" => {
+                        if script.is_some() {
+                            return Err(
+                                "candidates template-put script was already specified".to_string(),
+                            );
+                        }
+                        script = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--script",
+                            "candidates template-put",
+                        )?);
+                    }
+                    "--file" => {
+                        if script.is_some() {
+                            return Err(
+                                "candidates template-put script was already specified".to_string(),
+                            );
+                        }
+                        let path = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--file",
+                            "candidates template-put",
+                        )?;
+                        script = Some(format!("@{path}"));
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates template-put"
+                        ));
+                    }
+                }
+            }
+            let script = script.ok_or_else(|| {
+                "candidates template-put requires --script SCRIPT_OR_@FILE or --file PATH"
+                    .to_string()
+            })?;
+            Ok(ShellCommand::CandidatesTemplateUpsert {
+                name,
+                description,
+                parameters,
+                script,
+            })
+        }
+        "template-delete" => {
+            if tokens.len() != 3 {
+                return Err("candidates template-delete requires TEMPLATE_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesTemplateDelete {
+                name: tokens[2].clone(),
+            })
+        }
+        "template-run" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "candidates template-run requires TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+                        .to_string(),
+                );
+            }
+            let name = tokens[2].clone();
+            let mut bindings: HashMap<String, String> = HashMap::new();
+            let mut transactional = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--bind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--bind",
+                            "candidates template-run",
+                        )?;
+                        let (key, value) = parse_template_binding(&raw)?;
+                        if bindings.insert(key.clone(), value).is_some() {
+                            return Err(format!(
+                                "Duplicate --bind key '{}' in candidates template-run",
+                                key
+                            ));
+                        }
+                    }
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates template-run"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::CandidatesTemplateRun {
+                name,
+                bindings,
+                transactional,
+            })
+        }
         other => Err(format!(
-            "Unknown candidates subcommand '{other}' (expected list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, filter, set-op, macro)"
+            "Unknown candidates subcommand '{other}' (expected list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, score-weighted, top-k, pareto, filter, set-op, macro, template-list, template-show, template-put, template-delete, template-run)"
         )),
     }
 }
@@ -3438,8 +4049,13 @@ fn run_candidates_macro(
         };
         let tokens = split_shell_words(&prefixed)?;
         let cmd = parse_candidates_command(&tokens)?;
-        if matches!(cmd, ShellCommand::CandidatesMacro { .. }) {
-            return Err("Nested candidates macro calls are not allowed".to_string());
+        if matches!(
+            cmd,
+            ShellCommand::CandidatesMacro { .. } | ShellCommand::CandidatesTemplateRun { .. }
+        ) {
+            return Err(
+                "Nested candidates macro/template-run calls are not allowed".to_string(),
+            );
         }
         let run = match execute_shell_command_with_options(engine, &cmd, options) {
             Ok(run) => run,
@@ -4579,10 +5195,221 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::CandidatesScoreWeightedObjective {
+            set_name,
+            metric,
+            objectives,
+            normalize_metrics,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ScoreCandidateSetWeightedObjective {
+                    set_name: set_name.clone(),
+                    metric: metric.clone(),
+                    objectives: objectives.clone(),
+                    normalize_metrics: Some(*normalize_metrics),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "metric": metric,
+                    "normalize_metrics": normalize_metrics,
+                    "objective_count": objectives.len(),
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesTopK {
+            input_set,
+            output_set,
+            metric,
+            k,
+            direction,
+            tie_break,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::TopKCandidateSet {
+                    input_set: input_set.clone(),
+                    output_set: output_set.clone(),
+                    metric: metric.clone(),
+                    k: *k,
+                    direction: Some(*direction),
+                    tie_break: Some(*tie_break),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "input_set": input_set,
+                    "output_set": output_set,
+                    "metric": metric,
+                    "k": k,
+                    "direction": direction.as_str(),
+                    "tie_break": tie_break.as_str(),
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesParetoFrontier {
+            input_set,
+            output_set,
+            objectives,
+            max_candidates,
+            tie_break,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ParetoFrontierCandidateSet {
+                    input_set: input_set.clone(),
+                    output_set: output_set.clone(),
+                    objectives: objectives.clone(),
+                    max_candidates: *max_candidates,
+                    tie_break: Some(*tie_break),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "input_set": input_set,
+                    "output_set": output_set,
+                    "objective_count": objectives.len(),
+                    "max_candidates": max_candidates,
+                    "tie_break": tie_break.as_str(),
+                    "result": op_result
+                }),
+            }
+        }
         ShellCommand::CandidatesMacro {
             script,
             transactional,
         } => run_candidates_macro(engine, script, *transactional, options)?,
+        ShellCommand::CandidatesTemplateList => {
+            let templates = engine.list_candidate_macro_templates();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.candidate_macro_templates.v1",
+                    "template_count": templates.len(),
+                    "templates": templates
+                }),
+            }
+        }
+        ShellCommand::CandidatesTemplateShow { name } => {
+            let template = engine
+                .get_candidate_macro_template(name)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "template": template
+                }),
+            }
+        }
+        ShellCommand::CandidatesTemplateUpsert {
+            name,
+            description,
+            parameters,
+            script,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let loaded_script = load_candidates_macro_script(script)?;
+            let op_result = engine
+                .apply(Operation::UpsertCandidateMacroTemplate {
+                    name: name.clone(),
+                    description: description.clone(),
+                    parameters: parameters.clone(),
+                    script: loaded_script.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "description": description,
+                    "parameter_count": parameters.len(),
+                    "script_length": loaded_script.len(),
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesTemplateDelete { name } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteCandidateMacroTemplate { name: name.clone() })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_MACRO_TEMPLATES_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "name": name,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesTemplateRun {
+            name,
+            bindings,
+            transactional,
+        } => {
+            let script = engine
+                .render_candidate_macro_template_script(name, bindings)
+                .map_err(|e| e.to_string())?;
+            let mut run = run_candidates_macro(engine, &script, *transactional, options)?;
+            run.output = json!({
+                "template_name": name,
+                "bindings": bindings,
+                "expanded_script": script,
+                "run": run.output
+            });
+            run
+        }
         ShellCommand::SetParameter { name, value_json } => {
             let raw = parse_json_payload(value_json)?;
             let value: serde_json::Value = serde_json::from_str(&raw)
@@ -5249,6 +6076,119 @@ mod tests {
     }
 
     #[test]
+    fn parse_candidates_score_weighted() {
+        let cmd = parse_shell_line(
+            "candidates score-weighted set1 objective --term gc_fraction:0.7:max --term distance_to_seq_start_bp:0.3:min --normalize",
+        )
+        .expect("parse candidates score-weighted");
+        match cmd {
+            ShellCommand::CandidatesScoreWeightedObjective {
+                set_name,
+                metric,
+                objectives,
+                normalize_metrics,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(metric, "objective");
+                assert_eq!(objectives.len(), 2);
+                assert!(normalize_metrics);
+                assert_eq!(objectives[0].metric, "gc_fraction");
+                assert_eq!(objectives[1].direction, CandidateObjectiveDirection::Minimize);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_top_k() {
+        let cmd = parse_shell_line(
+            "candidates top-k in_set out_set --metric objective --k 5 --direction max --tie-break length_descending",
+        )
+        .expect("parse candidates top-k");
+        match cmd {
+            ShellCommand::CandidatesTopK {
+                input_set,
+                output_set,
+                metric,
+                k,
+                direction,
+                tie_break,
+            } => {
+                assert_eq!(input_set, "in_set");
+                assert_eq!(output_set, "out_set");
+                assert_eq!(metric, "objective");
+                assert_eq!(k, 5);
+                assert_eq!(direction, CandidateObjectiveDirection::Maximize);
+                assert_eq!(tie_break, CandidateTieBreakPolicy::LengthDescending);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_pareto() {
+        let cmd = parse_shell_line(
+            "candidates pareto in_set out_set --objective gc_fraction:max --objective distance_to_seq_start_bp:min --max-candidates 10 --tie-break seq_start_end",
+        )
+        .expect("parse candidates pareto");
+        match cmd {
+            ShellCommand::CandidatesParetoFrontier {
+                input_set,
+                output_set,
+                objectives,
+                max_candidates,
+                tie_break,
+            } => {
+                assert_eq!(input_set, "in_set");
+                assert_eq!(output_set, "out_set");
+                assert_eq!(objectives.len(), 2);
+                assert_eq!(max_candidates, Some(10));
+                assert_eq!(tie_break, CandidateTieBreakPolicy::SeqStartEnd);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_template_put_and_run() {
+        let put = parse_shell_line(
+            "candidates template-put scan --script 'generate ${set_name} ${seq_id} --length ${len}' --param set_name --param seq_id=seqA --param len=20",
+        )
+        .expect("parse template-put");
+        match put {
+            ShellCommand::CandidatesTemplateUpsert {
+                name,
+                parameters,
+                script,
+                ..
+            } => {
+                assert_eq!(name, "scan");
+                assert_eq!(parameters.len(), 3);
+                assert_eq!(script, "generate ${set_name} ${seq_id} --length ${len}");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let run = parse_shell_line(
+            "candidates template-run scan --bind set_name=hits --bind seq_id=seqB --transactional",
+        )
+        .expect("parse template-run");
+        match run {
+            ShellCommand::CandidatesTemplateRun {
+                name,
+                bindings,
+                transactional,
+            } => {
+                assert_eq!(name, "scan");
+                assert_eq!(bindings.get("set_name"), Some(&"hits".to_string()));
+                assert_eq!(bindings.get("seq_id"), Some(&"seqB".to_string()));
+                assert!(transactional);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_candidates_macro_file_reference() {
         let cmd = parse_shell_line("candidates macro --file test_files/candidates_plan.gsh")
             .expect("parse candidates macro --file");
@@ -5556,6 +6496,154 @@ filter set1 set2 --metric score --min 10
         assert!(intersect.state_changed);
         assert_eq!(intersect.output["operator"].as_str(), Some("intersect"));
         assert_eq!(intersect.output["output_set"].as_str(), Some("inter"));
+    }
+
+    #[test]
+    fn execute_candidates_optimizer_primitives() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("GCATGAAA").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesGenerate {
+                set_name: "cand".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 2,
+                step_bp: 2,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: 64,
+            },
+        )
+        .expect("generate candidate set");
+
+        let weighted = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesScoreWeightedObjective {
+                set_name: "cand".to_string(),
+                metric: "objective".to_string(),
+                objectives: vec![
+                    CandidateWeightedObjectiveTerm {
+                        metric: "gc_fraction".to_string(),
+                        weight: 0.7,
+                        direction: CandidateObjectiveDirection::Maximize,
+                    },
+                    CandidateWeightedObjectiveTerm {
+                        metric: "distance_to_seq_start_bp".to_string(),
+                        weight: 0.3,
+                        direction: CandidateObjectiveDirection::Minimize,
+                    },
+                ],
+                normalize_metrics: true,
+            },
+        )
+        .expect("weighted objective");
+        assert!(weighted.state_changed);
+
+        let topk = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesTopK {
+                input_set: "cand".to_string(),
+                output_set: "top".to_string(),
+                metric: "objective".to_string(),
+                k: 1,
+                direction: CandidateObjectiveDirection::Maximize,
+                tie_break: CandidateTieBreakPolicy::SeqStartEnd,
+            },
+        )
+        .expect("top-k");
+        assert!(topk.state_changed);
+
+        let pareto = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesParetoFrontier {
+                input_set: "cand".to_string(),
+                output_set: "front".to_string(),
+                objectives: vec![
+                    CandidateObjectiveSpec {
+                        metric: "gc_fraction".to_string(),
+                        direction: CandidateObjectiveDirection::Maximize,
+                    },
+                    CandidateObjectiveSpec {
+                        metric: "distance_to_seq_start_bp".to_string(),
+                        direction: CandidateObjectiveDirection::Minimize,
+                    },
+                ],
+                max_candidates: None,
+                tie_break: CandidateTieBreakPolicy::SeqStartEnd,
+            },
+        )
+        .expect("pareto");
+        assert!(pareto.state_changed);
+
+        let top_set = engine
+            .inspect_candidate_set_page("top", 10, 0)
+            .expect("inspect top")
+            .0;
+        assert_eq!(top_set.candidates.len(), 1);
+        assert_eq!(top_set.candidates[0].start_0based, 0);
+    }
+
+    #[test]
+    fn execute_candidates_template_registry_and_run() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesTemplateUpsert {
+                name: "scan".to_string(),
+                description: Some("scan template".to_string()),
+                parameters: vec![
+                    CandidateMacroTemplateParam {
+                        name: "set_name".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    CandidateMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: Some("seqA".to_string()),
+                        required: false,
+                    },
+                ],
+                script: "generate ${set_name} ${seq_id} --length 4 --step 2".to_string(),
+            },
+        )
+        .expect("upsert template");
+
+        let listed = execute_shell_command(&mut engine, &ShellCommand::CandidatesTemplateList)
+            .expect("list templates");
+        assert_eq!(listed.output["template_count"].as_u64(), Some(1));
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesTemplateRun {
+                name: "scan".to_string(),
+                bindings: HashMap::from([("set_name".to_string(), "hits".to_string())]),
+                transactional: false,
+            },
+        )
+        .expect("run template");
+        assert!(run.state_changed);
+        assert_eq!(run.output["template_name"].as_str(), Some("scan"));
+        assert!(
+            engine
+                .list_candidate_sets()
+                .iter()
+                .any(|set| set.name == "hits")
+        );
     }
 
     #[test]
