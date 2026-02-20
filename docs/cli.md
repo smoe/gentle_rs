@@ -23,6 +23,12 @@ Reference genome capability status:
 - `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 - `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
+Candidate-set capability status:
+
+- `gentle_cli`: supported via shared engine operations (`GenerateCandidateSet`, `DeleteCandidateSet`, `ScoreCandidateSetExpression`, `ScoreCandidateSetDistance`, `FilterCandidateSet`, `CandidateSetOp`) and shared-shell `candidates` commands
+- `gentle_js`: supported via `apply_operation` with the same candidate-set operations
+- `gentle_lua`: supported via `apply_operation` with the same candidate-set operations
+
 ## Build and run
 
 From the repository root:
@@ -296,12 +302,16 @@ cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
+cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --cache-dir data/helper_genomes
+cargo run --bin gentle_cli -- shell 'candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000'
+cargo run --bin gentle_cli -- shell 'candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"'
+cargo run --bin gentle_cli -- shell 'candidates filter sgrnas sgrnas_q95 --metric gc_balance --min-quantile 0.95'
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -368,6 +378,16 @@ Shared shell command:
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+    - `candidates list`
+    - `candidates delete SET_NAME`
+    - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
+    - `candidates show SET_NAME [--limit N] [--offset N]`
+    - `candidates metrics SET_NAME`
+    - `candidates score SET_NAME METRIC_NAME EXPRESSION`
+    - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
+    - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
+    - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (requires process startup with
@@ -497,6 +517,36 @@ Helper convenience commands:
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
 
+Candidate-set shell commands:
+
+- `candidates list`
+  - Lists available candidate sets from project metadata.
+- `candidates delete SET_NAME`
+  - Removes one candidate set.
+- `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
+  - Creates a candidate set from fixed-length windows on `SEQ_ID`.
+  - `--feature-kind` can be repeated to constrain nearest-feature context.
+- `candidates show SET_NAME [--limit N] [--offset N]`
+  - Pages records (`sequence`, `coordinates`, `metrics`) from one set.
+- `candidates metrics SET_NAME`
+  - Lists available metric names in one set.
+- `candidates score SET_NAME METRIC_NAME EXPRESSION`
+  - Computes a derived metric expression for all records in a set.
+- `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
+  - Computes nearest-feature distance metric with optional feature filters.
+- `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
+  - Creates `OUTPUT_SET` by value and/or quantile thresholds.
+- `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
+  - Creates set algebra output from two sets.
+
+Notes:
+
+- Candidate sets persist in `ProjectState.metadata["candidate_sets"]`
+  (`gentle.candidate_sets.v1`).
+- `list/show/metrics` are read-only commands.
+- `delete/generate/score/score-distance/filter/set-op` mutate state and are
+  available through CLI shell and GUI shell.
+
 Recommended suffixes:
 
 - pool artifacts: `*.pool.gentle.json`
@@ -606,11 +656,55 @@ Filter candidates by molecular-weight proxy (bp length) with tolerance and uniqu
 {"FilterByMolecularWeight":{"inputs":["pgex_frag_1","pgex_frag_2","pgex_frag_3"],"min_bp":450,"max_bp":550,"error":0.10,"unique":true,"output_prefix":"mw_pick"}}
 ```
 
-Apply practical sequence-quality filters (GC bounds, homopolymer cap, U6 `TTTT`
+Apply practical design-constraint filters (GC bounds, homopolymer cap, U6 `TTTT`
 avoidance, forbidden motifs):
 
 ```json
-{"FilterBySequenceQuality":{"inputs":["g1","g2","g3"],"gc_min":0.30,"gc_max":0.70,"max_homopolymer_run":4,"reject_ambiguous_bases":true,"avoid_u6_terminator_tttt":true,"forbidden_motifs":["GAATTC"],"unique":false,"output_prefix":"sq_pick"}}
+{"FilterByDesignConstraints":{"inputs":["g1","g2","g3"],"gc_min":0.30,"gc_max":0.70,"max_homopolymer_run":4,"reject_ambiguous_bases":true,"avoid_u6_terminator_tttt":true,"forbidden_motifs":["GAATTC"],"unique":false,"output_prefix":"design_pick"}}
+```
+
+Notes:
+
+- `reject_ambiguous_bases` defaults to `true` if omitted.
+- `avoid_u6_terminator_tttt` defaults to `true` if omitted.
+- `forbidden_motifs` supports IUPAC and is checked on both strands.
+
+Generate a candidate set from windows on one sequence:
+
+```json
+{"GenerateCandidateSet":{"set_name":"sgrna_windows","seq_id":"grch38_tp53","length_bp":20,"step_bp":1,"feature_kinds":["gene"],"feature_label_regex":"^TP53$","max_distance_bp":5000,"limit":10000}}
+```
+
+Add a derived metric expression:
+
+```json
+{"ScoreCandidateSetExpression":{"set_name":"sgrna_windows","metric":"gc_balance","expression":"100 * (gc_fraction - at_fraction)"}}
+```
+
+Add distance-to-feature score:
+
+```json
+{"ScoreCandidateSetDistance":{"set_name":"sgrna_windows","metric":"distance_to_cds_bp","feature_kinds":["CDS"],"feature_label_regex":null}}
+```
+
+Filter by absolute value and quantiles into a new explicit set:
+
+```json
+{"FilterCandidateSet":{"input_set":"sgrna_windows","output_set":"sgrna_windows_top","metric":"gc_balance","min":-20.0,"max":20.0,"min_quantile":0.10,"max_quantile":0.90}}
+```
+
+Intersect/union/subtract explicit candidate sets:
+
+```json
+{"CandidateSetOp":{"op":"intersect","left_set":"sgrna_windows_top","right_set":"near_tss","output_set":"sgrna_final"}}
+{"CandidateSetOp":{"op":"union","left_set":"set_a","right_set":"set_b","output_set":"set_union"}}
+{"CandidateSetOp":{"op":"subtract","left_set":"set_a","right_set":"set_b","output_set":"set_a_minus_b"}}
+```
+
+Delete a candidate set:
+
+```json
+{"DeleteCandidateSet":{"set_name":"sgrna_windows"}}
 ```
 
 Create transformed or branched candidates:
@@ -726,6 +820,12 @@ sequence:
 {"ImportGenomeBigWigTrack":{"seq_id":"grch38_tp53","path":"data/chipseq/signal.bw","track_name":"ATAC","min_score":0.2,"max_score":null,"clear_existing":false}}
 ```
 
+Import VCF variants (`.vcf` / `.vcf.gz`) onto a genome-anchored sequence:
+
+```json
+{"ImportGenomeVcfTrack":{"seq_id":"grch38_tp53","path":"data/variants/sample.vcf.gz","track_name":"Variants","min_score":20.0,"max_score":null,"clear_existing":false}}
+```
+
 Notes:
 
 - `PrepareGenome` is intended as a one-time setup step per genome and cache
@@ -750,9 +850,12 @@ Notes:
 - `ImportGenomeBedTrack` expects `seq_id` to be a sequence created by
   `ExtractGenomeRegion` or `ExtractGenomeGene` (genome-anchored provenance).
 - `ImportGenomeBigWigTrack` expects the same genome-anchored `seq_id`.
+- `ImportGenomeVcfTrack` expects the same genome-anchored `seq_id`.
 - BED import accepts local `.bed` and `.bed.gz` files.
 - BigWig import accepts local `.bw` and `.bigWig` files and uses
   `bigWigToBedGraph` (override with `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`).
+- VCF import accepts local `.vcf` and `.vcf.gz` files.
+- For VCF import, `min_score` / `max_score` filter on VCF `QUAL`.
 - `ExtractGenomeRegion` and `ExtractGenomeGene` append extraction provenance
   records into `ProjectState.metadata["provenance"]["genome_extractions"]`
   (genome id, coordinates/query, source descriptors, and checksums when present).

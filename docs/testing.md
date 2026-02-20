@@ -14,7 +14,8 @@ rendering correctness.
 
 Scope:
 
-- operation semantics (`LoadFile`, `Digest`, `Ligation`, `Pcr`, `ExtractRegion`)
+- operation semantics (`LoadFile`, `Digest`, `Ligation`, `Pcr`, `ExtractRegion`,
+  `FilterByDesignConstraints`)
 - structured errors/warnings
 - deterministic operation log shape
 - display toggle operations (`SetDisplayVisibility`)
@@ -82,6 +83,8 @@ Suggested snapshot folders:
 - linear strand direction correctness
 - restriction site label crowding
 - circular zero-point crossing features
+- design-constraint filter pass/fail cases (GC bounds, homopolymer cap, U6
+  `TTTT` rejection, forbidden motifs)
 
 ## 5. Regression gates
 

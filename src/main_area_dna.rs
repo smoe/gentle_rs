@@ -428,7 +428,7 @@ impl MainAreaDna {
             sq_avoid_u6_tttt: true,
             sq_forbidden_motifs: String::new(),
             sq_unique: false,
-            sq_output_prefix: "sq".to_string(),
+            sq_output_prefix: "design".to_string(),
             pcr_forward: String::new(),
             pcr_reverse: String::new(),
             pcr_unique: false,
@@ -1182,7 +1182,7 @@ impl MainAreaDna {
                 });
 
                 ui.horizontal(|ui| {
-                    ui.label("SeqQ inputs");
+                    ui.label("Design inputs");
                     ui.text_edit_singleline(&mut self.sq_inputs_text);
                     ui.label("prefix");
                     ui.text_edit_singleline(&mut self.sq_output_prefix);
@@ -1200,9 +1200,9 @@ impl MainAreaDna {
                     ui.checkbox(&mut self.sq_avoid_u6_tttt, "Avoid U6 TTTT");
                     ui.checkbox(&mut self.sq_unique, "Unique");
                     if ui
-                        .button("Filter SeqQ")
+                        .button("Filter Design")
                         .on_hover_text(
-                            "Practical sequence filters: GC bounds, homopolymers, U6 TTTT avoidance, forbidden motifs",
+                            "Design constraints: GC bounds, homopolymers, U6 TTTT avoidance, forbidden motifs",
                         )
                         .clicked()
                     {
@@ -1212,7 +1212,7 @@ impl MainAreaDna {
                             self.sq_gc_min
                                 .parse::<f64>()
                                 .map(Some)
-                                .map_err(|_| "Invalid SeqQ GC min".to_string())
+                                .map_err(|_| "Invalid design GC min".to_string())
                         };
                         let parsed_gc_max = if self.sq_gc_max.trim().is_empty() {
                             Ok(None)
@@ -1220,7 +1220,7 @@ impl MainAreaDna {
                             self.sq_gc_max
                                 .parse::<f64>()
                                 .map(Some)
-                                .map_err(|_| "Invalid SeqQ GC max".to_string())
+                                .map_err(|_| "Invalid design GC max".to_string())
                         };
                         let parsed_max_homopolymer_run =
                             if self.sq_max_homopolymer_run.trim().is_empty() {
@@ -1229,7 +1229,7 @@ impl MainAreaDna {
                                 self.sq_max_homopolymer_run
                                     .parse::<usize>()
                                     .map(Some)
-                                    .map_err(|_| "Invalid SeqQ max homopolymer run".to_string())
+                                    .map_err(|_| "Invalid design max homopolymer run".to_string())
                             };
                         match (parsed_gc_min, parsed_gc_max, parsed_max_homopolymer_run) {
                             (Ok(gc_min), Ok(gc_max), Ok(max_homopolymer_run)) => {
@@ -1239,7 +1239,7 @@ impl MainAreaDna {
                                     Some(self.sq_output_prefix.trim().to_string())
                                 };
                                 self.apply_operation_with_feedback(
-                                    Operation::FilterBySequenceQuality {
+                                    Operation::FilterByDesignConstraints {
                                         inputs: Self::parse_ids(&self.sq_inputs_text),
                                         gc_min,
                                         gc_max,

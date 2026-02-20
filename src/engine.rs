@@ -17,9 +17,11 @@ use crate::{
     tf_motifs, DNA_LADDERS, RNA_LADDERS,
 };
 use flate2::read::GzDecoder;
+use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
+    cmp::Ordering,
     collections::hash_map::DefaultHasher,
     collections::{BTreeSet, HashMap, HashSet},
     env,
@@ -43,8 +45,11 @@ const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
 pub const GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY: &str = "genome_bed_track_subscriptions";
 const GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY: &str = "genome_track_autosync_known_anchors";
+pub const CANDIDATE_SETS_METADATA_KEY: &str = "candidate_sets";
+const CANDIDATE_SETS_SCHEMA: &str = "gentle.candidate_sets.v1";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
+const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
@@ -317,6 +322,7 @@ pub enum GenomeTrackSource {
     #[default]
     Bed,
     BigWig,
+    Vcf,
 }
 
 impl GenomeTrackSource {
@@ -324,6 +330,8 @@ impl GenomeTrackSource {
         let lower = path.trim().to_ascii_lowercase();
         if lower.ends_with(".bw") || lower.ends_with(".bigwig") {
             Self::BigWig
+        } else if lower.ends_with(".vcf") || lower.ends_with(".vcf.gz") {
+            Self::Vcf
         } else {
             Self::Bed
         }
@@ -333,6 +341,7 @@ impl GenomeTrackSource {
         match self {
             Self::Bed => "BED",
             Self::BigWig => "BigWig",
+            Self::Vcf => "VCF",
         }
     }
 }
@@ -369,6 +378,67 @@ pub struct GenomeTrackSyncReport {
     pub failed_imports: usize,
     pub warnings_count: usize,
     pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CandidateStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    sets: HashMap<String, CandidateSet>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CandidateSet {
+    pub name: String,
+    pub created_at_unix_ms: u128,
+    pub source_seq_ids: Vec<String>,
+    pub candidates: Vec<CandidateRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct CandidateRecord {
+    pub seq_id: String,
+    pub start_0based: usize,
+    pub end_0based: usize,
+    pub sequence: String,
+    pub metrics: HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateSetSummary {
+    pub name: String,
+    pub created_at_unix_ms: u128,
+    pub source_seq_ids: Vec<String>,
+    pub candidate_count: usize,
+    pub metrics: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateMetricSummary {
+    pub metric: String,
+    pub present_in_candidates: usize,
+    pub missing_in_candidates: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateSetOperator {
+    Union,
+    Intersect,
+    Subtract,
+}
+
+impl CandidateSetOperator {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Union => "union",
+            Self::Intersect => "intersect",
+            Self::Subtract => "subtract",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -459,6 +529,14 @@ pub enum Operation {
         clear_existing: Option<bool>,
     },
     ImportGenomeBigWigTrack {
+        seq_id: SeqId,
+        path: String,
+        track_name: Option<String>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: Option<bool>,
+    },
+    ImportGenomeVcfTrack {
         seq_id: SeqId,
         path: String,
         track_name: Option<String>,
@@ -570,7 +648,8 @@ pub enum Operation {
         unique: bool,
         output_prefix: Option<String>,
     },
-    FilterBySequenceQuality {
+    #[serde(alias = "FilterBySequenceQuality")]
+    FilterByDesignConstraints {
         inputs: Vec<SeqId>,
         gc_min: Option<f64>,
         gc_max: Option<f64>,
@@ -581,6 +660,47 @@ pub enum Operation {
         forbidden_motifs: Vec<String>,
         unique: bool,
         output_prefix: Option<String>,
+    },
+    GenerateCandidateSet {
+        set_name: String,
+        seq_id: SeqId,
+        length_bp: usize,
+        step_bp: usize,
+        #[serde(default)]
+        feature_kinds: Vec<String>,
+        feature_label_regex: Option<String>,
+        max_distance_bp: Option<usize>,
+        limit: Option<usize>,
+    },
+    DeleteCandidateSet {
+        set_name: String,
+    },
+    ScoreCandidateSetExpression {
+        set_name: String,
+        metric: String,
+        expression: String,
+    },
+    ScoreCandidateSetDistance {
+        set_name: String,
+        metric: String,
+        #[serde(default)]
+        feature_kinds: Vec<String>,
+        feature_label_regex: Option<String>,
+    },
+    FilterCandidateSet {
+        input_set: String,
+        output_set: String,
+        metric: String,
+        min: Option<f64>,
+        max: Option<f64>,
+        min_quantile: Option<f64>,
+        max_quantile: Option<f64>,
+    },
+    CandidateSetOp {
+        op: CandidateSetOperator,
+        left_set: String,
+        right_set: String,
+        output_set: String,
     },
     Reverse {
         input: SeqId,
@@ -769,6 +889,18 @@ struct BedRecord {
     strand: Option<char>,
 }
 
+#[derive(Debug, Clone)]
+struct VcfRecord {
+    chromosome: String,
+    pos_1based: usize,
+    id: Option<String>,
+    reference: String,
+    alternates: Vec<String>,
+    qual: Option<f64>,
+    filter: Option<String>,
+    info: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct GenomeBedTrackImportReport {
     track_name: String,
@@ -782,6 +914,164 @@ struct GenomeBedTrackImportReport {
     skipped_outside_score_range: usize,
     truncated_at_limit: bool,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct FeatureInterval {
+    kind_upper: String,
+    labels_upper: Vec<String>,
+    start_0based: usize,
+    end_0based: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ExpressionToken {
+    Number(f64),
+    Ident(String),
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    LParen,
+    RParen,
+    Comma,
+}
+
+#[derive(Debug, Clone)]
+enum MetricExpr {
+    Number(f64),
+    Variable(String),
+    UnaryMinus(Box<MetricExpr>),
+    Binary {
+        op: ExpressionBinaryOp,
+        left: Box<MetricExpr>,
+        right: Box<MetricExpr>,
+    },
+    Function {
+        name: String,
+        args: Vec<MetricExpr>,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExpressionBinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
+struct MetricExpressionParser {
+    tokens: Vec<ExpressionToken>,
+    index: usize,
+}
+
+impl MetricExpressionParser {
+    fn new(tokens: Vec<ExpressionToken>) -> Self {
+        Self { tokens, index: 0 }
+    }
+
+    fn parse(mut self) -> Result<MetricExpr, String> {
+        let expr = self.parse_add_sub()?;
+        if self.index != self.tokens.len() {
+            return Err("Unexpected trailing expression tokens".to_string());
+        }
+        Ok(expr)
+    }
+
+    fn peek(&self) -> Option<&ExpressionToken> {
+        self.tokens.get(self.index)
+    }
+
+    fn consume(&mut self) -> Option<ExpressionToken> {
+        let token = self.tokens.get(self.index).cloned();
+        if token.is_some() {
+            self.index += 1;
+        }
+        token
+    }
+
+    fn parse_add_sub(&mut self) -> Result<MetricExpr, String> {
+        let mut expr = self.parse_mul_div()?;
+        loop {
+            let op = match self.peek() {
+                Some(ExpressionToken::Plus) => ExpressionBinaryOp::Add,
+                Some(ExpressionToken::Minus) => ExpressionBinaryOp::Subtract,
+                _ => break,
+            };
+            let _ = self.consume();
+            let rhs = self.parse_mul_div()?;
+            expr = MetricExpr::Binary {
+                op,
+                left: Box::new(expr),
+                right: Box::new(rhs),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_mul_div(&mut self) -> Result<MetricExpr, String> {
+        let mut expr = self.parse_unary()?;
+        loop {
+            let op = match self.peek() {
+                Some(ExpressionToken::Star) => ExpressionBinaryOp::Multiply,
+                Some(ExpressionToken::Slash) => ExpressionBinaryOp::Divide,
+                _ => break,
+            };
+            let _ = self.consume();
+            let rhs = self.parse_unary()?;
+            expr = MetricExpr::Binary {
+                op,
+                left: Box::new(expr),
+                right: Box::new(rhs),
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_unary(&mut self) -> Result<MetricExpr, String> {
+        if matches!(self.peek(), Some(ExpressionToken::Minus)) {
+            let _ = self.consume();
+            return Ok(MetricExpr::UnaryMinus(Box::new(self.parse_unary()?)));
+        }
+        self.parse_primary()
+    }
+
+    fn parse_primary(&mut self) -> Result<MetricExpr, String> {
+        match self.consume() {
+            Some(ExpressionToken::Number(value)) => Ok(MetricExpr::Number(value)),
+            Some(ExpressionToken::Ident(name)) => {
+                if matches!(self.peek(), Some(ExpressionToken::LParen)) {
+                    let _ = self.consume();
+                    let mut args = vec![];
+                    if !matches!(self.peek(), Some(ExpressionToken::RParen)) {
+                        loop {
+                            args.push(self.parse_add_sub()?);
+                            if matches!(self.peek(), Some(ExpressionToken::Comma)) {
+                                let _ = self.consume();
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    if !matches!(self.consume(), Some(ExpressionToken::RParen)) {
+                        return Err(format!("Function '{}' is missing closing ')'", name));
+                    }
+                    Ok(MetricExpr::Function { name, args })
+                } else {
+                    Ok(MetricExpr::Variable(name))
+                }
+            }
+            Some(ExpressionToken::LParen) => {
+                let expr = self.parse_add_sub()?;
+                if !matches!(self.consume(), Some(ExpressionToken::RParen)) {
+                    return Err("Missing ')' in expression".to_string());
+                }
+                Ok(expr)
+            }
+            _ => Err("Unexpected token while parsing expression".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1117,6 +1407,7 @@ impl GentleEngine {
                 "ExtractGenomeGene".to_string(),
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
+                "ImportGenomeVcfTrack".to_string(),
                 "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
@@ -1132,7 +1423,13 @@ impl GentleEngine {
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
                 "FilterByMolecularWeight".to_string(),
-                "FilterBySequenceQuality".to_string(),
+                "FilterByDesignConstraints".to_string(),
+                "GenerateCandidateSet".to_string(),
+                "DeleteCandidateSet".to_string(),
+                "ScoreCandidateSetExpression".to_string(),
+                "ScoreCandidateSetDistance".to_string(),
+                "FilterCandidateSet".to_string(),
+                "CandidateSetOp".to_string(),
                 "Reverse".to_string(),
                 "Complement".to_string(),
                 "ReverseComplement".to_string(),
@@ -1910,6 +2207,14 @@ impl GentleEngine {
                 max_score: subscription.max_score,
                 clear_existing: Some(subscription.clear_existing),
             },
+            GenomeTrackSource::Vcf => Operation::ImportGenomeVcfTrack {
+                seq_id: seq_id.to_string(),
+                path: subscription.path.clone(),
+                track_name: subscription.track_name.clone(),
+                min_score: subscription.min_score,
+                max_score: subscription.max_score,
+                clear_existing: Some(subscription.clear_existing),
+            },
         }
     }
 
@@ -1945,6 +2250,1278 @@ impl GentleEngine {
             }
         }
         report
+    }
+
+    fn normalize_candidate_set_name(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Candidate set name cannot be empty".to_string(),
+            });
+        }
+        Ok(trimmed.to_string())
+    }
+
+    fn normalize_metric_name(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "metric".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn read_candidate_store_from_metadata(value: Option<&serde_json::Value>) -> CandidateStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<CandidateStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = CANDIDATE_SETS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_candidate_store(&self) -> CandidateStore {
+        Self::read_candidate_store_from_metadata(
+            self.state.metadata.get(CANDIDATE_SETS_METADATA_KEY),
+        )
+    }
+
+    fn write_candidate_store(&mut self, mut store: CandidateStore) -> Result<(), EngineError> {
+        if store.sets.is_empty() {
+            self.state.metadata.remove(CANDIDATE_SETS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = CANDIDATE_SETS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize candidate-set metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn metric_names_for_candidate_set(set: &CandidateSet) -> Vec<String> {
+        let mut names = BTreeSet::new();
+        for candidate in &set.candidates {
+            for metric in candidate.metrics.keys() {
+                names.insert(metric.to_string());
+            }
+        }
+        names.into_iter().collect()
+    }
+
+    fn candidate_key(record: &CandidateRecord) -> String {
+        format!(
+            "{}:{}:{}:{}",
+            record.seq_id, record.start_0based, record.end_0based, record.sequence
+        )
+    }
+
+    pub fn list_candidate_sets(&self) -> Vec<CandidateSetSummary> {
+        let store = self.read_candidate_store();
+        let mut set_names: Vec<String> = store.sets.keys().cloned().collect();
+        set_names.sort();
+        set_names
+            .iter()
+            .filter_map(|name| store.sets.get(name))
+            .map(|set| CandidateSetSummary {
+                name: set.name.clone(),
+                created_at_unix_ms: set.created_at_unix_ms,
+                source_seq_ids: set.source_seq_ids.clone(),
+                candidate_count: set.candidates.len(),
+                metrics: Self::metric_names_for_candidate_set(set),
+            })
+            .collect()
+    }
+
+    pub fn inspect_candidate_set_page(
+        &self,
+        set_name: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(CandidateSet, usize, usize), EngineError> {
+        if limit == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Candidate page limit must be >= 1".to_string(),
+            });
+        }
+        let set_name = Self::normalize_candidate_set_name(set_name)?;
+        let store = self.read_candidate_store();
+        let mut set = store
+            .sets
+            .get(&set_name)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate set '{}' not found", set_name),
+            })?;
+        let total = set.candidates.len();
+        let clamped_offset = offset.min(total);
+        set.candidates = set
+            .candidates
+            .into_iter()
+            .skip(clamped_offset)
+            .take(limit)
+            .collect();
+        Ok((set, total, clamped_offset))
+    }
+
+    pub fn list_candidate_set_metrics(
+        &self,
+        set_name: &str,
+    ) -> Result<Vec<CandidateMetricSummary>, EngineError> {
+        let set_name = Self::normalize_candidate_set_name(set_name)?;
+        let store = self.read_candidate_store();
+        let set = store.sets.get(&set_name).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Candidate set '{}' not found", set_name),
+        })?;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for candidate in &set.candidates {
+            for metric in candidate.metrics.keys() {
+                *counts.entry(metric.to_string()).or_insert(0) += 1;
+            }
+        }
+        let mut summaries = counts
+            .into_iter()
+            .map(|(metric, present_in_candidates)| CandidateMetricSummary {
+                metric,
+                present_in_candidates,
+                missing_in_candidates: set.candidates.len().saturating_sub(present_in_candidates),
+            })
+            .collect::<Vec<_>>();
+        summaries.sort_by(|a, b| a.metric.cmp(&b.metric));
+        Ok(summaries)
+    }
+
+    fn sequence_base_counts(sequence: &[u8]) -> (usize, usize, usize, usize, usize) {
+        let mut a = 0usize;
+        let mut c = 0usize;
+        let mut g = 0usize;
+        let mut t = 0usize;
+        for b in sequence {
+            match b.to_ascii_uppercase() {
+                b'A' => a += 1,
+                b'C' => c += 1,
+                b'G' => g += 1,
+                b'T' => t += 1,
+                _ => {}
+            }
+        }
+        let canonical = a + c + g + t;
+        (a, c, g, t, canonical)
+    }
+
+    fn approximate_molecular_weight_da(sequence: &[u8]) -> f64 {
+        let mut total = 0.0;
+        for b in sequence {
+            total += match b.to_ascii_uppercase() {
+                b'A' => 313.21,
+                b'C' => 289.18,
+                b'G' => 329.21,
+                b'T' => 304.20,
+                _ => 0.0,
+            };
+        }
+        total
+    }
+
+    fn feature_labels_upper(feature: &gb_io::seq::Feature) -> Vec<String> {
+        let mut labels = vec![];
+        for key in [
+            "label",
+            "gene",
+            "gene_name",
+            "locus_tag",
+            "product",
+            "standard_name",
+            "note",
+        ] {
+            for value in feature.qualifier_values(key.into()) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    labels.push(trimmed.to_ascii_uppercase());
+                }
+            }
+        }
+        labels
+    }
+
+    fn collect_feature_intervals(dna: &DNAsequence) -> Vec<FeatureInterval> {
+        let mut out = vec![];
+        for feature in dna.features() {
+            if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
+                continue;
+            }
+            let Ok((from, to)) = feature.location.find_bounds() else {
+                continue;
+            };
+            if from < 0 || to < 0 {
+                continue;
+            }
+            let start = from.min(to) as usize;
+            let end_inclusive = from.max(to) as usize;
+            if dna.is_empty() || start >= dna.len() {
+                continue;
+            }
+            let end_0based = end_inclusive.saturating_add(1).min(dna.len());
+            if end_0based <= start {
+                continue;
+            }
+            out.push(FeatureInterval {
+                kind_upper: feature.kind.to_string().to_ascii_uppercase(),
+                labels_upper: Self::feature_labels_upper(feature),
+                start_0based: start,
+                end_0based,
+            });
+        }
+        out
+    }
+
+    fn compile_optional_regex(
+        pattern: &Option<String>,
+        option_name: &str,
+    ) -> Result<Option<Regex>, EngineError> {
+        let Some(raw) = pattern else {
+            return Ok(None);
+        };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        RegexBuilder::new(trimmed)
+            .case_insensitive(true)
+            .build()
+            .map(Some)
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Invalid {option_name} regex '{}': {}", trimmed, e),
+            })
+    }
+
+    fn feature_matches_filter(
+        feature: &FeatureInterval,
+        kind_filter_upper: &[String],
+        label_regex: Option<&Regex>,
+    ) -> bool {
+        let kind_ok = kind_filter_upper.is_empty()
+            || kind_filter_upper
+                .iter()
+                .any(|kind| feature.kind_upper == *kind);
+        if !kind_ok {
+            return false;
+        }
+        if let Some(regex) = label_regex {
+            feature
+                .labels_upper
+                .iter()
+                .any(|label| regex.is_match(label))
+        } else {
+            true
+        }
+    }
+
+    fn interval_distance(
+        left_start: usize,
+        left_end: usize,
+        right_start: usize,
+        right_end: usize,
+    ) -> usize {
+        if left_end <= right_start {
+            right_start.saturating_sub(left_end)
+        } else if right_end <= left_start {
+            left_start.saturating_sub(right_end)
+        } else {
+            0
+        }
+    }
+
+    fn nearest_feature_distance(
+        candidate_start: usize,
+        candidate_end: usize,
+        features: &[FeatureInterval],
+        kind_filter_upper: &[String],
+        label_regex: Option<&Regex>,
+    ) -> Option<usize> {
+        features
+            .iter()
+            .filter(|feature| Self::feature_matches_filter(feature, kind_filter_upper, label_regex))
+            .map(|feature| {
+                Self::interval_distance(
+                    candidate_start,
+                    candidate_end,
+                    feature.start_0based,
+                    feature.end_0based,
+                )
+            })
+            .min()
+    }
+
+    fn compute_candidate_metrics(
+        sequence: &[u8],
+        start_0based: usize,
+        end_0based: usize,
+        source_len: usize,
+        nearest_feature_distance_bp: Option<usize>,
+    ) -> HashMap<String, f64> {
+        let mut metrics = HashMap::new();
+        let length_bp = end_0based.saturating_sub(start_0based);
+        let (count_a, count_c, count_g, count_t, canonical) = Self::sequence_base_counts(sequence);
+        metrics.insert("length_bp".to_string(), length_bp as f64);
+        metrics.insert(
+            "molecular_weight_da".to_string(),
+            Self::approximate_molecular_weight_da(sequence),
+        );
+        metrics.insert("distance_to_seq_start_bp".to_string(), start_0based as f64);
+        metrics.insert(
+            "distance_to_seq_end_bp".to_string(),
+            source_len.saturating_sub(end_0based) as f64,
+        );
+        metrics.insert("count_a".to_string(), count_a as f64);
+        metrics.insert("count_c".to_string(), count_c as f64);
+        metrics.insert("count_g".to_string(), count_g as f64);
+        metrics.insert("count_t".to_string(), count_t as f64);
+        if canonical > 0 {
+            let canonical_f = canonical as f64;
+            metrics.insert(
+                "gc_fraction".to_string(),
+                (count_g + count_c) as f64 / canonical_f,
+            );
+            metrics.insert(
+                "at_fraction".to_string(),
+                (count_a + count_t) as f64 / canonical_f,
+            );
+            metrics.insert("a_fraction".to_string(), count_a as f64 / canonical_f);
+            metrics.insert("c_fraction".to_string(), count_c as f64 / canonical_f);
+            metrics.insert("g_fraction".to_string(), count_g as f64 / canonical_f);
+            metrics.insert("t_fraction".to_string(), count_t as f64 / canonical_f);
+        }
+        if count_t > 0 {
+            metrics.insert("at_ratio".to_string(), count_a as f64 / count_t as f64);
+        }
+        if count_c > 0 {
+            metrics.insert("gc_ratio".to_string(), count_g as f64 / count_c as f64);
+        }
+        if let Some(distance) = nearest_feature_distance_bp {
+            metrics.insert(
+                "distance_to_nearest_feature_bp".to_string(),
+                distance as f64,
+            );
+        }
+        metrics.retain(|_, value| value.is_finite());
+        metrics
+    }
+
+    fn quantile_threshold(values: &[f64], quantile: f64) -> Option<f64> {
+        if values.is_empty() || !quantile.is_finite() || !(0.0..=1.0).contains(&quantile) {
+            return None;
+        }
+        let mut sorted = values.to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+        let max_idx = sorted.len().saturating_sub(1);
+        let idx = ((max_idx as f64) * quantile).round() as usize;
+        sorted.get(idx.min(max_idx)).copied()
+    }
+
+    fn tokenize_expression(expression: &str) -> Result<Vec<ExpressionToken>, EngineError> {
+        let bytes = expression.as_bytes();
+        let mut idx = 0usize;
+        let mut tokens = vec![];
+        while idx < bytes.len() {
+            let b = bytes[idx];
+            if b.is_ascii_whitespace() {
+                idx += 1;
+                continue;
+            }
+            match b {
+                b'+' => {
+                    tokens.push(ExpressionToken::Plus);
+                    idx += 1;
+                }
+                b'-' => {
+                    tokens.push(ExpressionToken::Minus);
+                    idx += 1;
+                }
+                b'*' => {
+                    tokens.push(ExpressionToken::Star);
+                    idx += 1;
+                }
+                b'/' => {
+                    tokens.push(ExpressionToken::Slash);
+                    idx += 1;
+                }
+                b'(' => {
+                    tokens.push(ExpressionToken::LParen);
+                    idx += 1;
+                }
+                b')' => {
+                    tokens.push(ExpressionToken::RParen);
+                    idx += 1;
+                }
+                b',' => {
+                    tokens.push(ExpressionToken::Comma);
+                    idx += 1;
+                }
+                _ if b.is_ascii_digit() || b == b'.' => {
+                    let start = idx;
+                    idx += 1;
+                    while idx < bytes.len()
+                        && (bytes[idx].is_ascii_digit()
+                            || bytes[idx] == b'.'
+                            || matches!(bytes[idx], b'e' | b'E' | b'+' | b'-'))
+                    {
+                        if matches!(bytes[idx], b'+' | b'-') {
+                            let prev = bytes[idx.saturating_sub(1)];
+                            if !matches!(prev, b'e' | b'E') {
+                                break;
+                            }
+                        }
+                        idx += 1;
+                    }
+                    let raw = &expression[start..idx];
+                    let value = raw.parse::<f64>().map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Invalid numeric literal '{}': {}", raw, e),
+                    })?;
+                    tokens.push(ExpressionToken::Number(value));
+                }
+                _ if b.is_ascii_alphabetic() || b == b'_' => {
+                    let start = idx;
+                    idx += 1;
+                    while idx < bytes.len()
+                        && (bytes[idx].is_ascii_alphanumeric() || bytes[idx] == b'_')
+                    {
+                        idx += 1;
+                    }
+                    tokens.push(ExpressionToken::Ident(expression[start..idx].to_string()));
+                }
+                _ => {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Unsupported character '{}' in expression", b as char),
+                    })
+                }
+            }
+        }
+        if tokens.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Expression is empty".to_string(),
+            });
+        }
+        Ok(tokens)
+    }
+
+    fn parse_metric_expression(expression: &str) -> Result<MetricExpr, EngineError> {
+        let tokens = Self::tokenize_expression(expression)?;
+        MetricExpressionParser::new(tokens)
+            .parse()
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Invalid score expression: {e}"),
+            })
+    }
+
+    fn evaluate_metric_expression(
+        expr: &MetricExpr,
+        metrics: &HashMap<String, f64>,
+    ) -> Result<f64, EngineError> {
+        match expr {
+            MetricExpr::Number(value) => Ok(*value),
+            MetricExpr::Variable(name) => {
+                if let Some(value) = metrics.get(name) {
+                    return Ok(*value);
+                }
+                let normalized = Self::normalize_metric_name(name);
+                metrics
+                    .get(&normalized)
+                    .copied()
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Expression references unknown metric '{}'", name),
+                    })
+            }
+            MetricExpr::UnaryMinus(inner) => Ok(-Self::evaluate_metric_expression(inner, metrics)?),
+            MetricExpr::Binary { op, left, right } => {
+                let lhs = Self::evaluate_metric_expression(left, metrics)?;
+                let rhs = Self::evaluate_metric_expression(right, metrics)?;
+                let value = match op {
+                    ExpressionBinaryOp::Add => lhs + rhs,
+                    ExpressionBinaryOp::Subtract => lhs - rhs,
+                    ExpressionBinaryOp::Multiply => lhs * rhs,
+                    ExpressionBinaryOp::Divide => {
+                        if rhs.abs() < f64::EPSILON {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Expression division by zero".to_string(),
+                            });
+                        }
+                        lhs / rhs
+                    }
+                };
+                if value.is_finite() {
+                    Ok(value)
+                } else {
+                    Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "Expression produced a non-finite value".to_string(),
+                    })
+                }
+            }
+            MetricExpr::Function { name, args } => {
+                let normalized = name.trim().to_ascii_lowercase();
+                let value = match normalized.as_str() {
+                    "abs" => {
+                        if args.len() != 1 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function abs() expects exactly 1 argument".to_string(),
+                            });
+                        }
+                        Self::evaluate_metric_expression(&args[0], metrics)?.abs()
+                    }
+                    "sqrt" => {
+                        if args.len() != 1 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function sqrt() expects exactly 1 argument".to_string(),
+                            });
+                        }
+                        let x = Self::evaluate_metric_expression(&args[0], metrics)?;
+                        if x < 0.0 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function sqrt() requires non-negative input".to_string(),
+                            });
+                        }
+                        x.sqrt()
+                    }
+                    "log" => {
+                        if args.len() != 1 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function log() expects exactly 1 argument".to_string(),
+                            });
+                        }
+                        let x = Self::evaluate_metric_expression(&args[0], metrics)?;
+                        if x <= 0.0 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function log() requires positive input".to_string(),
+                            });
+                        }
+                        x.ln()
+                    }
+                    "exp" => {
+                        if args.len() != 1 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function exp() expects exactly 1 argument".to_string(),
+                            });
+                        }
+                        Self::evaluate_metric_expression(&args[0], metrics)?.exp()
+                    }
+                    "min" => {
+                        if args.len() != 2 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function min() expects exactly 2 arguments".to_string(),
+                            });
+                        }
+                        let a = Self::evaluate_metric_expression(&args[0], metrics)?;
+                        let b = Self::evaluate_metric_expression(&args[1], metrics)?;
+                        a.min(b)
+                    }
+                    "max" => {
+                        if args.len() != 2 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function max() expects exactly 2 arguments".to_string(),
+                            });
+                        }
+                        let a = Self::evaluate_metric_expression(&args[0], metrics)?;
+                        let b = Self::evaluate_metric_expression(&args[1], metrics)?;
+                        a.max(b)
+                    }
+                    "pow" => {
+                        if args.len() != 2 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function pow() expects exactly 2 arguments".to_string(),
+                            });
+                        }
+                        let a = Self::evaluate_metric_expression(&args[0], metrics)?;
+                        let b = Self::evaluate_metric_expression(&args[1], metrics)?;
+                        a.powf(b)
+                    }
+                    "clamp" => {
+                        if args.len() != 3 {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function clamp() expects exactly 3 arguments".to_string(),
+                            });
+                        }
+                        let x = Self::evaluate_metric_expression(&args[0], metrics)?;
+                        let lo = Self::evaluate_metric_expression(&args[1], metrics)?;
+                        let hi = Self::evaluate_metric_expression(&args[2], metrics)?;
+                        if lo > hi {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "Function clamp() requires lo <= hi".to_string(),
+                            });
+                        }
+                        x.max(lo).min(hi)
+                    }
+                    _ => {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("Unknown expression function '{}'", name),
+                        })
+                    }
+                };
+                if value.is_finite() {
+                    Ok(value)
+                } else {
+                    Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("Function '{}' produced a non-finite value", name),
+                    })
+                }
+            }
+        }
+    }
+
+    fn op_generate_candidate_set(
+        &mut self,
+        set_name: String,
+        seq_id: SeqId,
+        length_bp: usize,
+        step_bp: usize,
+        feature_kinds: Vec<String>,
+        feature_label_regex: Option<String>,
+        max_distance_bp: Option<usize>,
+        limit: Option<usize>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let set_name = Self::normalize_candidate_set_name(&set_name)?;
+        if length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSet requires length_bp >= 1".to_string(),
+            });
+        }
+        if step_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSet requires step_bp >= 1".to_string(),
+            });
+        }
+        let limit = limit.unwrap_or(self.max_fragments_per_container());
+        if limit == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSet requires limit >= 1".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(&seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        if dna.len() < length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "GenerateCandidateSet length_bp {} exceeds sequence '{}' length {}",
+                    length_bp,
+                    seq_id,
+                    dna.len()
+                ),
+            });
+        }
+        let label_regex =
+            Self::compile_optional_regex(&feature_label_regex, "feature_label_regex")?;
+        let mut kind_filter_upper = feature_kinds
+            .iter()
+            .map(|kind| kind.trim().to_ascii_uppercase())
+            .filter(|kind| !kind.is_empty())
+            .collect::<Vec<_>>();
+        kind_filter_upper.sort();
+        kind_filter_upper.dedup();
+        let feature_intervals = Self::collect_feature_intervals(dna);
+        let matching_feature_count = feature_intervals
+            .iter()
+            .filter(|feature| {
+                Self::feature_matches_filter(feature, &kind_filter_upper, label_regex.as_ref())
+            })
+            .count();
+        if (!kind_filter_upper.is_empty() || label_regex.is_some() || max_distance_bp.is_some())
+            && matching_feature_count == 0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No features matched feature filters while generating candidate set"
+                    .to_string(),
+            });
+        }
+
+        let mut candidates = vec![];
+        let mut considered = 0usize;
+        let mut truncated = false;
+        let upper = dna.len().saturating_sub(length_bp);
+        let mut start = 0usize;
+        while start <= upper {
+            let end = start + length_bp;
+            considered += 1;
+            let distance_any =
+                Self::nearest_feature_distance(start, end, &feature_intervals, &[], None);
+            let distance_filtered = Self::nearest_feature_distance(
+                start,
+                end,
+                &feature_intervals,
+                &kind_filter_upper,
+                label_regex.as_ref(),
+            );
+            let selected_distance = if !kind_filter_upper.is_empty() || label_regex.is_some() {
+                distance_filtered
+            } else {
+                distance_any
+            };
+            if let Some(max_distance) = max_distance_bp {
+                let Some(distance) = selected_distance else {
+                    start = start.saturating_add(step_bp);
+                    continue;
+                };
+                if distance > max_distance {
+                    start = start.saturating_add(step_bp);
+                    continue;
+                }
+            }
+
+            let Some(fragment) = dna.get_range_safe(start..end) else {
+                start = start.saturating_add(step_bp);
+                continue;
+            };
+            let sequence = String::from_utf8_lossy(&fragment).to_string();
+            let mut metrics =
+                Self::compute_candidate_metrics(&fragment, start, end, dna.len(), distance_any);
+            if let Some(distance) = selected_distance {
+                metrics.insert(
+                    "distance_to_filtered_feature_bp".to_string(),
+                    distance as f64,
+                );
+            }
+            candidates.push(CandidateRecord {
+                seq_id: seq_id.clone(),
+                start_0based: start,
+                end_0based: end,
+                sequence,
+                metrics,
+            });
+            if candidates.len() >= limit {
+                truncated = true;
+                break;
+            }
+            start = start.saturating_add(step_bp);
+        }
+        if candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No candidates matched generation constraints".to_string(),
+            });
+        }
+        let generated = candidates.len();
+        let mut store = self.read_candidate_store();
+        let replaced_existing = store
+            .sets
+            .insert(
+                set_name.clone(),
+                CandidateSet {
+                    name: set_name.clone(),
+                    created_at_unix_ms: Self::now_unix_ms(),
+                    source_seq_ids: vec![seq_id.clone()],
+                    candidates,
+                },
+            )
+            .is_some();
+        let metric_names = store
+            .sets
+            .get(&set_name)
+            .map(Self::metric_names_for_candidate_set)
+            .unwrap_or_default();
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Generated candidate set '{}' from '{}' ({} candidates, {} windows considered)",
+            set_name, seq_id, generated, considered
+        ));
+        if truncated {
+            result.warnings.push(format!(
+                "Candidate generation for '{}' was truncated at limit={}",
+                set_name, limit
+            ));
+        }
+        if replaced_existing {
+            result.warnings.push(format!(
+                "Candidate set '{}' replaced existing set",
+                set_name
+            ));
+        }
+        if !metric_names.is_empty() {
+            result.messages.push(format!(
+                "Candidate set '{}' metrics: {}",
+                set_name,
+                metric_names.join(", ")
+            ));
+        }
+        if matching_feature_count > 0 {
+            result.messages.push(format!(
+                "Candidate set '{}' matching feature count: {}",
+                set_name, matching_feature_count
+            ));
+        }
+        Ok(())
+    }
+
+    fn op_delete_candidate_set(
+        &mut self,
+        set_name: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let set_name = Self::normalize_candidate_set_name(&set_name)?;
+        let mut store = self.read_candidate_store();
+        let removed = store.sets.remove(&set_name).is_some();
+        self.write_candidate_store(store)?;
+        if removed {
+            result
+                .messages
+                .push(format!("Deleted candidate set '{}'", set_name));
+        } else {
+            result
+                .warnings
+                .push(format!("Candidate set '{}' was not present", set_name));
+        }
+        Ok(())
+    }
+
+    fn op_score_candidate_set_expression(
+        &mut self,
+        set_name: String,
+        metric: String,
+        expression: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let set_name = Self::normalize_candidate_set_name(&set_name)?;
+        let metric_name = Self::normalize_metric_name(&metric);
+        let expr = Self::parse_metric_expression(&expression)?;
+        let mut store = self.read_candidate_store();
+        let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Candidate set '{}' not found", set_name),
+        })?;
+        if set.candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Candidate set '{}' is empty", set_name),
+            });
+        }
+        let mut values = Vec::with_capacity(set.candidates.len());
+        for (idx, candidate) in set.candidates.iter().enumerate() {
+            let value =
+                Self::evaluate_metric_expression(&expr, &candidate.metrics).map_err(|e| {
+                    EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not evaluate expression for candidate {} in '{}': {}",
+                            idx, set_name, e.message
+                        ),
+                    }
+                })?;
+            values.push(value);
+        }
+        for (candidate, value) in set.candidates.iter_mut().zip(values.iter()) {
+            candidate.metrics.insert(metric_name.clone(), *value);
+        }
+        let min_value = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_value = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Scored candidate set '{}' with metric '{}' from expression '{}'",
+            set_name, metric_name, expression
+        ));
+        result.messages.push(format!(
+            "Metric '{}' range in '{}': [{:.6}, {:.6}]",
+            metric_name, set_name, min_value, max_value
+        ));
+        Ok(())
+    }
+
+    fn op_score_candidate_set_distance(
+        &mut self,
+        set_name: String,
+        metric: String,
+        feature_kinds: Vec<String>,
+        feature_label_regex: Option<String>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let set_name = Self::normalize_candidate_set_name(&set_name)?;
+        let metric_name = Self::normalize_metric_name(&metric);
+        let label_regex =
+            Self::compile_optional_regex(&feature_label_regex, "feature_label_regex")?;
+        let mut kind_filter_upper = feature_kinds
+            .iter()
+            .map(|kind| kind.trim().to_ascii_uppercase())
+            .filter(|kind| !kind.is_empty())
+            .collect::<Vec<_>>();
+        kind_filter_upper.sort();
+        kind_filter_upper.dedup();
+
+        let mut store = self.read_candidate_store();
+        let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Candidate set '{}' not found", set_name),
+        })?;
+        if set.candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Candidate set '{}' is empty", set_name),
+            });
+        }
+
+        let mut feature_cache: HashMap<String, Vec<FeatureInterval>> = HashMap::new();
+        for seq_id in set
+            .candidates
+            .iter()
+            .map(|c| c.seq_id.clone())
+            .collect::<BTreeSet<_>>()
+        {
+            let Some(dna) = self.state.sequences.get(&seq_id) else {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message: format!(
+                        "Candidate set '{}' references missing sequence '{}'",
+                        set_name, seq_id
+                    ),
+                });
+            };
+            feature_cache.insert(seq_id.clone(), Self::collect_feature_intervals(dna));
+        }
+
+        let mut values = Vec::with_capacity(set.candidates.len());
+        for (idx, candidate) in set.candidates.iter().enumerate() {
+            let features = feature_cache
+                .get(&candidate.seq_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Missing feature cache for sequence '{}' while scoring candidate set '{}'",
+                        candidate.seq_id, set_name
+                    ),
+                })?;
+            let distance = Self::nearest_feature_distance(
+                candidate.start_0based,
+                candidate.end_0based,
+                features,
+                &kind_filter_upper,
+                label_regex.as_ref(),
+            )
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "No matching features found for candidate {} (seq='{}')",
+                    idx, candidate.seq_id
+                ),
+            })?;
+            values.push(distance as f64);
+        }
+
+        for (candidate, value) in set.candidates.iter_mut().zip(values.iter()) {
+            candidate.metrics.insert(metric_name.clone(), *value);
+        }
+        let min_value = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let max_value = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Scored candidate set '{}' with distance metric '{}'",
+            set_name, metric_name
+        ));
+        result.messages.push(format!(
+            "Metric '{}' range in '{}': [{:.6}, {:.6}]",
+            metric_name, set_name, min_value, max_value
+        ));
+        Ok(())
+    }
+
+    fn op_filter_candidate_set(
+        &mut self,
+        input_set: String,
+        output_set: String,
+        metric: String,
+        min: Option<f64>,
+        max: Option<f64>,
+        min_quantile: Option<f64>,
+        max_quantile: Option<f64>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let input_set = Self::normalize_candidate_set_name(&input_set)?;
+        let output_set = Self::normalize_candidate_set_name(&output_set)?;
+        let metric_name = Self::normalize_metric_name(&metric);
+        if min.zip(max).map(|(a, b)| a > b).unwrap_or(false) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "FilterCandidateSet requires min <= max".to_string(),
+            });
+        }
+        if min_quantile
+            .zip(max_quantile)
+            .map(|(a, b)| a > b)
+            .unwrap_or(false)
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "FilterCandidateSet requires min_quantile <= max_quantile".to_string(),
+            });
+        }
+        for (name, value) in [
+            ("min_quantile", min_quantile),
+            ("max_quantile", max_quantile),
+        ] {
+            if let Some(q) = value {
+                if !(0.0..=1.0).contains(&q) {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("FilterCandidateSet {} must be between 0 and 1", name),
+                    });
+                }
+            }
+        }
+        if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "FilterCandidateSet requires at least one bound or quantile".to_string(),
+            });
+        }
+
+        let mut store = self.read_candidate_store();
+        let input = store
+            .sets
+            .get(&input_set)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate set '{}' not found", input_set),
+            })?;
+        if input.candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Candidate set '{}' is empty", input_set),
+            });
+        }
+
+        let mut metric_values = Vec::with_capacity(input.candidates.len());
+        for (idx, candidate) in input.candidates.iter().enumerate() {
+            let value = candidate
+                .metrics
+                .get(&metric_name)
+                .copied()
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate {} in '{}' is missing metric '{}'",
+                        idx, input_set, metric_name
+                    ),
+                })?;
+            if !value.is_finite() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Candidate {} in '{}' has non-finite metric '{}'",
+                        idx, input_set, metric_name
+                    ),
+                });
+            }
+            metric_values.push(value);
+        }
+
+        let min_q_threshold =
+            min_quantile.and_then(|q| Self::quantile_threshold(&metric_values, q));
+        let max_q_threshold =
+            max_quantile.and_then(|q| Self::quantile_threshold(&metric_values, q));
+        let lower_bound = match (min, min_q_threshold) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+        let upper_bound = match (max, max_q_threshold) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+
+        let filtered_candidates = input
+            .candidates
+            .into_iter()
+            .filter(|candidate| {
+                let Some(value) = candidate.metrics.get(&metric_name).copied() else {
+                    return false;
+                };
+                if let Some(lo) = lower_bound {
+                    if value < lo {
+                        return false;
+                    }
+                }
+                if let Some(hi) = upper_bound {
+                    if value > hi {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<_>>();
+        let kept = filtered_candidates.len();
+        let dropped = metric_values.len().saturating_sub(kept);
+        let replaced_existing = store
+            .sets
+            .insert(
+                output_set.clone(),
+                CandidateSet {
+                    name: output_set.clone(),
+                    created_at_unix_ms: Self::now_unix_ms(),
+                    source_seq_ids: input.source_seq_ids.clone(),
+                    candidates: filtered_candidates,
+                },
+            )
+            .is_some();
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Filtered candidate set '{}' by metric '{}' into '{}' (kept {}, dropped {})",
+            input_set, metric_name, output_set, kept, dropped
+        ));
+        if replaced_existing {
+            result.warnings.push(format!(
+                "FilterCandidateSet output '{}' replaced existing candidate set",
+                output_set
+            ));
+        }
+        Ok(())
+    }
+
+    fn op_candidate_set_op(
+        &mut self,
+        op: CandidateSetOperator,
+        left_set: String,
+        right_set: String,
+        output_set: String,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let left_set = Self::normalize_candidate_set_name(&left_set)?;
+        let right_set = Self::normalize_candidate_set_name(&right_set)?;
+        let output_set = Self::normalize_candidate_set_name(&output_set)?;
+        let mut store = self.read_candidate_store();
+        let left = store
+            .sets
+            .get(&left_set)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate set '{}' not found", left_set),
+            })?;
+        let right = store
+            .sets
+            .get(&right_set)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Candidate set '{}' not found", right_set),
+            })?;
+        let mut output_candidates = vec![];
+        match op {
+            CandidateSetOperator::Union => {
+                let mut seen = HashSet::new();
+                for candidate in left.candidates.iter().chain(right.candidates.iter()) {
+                    let key = Self::candidate_key(candidate);
+                    if seen.insert(key) {
+                        output_candidates.push(candidate.clone());
+                    }
+                }
+            }
+            CandidateSetOperator::Intersect => {
+                let right_keys = right
+                    .candidates
+                    .iter()
+                    .map(Self::candidate_key)
+                    .collect::<HashSet<_>>();
+                for candidate in &left.candidates {
+                    if right_keys.contains(&Self::candidate_key(candidate)) {
+                        output_candidates.push(candidate.clone());
+                    }
+                }
+            }
+            CandidateSetOperator::Subtract => {
+                let right_keys = right
+                    .candidates
+                    .iter()
+                    .map(Self::candidate_key)
+                    .collect::<HashSet<_>>();
+                for candidate in &left.candidates {
+                    if !right_keys.contains(&Self::candidate_key(candidate)) {
+                        output_candidates.push(candidate.clone());
+                    }
+                }
+            }
+        }
+        let mut source_seq_ids = left.source_seq_ids.clone();
+        source_seq_ids.extend(right.source_seq_ids.clone());
+        source_seq_ids.sort();
+        source_seq_ids.dedup();
+        let output_count = output_candidates.len();
+        let replaced_existing = store
+            .sets
+            .insert(
+                output_set.clone(),
+                CandidateSet {
+                    name: output_set.clone(),
+                    created_at_unix_ms: Self::now_unix_ms(),
+                    source_seq_ids,
+                    candidates: output_candidates,
+                },
+            )
+            .is_some();
+        self.write_candidate_store(store)?;
+        result.messages.push(format!(
+            "Candidate set {} '{}' and '{}' into '{}' ({} candidates)",
+            op.as_str(),
+            left_set,
+            right_set,
+            output_set,
+            output_count
+        ));
+        if replaced_existing {
+            result.warnings.push(format!(
+                "CandidateSetOp output '{}' replaced existing candidate set",
+                output_set
+            ));
+        }
+        Ok(())
     }
 
     fn latest_genome_anchor_for_seq(
@@ -2053,6 +3630,12 @@ impl GentleEngine {
             .any(|v| v.eq_ignore_ascii_case(GENOME_BIGWIG_TRACK_GENERATED_TAG))
     }
 
+    fn is_generated_genome_vcf_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|v| v.eq_ignore_ascii_case(GENOME_VCF_TRACK_GENERATED_TAG))
+    }
+
     fn is_generated_blast_hit_feature(feature: &gb_io::seq::Feature) -> bool {
         feature
             .qualifier_values("gentle_generated".into())
@@ -2062,6 +3645,7 @@ impl GentleEngine {
     fn is_generated_genome_signal_feature(feature: &gb_io::seq::Feature) -> bool {
         Self::is_generated_genome_bed_feature(feature)
             || Self::is_generated_genome_bigwig_feature(feature)
+            || Self::is_generated_genome_vcf_feature(feature)
     }
 
     fn remove_generated_genome_signal_features(features: &mut Vec<gb_io::seq::Feature>) {
@@ -2090,19 +3674,23 @@ impl GentleEngine {
         let file_name = Path::new(path)
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("bed_track");
+            .unwrap_or("track");
         let without_gz = file_name
             .strip_suffix(".gz")
             .or_else(|| file_name.strip_suffix(".GZ"))
             .unwrap_or(file_name);
-        let without_bed = without_gz
-            .strip_suffix(".bed")
-            .or_else(|| without_gz.strip_suffix(".BED"))
-            .unwrap_or(without_gz);
-        if without_bed.trim().is_empty() {
-            "bed_track".to_string()
+        let mut base = without_gz.to_string();
+        let lower = base.to_ascii_lowercase();
+        for suffix in [".bed", ".bigwig", ".bw", ".vcf"] {
+            if lower.ends_with(suffix) && base.len() > suffix.len() {
+                base.truncate(base.len() - suffix.len());
+                break;
+            }
+        }
+        if base.trim().is_empty() {
+            "track".to_string()
         } else {
-            without_bed.to_string()
+            base
         }
     }
 
@@ -2192,6 +3780,80 @@ impl GentleEngine {
             name: None,
             score: Some(value),
             strand: None,
+        })
+    }
+
+    fn parse_vcf_record(line: &str) -> Result<VcfRecord, String> {
+        let fields: Vec<&str> = line.split('\t').collect();
+        if fields.len() < 8 {
+            return Err(
+                "VCF record needs at least 8 columns (CHROM POS ID REF ALT QUAL FILTER INFO)"
+                    .to_string(),
+            );
+        }
+        let chromosome = fields[0].trim();
+        if chromosome.is_empty() {
+            return Err("VCF chromosome is empty".to_string());
+        }
+        let pos_1based = fields[1]
+            .trim()
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid VCF POS '{}': {e}", fields[1].trim()))?;
+        if pos_1based == 0 {
+            return Err("VCF POS must be >= 1".to_string());
+        }
+        let id = fields
+            .get(2)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| v.to_string());
+        let reference = fields
+            .get(3)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .ok_or_else(|| "VCF REF must be non-empty".to_string())?
+            .to_string();
+        let alternates = fields
+            .get(4)
+            .map(|v| v.trim())
+            .ok_or_else(|| "VCF ALT must be present".to_string())?
+            .split(',')
+            .map(str::trim)
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>();
+        if alternates.is_empty() {
+            return Err("VCF ALT must contain at least one allele".to_string());
+        }
+        let qual = fields
+            .get(5)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| {
+                v.parse::<f64>()
+                    .map_err(|e| format!("Invalid VCF QUAL '{}': {e}", v))
+            })
+            .transpose()?;
+        let filter = fields
+            .get(6)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| v.to_string());
+        let info = fields
+            .get(7)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| v.to_string());
+
+        Ok(VcfRecord {
+            chromosome: chromosome.to_string(),
+            pos_1based,
+            id,
+            reference,
+            alternates,
+            qual,
+            filter,
+            info,
         })
     }
 
@@ -2286,6 +3948,65 @@ impl GentleEngine {
             GENOME_BED_TRACK_GENERATED_TAG,
             "BED",
         )
+    }
+
+    fn build_genome_vcf_feature(
+        record: &VcfRecord,
+        alt: &str,
+        track_name: &str,
+        path: &str,
+        local_start_0based: usize,
+        local_end_0based_exclusive: usize,
+    ) -> gb_io::seq::Feature {
+        let label = record.id.clone().unwrap_or_else(|| {
+            format!(
+                "{}:{}:{} {}>{}",
+                track_name, record.chromosome, record.pos_1based, record.reference, alt
+            )
+        });
+        let mut qualifiers = vec![
+            ("label".into(), Some(label.clone())),
+            (
+                "note".into(),
+                Some(format!(
+                    "VCF track '{}' from '{}' [{}:{} {}>{}]",
+                    track_name, path, record.chromosome, record.pos_1based, record.reference, alt
+                )),
+            ),
+            ("gentle_track_source".into(), Some("VCF".to_string())),
+            (
+                "gentle_generated".into(),
+                Some(GENOME_VCF_TRACK_GENERATED_TAG.to_string()),
+            ),
+            ("gentle_track_name".into(), Some(track_name.to_string())),
+            ("gentle_track_file".into(), Some(path.to_string())),
+            ("chromosome".into(), Some(record.chromosome.clone())),
+            ("vcf_pos_1based".into(), Some(record.pos_1based.to_string())),
+            ("vcf_ref".into(), Some(record.reference.clone())),
+            ("vcf_alt".into(), Some(alt.to_string())),
+        ];
+        if let Some(id) = &record.id {
+            qualifiers.push(("vcf_id".into(), Some(id.clone())));
+        }
+        if let Some(qual) = record.qual {
+            qualifiers.push(("score".into(), Some(format!("{qual:.6}"))));
+            qualifiers.push(("vcf_qual".into(), Some(format!("{qual:.6}"))));
+        }
+        if let Some(filter) = &record.filter {
+            qualifiers.push(("vcf_filter".into(), Some(filter.clone())));
+        }
+        if let Some(info) = &record.info {
+            qualifiers.push(("vcf_info".into(), Some(info.clone())));
+        }
+
+        gb_io::seq::Feature {
+            kind: gb_io::FeatureKind::from("track"),
+            location: gb_io::seq::Location::simple_range(
+                local_start_0based as i64,
+                local_end_0based_exclusive as i64,
+            ),
+            qualifiers,
+        }
     }
 
     fn build_blast_hit_feature(
@@ -2688,6 +4409,138 @@ impl GentleEngine {
         Ok(report)
     }
 
+    fn import_genome_vcf_track(
+        dna: &mut DNAsequence,
+        anchor: &GenomeSequenceAnchor,
+        path: &str,
+        track_name: Option<&str>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: bool,
+    ) -> Result<GenomeBedTrackImportReport, EngineError> {
+        let selected_track_name = track_name
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| Self::default_track_name(path));
+
+        if clear_existing {
+            Self::remove_generated_genome_signal_features(dna.features_mut());
+        }
+
+        let mut report = GenomeBedTrackImportReport {
+            track_name: selected_track_name.clone(),
+            ..Default::default()
+        };
+        let mut reader = Self::open_text_reader(path)?;
+        let mut line = String::new();
+        let mut line_no = 0usize;
+
+        while {
+            line.clear();
+            reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read VCF file '{path}': {e}"),
+            })? > 0
+        } {
+            line_no += 1;
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            report.parsed_records += 1;
+
+            let record = match Self::parse_vcf_record(trimmed) {
+                Ok(v) => v,
+                Err(e) => {
+                    report.skipped_records += 1;
+                    report.skipped_invalid += 1;
+                    if report.warnings.len() < 20 {
+                        report
+                            .warnings
+                            .push(format!("VCF line {} skipped: {}", line_no, e));
+                    }
+                    continue;
+                }
+            };
+
+            if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
+                report.skipped_records += 1;
+                report.skipped_wrong_chromosome += 1;
+                continue;
+            }
+
+            let ref_len = record.reference.len().max(1);
+            let variant_start_1based = record.pos_1based;
+            let variant_end_1based = variant_start_1based.saturating_add(ref_len.saturating_sub(1));
+            if variant_end_1based < anchor.start_1based || variant_start_1based > anchor.end_1based
+            {
+                report.skipped_records += 1;
+                report.skipped_non_overlap += 1;
+                continue;
+            }
+
+            if min_score.is_some() || max_score.is_some() {
+                let Some(score) = record.qual else {
+                    report.skipped_records += 1;
+                    report.skipped_missing_score += 1;
+                    continue;
+                };
+                if min_score.map(|v| score < v).unwrap_or(false)
+                    || max_score.map(|v| score > v).unwrap_or(false)
+                {
+                    report.skipped_records += 1;
+                    report.skipped_outside_score_range += 1;
+                    continue;
+                }
+            }
+
+            let overlap_start_1based = variant_start_1based.max(anchor.start_1based);
+            let overlap_end_1based = variant_end_1based.min(anchor.end_1based);
+            if overlap_end_1based < overlap_start_1based {
+                report.skipped_records += 1;
+                report.skipped_non_overlap += 1;
+                continue;
+            }
+
+            let (local_start_0based, local_end_0based_exclusive) = if anchor.strand == Some('-') {
+                (
+                    anchor.end_1based.saturating_sub(overlap_end_1based),
+                    anchor.end_1based.saturating_sub(overlap_start_1based) + 1,
+                )
+            } else {
+                (
+                    overlap_start_1based - anchor.start_1based,
+                    overlap_end_1based - anchor.start_1based + 1,
+                )
+            };
+
+            let mut stop = false;
+            for alt in &record.alternates {
+                if report.imported_features >= MAX_IMPORTED_SIGNAL_FEATURES {
+                    report.truncated_at_limit = true;
+                    stop = true;
+                    break;
+                }
+                let feature = Self::build_genome_vcf_feature(
+                    &record,
+                    alt,
+                    &selected_track_name,
+                    path,
+                    local_start_0based,
+                    local_end_0based_exclusive,
+                );
+                dna.features_mut().push(feature);
+                report.imported_features += 1;
+            }
+            if stop {
+                break;
+            }
+        }
+
+        Ok(report)
+    }
+
     fn is_genbank_like_path(path: &str) -> bool {
         let lower = path.to_ascii_lowercase();
         lower.ends_with(".gb")
@@ -3024,13 +4877,14 @@ impl GentleEngine {
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
             Operation::ImportGenomeBedTrack { .. } => Some("Imported BED track".to_string()),
             Operation::ImportGenomeBigWigTrack { .. } => Some("Imported BigWig track".to_string()),
+            Operation::ImportGenomeVcfTrack { .. } => Some("Imported VCF track".to_string()),
             Operation::ImportBlastHitsTrack { .. } => Some("Imported BLAST hit track".to_string()),
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
             }
-            Operation::FilterBySequenceQuality { .. } => {
-                Some("Practical sequence filtered".to_string())
+            Operation::FilterByDesignConstraints { .. } => {
+                Some("Design constraints filtered".to_string())
             }
             Operation::FilterContainerByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -5144,6 +6998,88 @@ impl GentleEngine {
                     ));
                 }
             }
+            Operation::ImportGenomeVcfTrack {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => {
+                if path.trim().is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportGenomeVcfTrack requires a non-empty VCF path".to_string(),
+                    });
+                }
+                if min_score
+                    .zip(max_score)
+                    .map(|(min, max)| min > max)
+                    .unwrap_or(false)
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportGenomeVcfTrack requires min_score <= max_score".to_string(),
+                    });
+                }
+
+                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                let _ = self.ensure_lineage_node(&seq_id);
+                let dna = self
+                    .state
+                    .sequences
+                    .get_mut(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+
+                let report = Self::import_genome_vcf_track(
+                    dna,
+                    &anchor,
+                    &path,
+                    track_name.as_deref(),
+                    min_score,
+                    max_score,
+                    clear_existing.unwrap_or(false),
+                )?;
+
+                result.changed_seq_ids.push(seq_id.clone());
+                result.warnings.extend(report.warnings);
+                let anchor_strand = anchor.strand.unwrap_or('+');
+                result.messages.push(format!(
+                    "Imported {} VCF feature(s) into '{}' from '{}' as track '{}' (anchor={} {}:{}-{} strand {}, parsed={}, skipped={})",
+                    report.imported_features,
+                    seq_id,
+                    path,
+                    report.track_name,
+                    anchor.genome_id,
+                    anchor.chromosome,
+                    anchor.start_1based,
+                    anchor.end_1based,
+                    anchor_strand,
+                    report.parsed_records,
+                    report.skipped_records
+                ));
+                if report.skipped_missing_score > 0 {
+                    result.warnings.push(format!(
+                        "{} VCF record(s) were skipped because QUAL-based score filters were set but QUAL was missing",
+                        report.skipped_missing_score
+                    ));
+                }
+                if report.skipped_outside_score_range > 0 {
+                    result.messages.push(format!(
+                        "{} VCF record(s) were outside QUAL score filter bounds",
+                        report.skipped_outside_score_range
+                    ));
+                }
+                if report.truncated_at_limit {
+                    result.warnings.push(format!(
+                        "VCF import was truncated after {} features (limit={})",
+                        report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
+                    ));
+                }
+            }
             Operation::ImportBlastHitsTrack {
                 seq_id,
                 hits,
@@ -6523,7 +8459,7 @@ impl GentleEngine {
                     error
                 ));
             }
-            Operation::FilterBySequenceQuality {
+            Operation::FilterByDesignConstraints {
                 inputs,
                 gc_min,
                 gc_max,
@@ -6537,7 +8473,7 @@ impl GentleEngine {
                 if inputs.is_empty() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
-                        message: "FilterBySequenceQuality requires at least one input sequence"
+                        message: "FilterByDesignConstraints requires at least one input sequence"
                             .to_string(),
                     });
                 }
@@ -6649,7 +8585,7 @@ impl GentleEngine {
                         rejected += 1;
                         if rejection_warnings_left > 0 {
                             result.warnings.push(format!(
-                                "Sequence '{}' rejected by practical filters: {}",
+                                "Sequence '{}' rejected by design constraints: {}",
                                 input,
                                 reasons.join(", ")
                             ));
@@ -6662,7 +8598,7 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!(
-                            "FilterBySequenceQuality produced {} candidates, exceeding max_fragments_per_container={}",
+                            "FilterByDesignConstraints produced {} candidates, exceeding max_fragments_per_container={}",
                             matches.len(),
                             self.max_fragments_per_container()
                         ),
@@ -6679,7 +8615,7 @@ impl GentleEngine {
                     });
                 }
 
-                let prefix = output_prefix.unwrap_or_else(|| "sq_filter".to_string());
+                let prefix = output_prefix.unwrap_or_else(|| "design_filter".to_string());
                 for (i, (_source_id, mut dna)) in matches.into_iter().enumerate() {
                     Self::prepare_sequence(&mut dna);
                     let candidate = format!("{}_{}", prefix, i + 1);
@@ -6701,7 +8637,7 @@ impl GentleEngine {
                 }
 
                 result.messages.push(format!(
-                    "Sequence-quality filter kept {} of {} sequence(s)",
+                    "Design-constraint filter kept {} of {} sequence(s)",
                     result.created_seq_ids.len(),
                     input_count
                 ));
@@ -6714,6 +8650,80 @@ impl GentleEngine {
                     avoid_u6_terminator_tttt,
                     forbidden_motifs_normalized.len()
                 ));
+            }
+            Operation::GenerateCandidateSet {
+                set_name,
+                seq_id,
+                length_bp,
+                step_bp,
+                feature_kinds,
+                feature_label_regex,
+                max_distance_bp,
+                limit,
+            } => {
+                self.op_generate_candidate_set(
+                    set_name,
+                    seq_id,
+                    length_bp,
+                    step_bp,
+                    feature_kinds,
+                    feature_label_regex,
+                    max_distance_bp,
+                    limit,
+                    &mut result,
+                )?;
+            }
+            Operation::DeleteCandidateSet { set_name } => {
+                self.op_delete_candidate_set(set_name, &mut result)?;
+            }
+            Operation::ScoreCandidateSetExpression {
+                set_name,
+                metric,
+                expression,
+            } => {
+                self.op_score_candidate_set_expression(set_name, metric, expression, &mut result)?;
+            }
+            Operation::ScoreCandidateSetDistance {
+                set_name,
+                metric,
+                feature_kinds,
+                feature_label_regex,
+            } => {
+                self.op_score_candidate_set_distance(
+                    set_name,
+                    metric,
+                    feature_kinds,
+                    feature_label_regex,
+                    &mut result,
+                )?;
+            }
+            Operation::FilterCandidateSet {
+                input_set,
+                output_set,
+                metric,
+                min,
+                max,
+                min_quantile,
+                max_quantile,
+            } => {
+                self.op_filter_candidate_set(
+                    input_set,
+                    output_set,
+                    metric,
+                    min,
+                    max,
+                    min_quantile,
+                    max_quantile,
+                    &mut result,
+                )?;
+            }
+            Operation::CandidateSetOp {
+                op,
+                left_set,
+                right_set,
+                output_set,
+            } => {
+                self.op_candidate_set_op(op, left_set, right_set, output_set, &mut result)?;
             }
             Operation::Reverse { input, output_id } => {
                 parent_seq_ids.push(input.clone());
@@ -7974,7 +9984,7 @@ exit 2
     }
 
     #[test]
-    fn test_filter_by_sequence_quality_practical_filters() {
+    fn test_filter_by_design_constraints_practical_filters() {
         let mut state = ProjectState::default();
         state
             .sequences
@@ -7994,7 +10004,7 @@ exit 2
         let mut engine = GentleEngine::from_state(state);
 
         let res = engine
-            .apply(Operation::FilterBySequenceQuality {
+            .apply(Operation::FilterByDesignConstraints {
                 inputs: vec![
                     "good".to_string(),
                     "low_gc".to_string(),
@@ -8009,17 +10019,17 @@ exit 2
                 avoid_u6_terminator_tttt: Some(true),
                 forbidden_motifs: vec![],
                 unique: false,
-                output_prefix: Some("sq".to_string()),
+                output_prefix: Some("design".to_string()),
             })
             .unwrap();
 
         assert_eq!(res.created_seq_ids.len(), 1);
-        assert_eq!(res.created_seq_ids[0], "sq_1".to_string());
-        assert!(engine.state().sequences.contains_key("sq_1"));
+        assert_eq!(res.created_seq_ids[0], "design_1".to_string());
+        assert!(engine.state().sequences.contains_key("design_1"));
     }
 
     #[test]
-    fn test_filter_by_sequence_quality_unique_fails_on_multiple_matches() {
+    fn test_filter_by_design_constraints_unique_fails_on_multiple_matches() {
         let mut state = ProjectState::default();
         state
             .sequences
@@ -8030,7 +10040,7 @@ exit 2
         let mut engine = GentleEngine::from_state(state);
 
         let err = engine
-            .apply(Operation::FilterBySequenceQuality {
+            .apply(Operation::FilterByDesignConstraints {
                 inputs: vec!["a".to_string(), "b".to_string()],
                 gc_min: Some(0.20),
                 gc_max: Some(0.80),
@@ -8039,11 +10049,48 @@ exit 2
                 avoid_u6_terminator_tttt: Some(true),
                 forbidden_motifs: vec![],
                 unique: true,
-                output_prefix: Some("sq".to_string()),
+                output_prefix: Some("design".to_string()),
             })
             .unwrap_err();
 
         assert!(err.message.contains("exactly one match"));
+    }
+
+    #[test]
+    fn test_filter_by_design_constraints_accepts_legacy_operation_name() {
+        let json = r#"{
+            "FilterBySequenceQuality": {
+                "inputs": ["a"],
+                "gc_min": 0.30,
+                "gc_max": 0.70,
+                "max_homopolymer_run": 4,
+                "reject_ambiguous_bases": true,
+                "avoid_u6_terminator_tttt": true,
+                "forbidden_motifs": [],
+                "unique": false,
+                "output_prefix": "legacy"
+            }
+        }"#;
+        let op: Operation = serde_json::from_str(json).expect("legacy op json parses");
+        match op {
+            Operation::FilterByDesignConstraints {
+                inputs,
+                gc_min,
+                gc_max,
+                max_homopolymer_run,
+                unique,
+                output_prefix,
+                ..
+            } => {
+                assert_eq!(inputs, vec!["a".to_string()]);
+                assert_eq!(gc_min, Some(0.30));
+                assert_eq!(gc_max, Some(0.70));
+                assert_eq!(max_homopolymer_run, Some(4));
+                assert!(!unique);
+                assert_eq!(output_prefix, Some("legacy".to_string()));
+            }
+            other => panic!("unexpected operation variant: {:?}", other),
+        }
     }
 
     #[test]
@@ -9822,6 +11869,113 @@ ORIGIN
                 .next()
                 .unwrap_or_default(),
             "2.000000"
+        );
+    }
+
+    #[test]
+    fn test_import_genome_vcf_track_supports_multiallelic_and_qual_filters() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("toy_slice".to_string(), seq("ACGTACGTACGTACGTACGT"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "toy_slice",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "ExtractGenomeRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": "synthetic",
+                        "cache_dir": null,
+                        "chromosome": "chr1",
+                        "start_1based": 100,
+                        "end_1based": 119,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "+",
+                        "sequence_source_type": "synthetic",
+                        "annotation_source_type": "synthetic",
+                        "sequence_source": "synthetic",
+                        "annotation_source": "synthetic",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let td = tempdir().unwrap();
+        let vcf_path = td.path().join("variants.vcf");
+        fs::write(
+            &vcf_path,
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t101\trs1\tA\tG\t50\tPASS\tAC=1\nchr1\t105\t.\tA\tT,<DEL>\t.\tq10\tDP=5\nchr2\t101\trs2\tA\tC\t60\tPASS\tAC=1\nchr1\tbad\tbroken\n",
+        )
+        .unwrap();
+
+        let plain = engine
+            .apply(Operation::ImportGenomeVcfTrack {
+                seq_id: "toy_slice".to_string(),
+                path: vcf_path.to_string_lossy().to_string(),
+                track_name: Some("variants".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(plain.changed_seq_ids.contains(&"toy_slice".to_string()));
+        assert!(plain.warnings.iter().any(|w| w.contains("VCF line")));
+
+        let dna_plain = engine.state().sequences.get("toy_slice").unwrap();
+        let plain_features: Vec<_> = dna_plain
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_vcf_feature(f))
+            .collect();
+        assert_eq!(plain_features.len(), 3);
+        assert!(plain_features
+            .iter()
+            .any(|f| { f.qualifier_values("vcf_alt".into()).any(|v| v == "<DEL>") }));
+
+        let vcf_gz = td.path().join("variants.vcf.gz");
+        write_gzip(
+            &vcf_gz,
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t110\trs3\tC\tT\t25\tPASS\tAC=1\nchr1\t111\trs4\tC\tG\t.\tPASS\tAC=1\n",
+        );
+        let filtered = engine
+            .apply(Operation::ImportGenomeVcfTrack {
+                seq_id: "toy_slice".to_string(),
+                path: vcf_gz.to_string_lossy().to_string(),
+                track_name: Some("variants_gz".to_string()),
+                min_score: Some(20.0),
+                max_score: Some(30.0),
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(filtered.changed_seq_ids.contains(&"toy_slice".to_string()));
+        assert!(filtered
+            .warnings
+            .iter()
+            .any(|w| w.contains("QUAL-based score filters")));
+
+        let dna_filtered = engine.state().sequences.get("toy_slice").unwrap();
+        let filtered_features: Vec<_> = dna_filtered
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_vcf_feature(f))
+            .collect();
+        assert_eq!(filtered_features.len(), 1);
+        assert_eq!(
+            filtered_features[0]
+                .qualifier_values("vcf_id".into())
+                .next()
+                .unwrap_or_default(),
+            "rs3"
         );
     }
 
