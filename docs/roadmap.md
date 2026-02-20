@@ -35,7 +35,7 @@ order. Durable architecture constraints and decisions remain in
 - VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)
-  with persistent storage model.
+  with persistent storage model, including between-anchor window generation.
 - Ladder-aware virtual gel rendering and SVG export routes.
 
 ### GUI baseline in place

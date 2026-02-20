@@ -472,6 +472,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] candidates list\n  \
   gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]\n  \
   gentle_cli [--state PATH|--project PATH] candidates show SET_NAME [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION\n  \
@@ -493,7 +494,12 @@ fn usage() {
 fn is_shell_forwarded_command(command: &str) -> bool {
     matches!(
         command,
-        "genomes" | "helpers" | "resources" | "import-pool" | "ladders" | "tracks"
+        "genomes"
+            | "helpers"
+            | "resources"
+            | "import-pool"
+            | "ladders"
+            | "tracks"
             | "screenshot-window"
     )
 }
@@ -1538,6 +1544,7 @@ fn run() -> Result<(), String> {
                 ShellCommand::CandidatesList
                     | ShellCommand::CandidatesDelete { .. }
                     | ShellCommand::CandidatesGenerate { .. }
+                    | ShellCommand::CandidatesGenerateBetweenAnchors { .. }
                     | ShellCommand::CandidatesShow { .. }
                     | ShellCommand::CandidatesMetrics { .. }
                     | ShellCommand::CandidatesScoreExpression { .. }
@@ -1550,7 +1557,8 @@ fn run() -> Result<(), String> {
                 return Err("Expected a candidates subcommand".to_string());
             }
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
-            let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
+            let run =
+                execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
             if run.state_changed {
                 engine
                     .state()

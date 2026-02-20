@@ -24,6 +24,33 @@ Goal:
 - `supported_export_formats`
 - `deterministic_operation_log`
 
+## Protocol-first workflow examples
+
+Canonical, adapter-independent examples are defined in:
+
+- `docs/examples/workflows/*.json`
+- schema: `gentle.workflow_example.v1`
+
+Each example includes:
+
+- metadata (`id`, `title`, `summary`)
+- test policy (`test_mode`: `always|online|skip`)
+- required local files (`required_files`)
+- canonical `workflow` payload
+
+Adapter snippets (CLI/shared shell/JavaScript/Lua) are generated on demand from
+those canonical files:
+
+```bash
+cargo run --bin gentle_examples_docs -- generate
+```
+
+Validation only:
+
+```bash
+cargo run --bin gentle_examples_docs -- --check
+```
+
 ## Core entities
 
 ### ProjectState
@@ -68,6 +95,7 @@ Current draft operations:
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
 - `SelectCandidate { input, criterion, output_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
+- `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
 - `DeleteCandidateSet { set_name }`
 - `ScoreCandidateSetExpression { set_name, metric, expression }`
 - `ScoreCandidateSetDistance { set_name, metric, feature_kinds[], feature_label_regex?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation? }`
@@ -90,6 +118,16 @@ Current draft operations:
 - `side` accepts `five_prime` or `three_prime`.
 - Direction is contextual to anchor strand.
 - On anchor strand `-`, `five_prime` increases physical genomic position.
+
+Local `SequenceAnchor` semantics (distinct from genome provenance anchoring):
+
+- `SequenceAnchor` currently supports:
+  - `Position { zero_based }`
+  - `FeatureBoundary { feature_kind?, feature_label?, boundary, occurrence? }`
+- `boundary` accepts `Start`, `End`, or `Middle`.
+- This anchor model resolves in-sequence positions and is used for
+  in-silico extraction/scoring workflows (`ExtractAnchoredRegion`,
+  `GenerateCandidateSetBetweenAnchors`).
 
 Adapter utility contracts (current, non-engine operations):
 
@@ -177,6 +215,8 @@ Candidate-set semantics:
 
 - `GenerateCandidateSet` creates a persisted candidate window set over one source
   sequence and computes baseline metrics for each candidate.
+- `GenerateCandidateSetBetweenAnchors` creates a persisted candidate window set
+  constrained to the in-sequence interval between two local anchors.
 - `ScoreCandidateSetExpression` computes a derived metric from an arithmetic
   expression over existing metrics.
 - `ScoreCandidateSetDistance` computes feature-distance metrics against filtered
@@ -185,6 +225,9 @@ Candidate-set semantics:
   bounds for a named metric.
 - `CandidateSetOp` supports set algebra (`union`, `intersect`, `subtract`) over
   candidate identity (`seq_id`, `start_0based`, `end_0based`).
+- Between-anchor generation augments baseline metrics with anchor-aware fields
+  (`distance_to_anchor_a_bp`, `distance_to_anchor_b_bp`,
+  `distance_to_nearest_anchor_bp`, interval span metadata).
 
 Feature-distance geometry controls (candidate generation and distance scoring):
 

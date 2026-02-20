@@ -2,9 +2,9 @@ use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode,
-        CandidateFeatureStrandRelation, Engine, GenomeAnchorSide, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, Operation, ProjectState, RenderSvgMode, Workflow,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+        Engine, GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
+        Operation, ProjectState, RenderSvgMode, SequenceAnchor, Workflow,
     },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync,
@@ -14,8 +14,7 @@ use crate::{
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text,
-        HelpOutputFormat,
+        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
     },
     tf_motifs,
 };
@@ -230,6 +229,15 @@ pub enum ShellCommand {
         feature_strand_relation: Option<CandidateFeatureStrandRelation>,
         limit: usize,
     },
+    CandidatesGenerateBetweenAnchors {
+        set_name: String,
+        seq_id: String,
+        anchor_a: SequenceAnchor,
+        anchor_b: SequenceAnchor,
+        length_bp: usize,
+        step_bp: usize,
+        limit: usize,
+    },
     CandidatesShow {
         set_name: String,
         limit: usize,
@@ -424,6 +432,11 @@ fn parse_candidate_feature_strand_relation(
             "Unsupported strand relation '{other}' (expected any|same|opposite)"
         )),
     }
+}
+
+fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAnchor, String> {
+    serde_json::from_str::<SequenceAnchor>(raw)
+        .map_err(|e| format!("Invalid {} JSON '{}': {}", option_name, raw, e))
 }
 
 impl ShellCommand {
@@ -878,6 +891,17 @@ impl ShellCommand {
                     "generate candidate set '{set_name}' from '{seq_id}' (length={length_bp}, step={step_bp}, feature_kinds={kinds}, feature_label_regex={label}, max_distance={distance}, feature_geometry_mode={geometry}, feature_boundary_mode={boundary}, feature_strand_relation={strand_relation}, limit={limit})"
                 )
             }
+            Self::CandidatesGenerateBetweenAnchors {
+                set_name,
+                seq_id,
+                anchor_a,
+                anchor_b,
+                length_bp,
+                step_bp,
+                limit,
+            } => format!(
+                "generate candidate set '{set_name}' from '{seq_id}' between anchors A={anchor_a:?} and B={anchor_b:?} (length={length_bp}, step={step_bp}, limit={limit})"
+            ),
             Self::CandidatesShow {
                 set_name,
                 limit,
@@ -1004,6 +1028,7 @@ impl ShellCommand {
                 | Self::TracksTrackedApply { .. }
                 | Self::CandidatesDelete { .. }
                 | Self::CandidatesGenerate { .. }
+                | Self::CandidatesGenerateBetweenAnchors { .. }
                 | Self::CandidatesScoreExpression { .. }
                 | Self::CandidatesScoreDistance { .. }
                 | Self::CandidatesFilter { .. }
@@ -1869,7 +1894,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
 fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "candidates requires a subcommand: list, delete, generate, show, metrics, score, score-distance, filter, set-op, macro"
+            "candidates requires a subcommand: list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, filter, set-op, macro"
                 .to_string(),
         );
     }
@@ -2026,6 +2051,148 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 feature_geometry_mode,
                 feature_boundary_mode,
                 feature_strand_relation,
+                limit,
+            })
+        }
+        "generate-between-anchors" | "generate-between" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates generate-between-anchors requires SET_NAME SEQ_ID --length N (--anchor-a-pos N | --anchor-a-json JSON) (--anchor-b-pos N | --anchor-b-json JSON) [--step N] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let seq_id = tokens[3].clone();
+            let mut length_bp: Option<usize> = None;
+            let mut step_bp: usize = 1;
+            let mut limit: usize = DEFAULT_CANDIDATE_SET_LIMIT;
+            let mut anchor_a: Option<SequenceAnchor> = None;
+            let mut anchor_b: Option<SequenceAnchor> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--length" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--length",
+                            "candidates generate-between-anchors",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --length value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--length must be >= 1".to_string());
+                        }
+                        length_bp = Some(parsed);
+                    }
+                    "--step" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--step",
+                            "candidates generate-between-anchors",
+                        )?;
+                        step_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --step value '{raw}': {e}"))?;
+                        if step_bp == 0 {
+                            return Err("--step must be >= 1".to_string());
+                        }
+                    }
+                    "--limit" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--limit",
+                            "candidates generate-between-anchors",
+                        )?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--anchor-a-pos" => {
+                        if anchor_a.is_some() {
+                            return Err("Anchor A was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-a-pos",
+                            "candidates generate-between-anchors",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --anchor-a-pos value '{raw}': {e}"))?;
+                        anchor_a = Some(SequenceAnchor::Position { zero_based: parsed });
+                    }
+                    "--anchor-b-pos" => {
+                        if anchor_b.is_some() {
+                            return Err("Anchor B was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-b-pos",
+                            "candidates generate-between-anchors",
+                        )?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --anchor-b-pos value '{raw}': {e}"))?;
+                        anchor_b = Some(SequenceAnchor::Position { zero_based: parsed });
+                    }
+                    "--anchor-a-json" => {
+                        if anchor_a.is_some() {
+                            return Err("Anchor A was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-a-json",
+                            "candidates generate-between-anchors",
+                        )?;
+                        anchor_a = Some(parse_sequence_anchor_json(&raw, "--anchor-a-json")?);
+                    }
+                    "--anchor-b-json" => {
+                        if anchor_b.is_some() {
+                            return Err("Anchor B was already specified".to_string());
+                        }
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--anchor-b-json",
+                            "candidates generate-between-anchors",
+                        )?;
+                        anchor_b = Some(parse_sequence_anchor_json(&raw, "--anchor-b-json")?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates generate-between-anchors"
+                        ));
+                    }
+                }
+            }
+            let Some(length_bp) = length_bp else {
+                return Err("candidates generate-between-anchors requires --length N".to_string());
+            };
+            let anchor_a = anchor_a.ok_or_else(|| {
+                "candidates generate-between-anchors requires --anchor-a-pos N or --anchor-a-json JSON"
+                    .to_string()
+            })?;
+            let anchor_b = anchor_b.ok_or_else(|| {
+                "candidates generate-between-anchors requires --anchor-b-pos N or --anchor-b-json JSON"
+                    .to_string()
+            })?;
+            Ok(ShellCommand::CandidatesGenerateBetweenAnchors {
+                set_name,
+                seq_id,
+                anchor_a,
+                anchor_b,
+                length_bp,
+                step_bp,
                 limit,
             })
         }
@@ -2350,7 +2517,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown candidates subcommand '{other}' (expected list, delete, generate, show, metrics, score, score-distance, filter, set-op, macro)"
+            "Unknown candidates subcommand '{other}' (expected list, delete, generate, generate-between-anchors, show, metrics, score, score-distance, filter, set-op, macro)"
         )),
     }
 }
@@ -4168,6 +4335,47 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::CandidatesGenerateBetweenAnchors {
+            set_name,
+            seq_id,
+            anchor_a,
+            anchor_b,
+            length_bp,
+            step_bp,
+            limit,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::GenerateCandidateSetBetweenAnchors {
+                    set_name: set_name.clone(),
+                    seq_id: seq_id.clone(),
+                    anchor_a: anchor_a.clone(),
+                    anchor_b: anchor_b.clone(),
+                    length_bp: *length_bp,
+                    step_bp: *step_bp,
+                    limit: Some(*limit),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "seq_id": seq_id,
+                    "anchor_a": anchor_a,
+                    "anchor_b": anchor_b,
+                    "result": op_result
+                }),
+            }
+        }
         ShellCommand::CandidatesShow {
             set_name,
             limit,
@@ -4429,17 +4637,18 @@ mod tests {
 
     #[test]
     fn parse_help_with_topic_and_options() {
-        let cmd = parse_shell_line(
-            "help candidates generate --format json --interface cli-shell",
-        )
-        .expect("parse help with topic/options");
+        let cmd = parse_shell_line("help candidates generate --format json --interface cli-shell")
+            .expect("parse help with topic/options");
         match cmd {
             ShellCommand::Help {
                 topic,
                 format,
                 interface_filter,
             } => {
-                assert_eq!(topic, vec!["candidates".to_string(), "generate".to_string()]);
+                assert_eq!(
+                    topic,
+                    vec!["candidates".to_string(), "generate".to_string()]
+                );
                 assert_eq!(format, HelpOutputFormat::Json);
                 assert_eq!(interface_filter.as_deref(), Some("cli-shell"));
             }
@@ -4890,10 +5099,9 @@ mod tests {
 
     #[test]
     fn parse_candidates_generate_with_strand_relation() {
-        let cmd = parse_shell_line(
-            "candidates generate set1 seqA --length 20 --strand-relation same",
-        )
-        .expect("parse candidates generate with strand relation");
+        let cmd =
+            parse_shell_line("candidates generate set1 seqA --length 20 --strand-relation same")
+                .expect("parse candidates generate with strand relation");
         match cmd {
             ShellCommand::CandidatesGenerate {
                 set_name,
@@ -4922,6 +5130,34 @@ mod tests {
                     Some(CandidateFeatureStrandRelation::Same)
                 );
                 assert_eq!(limit, DEFAULT_CANDIDATE_SET_LIMIT);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_generate_between_anchors_with_positions() {
+        let cmd = parse_shell_line(
+            "candidates generate-between-anchors set1 seqA --length 20 --anchor-a-pos 5 --anchor-b-pos 105 --step 5 --limit 50",
+        )
+        .expect("parse candidates generate-between-anchors");
+        match cmd {
+            ShellCommand::CandidatesGenerateBetweenAnchors {
+                set_name,
+                seq_id,
+                anchor_a,
+                anchor_b,
+                length_bp,
+                step_bp,
+                limit,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(seq_id, "seqA");
+                assert_eq!(length_bp, 20);
+                assert_eq!(step_bp, 5);
+                assert_eq!(limit, 50);
+                assert_eq!(anchor_a, SequenceAnchor::Position { zero_based: 5 });
+                assert_eq!(anchor_b, SequenceAnchor::Position { zero_based: 105 });
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -5140,6 +5376,127 @@ filter set1 set2 --metric score --min 10
         .expect("show near_gene");
         assert!(!shown.state_changed);
         assert_eq!(shown.output["candidate_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn execute_candidates_generate_between_anchors_creates_set() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesGenerateBetweenAnchors {
+                set_name: "between".to_string(),
+                seq_id: "seqA".to_string(),
+                anchor_a: SequenceAnchor::Position { zero_based: 2 },
+                anchor_b: SequenceAnchor::Position { zero_based: 10 },
+                length_bp: 4,
+                step_bp: 2,
+                limit: 64,
+            },
+        )
+        .expect("generate candidates between anchors");
+        assert!(out.state_changed);
+        assert_eq!(out.output["set_name"].as_str(), Some("between"));
+
+        let shown = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesShow {
+                set_name: "between".to_string(),
+                limit: 64,
+                offset: 0,
+            },
+        )
+        .expect("show between");
+        assert_eq!(shown.output["candidate_count"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn execute_candidates_score_distance_honors_strand_relation() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(2, 5),
+            qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
+        });
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::Complement(Box::new(Location::simple_range(12, 15))),
+            qualifiers: vec![("label".into(), Some("MINUS_GENE".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesGenerate {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: 128,
+            },
+        )
+        .expect("generate candidate windows");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesScoreDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_same".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: Some(CandidateFeatureStrandRelation::Same),
+            },
+        )
+        .expect("score distance same");
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesScoreDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_opposite".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: Some(CandidateFeatureStrandRelation::Opposite),
+            },
+        )
+        .expect("score distance opposite");
+
+        let (page, _, _) = engine
+            .inspect_candidate_set_page("windows", 1024, 0)
+            .expect("inspect scored windows");
+        let at_pos = |pos: usize, metric: &str| -> f64 {
+            page.candidates
+                .iter()
+                .find(|candidate| candidate.start_0based == pos)
+                .and_then(|candidate| candidate.metrics.get(metric).copied())
+                .unwrap_or(f64::NAN)
+        };
+
+        let plus_same = at_pos(2, "dist_same");
+        let plus_opposite = at_pos(2, "dist_opposite");
+        assert_eq!(plus_same, 0.0);
+        assert!(plus_opposite > 0.0);
+
+        let minus_same = at_pos(14, "dist_same");
+        let minus_opposite = at_pos(14, "dist_opposite");
+        assert!(minus_same > 0.0);
+        assert_eq!(minus_opposite, 0.0);
     }
 
     #[test]

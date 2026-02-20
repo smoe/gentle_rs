@@ -1,5 +1,5 @@
 {
-   "command_count" : 58,
+   "command_count" : 59,
    "commands" : [
       {
          "aliases" : [
@@ -630,6 +630,22 @@
          "usage" : "candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]"
       },
       {
+         "aliases" : [
+            "candidates generate-between"
+         ],
+         "engine_operations" : [
+            "GenerateCandidateSetBetweenAnchors"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "candidates generate-between-anchors",
+         "summary" : "Generate candidate windows constrained to the interval between two local sequence anchors.",
+         "usage" : "candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N | --anchor-a-json JSON) (--anchor-b-pos N | --anchor-b-json JSON) [--step N] [--limit N]"
+      },
+      {
          "aliases" : [],
          "engine_operations" : [],
          "interfaces" : [
@@ -713,6 +729,7 @@
          "aliases" : [],
          "engine_operations" : [
             "GenerateCandidateSet",
+            "GenerateCandidateSetBetweenAnchors",
             "ScoreCandidateSetExpression",
             "ScoreCandidateSetDistance",
             "FilterCandidateSet",

@@ -482,12 +482,12 @@ impl GenomeCatalog {
             forward_prepare_progress(
                 on_progress,
                 PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "index_blast".to_string(),
-                item: canonical_or_display(&blast_prefix_path),
-                bytes_done: 0,
-                bytes_total: None,
-                percent: None,
+                    genome_id: genome_id.to_string(),
+                    phase: "index_blast".to_string(),
+                    item: canonical_or_display(&blast_prefix_path),
+                    bytes_done: 0,
+                    bytes_total: None,
+                    percent: None,
                 },
             )?;
             let blast_outcome =
@@ -498,12 +498,12 @@ impl GenomeCatalog {
             forward_prepare_progress(
                 on_progress,
                 PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "index_blast".to_string(),
-                item: canonical_or_display(&blast_prefix_path),
-                bytes_done: if blast_outcome.ready { 1 } else { 0 },
-                bytes_total: Some(1),
-                percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
+                    genome_id: genome_id.to_string(),
+                    phase: "index_blast".to_string(),
+                    item: canonical_or_display(&blast_prefix_path),
+                    bytes_done: if blast_outcome.ready { 1 } else { 0 },
+                    bytes_total: Some(1),
+                    percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
                 },
             )?;
             let mut manifest_changed = checksum_changed;
@@ -531,12 +531,12 @@ impl GenomeCatalog {
             forward_prepare_progress(
                 on_progress,
                 PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "ready".to_string(),
-                item: "manifest".to_string(),
-                bytes_done: 0,
-                bytes_total: None,
-                percent: Some(100.0),
+                    genome_id: genome_id.to_string(),
+                    phase: "ready".to_string(),
+                    item: "manifest".to_string(),
+                    bytes_done: 0,
+                    bytes_total: None,
+                    percent: Some(100.0),
                 },
             )?;
             let sequence_source_type = manifest.sequence_source_type.clone().unwrap_or_else(|| {
@@ -585,12 +585,12 @@ impl GenomeCatalog {
             forward_prepare_progress(
                 on_progress,
                 PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "reuse_sequence".to_string(),
-                item: canonical_or_display(&sequence_path),
-                bytes_done: bytes,
-                bytes_total: Some(bytes),
-                percent: Some(100.0),
+                    genome_id: genome_id.to_string(),
+                    phase: "reuse_sequence".to_string(),
+                    item: canonical_or_display(&sequence_path),
+                    bytes_done: bytes,
+                    bytes_total: Some(bytes),
+                    percent: Some(100.0),
                 },
             )?;
         } else {
@@ -653,43 +653,44 @@ impl GenomeCatalog {
                 }),
             })
         })?;
-        let annotation_parse_report = build_gene_index_file(&annotation_path, &gene_index_path, |done, total| {
-            on_progress(PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "index_genes".to_string(),
-                item: canonical_or_display(&annotation_path),
-                bytes_done: done,
-                bytes_total: total,
-                percent: total.and_then(|t| {
-                    if t == 0 {
-                        None
-                    } else {
-                        Some((done as f64 / t as f64) * 100.0)
-                    }
-                }),
-            })
-        })?;
+        let annotation_parse_report =
+            build_gene_index_file(&annotation_path, &gene_index_path, |done, total| {
+                on_progress(PrepareGenomeProgress {
+                    genome_id: genome_id.to_string(),
+                    phase: "index_genes".to_string(),
+                    item: canonical_or_display(&annotation_path),
+                    bytes_done: done,
+                    bytes_total: total,
+                    percent: total.and_then(|t| {
+                        if t == 0 {
+                            None
+                        } else {
+                            Some((done as f64 / t as f64) * 100.0)
+                        }
+                    }),
+                })
+            })?;
         forward_prepare_progress(
             on_progress,
             PrepareGenomeProgress {
-            genome_id: genome_id.to_string(),
-            phase: "index_blast".to_string(),
-            item: canonical_or_display(&blast_prefix_path),
-            bytes_done: 0,
-            bytes_total: None,
-            percent: None,
+                genome_id: genome_id.to_string(),
+                phase: "index_blast".to_string(),
+                item: canonical_or_display(&blast_prefix_path),
+                bytes_done: 0,
+                bytes_total: None,
+                percent: None,
             },
         )?;
         let blast_outcome = ensure_blast_index(&sequence_path, &blast_prefix_path);
         forward_prepare_progress(
             on_progress,
             PrepareGenomeProgress {
-            genome_id: genome_id.to_string(),
-            phase: "index_blast".to_string(),
-            item: canonical_or_display(&blast_prefix_path),
-            bytes_done: if blast_outcome.ready { 1 } else { 0 },
-            bytes_total: Some(1),
-            percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
+                genome_id: genome_id.to_string(),
+                phase: "index_blast".to_string(),
+                item: canonical_or_display(&blast_prefix_path),
+                bytes_done: if blast_outcome.ready { 1 } else { 0 },
+                bytes_total: Some(1),
+                percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
             },
         )?;
 
@@ -719,17 +720,19 @@ impl GenomeCatalog {
         forward_prepare_progress(
             on_progress,
             PrepareGenomeProgress {
-            genome_id: genome_id.to_string(),
-            phase: "ready".to_string(),
-            item: "manifest".to_string(),
-            bytes_done: 0,
-            bytes_total: None,
-            percent: Some(100.0),
+                genome_id: genome_id.to_string(),
+                phase: "ready".to_string(),
+                item: "manifest".to_string(),
+                bytes_done: 0,
+                bytes_total: None,
+                percent: Some(100.0),
             },
         )?;
 
         let mut warnings = blast_outcome.warnings;
-        warnings.extend(summarize_annotation_parse_warnings(&annotation_parse_report));
+        warnings.extend(summarize_annotation_parse_warnings(
+            &annotation_parse_report,
+        ));
 
         Ok(PrepareGenomeReport {
             genome_id: genome_id.to_string(),
@@ -2725,7 +2728,8 @@ fn build_gene_index_file<F>(
 where
     F: FnMut(u64, Option<u64>) -> bool,
 {
-    let (genes, report) = parse_annotation_gene_records_with_progress(annotation_path, on_progress)?;
+    let (genes, report) =
+        parse_annotation_gene_records_with_progress(annotation_path, on_progress)?;
     if let Some(parent) = gene_index_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -3075,7 +3079,9 @@ where
     });
     let total_done = total_bytes.unwrap_or(0);
     if !on_progress(total_done, total_bytes) {
-        return Err(prepare_cancelled_error("GenBank annotation parse completion"));
+        return Err(prepare_cancelled_error(
+            "GenBank annotation parse completion",
+        ));
     }
     let report = AnnotationParseReport {
         path: canonical_or_display(path),
@@ -3842,8 +3848,7 @@ mod tests {
         fs::write(&path, bytes).unwrap();
 
         let (genes, report) =
-            parse_annotation_gene_records_with_progress(&path, |_done, _total| true)
-                .unwrap();
+            parse_annotation_gene_records_with_progress(&path, |_done, _total| true).unwrap();
         assert_eq!(genes.len(), 5);
         assert_eq!(report.parsed_gene_records, 5);
         assert_eq!(report.malformed_lines, 3);
@@ -3874,7 +3879,9 @@ mod tests {
         bytes.extend_from_slice(b"chr1\tsrc\tgene\t1\t10\t.\t+\t.\tgene_id \"G1\"; gene_name \"Good One\"; gene_biotype \"protein_coding\";\n");
         bytes.extend_from_slice(b"chr1 src gene 11 20 . + . gene_id \"BROKEN_SPACES\"\n");
         bytes.extend_from_slice(b"chr1\tsrc\tgene\t21\tthirty\t.\t+\t.\tgene_id \"BROKEN_END\";\n");
-        bytes.extend_from_slice(b"chr1\tsrc\tgene\t184467440737095516151\t190\t.\t+\t.\tgene_id \"TOO_BIG\";\n");
+        bytes.extend_from_slice(
+            b"chr1\tsrc\tgene\t184467440737095516151\t190\t.\t+\t.\tgene_id \"TOO_BIG\";\n",
+        );
         bytes.extend_from_slice(b"chr1\tsrc\tgene\t31\t40\t.\t?\t.\tgene_name \"No strand\";\n");
         bytes.extend_from_slice(
             b"chr1\tsrc\tgene\t41\t50\t.\t-\t.\tID=gene:G2;Name=Good Two;gene_biotype=lncRNA\n",
@@ -3883,8 +3890,7 @@ mod tests {
         fs::write(&path, bytes).unwrap();
 
         let (genes, report) =
-            parse_annotation_gene_records_with_progress(&path, |_done, _total| true)
-                .unwrap();
+            parse_annotation_gene_records_with_progress(&path, |_done, _total| true).unwrap();
         assert_eq!(genes.len(), 3);
         assert_eq!(report.malformed_lines, 3);
         assert!(!report.issue_examples.is_empty());

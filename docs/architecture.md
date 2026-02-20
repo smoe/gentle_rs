@@ -214,6 +214,15 @@ Practical rule:
   - consumed by runtime `help` rendering (`text|json|markdown`)
   - intended as single machine-readable command semantics index for
     CLI/GUI-shell/JS/Lua documentation generation
+- Protocol-first workflow example contract:
+  - canonical source files: `docs/examples/workflows/*.json`
+  - schema: `gentle.workflow_example.v1`
+  - snippet generator binary: `gentle_examples_docs`
+  - generated adapter snippets: `docs/examples/generated/*.md`
+  - test gating by example metadata:
+    - `always`: execute in default test runs
+    - `online`: execute only with `GENTLE_TEST_ONLINE=1`
+    - `skip`: parse/validate only
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
     bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)
@@ -297,6 +306,7 @@ Command surface:
 - `candidates metrics SET_NAME`
 - `candidates delete SET_NAME`
 - `candidates generate SET_NAME SEQ_ID --length N ...`
+- `candidates generate-between-anchors SET_NAME SEQ_ID --length N ...`
 - `candidates score SET_NAME METRIC_NAME EXPRESSION`
 - `candidates score-distance SET_NAME METRIC_NAME ...`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
@@ -310,6 +320,14 @@ This enables reusable query composition:
 2. attach base/derived scores
 3. filter by absolute threshold and/or quantile
 4. intersect/union/subtract with other candidate sets
+
+Local anchor model (for candidate/extraction workflows):
+
+- Local sequence anchors are an in-sequence abstraction (`SequenceAnchor`) and
+  are intentionally separate from genome-provenance anchoring metadata used by
+  `ExtractGenomeRegion`/`ExtractGenomeGene`/`ExtendGenomeAnchor`.
+- Current local anchor forms: absolute `Position` and `FeatureBoundary`
+  (`Start|End|Middle`).
 
 Feature-distance geometry controls (engine + shell/CLI):
 

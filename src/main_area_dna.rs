@@ -1,18 +1,17 @@
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
-    feature_location::collect_location_ranges_usize,
     engine::{
-        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateRecord,
-        CandidateFeatureStrandRelation, CandidateSetOperator, DisplayTarget, Engine, EngineError,
-        ErrorCode, ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation,
-        OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
-        TfbsProgress, Workflow,
+        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
+        CandidateRecord, CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode,
+        ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation, OperationProgress,
+        PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         execute_shell_command_with_options, parse_shell_line, shell_help_text, ShellCommand,
         ShellExecutionOptions,
     },
+    feature_location::collect_location_ranges_usize,
     icons::*,
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
@@ -336,9 +335,7 @@ impl MapViewPreset {
             Self::Anchored => {
                 "Prioritize anchored-gene readability (core annotation lanes, low clutter overlays)"
             }
-            Self::Cloning => {
-                "Prioritize cloning context (core features + restriction/GC overlays)"
-            }
+            Self::Cloning => "Prioritize cloning context (core features + restriction/GC overlays)",
             Self::Annotation => {
                 "Prioritize annotation review (core features + TFBS, minimal auxiliary overlays)"
             }
@@ -860,7 +857,10 @@ impl MainAreaDna {
                     display.vcf_display_criteria(),
                 )
             })
-            .unwrap_or((TfbsDisplayCriteria::default(), VcfDisplayCriteria::default()));
+            .unwrap_or((
+                TfbsDisplayCriteria::default(),
+                VcfDisplayCriteria::default(),
+            ));
 
         let mut counts = LayerVisibilityCounts::default();
         if let Ok(dna) = self.dna.read() {
@@ -888,10 +888,7 @@ impl MainAreaDna {
                     continue;
                 }
                 if RenderDna::is_vcf_track_feature(feature)
-                    && !RenderDna::vcf_feature_passes_display_filter(
-                        feature,
-                        &vcf_display_criteria,
-                    )
+                    && !RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria)
                 {
                     continue;
                 }
@@ -920,7 +917,9 @@ impl MainAreaDna {
                 .regions()
                 .iter()
                 .filter(|region| match viewport {
-                    Some((start, end)) => Self::ranges_overlap(region.from(), region.to(), start, end),
+                    Some((start, end)) => {
+                        Self::ranges_overlap(region.from(), region.to(), start, end)
+                    }
                     None => true,
                 })
                 .count();
@@ -995,13 +994,19 @@ impl MainAreaDna {
             MapViewPreset::Anchored => {
                 matches!(kind.as_str(), "CDS" | "GENE" | "MRNA")
                     || kind.contains("REGULATORY")
-                    || matches!(kind.as_str(), "TRACK" | "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND")
+                    || matches!(
+                        kind.as_str(),
+                        "TRACK" | "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
+                    )
             }
             MapViewPreset::Cloning | MapViewPreset::Annotation => true,
             MapViewPreset::Signal => {
                 kind == "GENE"
                     || kind.contains("REGULATORY")
-                    || matches!(kind.as_str(), "TRACK" | "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND")
+                    || matches!(
+                        kind.as_str(),
+                        "TRACK" | "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
+                    )
             }
         }
     }
@@ -1195,7 +1200,9 @@ impl MainAreaDna {
                 DisplayTarget::MethylationSites,
                 snapshot.show_methylation_sites,
             );
-            self.sync_regulatory_track_placement_to_engine(snapshot.regulatory_tracks_near_baseline);
+            self.sync_regulatory_track_placement_to_engine(
+                snapshot.regulatory_tracks_near_baseline,
+            );
             self.op_status = "Restored view after declutter".to_string();
             return;
         }

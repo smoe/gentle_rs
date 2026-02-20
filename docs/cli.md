@@ -4,12 +4,13 @@ This page documents command-line entry points for GENtle.
 
 ## Overview
 
-GENtle currently provides four binaries:
+GENtle currently provides five binaries:
 
 - `gentle`: graphical desktop app (GUI)
 - `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
 - `gentle_js`: interactive JavaScript shell
 - `gentle_lua`: interactive Lua shell
+- `gentle_examples_docs`: generates adapter snippets from canonical protocol examples
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.
@@ -19,6 +20,19 @@ Structured command glossary:
 - `docs/glossary.json` is the machine-readable command glossary used for
   per-command help rendering (`help ...`) and catalog export
   (`help --format json|markdown`).
+
+Structured workflow examples:
+
+- canonical source files: `docs/examples/workflows/*.json`
+- schema: `gentle.workflow_example.v1`
+- on-demand snippet generation (CLI/shell/JS/Lua):
+  - `cargo run --bin gentle_examples_docs -- generate`
+- validation only:
+  - `cargo run --bin gentle_examples_docs -- --check`
+- test gating:
+  - `always` examples run in default tests
+  - `online` examples run only with `GENTLE_TEST_ONLINE=1`
+  - `skip` examples are syntax-checked only
 
 Architecture invariant: all adapters/frontends above route cloning/business
 behavior through the same shared engine.
@@ -50,6 +64,7 @@ cargo run --bin gentle
 cargo run --bin gentle_js
 cargo run --bin gentle_lua
 cargo run --bin gentle_cli -- capabilities
+cargo run --bin gentle_examples_docs -- --check
 cargo run --bin gentle -- --version
 cargo run --bin gentle_cli -- --version
 ```
@@ -61,12 +76,32 @@ cargo run --release --bin gentle
 cargo run --release --bin gentle_js
 cargo run --release --bin gentle_lua
 cargo run --release --bin gentle_cli -- capabilities
+cargo run --release --bin gentle_examples_docs -- --check
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- --version
 ```
 
 Important: with `cargo run`, arguments for GENtle binaries must come after `--`.
 Example: `cargo run --bin gentle -- --version`.
+
+## Protocol-first example source
+
+Canonical workflow examples are adapter-neutral JSON files:
+
+- source: `docs/examples/workflows/*.json`
+- generated adapter snippets: `docs/examples/generated/*.md`
+
+Regenerate snippets on demand:
+
+```bash
+cargo run --bin gentle_examples_docs -- generate
+```
+
+Validate example files and schema without writing output:
+
+```bash
+cargo run --bin gentle_examples_docs -- --check
+```
 
 ## `gentle` (GUI launcher)
 
@@ -162,16 +197,10 @@ Exit methods:
 
 ### JavaScript example
 
-```javascript
-state = { sequences: {}, metadata: {}, display: {}, lineage: {} };
-op = { LoadFile: { path: "test_files/pGEX-3X.gb", as_id: "pgex" } };
-r1 = apply_operation(state, op);
-r2 = apply_operation(r1.state, {
-  Digest: { input: "pgex", enzymes: ["BamHI", "EcoRI"], output_prefix: "frag" },
-});
-console.log(r2.result.created_seq_ids);
-save_project(r2.state, "session.gentle.json");
-```
+Use generated adapter snippets to stay synchronized with canonical workflow JSON:
+
+- `docs/examples/generated/load_and_digest_pgex.md`
+- `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 
 ## `gentle_lua` (Lua shell)
 
@@ -242,17 +271,10 @@ Exit methods:
 
 ### Lua example
 
-```lua
-state = { sequences = {}, metadata = {}, display = {}, lineage = {} }
-r1 = apply_operation(state, {
-  LoadFile = { path = "test_files/pGEX-3X.gb", as_id = "pgex" }
-})
-r2 = apply_operation(r1.state, {
-  Branch = { input = "pgex", output_id = "pgex_copy" }
-})
-print(r2.result.created_seq_ids[1])
-save_project("session.gentle.json", r2.state)
-```
+Use generated adapter snippets to stay synchronized with canonical workflow JSON:
+
+- `docs/examples/generated/load_and_digest_pgex.md`
+- `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 
 ## File format expectations
 
@@ -418,6 +440,7 @@ Shared shell command:
     - `candidates list`
     - `candidates delete SET_NAME`
     - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
+    - `candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]`
     - `candidates show SET_NAME [--limit N] [--offset N]`
     - `candidates metrics SET_NAME`
     - `candidates score SET_NAME METRIC_NAME EXPRESSION`
@@ -576,6 +599,12 @@ Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candi
   - `--feature-kind` can be repeated to constrain nearest-feature context.
   - `--feature-geometry`, `--feature-boundary`, and `--strand-relation`
     control how directed feature distance targets are selected.
+- `candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]`
+  - Creates a candidate set from fixed-length windows constrained to the
+    interval between two local sequence anchors on `SEQ_ID`.
+  - Anchor JSON accepts the same local `SequenceAnchor` schema used by
+    `ExtractAnchoredRegion` (`Position` or `FeatureBoundary` with
+    `Start|End|Middle`).
 - `candidates show SET_NAME [--limit N] [--offset N]`
   - Pages records (`sequence`, `coordinates`, `metrics`) from one set.
 - `candidates metrics SET_NAME`
@@ -675,6 +704,11 @@ Extract anchored region with flexible 5' boundary and fixed anchor side:
 {"ExtractAnchoredRegion":{"input":"pgex","anchor":{"FeatureBoundary":{"feature_kind":"CDS","feature_label":null,"boundary":"Start","occurrence":0}},"direction":"Upstream","target_length_bp":500,"length_tolerance_bp":100,"required_re_sites":["EcoRI"],"required_tf_motifs":["TATAAA"],"forward_primer":"GAATTC","reverse_primer":"CGTACC","output_prefix":"promoter","unique":false,"max_candidates":20}}
 ```
 
+Note:
+
+- `ExtractAnchoredRegion.anchor` is a local sequence anchor (in-sequence
+  coordinate resolver), not genome-assembly provenance anchoring.
+
 `required_tf_motifs` accepts either IUPAC motif strings or motif IDs/names from
 the local JASPAR snapshot.
 
@@ -729,6 +763,12 @@ Generate a candidate set from windows on one sequence:
 
 ```json
 {"GenerateCandidateSet":{"set_name":"sgrna_windows","seq_id":"grch38_tp53","length_bp":20,"step_bp":1,"feature_kinds":["gene"],"feature_label_regex":"^TP53$","max_distance_bp":5000,"limit":10000}}
+```
+
+Generate a candidate set only between two local anchors:
+
+```json
+{"GenerateCandidateSetBetweenAnchors":{"set_name":"sgrna_between","seq_id":"grch38_tp53","anchor_a":{"FeatureBoundary":{"feature_kind":"gene","feature_label":"TP53","boundary":"Start","occurrence":0}},"anchor_b":{"FeatureBoundary":{"feature_kind":"gene","feature_label":"TP53","boundary":"End","occurrence":0}},"length_bp":20,"step_bp":1,"limit":10000}}
 ```
 
 Add a derived metric expression:

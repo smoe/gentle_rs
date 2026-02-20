@@ -669,8 +669,10 @@ impl GENtleApp {
         target.tfbs_display_min_llr_quantile = source.tfbs_display_min_llr_quantile;
         target.tfbs_display_use_true_log_odds_bits = source.tfbs_display_use_true_log_odds_bits;
         target.tfbs_display_min_true_log_odds_bits = source.tfbs_display_min_true_log_odds_bits;
-        target.tfbs_display_use_true_log_odds_quantile = source.tfbs_display_use_true_log_odds_quantile;
-        target.tfbs_display_min_true_log_odds_quantile = source.tfbs_display_min_true_log_odds_quantile;
+        target.tfbs_display_use_true_log_odds_quantile =
+            source.tfbs_display_use_true_log_odds_quantile;
+        target.tfbs_display_min_true_log_odds_quantile =
+            source.tfbs_display_min_true_log_odds_quantile;
         target.vcf_display_show_snp = source.vcf_display_show_snp;
         target.vcf_display_show_ins = source.vcf_display_show_ins;
         target.vcf_display_show_del = source.vcf_display_show_del;
@@ -1344,12 +1346,16 @@ impl GENtleApp {
             .tfbs_display_min_llr_quantile
             .to_bits()
             .hash(&mut hasher);
-        display.tfbs_display_use_true_log_odds_bits.hash(&mut hasher);
+        display
+            .tfbs_display_use_true_log_odds_bits
+            .hash(&mut hasher);
         display
             .tfbs_display_min_true_log_odds_bits
             .to_bits()
             .hash(&mut hasher);
-        display.tfbs_display_use_true_log_odds_quantile.hash(&mut hasher);
+        display
+            .tfbs_display_use_true_log_odds_quantile
+            .hash(&mut hasher);
         display
             .tfbs_display_min_true_log_odds_quantile
             .to_bits()
@@ -1371,7 +1377,10 @@ impl GENtleApp {
         display.show_gc_contents.hash(&mut hasher);
         display.show_open_reading_frames.hash(&mut hasher);
         display.show_methylation_sites.hash(&mut hasher);
-        display.feature_details_font_size.to_bits().hash(&mut hasher);
+        display
+            .feature_details_font_size
+            .to_bits()
+            .hash(&mut hasher);
         display.linear_view_start_bp.hash(&mut hasher);
         display.linear_view_span_bp.hash(&mut hasher);
 
@@ -2420,11 +2429,15 @@ impl GENtleApp {
                 Err(e) => {
                     let lower = e.message.to_ascii_lowercase();
                     if lower.contains("timed out") {
-                        self.genome_prepare_status =
-                            format!("Prepare genome timed out after {:.1}s: {}", elapsed, e.message);
+                        self.genome_prepare_status = format!(
+                            "Prepare genome timed out after {:.1}s: {}",
+                            elapsed, e.message
+                        );
                     } else if lower.contains("cancelled") || lower.contains("canceled") {
-                        self.genome_prepare_status =
-                            format!("Prepare genome cancelled after {:.1}s: {}", elapsed, e.message);
+                        self.genome_prepare_status = format!(
+                            "Prepare genome cancelled after {:.1}s: {}",
+                            elapsed, e.message
+                        );
                     } else {
                         self.genome_prepare_status =
                             format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
@@ -3192,7 +3205,10 @@ impl GENtleApp {
         if let Some(task) = &self.genome_prepare_task {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
-                let mut status = format!("Prepare task running ({:.1}s)", task.started.elapsed().as_secs_f32());
+                let mut status = format!(
+                    "Prepare task running ({:.1}s)",
+                    task.started.elapsed().as_secs_f32()
+                );
                 if let Some(timeout) = task.timeout_seconds {
                     status.push_str(&format!(", timeout={}s", timeout));
                 }
@@ -6437,13 +6453,15 @@ impl GENtleApp {
             defaults.tfbs_display_use_llr_quantile;
         self.configuration_graphics.tfbs_display_min_llr_quantile =
             defaults.tfbs_display_min_llr_quantile;
-        self.configuration_graphics.tfbs_display_use_true_log_odds_bits =
-            defaults.tfbs_display_use_true_log_odds_bits;
-        self.configuration_graphics.tfbs_display_min_true_log_odds_bits =
-            defaults.tfbs_display_min_true_log_odds_bits;
-        self.configuration_graphics.tfbs_display_use_true_log_odds_quantile =
+        self.configuration_graphics
+            .tfbs_display_use_true_log_odds_bits = defaults.tfbs_display_use_true_log_odds_bits;
+        self.configuration_graphics
+            .tfbs_display_min_true_log_odds_bits = defaults.tfbs_display_min_true_log_odds_bits;
+        self.configuration_graphics
+            .tfbs_display_use_true_log_odds_quantile =
             defaults.tfbs_display_use_true_log_odds_quantile;
-        self.configuration_graphics.tfbs_display_min_true_log_odds_quantile =
+        self.configuration_graphics
+            .tfbs_display_min_true_log_odds_quantile =
             defaults.tfbs_display_min_true_log_odds_quantile;
         self.configuration_graphics.vcf_display_show_snp = defaults.vcf_display_show_snp;
         self.configuration_graphics.vcf_display_show_ins = defaults.vcf_display_show_ins;

@@ -474,7 +474,7 @@ design constraints:
 
 - fixed anchor:
   - absolute position (0-based), or
-  - feature boundary (`kind`, optional `label`, `Start/End`, `occurrence`)
+  - feature boundary (`kind`, optional `label`, `Start/End/Middle`, `occurrence`)
 - direction:
   - `Upstream` or `Downstream`
 - flexible target length:
@@ -490,6 +490,12 @@ design constraints:
 
 Execution calls engine operation `ExtractAnchoredRegion` and creates one or
 more candidate sequences as operation results.
+
+Note:
+
+- This anchored extraction uses local in-sequence anchor resolution. It is
+  separate from genome-provenance anchoring used by genome extract/extend
+  workflows.
 
 ## TFBS Annotation (Engine Ops)
 

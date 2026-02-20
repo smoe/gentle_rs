@@ -106,16 +106,18 @@ fn is_prefix_path(path: &str, topic: &[String]) -> bool {
     path.iter().zip(topic.iter()).all(|(a, b)| a == b)
 }
 
-fn docs_for_interface(interface_filter: Option<&str>) -> Result<Vec<&'static ShellCommandDoc>, String> {
+fn docs_for_interface(
+    interface_filter: Option<&str>,
+) -> Result<Vec<&'static ShellCommandDoc>, String> {
     let glossary = glossary()?;
     let interface_filter = normalize_interface_filter(interface_filter)?;
     Ok(glossary
         .commands
         .iter()
         .filter(|doc| {
-            interface_filter.as_ref().map_or(true, |f| {
-                doc.interfaces.iter().any(|iface| iface == f)
-            })
+            interface_filter
+                .as_ref()
+                .map_or(true, |f| doc.interfaces.iter().any(|iface| iface == f))
         })
         .collect())
 }
@@ -158,7 +160,10 @@ fn find_doc_for_topic<'a>(
 
 fn topic_not_found_message(topic: &[String], docs: &[&ShellCommandDoc]) -> String {
     let topic_joined = topic.join(" ");
-    let first = topic.first().map(|v| v.to_ascii_lowercase()).unwrap_or_default();
+    let first = topic
+        .first()
+        .map(|v| v.to_ascii_lowercase())
+        .unwrap_or_default();
     let mut suggestions = docs
         .iter()
         .map(|doc| doc.path.as_str())
@@ -166,7 +171,11 @@ fn topic_not_found_message(topic: &[String], docs: &[&ShellCommandDoc]) -> Strin
         .take(8)
         .collect::<Vec<_>>();
     if suggestions.is_empty() {
-        suggestions = docs.iter().map(|doc| doc.path.as_str()).take(8).collect::<Vec<_>>();
+        suggestions = docs
+            .iter()
+            .map(|doc| doc.path.as_str())
+            .take(8)
+            .collect::<Vec<_>>();
     }
     format!(
         "Unknown help topic '{}'. Try one of: {}",
@@ -199,7 +208,10 @@ fn render_topic_markdown(doc: &ShellCommandDoc) -> String {
     out.push_str(&format!("## `{}`\n", doc.path));
     out.push_str(&format!("- Usage: `{}`\n", doc.usage));
     out.push_str(&format!("- Summary: {}\n", doc.summary));
-    out.push_str(&format!("- Interfaces: `{}`\n", doc.interfaces.join("`, `")));
+    out.push_str(&format!(
+        "- Interfaces: `{}`\n",
+        doc.interfaces.join("`, `")
+    ));
     if !doc.engine_operations.is_empty() {
         out.push_str(&format!(
             "- Engine operations: `{}`\n",
@@ -255,7 +267,8 @@ pub fn shell_topic_help_text(
     interface_filter: Option<&str>,
 ) -> Result<String, String> {
     let docs = docs_for_interface(interface_filter)?;
-    let doc = find_doc_for_topic(&docs, topic).ok_or_else(|| topic_not_found_message(topic, &docs))?;
+    let doc =
+        find_doc_for_topic(&docs, topic).ok_or_else(|| topic_not_found_message(topic, &docs))?;
     Ok(render_topic_text(doc))
 }
 
@@ -264,7 +277,8 @@ pub fn shell_topic_help_markdown(
     interface_filter: Option<&str>,
 ) -> Result<String, String> {
     let docs = docs_for_interface(interface_filter)?;
-    let doc = find_doc_for_topic(&docs, topic).ok_or_else(|| topic_not_found_message(topic, &docs))?;
+    let doc =
+        find_doc_for_topic(&docs, topic).ok_or_else(|| topic_not_found_message(topic, &docs))?;
     Ok(render_topic_markdown(doc))
 }
 
@@ -273,7 +287,8 @@ pub fn shell_topic_help_json(
     interface_filter: Option<&str>,
 ) -> Result<Value, String> {
     let docs = docs_for_interface(interface_filter)?;
-    let doc = find_doc_for_topic(&docs, topic).ok_or_else(|| topic_not_found_message(topic, &docs))?;
+    let doc =
+        find_doc_for_topic(&docs, topic).ok_or_else(|| topic_not_found_message(topic, &docs))?;
     Ok(json!({
         "schema": "gentle.shell_help_topic.v1",
         "topic": topic.join(" "),

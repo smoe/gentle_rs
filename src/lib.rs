@@ -44,6 +44,7 @@ pub mod tf_motifs;
 pub mod translations;
 pub mod window;
 pub mod window_dna;
+pub mod workflow_examples;
 
 lazy_static! {
     // Interface translations

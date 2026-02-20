@@ -79,9 +79,7 @@ impl LuaInterface {
         println!(
             "  - apply_operation(project, op): Applies an operation (Lua table or JSON string)"
         );
-        println!(
-            "  - set_parameter(project, name, value): Helper for Operation::SetParameter"
-        );
+        println!("  - set_parameter(project, name, value): Helper for Operation::SetParameter");
         println!(
             "  - set_vcf_display_filter(project, opts): Convenience helper for VCF display criteria updates"
         );
@@ -796,11 +794,7 @@ impl LuaInterface {
                         "3" | "3p" | "3prime" | "3'" | "three_prime" | "three-prime" => {
                             GenomeAnchorSide::ThreePrime
                         }
-                        _ => {
-                            return Err(Self::err(
-                                "extend_genome_anchor side must be 5p or 3p",
-                            ))
-                        }
+                        _ => return Err(Self::err("extend_genome_anchor side must be 5p or 3p")),
                     };
                     let state: ProjectState = lua
                         .from_value(state)
@@ -1050,14 +1044,15 @@ impl LuaInterface {
 
         self.lua.globals().set(
             "import_pool",
-            self.lua
-                .create_function(|lua, (state, input, prefix): (Value, String, Option<String>)| {
+            self.lua.create_function(
+                |lua, (state, input, prefix): (Value, String, Option<String>)| {
                     let state: ProjectState = lua
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
                     let response = Self::import_pool(state, input, prefix)?;
                     lua.to_value(&response)
-                })?,
+                },
+            )?,
         )?;
 
         Ok(())

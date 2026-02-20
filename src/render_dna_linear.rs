@@ -571,8 +571,7 @@ impl RenderDnaLinear {
                 continue;
             }
             let kind = feature.kind.to_string().to_ascii_uppercase();
-            let is_high_priority_feature =
-                matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+            let is_high_priority_feature = matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
             if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
                 continue;
             }

@@ -735,12 +735,8 @@ mod tests {
         )
         .expect("write pool json");
         let state = ProjectState::default();
-        let out = import_pool_impl(
-            state,
-            pool_path.to_string_lossy().as_ref(),
-            "js_pool",
-        )
-        .expect("import pool");
+        let out = import_pool_impl(state, pool_path.to_string_lossy().as_ref(), "js_pool")
+            .expect("import pool");
         assert!(out.state_changed);
         assert_eq!(out.output["pool_id"].as_str(), Some("demo_pool"));
         assert_eq!(out.output["member_count"].as_u64(), Some(1));

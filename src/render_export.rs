@@ -231,8 +231,8 @@ fn vcf_feature_passes_display_filter(feature: &Feature, display: &DisplaySetting
         }
     }
     if display.vcf_display_use_min_qual || display.vcf_display_use_max_qual {
-        let qual =
-            feature_qualifier_f64(feature, "vcf_qual").or_else(|| feature_qualifier_f64(feature, "score"));
+        let qual = feature_qualifier_f64(feature, "vcf_qual")
+            .or_else(|| feature_qualifier_f64(feature, "score"));
         let Some(qual) = qual else {
             return false;
         };
@@ -1038,7 +1038,10 @@ mod tests {
             location: Location::simple_range(start as i64, end as i64),
             qualifiers: vec![
                 ("label".into(), Some(label.to_string())),
-                ("gentle_generated".into(), Some("genome_vcf_track".to_string())),
+                (
+                    "gentle_generated".into(),
+                    Some("genome_vcf_track".to_string()),
+                ),
                 ("vcf_variant_class".into(), Some(class.to_string())),
                 ("vcf_filter".into(), Some(filter.to_string())),
                 ("vcf_qual".into(), Some(format!("{qual:.3}"))),
