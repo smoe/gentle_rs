@@ -105,6 +105,39 @@ impl Default for TfbsDisplayCriteria {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct VcfDisplayCriteria {
+    pub show_snp: bool,
+    pub show_ins: bool,
+    pub show_del: bool,
+    pub show_sv: bool,
+    pub show_other: bool,
+    pub pass_only: bool,
+    pub use_min_qual: bool,
+    pub min_qual: f64,
+    pub use_max_qual: bool,
+    pub max_qual: f64,
+    pub required_info_keys: Vec<String>,
+}
+
+impl Default for VcfDisplayCriteria {
+    fn default() -> Self {
+        Self {
+            show_snp: true,
+            show_ins: true,
+            show_del: true,
+            show_sv: true,
+            show_other: true,
+            pass_only: false,
+            use_min_qual: false,
+            min_qual: 0.0,
+            use_max_qual: false,
+            max_qual: 0.0,
+            required_info_keys: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct UpdateLayoutParts {
     update_map_dna: bool,
@@ -147,6 +180,7 @@ pub struct DnaDisplay {
     regulatory_tracks_near_baseline: bool,
     hidden_feature_kinds: BTreeSet<String>,
     tfbs_display_criteria: TfbsDisplayCriteria,
+    vcf_display_criteria: VcfDisplayCriteria,
     show_gc_contents: bool,
     show_methylation_sites: bool,
     update_layout: UpdateLayoutParts,
@@ -165,6 +199,17 @@ impl DnaDisplay {
 
     fn mark_layout_dirty(&mut self) {
         self.update_layout.update_all();
+    }
+
+    fn normalize_vcf_info_keys(keys: &[String]) -> Vec<String> {
+        let mut dedup = BTreeSet::new();
+        for key in keys {
+            let normalized = key.trim().to_ascii_uppercase();
+            if !normalized.is_empty() {
+                dedup.insert(normalized);
+            }
+        }
+        dedup.into_iter().collect()
     }
 
     pub fn show_restriction_enzyme_sites(&self) -> bool {
@@ -266,6 +311,18 @@ impl DnaDisplay {
     pub fn set_tfbs_display_criteria(&mut self, criteria: TfbsDisplayCriteria) {
         if self.tfbs_display_criteria != criteria {
             self.tfbs_display_criteria = criteria;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn vcf_display_criteria(&self) -> VcfDisplayCriteria {
+        self.vcf_display_criteria.clone()
+    }
+
+    pub fn set_vcf_display_criteria(&mut self, mut criteria: VcfDisplayCriteria) {
+        criteria.required_info_keys = Self::normalize_vcf_info_keys(&criteria.required_info_keys);
+        if self.vcf_display_criteria != criteria {
+            self.vcf_display_criteria = criteria;
             self.mark_layout_dirty();
         }
     }
@@ -446,6 +503,7 @@ impl Default for DnaDisplay {
             regulatory_tracks_near_baseline: false,
             hidden_feature_kinds: BTreeSet::new(),
             tfbs_display_criteria: TfbsDisplayCriteria::default(),
+            vcf_display_criteria: VcfDisplayCriteria::default(),
             show_gc_contents: true,
             show_methylation_sites: false,
             update_layout: UpdateLayoutParts::default(),

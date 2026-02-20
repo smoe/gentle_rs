@@ -25,7 +25,7 @@ Reference genome capability status:
 
 Candidate-set capability status:
 
-- `gentle_cli`: supported via shared engine operations (`GenerateCandidateSet`, `DeleteCandidateSet`, `ScoreCandidateSetExpression`, `ScoreCandidateSetDistance`, `FilterCandidateSet`, `CandidateSetOp`) and shared-shell `candidates` commands
+- `gentle_cli`: supported as first-class `candidates ...` commands and shared-shell `candidates ...` commands, backed by shared engine operations (`GenerateCandidateSet`, `DeleteCandidateSet`, `ScoreCandidateSetExpression`, `ScoreCandidateSetDistance`, `FilterCandidateSet`, `CandidateSetOp`)
 - `gentle_js`: supported via `apply_operation` with the same candidate-set operations
 - `gentle_lua`: supported via `apply_operation` with the same candidate-set operations
 
@@ -115,28 +115,32 @@ Exit methods:
    - Applies a workflow to a project state.
    - `workflow` may be a JS object or JSON string.
    - Returns `{ state, results }`.
-10. `sync_rebase(input, output, commercial_only)`
+10. `import_pool(state, input_pool_json, prefix)`
+   - Imports a `.pool.gentle.json` artifact into `state` via shared adapter logic.
+   - `prefix` is optional (`null`/`""` defaults to `pool`).
+   - Returns `{ state, state_changed, output }`.
+11. `sync_rebase(input, output, commercial_only)`
    - Parses REBASE/Bairoch input and writes a REBASE resource JSON snapshot.
    - `output` is optional (`null`/`""` uses default runtime resource path).
-11. `sync_jaspar(input, output)`
+12. `sync_jaspar(input, output)`
    - Parses JASPAR PFM text and writes motif resource JSON snapshot.
    - `output` is optional (`null`/`""` uses default runtime resource path).
-12. `list_reference_genomes(catalog_path)`
+13. `list_reference_genomes(catalog_path)`
     - Lists genome IDs from the genome catalog.
     - `catalog_path` is optional (`null`/`""` uses default catalog).
-13. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+14. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-14. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+15. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-15. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
+16. `prepare_genome(state, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-16. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+17. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-17. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-18. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
+19. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
-19. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
+20. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
 
 ### JavaScript example
@@ -188,27 +192,30 @@ Exit methods:
 9. `apply_workflow(project, workflow)`
    - Applies workflow; `workflow` can be Lua table or JSON string.
    - Returns table with `state` and `results`.
-10. `sync_rebase(input, output, commercial_only)`
+10. `import_pool(project, input_pool_json, [prefix])`
+   - Imports a `.pool.gentle.json` artifact into `project` via shared adapter logic.
+   - Returns table with `state`, `state_changed`, and `output`.
+11. `sync_rebase(input, output, commercial_only)`
    - Parses REBASE/Bairoch input and writes a REBASE resource JSON snapshot.
    - `output` and `commercial_only` are optional.
-11. `sync_jaspar(input, output)`
+12. `sync_jaspar(input, output)`
    - Parses JASPAR PFM text and writes motif resource JSON snapshot.
    - `output` is optional.
-12. `list_reference_genomes(catalog_path)`
+13. `list_reference_genomes(catalog_path)`
     - Lists genome IDs from the genome catalog.
-13. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
+14. `is_reference_genome_prepared(genome_id, catalog_path, cache_dir)`
     - Checks whether a genome cache is prepared and indexed.
-14. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
+15. `list_reference_genome_genes(genome_id, catalog_path, cache_dir)`
     - Lists indexed genes from prepared genome cache.
-15. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
+16. `prepare_genome(project, genome_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `PrepareGenome`.
-16. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
+17. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-17. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-18. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
+19. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
-19. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
+20. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
 
 ### Lua example
@@ -309,9 +316,10 @@ cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --cache-dir data/helper_genomes
-cargo run --bin gentle_cli -- shell 'candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000'
-cargo run --bin gentle_cli -- shell 'candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"'
-cargo run --bin gentle_cli -- shell 'candidates filter sgrnas sgrnas_q95 --metric gc_balance --min-quantile 0.95'
+cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
+cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
+cargo run --bin gentle_cli -- candidates filter sgrnas sgrnas_q95 --metric gc_balance --min-quantile 0.95
+cargo run --bin gentle_cli -- candidates macro @candidate_flow.gsh
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -323,8 +331,8 @@ Global CLI options:
 - `--progress-stdout`: print live progress events to `stdout`
 - `--allow-screenshots`: opt-in guard for window screenshot commands
 
-Current progress events include TFBS annotation updates and genome-prepare
-updates (download/index phases).
+Current progress events include TFBS annotation updates, genome-prepare
+updates (download/index phases), and genome-track import updates.
 When `--progress-stdout` is used, progress lines are emitted before the final JSON output.
 
 `state-summary` output includes:
@@ -388,6 +396,7 @@ Shared shell command:
     - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
     - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
     - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
+    - `candidates macro SCRIPT_OR_@FILE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (requires process startup with
@@ -517,7 +526,7 @@ Helper convenience commands:
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
 
-Candidate-set shell commands:
+Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candidates ...'`):
 
 - `candidates list`
   - Lists available candidate sets from project metadata.
@@ -538,11 +547,17 @@ Candidate-set shell commands:
   - Creates `OUTPUT_SET` by value and/or quantile thresholds.
 - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
   - Creates set algebra output from two sets.
+- `candidates macro SCRIPT_OR_@FILE`
+  - Runs multiple candidate statements in order (semicolon/newline separated).
+  - Nested macro calls are rejected.
 
 Notes:
 
-- Candidate sets persist in `ProjectState.metadata["candidate_sets"]`
-  (`gentle.candidate_sets.v1`).
+- In-memory candidate sets persist in
+  `ProjectState.metadata["candidate_sets"]` (`gentle.candidate_sets.v1`).
+- On save, candidate sets are externalized into a sidecar index + JSONL files;
+  project metadata stores a reference schema (`gentle.candidate_sets.ref.v1`).
+- On load, sidecar-backed candidate metadata is hydrated automatically.
 - `list/show/metrics` are read-only commands.
 - `delete/generate/score/score-distance/filter/set-op` mutate state and are
   available through CLI shell and GUI shell.
@@ -891,8 +906,8 @@ Save as GenBank:
 
 ### Current limitations in the new operation layer
 
-- `import-pool` is currently a shared shell/CLI utility command and not yet an
-  engine operation.
+- `import-pool` is currently an adapter-level utility contract (CLI/GUI shared
+  shell + JS/Lua wrappers) and not yet an engine operation.
 
 ## Error behavior
 

@@ -66,10 +66,10 @@ The project main window (lineage page) supports two views:
 
 Node click behavior in lineage `Graph` view:
 
-- Click on a single-sequence node: opens that sequence window.
-- Click on a pool node: opens a pool-context window (Engine Ops visible, pool
-  member distribution available).
-- Double-click on a node: runs `SelectCandidate` for that node.
+- Single-click: selects a node (highlight only).
+- Double-click on a single-sequence node: opens that sequence window.
+- Double-click on a pool node: opens a pool-context window (Engine Ops visible,
+  pool member distribution available).
 
 ## Toolbar buttons
 
@@ -193,6 +193,7 @@ Supported commands:
 - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
 - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
+- `candidates macro SCRIPT_OR_@FILE`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
 
@@ -208,31 +209,46 @@ Screenshot command (shared shell, implemented):
 - current backend support: macOS (`screencapture`); other platforms currently
   return unsupported
 
-## Candidate-Set Workflow (GUI Shell)
+## Candidate-Set Workflow (Engine Ops + GUI Shell)
 
-Candidate-set generation/scoring/filtering is now backed by shared engine
-operations and available directly from the GUI Shell.
+Candidate-set generation/scoring/filtering is backed by shared engine
+operations and available in two GUI paths:
+
+- `Engine Ops -> Candidate sets (scoring/filtering)` dedicated form panel
+- GUI shell (`candidates ...` command family, including `candidates macro`)
 
 Recommended flow in one sequence window:
 
 1. Generate a seed set:
-   - `candidates generate sgrnas my_seq --length 20 --step 1 --limit 10000`
+   - Engine Ops panel: fill `set`, `seq`, `length`, `step`, optional feature filters, then `Generate`
+   - Shell equivalent: `candidates generate sgrnas my_seq --length 20 --step 1 --limit 10000`
 2. Add derived metrics:
-   - `candidates score sgrnas gc_bias "100 * (gc_fraction - at_fraction)"`
-   - `candidates score-distance sgrnas dist_gene --feature-kind gene`
+   - Engine Ops panel: `Score expr` and `Score distance`
+   - Shell equivalents:
+     - `candidates score sgrnas gc_bias "100 * (gc_fraction - at_fraction)"`
+     - `candidates score-distance sgrnas dist_gene --feature-kind gene`
 3. Filter into explicit subsets:
-   - `candidates filter sgrnas sgrnas_gc_ok --metric gc_bias --min -20 --max 20`
-   - `candidates filter sgrnas_gc_ok sgrnas_top --metric dist_gene --max-quantile 0.25`
+   - Engine Ops panel: `Filter` with value and/or quantile bounds
+   - Shell equivalents:
+     - `candidates filter sgrnas sgrnas_gc_ok --metric gc_bias --min -20 --max 20`
+     - `candidates filter sgrnas_gc_ok sgrnas_top --metric dist_gene --max-quantile 0.25`
 4. Combine subsets:
-   - `candidates set-op intersect sgrnas_top other_set final_set`
-5. Inspect/paginate:
-   - `candidates show final_set --limit 50 --offset 0`
+   - Engine Ops panel: `Apply set-op` (`union`/`intersect`/`subtract`)
+   - Shell equivalent: `candidates set-op intersect sgrnas_top other_set final_set`
+5. Inspect/paginate/export:
+   - Engine Ops panel: page controls (`limit`/`offset`, `Prev`/`Next`), local sort key, and `Export selected set as JSON`
+   - Shell equivalent: `candidates show final_set --limit 50 --offset 0`
+6. Optional macro execution:
+   - Engine Ops panel: `Run candidates macro` with multiline script
+   - Shell equivalent: `candidates macro SCRIPT_OR_@FILE`
 
 Persistence:
 
-- Candidate sets are persisted in project metadata at
-  `metadata["candidate_sets"]` (schema `gentle.candidate_sets.v1`).
-- Saved projects keep these sets across reloads.
+- In-memory candidate sets are tracked at
+  `metadata["candidate_sets"]` (`gentle.candidate_sets.v1`).
+- On save, candidate sets are externalized into a sidecar index + JSONL store;
+  project metadata stores a reference schema (`gentle.candidate_sets.ref.v1`).
+- On project load, sidecar-backed candidate sets are rehydrated automatically.
 
 ## Documentation automation status
 
@@ -319,6 +335,10 @@ In `Main window -> Graph` view:
   - hold `Space` and drag on empty graph background
 - Node layout:
   - drag a node with the mouse to reposition it
+  - double-click a node to open it (`pool` nodes open pool view)
+  - single-click selects a node for visual focus
+  - hover shows node details at pointer; pool nodes include pool range and
+    auto-selected ladder hints
   - moved positions are persisted in project metadata and restored when the
     project is reopened
   - automatic graph layout uses DAG layering (parents left, children right)

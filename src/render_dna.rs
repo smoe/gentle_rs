@@ -1,5 +1,5 @@
 use crate::{
-    dna_display::{DnaDisplay, TfbsDisplayCriteria},
+    dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     render_dna_circular::RenderDnaCircular,
     render_dna_linear::RenderDnaLinear,
@@ -164,6 +164,18 @@ impl RenderDna {
     }
 
     pub fn feature_color(feature: &Feature) -> Color32 {
+        if Self::is_vcf_track_feature(feature) {
+            let class = Self::vcf_variant_class(feature)
+                .unwrap_or_else(|| "OTHER".to_string())
+                .to_ascii_uppercase();
+            return match class.as_str() {
+                "SNP" => Color32::from_rgb(225, 127, 15),
+                "INS" => Color32::from_rgb(35, 140, 100),
+                "DEL" => Color32::from_rgb(180, 45, 45),
+                "SV" => Color32::from_rgb(90, 90, 30),
+                _ => Color32::from_rgb(90, 90, 90),
+            };
+        }
         match feature.kind.to_string().to_ascii_uppercase().as_str() {
             "CDS" => Color32::RED,
             "GENE" => Color32::BLUE,
@@ -217,9 +229,18 @@ impl RenderDna {
             .any(|value| {
                 matches!(
                     value.trim().to_ascii_lowercase().as_str(),
-                    "genome_bed_track" | "genome_bigwig_track" | "blast_hit_track"
+                    "genome_bed_track"
+                        | "genome_bigwig_track"
+                        | "genome_vcf_track"
+                        | "blast_hit_track"
                 )
             })
+    }
+
+    pub fn is_vcf_track_feature(feature: &Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
     }
 
     pub fn is_regulatory_feature(feature: &Feature) -> bool {
@@ -327,11 +348,108 @@ impl RenderDna {
             .or_else(|| Some("Unnamed track".to_string()))
     }
 
+    pub fn vcf_variant_class(feature: &Feature) -> Option<String> {
+        if !Self::is_vcf_track_feature(feature) {
+            return None;
+        }
+        Self::feature_qualifier_text(feature, "vcf_variant_class").or_else(|| {
+            let reference = Self::feature_qualifier_text(feature, "vcf_ref")?;
+            let alt = Self::feature_qualifier_text(feature, "vcf_alt")?;
+            let ref_len = reference.trim().len().max(1);
+            let alt_trimmed = alt.trim();
+            if alt_trimmed.starts_with('<')
+                || alt_trimmed.ends_with('>')
+                || alt_trimmed.contains('[')
+                || alt_trimmed.contains(']')
+                || alt_trimmed == "*"
+            {
+                return Some("SV".to_string());
+            }
+            let alt_len = alt_trimmed.len().max(1);
+            if ref_len == 1 && alt_len == 1 {
+                Some("SNP".to_string())
+            } else if alt_len > ref_len {
+                Some("INS".to_string())
+            } else if alt_len < ref_len {
+                Some("DEL".to_string())
+            } else {
+                Some("OTHER".to_string())
+            }
+        })
+    }
+
     fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
         feature
             .qualifier_values(key.into())
             .next()
             .and_then(|v| v.trim().parse::<f64>().ok())
+    }
+
+    pub fn vcf_feature_passes_display_filter(
+        feature: &Feature,
+        criteria: &VcfDisplayCriteria,
+    ) -> bool {
+        if !Self::is_vcf_track_feature(feature) {
+            return true;
+        }
+        let class = Self::vcf_variant_class(feature)
+            .unwrap_or_else(|| "OTHER".to_string())
+            .to_ascii_uppercase();
+        let class_ok = match class.as_str() {
+            "SNP" => criteria.show_snp,
+            "INS" => criteria.show_ins,
+            "DEL" => criteria.show_del,
+            "SV" => criteria.show_sv,
+            _ => criteria.show_other,
+        };
+        if !class_ok {
+            return false;
+        }
+        if criteria.pass_only {
+            let filter = Self::feature_qualifier_text(feature, "vcf_filter")
+                .unwrap_or_else(|| String::new())
+                .trim()
+                .to_ascii_uppercase();
+            if filter != "PASS" {
+                return false;
+            }
+        }
+        if criteria.use_min_qual || criteria.use_max_qual {
+            let qual = Self::feature_qualifier_f64(feature, "vcf_qual")
+                .or_else(|| Self::feature_qualifier_f64(feature, "score"));
+            let Some(qual) = qual else {
+                return false;
+            };
+            if criteria.use_min_qual && qual < criteria.min_qual {
+                return false;
+            }
+            if criteria.use_max_qual && qual > criteria.max_qual {
+                return false;
+            }
+        }
+        if !criteria.required_info_keys.is_empty() {
+            let info = Self::feature_qualifier_text(feature, "vcf_info").unwrap_or_default();
+            let info_keys = info
+                .split(';')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(|entry| {
+                    entry
+                        .split_once('=')
+                        .map(|(key, _)| key.trim().to_ascii_uppercase())
+                        .unwrap_or_else(|| entry.to_ascii_uppercase())
+                })
+                .collect::<std::collections::HashSet<_>>();
+            if criteria
+                .required_info_keys
+                .iter()
+                .map(|key| key.trim().to_ascii_uppercase())
+                .any(|key| !info_keys.contains(&key))
+            {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn tfbs_feature_passes_display_filter(

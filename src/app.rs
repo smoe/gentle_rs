@@ -18,8 +18,9 @@ use crate::{
     dna_sequence::{self, DNAsequence},
     engine::{
         BlastHitFeatureInput, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
-        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, OpResult,
-        Operation, ProjectState, BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+        GenomeTrackSyncReport, GentleEngine, OpResult, Operation, OperationProgress, ProjectState,
+        BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
     },
     enzymes,
     genomes::{
@@ -149,6 +150,7 @@ pub struct GENtleApp {
     lineage_graph_scroll_offset: Vec2,
     lineage_graph_pan_origin: Option<Vec2>,
     lineage_graph_compact_labels: bool,
+    lineage_graph_selected_node_id: Option<String>,
     lineage_graph_node_offsets: HashMap<String, Vec2>,
     lineage_graph_drag_origin: Option<(String, Vec2)>,
     lineage_graph_offsets_synced_stamp: u64,
@@ -211,6 +213,8 @@ pub struct GENtleApp {
     genome_track_max_score: String,
     genome_track_clear_existing: bool,
     genome_track_status: String,
+    genome_track_import_task: Option<GenomeTrackImportTask>,
+    genome_track_import_progress: Option<GenomeTrackImportProgress>,
     genome_bed_track_subscriptions: Vec<GenomeTrackSubscription>,
     genome_track_autosync_status: String,
     tracked_autosync_last_op_count: Option<usize>,
@@ -251,6 +255,17 @@ struct GenomePrepareTask {
 
 enum GenomePrepareTaskMessage {
     Progress(PrepareGenomeProgress),
+    Done(Result<OpResult, EngineError>),
+}
+
+struct GenomeTrackImportTask {
+    started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    receiver: mpsc::Receiver<GenomeTrackImportTaskMessage>,
+}
+
+enum GenomeTrackImportTaskMessage {
+    Progress(GenomeTrackImportProgress),
     Done(Result<OpResult, EngineError>),
 }
 
@@ -385,6 +400,7 @@ impl Default for GENtleApp {
             lineage_graph_scroll_offset: Vec2::ZERO,
             lineage_graph_pan_origin: None,
             lineage_graph_compact_labels: true,
+            lineage_graph_selected_node_id: None,
             lineage_graph_node_offsets: HashMap::new(),
             lineage_graph_drag_origin: None,
             lineage_graph_offsets_synced_stamp: 0,
@@ -449,6 +465,8 @@ impl Default for GENtleApp {
             genome_track_max_score: String::new(),
             genome_track_clear_existing: false,
             genome_track_status: String::new(),
+            genome_track_import_task: None,
+            genome_track_import_progress: None,
             genome_bed_track_subscriptions: vec![],
             genome_track_autosync_status: String::new(),
             tracked_autosync_last_op_count: None,
@@ -627,15 +645,38 @@ impl GENtleApp {
     fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
         target.show_sequence_panel = source.show_sequence_panel;
         target.show_map_panel = source.show_map_panel;
+        target.show_features = source.show_features;
         target.show_cds_features = source.show_cds_features;
         target.show_gene_features = source.show_gene_features;
         target.show_mrna_features = source.show_mrna_features;
         target.show_tfbs = source.show_tfbs;
         target.regulatory_tracks_near_baseline = source.regulatory_tracks_near_baseline;
+        target.tfbs_display_use_llr_bits = source.tfbs_display_use_llr_bits;
+        target.tfbs_display_min_llr_bits = source.tfbs_display_min_llr_bits;
+        target.tfbs_display_use_llr_quantile = source.tfbs_display_use_llr_quantile;
+        target.tfbs_display_min_llr_quantile = source.tfbs_display_min_llr_quantile;
+        target.tfbs_display_use_true_log_odds_bits = source.tfbs_display_use_true_log_odds_bits;
+        target.tfbs_display_min_true_log_odds_bits = source.tfbs_display_min_true_log_odds_bits;
+        target.tfbs_display_use_true_log_odds_quantile = source.tfbs_display_use_true_log_odds_quantile;
+        target.tfbs_display_min_true_log_odds_quantile = source.tfbs_display_min_true_log_odds_quantile;
+        target.vcf_display_show_snp = source.vcf_display_show_snp;
+        target.vcf_display_show_ins = source.vcf_display_show_ins;
+        target.vcf_display_show_del = source.vcf_display_show_del;
+        target.vcf_display_show_sv = source.vcf_display_show_sv;
+        target.vcf_display_show_other = source.vcf_display_show_other;
+        target.vcf_display_pass_only = source.vcf_display_pass_only;
+        target.vcf_display_use_min_qual = source.vcf_display_use_min_qual;
+        target.vcf_display_min_qual = source.vcf_display_min_qual;
+        target.vcf_display_use_max_qual = source.vcf_display_use_max_qual;
+        target.vcf_display_max_qual = source.vcf_display_max_qual;
+        target.vcf_display_required_info_keys = source.vcf_display_required_info_keys.clone();
         target.show_restriction_enzymes = source.show_restriction_enzymes;
         target.show_gc_contents = source.show_gc_contents;
         target.show_open_reading_frames = source.show_open_reading_frames;
         target.show_methylation_sites = source.show_methylation_sites;
+        target.feature_details_font_size = source.feature_details_font_size;
+        target.linear_view_start_bp = source.linear_view_start_bp;
+        target.linear_view_span_bp = source.linear_view_span_bp;
     }
 
     fn apply_configuration_graphics_to_engine_state(&mut self) {
@@ -1281,10 +1322,46 @@ impl GENtleApp {
         display.show_mrna_features.hash(&mut hasher);
         display.show_tfbs.hash(&mut hasher);
         display.regulatory_tracks_near_baseline.hash(&mut hasher);
+        display.tfbs_display_use_llr_bits.hash(&mut hasher);
+        display
+            .tfbs_display_min_llr_bits
+            .to_bits()
+            .hash(&mut hasher);
+        display.tfbs_display_use_llr_quantile.hash(&mut hasher);
+        display
+            .tfbs_display_min_llr_quantile
+            .to_bits()
+            .hash(&mut hasher);
+        display.tfbs_display_use_true_log_odds_bits.hash(&mut hasher);
+        display
+            .tfbs_display_min_true_log_odds_bits
+            .to_bits()
+            .hash(&mut hasher);
+        display.tfbs_display_use_true_log_odds_quantile.hash(&mut hasher);
+        display
+            .tfbs_display_min_true_log_odds_quantile
+            .to_bits()
+            .hash(&mut hasher);
+        display.vcf_display_show_snp.hash(&mut hasher);
+        display.vcf_display_show_ins.hash(&mut hasher);
+        display.vcf_display_show_del.hash(&mut hasher);
+        display.vcf_display_show_sv.hash(&mut hasher);
+        display.vcf_display_show_other.hash(&mut hasher);
+        display.vcf_display_pass_only.hash(&mut hasher);
+        display.vcf_display_use_min_qual.hash(&mut hasher);
+        display.vcf_display_min_qual.to_bits().hash(&mut hasher);
+        display.vcf_display_use_max_qual.hash(&mut hasher);
+        display.vcf_display_max_qual.to_bits().hash(&mut hasher);
+        for key in &display.vcf_display_required_info_keys {
+            key.hash(&mut hasher);
+        }
         display.show_restriction_enzymes.hash(&mut hasher);
         display.show_gc_contents.hash(&mut hasher);
         display.show_open_reading_frames.hash(&mut hasher);
         display.show_methylation_sites.hash(&mut hasher);
+        display.feature_details_font_size.to_bits().hash(&mut hasher);
+        display.linear_view_start_bp.hash(&mut hasher);
+        display.linear_view_span_bp.hash(&mut hasher);
 
         hasher.finish()
     }
@@ -1357,6 +1434,7 @@ impl GENtleApp {
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
+        self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
@@ -1374,6 +1452,8 @@ impl GENtleApp {
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
         self.genome_track_status.clear();
+        self.genome_track_import_task = None;
+        self.genome_track_import_progress = None;
         self.genome_track_autosync_status.clear();
         self.tracked_autosync_last_op_count = None;
         self.load_bed_track_subscriptions_from_state();
@@ -1582,12 +1662,11 @@ impl GENtleApp {
         })
     }
 
-    fn apply_bed_track_to_sequence(
-        &mut self,
+    fn genome_track_import_operation(
         seq_id: &str,
         subscription: &GenomeTrackSubscription,
-    ) -> Result<OpResult, EngineError> {
-        let op = match subscription.source {
+    ) -> Operation {
+        match subscription.source {
             GenomeTrackSource::Bed => Operation::ImportGenomeBedTrack {
                 seq_id: seq_id.to_string(),
                 path: subscription.path.clone(),
@@ -1612,8 +1691,50 @@ impl GENtleApp {
                 max_score: subscription.max_score,
                 clear_existing: Some(subscription.clear_existing),
             },
-        };
-        self.engine.write().unwrap().apply(op)
+        }
+    }
+
+    fn start_genome_track_import_for_selected_sequence(
+        &mut self,
+        seq_id: String,
+        subscription: GenomeTrackSubscription,
+    ) {
+        if self.genome_track_import_task.is_some() {
+            self.genome_track_status = "Another genome track import is already running".to_string();
+            return;
+        }
+        let op = Self::genome_track_import_operation(&seq_id, &subscription);
+        let source_label = subscription.source.label().to_string();
+        let path_label = subscription.path.clone();
+        let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
+        self.genome_track_import_progress = None;
+        self.genome_track_status = format!(
+            "Importing {source_label} track in background: '{}' -> '{}'",
+            path_label, seq_id
+        );
+        self.genome_track_import_task = Some(GenomeTrackImportTask {
+            started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            receiver: rx,
+        });
+
+        let engine = self.engine.clone();
+        std::thread::spawn(move || {
+            let tx_progress = tx.clone();
+            let cancel_flag = cancel_requested.clone();
+            let outcome = {
+                let mut guard = engine.write().expect("Engine lock poisoned");
+                guard.apply_with_progress(op, move |progress| match progress {
+                    OperationProgress::GenomeTrackImport(p) => {
+                        let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress(p));
+                        !cancel_flag.load(Ordering::Relaxed)
+                    }
+                    _ => true,
+                })
+            };
+            let _ = tx.send(GenomeTrackImportTaskMessage::Done(outcome));
+        });
     }
 
     fn validate_bigwig_converter_available(&self) -> Result<String> {
@@ -1680,6 +1801,10 @@ impl GENtleApp {
     }
 
     fn import_genome_bed_track_for_selected_sequence(&mut self) {
+        if self.genome_track_import_task.is_some() {
+            self.genome_track_status = "Another genome track import is already running".to_string();
+            return;
+        }
         let seq_id = self.genome_track_seq_id.trim().to_string();
         if seq_id.is_empty() {
             self.genome_track_status =
@@ -1696,25 +1821,14 @@ impl GENtleApp {
         if !self.ensure_bigwig_converter_ready(&subscription) {
             return;
         }
-        let result = self.apply_bed_track_to_sequence(&seq_id, &subscription);
-        let source_label = subscription.source.label();
-        match result {
-            Ok(r) => {
-                self.genome_track_status = Self::format_op_result_status(
-                    &format!("Import {source_label} track: ok"),
-                    &r.created_seq_ids,
-                    &r.warnings,
-                    &r.messages,
-                );
-            }
-            Err(e) => {
-                self.genome_track_status =
-                    format!("Import {source_label} track failed: {}", e.message);
-            }
-        }
+        self.start_genome_track_import_for_selected_sequence(seq_id, subscription);
     }
 
     fn import_genome_bed_track_for_all_anchored_sequences(&mut self, track_subscription: bool) {
+        if self.genome_track_import_task.is_some() {
+            self.genome_track_status = "Another genome track import is already running".to_string();
+            return;
+        }
         let subscription = match self.parse_bed_track_form() {
             Ok(value) => value,
             Err(e) => {
@@ -1755,6 +1869,10 @@ impl GENtleApp {
     }
 
     fn apply_tracked_bed_subscription_to_all_anchored(&mut self, index: usize) {
+        if self.genome_track_import_task.is_some() {
+            self.genome_track_status = "Another genome track import is already running".to_string();
+            return;
+        }
         let Some(subscription) = self.genome_bed_track_subscriptions.get(index).cloned() else {
             return;
         };
@@ -1786,6 +1904,9 @@ impl GENtleApp {
     }
 
     fn sync_tracked_bed_tracks_for_new_anchors(&mut self) {
+        if self.genome_track_import_task.is_some() {
+            return;
+        }
         if self.genome_bed_track_subscriptions.is_empty() {
             self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             return;
@@ -2245,6 +2366,88 @@ impl GENtleApp {
                 Err(e) => {
                     self.genome_prepare_status =
                         format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
+                }
+            }
+        }
+    }
+
+    fn poll_genome_track_import_task(&mut self, ctx: &egui::Context) {
+        if self.genome_track_import_task.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let mut done: Option<Result<OpResult, EngineError>> = None;
+        if let Some(task) = &self.genome_track_import_task {
+            const MAX_MESSAGES_PER_TICK: usize = 256;
+            for _ in 0..MAX_MESSAGES_PER_TICK {
+                match task.receiver.try_recv() {
+                    Ok(GenomeTrackImportTaskMessage::Progress(progress)) => {
+                        self.genome_track_import_progress = Some(progress.clone());
+                        let canceling = task.cancel_requested.load(Ordering::Relaxed);
+                        self.genome_track_status = format!(
+                            "Importing {} track for '{}': parsed={}, imported={}, skipped={}{}",
+                            progress.source,
+                            progress.seq_id,
+                            progress.parsed_records,
+                            progress.imported_features,
+                            progress.skipped_records,
+                            if canceling {
+                                " (cancellation requested)"
+                            } else {
+                                ""
+                            }
+                        );
+                    }
+                    Ok(GenomeTrackImportTaskMessage::Done(result)) => {
+                        done = Some(result);
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        done = Some(Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "Genome track import worker disconnected".to_string(),
+                        }));
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(outcome) = done {
+            let elapsed = self
+                .genome_track_import_task
+                .as_ref()
+                .map(|task| task.started.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            let cancellation_requested = self
+                .genome_track_import_task
+                .as_ref()
+                .map(|task| task.cancel_requested.load(Ordering::Relaxed))
+                .unwrap_or(false);
+            self.genome_track_import_task = None;
+            self.genome_track_import_progress = None;
+            match outcome {
+                Ok(result) => {
+                    let prefix = if cancellation_requested {
+                        "Import track finished after cancellation request"
+                    } else {
+                        "Import track: ok"
+                    };
+                    self.genome_track_status = format!(
+                        "{}\nelapsed: {:.1}s",
+                        Self::format_op_result_status(
+                            prefix,
+                            &result.created_seq_ids,
+                            &result.warnings,
+                            &result.messages,
+                        ),
+                        elapsed
+                    );
+                }
+                Err(e) => {
+                    self.genome_track_status =
+                        format!("Import track failed after {:.1}s: {}", elapsed, e.message);
                 }
             }
         }
@@ -3861,6 +4064,7 @@ impl GENtleApp {
 
     fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) {
         let anchored_seq_ids = self.anchored_sequence_ids_for_tracks();
+        let import_running = self.genome_track_import_task.is_some();
         if !anchored_seq_ids.is_empty() && !anchored_seq_ids.contains(&self.genome_track_seq_id) {
             self.genome_track_seq_id = anchored_seq_ids[0].clone();
         }
@@ -3973,10 +4177,41 @@ impl GENtleApp {
             &mut self.genome_track_clear_existing,
             "Clear existing imported track features first",
         );
+        if let Some(task) = &self.genome_track_import_task {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                if let Some(progress) = &self.genome_track_import_progress {
+                    ui.label(format!(
+                        "Running import: {} '{}' parsed={} imported={} skipped={} ({:.1}s)",
+                        progress.source,
+                        progress.path,
+                        progress.parsed_records,
+                        progress.imported_features,
+                        progress.skipped_records,
+                        task.started.elapsed().as_secs_f32()
+                    ));
+                } else {
+                    ui.label(format!(
+                        "Running import task... ({:.1}s)",
+                        task.started.elapsed().as_secs_f32()
+                    ));
+                }
+                if ui
+                    .button("Cancel Import")
+                    .on_hover_text(
+                        "Request cancellation. Imported features up to the cancellation point are kept.",
+                    )
+                    .clicked()
+                {
+                    task.cancel_requested.store(true, Ordering::Relaxed);
+                    self.genome_track_status = "Cancellation requested for running track import".to_string();
+                }
+            });
+        }
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(
-                    !anchored_seq_ids.is_empty(),
+                    !anchored_seq_ids.is_empty() && !import_running,
                     egui::Button::new("Import To Selected"),
                 )
                 .on_hover_text(
@@ -3988,7 +4223,7 @@ impl GENtleApp {
             }
             if ui
                 .add_enabled(
-                    !anchored_seq_ids.is_empty(),
+                    !anchored_seq_ids.is_empty() && !import_running,
                     egui::Button::new("Import To All Anchored (One-Time)"),
                 )
                 .on_hover_text(
@@ -4000,7 +4235,7 @@ impl GENtleApp {
             }
             if ui
                 .add_enabled(
-                    !anchored_seq_ids.is_empty(),
+                    !anchored_seq_ids.is_empty() && !import_running,
                     egui::Button::new("Import To All Anchored + Track"),
                 )
                 .on_hover_text(
@@ -4059,7 +4294,7 @@ impl GENtleApp {
                         });
                         ui.horizontal(|ui| {
                             if ui
-                                .small_button("Apply now")
+                                .add_enabled(!import_running, egui::Button::new("Apply now"))
                                 .on_hover_text(
                                     "Re-apply this tracked file to all currently anchored sequences now.",
                                 )
@@ -4068,7 +4303,7 @@ impl GENtleApp {
                                 apply_now_index = Some(index);
                             }
                             if ui
-                                .small_button("Remove")
+                                .add_enabled(!import_running, egui::Button::new("Remove"))
                                 .on_hover_text(
                                     "Remove this tracked subscription (does not remove already imported features).",
                                 )
@@ -4108,7 +4343,7 @@ impl GENtleApp {
         }
         if !self.genome_bed_track_subscriptions.is_empty() {
             if ui
-                .button("Clear Tracked Files")
+                .add_enabled(!import_running, egui::Button::new("Clear Tracked Files"))
                 .on_hover_text(
                     "Remove all tracked subscriptions (does not remove already imported features).",
                 )
@@ -4292,6 +4527,7 @@ impl GENtleApp {
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
+        self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
@@ -4332,6 +4568,7 @@ impl GENtleApp {
         self.lineage_graph_scroll_offset = Vec2::ZERO;
         self.lineage_graph_pan_origin = None;
         self.lineage_graph_compact_labels = true;
+        self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
         if let Some(serialized) = workspace_serialized {
             if let Ok(workspace) =
@@ -5251,6 +5488,13 @@ impl GENtleApp {
                 {
                     self.lineage_graph_pan_origin = None;
                 }
+                if self
+                    .lineage_graph_selected_node_id
+                    .as_ref()
+                    .is_some_and(|node_id| !active_node_ids.contains(node_id))
+                {
+                    self.lineage_graph_selected_node_id = None;
+                }
                 if self.lineage_graph_node_offsets.len() != offset_count_before {
                     persist_workspace_after_frame = true;
                 }
@@ -5260,12 +5504,13 @@ impl GENtleApp {
             let lineage_edges = &self.lineage_edges;
             let op_label_by_id = &self.lineage_op_label_by_id;
             let mut request_fit_zoom = false;
+            let mut request_fit_origin = false;
             ui.horizontal(|ui| {
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
                 ui.colored_label(
                     egui::Color32::from_rgb(180, 120, 70),
-                    "◆ pool (n = expected variants)",
+                    "◆ pool (n inside node)",
                 );
                 ui.separator();
                 if ui.button("−").on_hover_text("Zoom out").clicked() {
@@ -5283,6 +5528,7 @@ impl GENtleApp {
                     .clicked()
                 {
                     request_fit_zoom = true;
+                    request_fit_origin = true;
                 }
                 if ui
                     .button("Reset Layout")
@@ -5345,8 +5591,8 @@ impl GENtleApp {
                         .show(ui, |ui| {
                             let (layout_by_node, layer_count, max_nodes_in_layer) =
                                 Self::compute_lineage_dag_layout(rows, lineage_edges);
-                            let base_width = (layer_count.max(1) as f32) * 220.0 + 180.0;
-                            let base_height = (max_nodes_in_layer.max(1) as f32) * 110.0 + 180.0;
+                            let base_width = (layer_count.max(1) as f32) * 220.0 + 220.0;
+                            let base_height = (max_nodes_in_layer.max(1) as f32) * 110.0 + 300.0;
                             if request_fit_zoom {
                                 let available = ui.available_size();
                                 let fit_x = ((available.x - 24.0).max(120.0) / base_width.max(1.0))
@@ -5356,6 +5602,11 @@ impl GENtleApp {
                                         .max(0.01);
                                 graph_zoom = fit_x.min(fit_y).clamp(0.35, 4.0);
                                 request_fit_zoom = false;
+                            }
+                            if request_fit_origin {
+                                graph_scroll_offset = Vec2::ZERO;
+                                self.lineage_graph_pan_origin = None;
+                                request_fit_origin = false;
                             }
                             let width = base_width * graph_zoom;
                             let height = base_height * graph_zoom;
@@ -5416,13 +5667,33 @@ impl GENtleApp {
                                     .copied()
                                     .unwrap_or(Vec2::ZERO);
                                 let x = rect.left()
-                                    + (90.0 + layer as f32 * 220.0) * graph_zoom
+                                    + (120.0 + layer as f32 * 220.0) * graph_zoom
                                     + manual_offset.x;
                                 let y = rect.top()
-                                    + (70.0 + rank as f32 * 110.0) * graph_zoom
+                                    + (120.0 + rank as f32 * 110.0) * graph_zoom
                                     + manual_offset.y;
                                 pos_by_node.insert(row.node_id.clone(), Pos2::new(x, y));
                             }
+                            let pointer = resp.interact_pointer_pos();
+                            let is_node_hit = |row: &LineageRow, pointer: Pos2| -> bool {
+                                let Some(pos) = pos_by_node.get(&row.node_id).copied() else {
+                                    return false;
+                                };
+                                if row.pool_size > 1 {
+                                    egui::Rect::from_center_size(
+                                        pos,
+                                        Vec2::new(30.0 * graph_zoom, 24.0 * graph_zoom),
+                                    )
+                                    .contains(pointer)
+                                } else {
+                                    pointer.distance(pos) <= 18.0 * graph_zoom
+                                }
+                            };
+                            let hovered_node_id = pointer.and_then(|pointer| {
+                                rows.iter()
+                                    .find(|row| is_node_hit(row, pointer))
+                                    .map(|row| row.node_id.clone())
+                            });
                             let mut used_label_rects: Vec<egui::Rect> = Vec::new();
                             let mut op_label_galleys: HashMap<String, Arc<egui::Galley>> =
                                 HashMap::new();
@@ -5519,6 +5790,29 @@ impl GENtleApp {
                                 let Some(pos) = pos_by_node.get(&row.node_id).cloned() else {
                                     continue;
                                 };
+                                let is_selected = self
+                                    .lineage_graph_selected_node_id
+                                    .as_ref()
+                                    .is_some_and(|node_id| node_id == &row.node_id);
+                                let is_hovered = hovered_node_id
+                                    .as_ref()
+                                    .is_some_and(|node_id| node_id == &row.node_id);
+                                let highlight_stroke = if is_selected {
+                                    egui::Stroke::new(
+                                        (2.4 * graph_zoom).clamp(1.6, 4.0),
+                                        egui::Color32::from_rgb(250, 220, 80),
+                                    )
+                                } else if is_hovered {
+                                    egui::Stroke::new(
+                                        (2.0 * graph_zoom).clamp(1.4, 3.2),
+                                        egui::Color32::from_rgb(230, 230, 150),
+                                    )
+                                } else {
+                                    egui::Stroke::new(
+                                        edge_stroke_width,
+                                        egui::Color32::from_rgb(235, 196, 150),
+                                    )
+                                };
                                 if row.pool_size > 1 {
                                     let points = vec![
                                         pos + Vec2::new(0.0, -16.0 * graph_zoom),
@@ -5528,25 +5822,31 @@ impl GENtleApp {
                                     ];
                                     painter.add(egui::Shape::convex_polygon(
                                         points,
-                                        egui::Color32::from_rgb(180, 120, 70),
-                                        egui::Stroke::new(
-                                            edge_stroke_width,
-                                            egui::Color32::from_rgb(235, 196, 150),
-                                        ),
+                                        if is_selected {
+                                            egui::Color32::from_rgb(205, 140, 80)
+                                        } else {
+                                            egui::Color32::from_rgb(180, 120, 70)
+                                        },
+                                        highlight_stroke,
                                     ));
                                     painter.text(
-                                        pos + Vec2::new(19.0 * graph_zoom, -14.0 * graph_zoom),
-                                        egui::Align2::LEFT_TOP,
-                                        format!("n={}", row.pool_size),
-                                        egui::FontId::proportional(details_font_size),
-                                        egui::Color32::YELLOW,
+                                        pos,
+                                        egui::Align2::CENTER_CENTER,
+                                        format!("{}", row.pool_size),
+                                        egui::FontId::proportional((11.0 * graph_zoom).clamp(9.0, 15.0)),
+                                        egui::Color32::WHITE,
                                     );
                                 } else {
                                     painter.circle_filled(
                                         pos,
                                         node_radius,
-                                        egui::Color32::from_rgb(90, 140, 210),
+                                        if is_selected {
+                                            egui::Color32::from_rgb(70, 125, 215)
+                                        } else {
+                                            egui::Color32::from_rgb(90, 140, 210)
+                                        },
                                     );
+                                    painter.circle_stroke(pos, node_radius, highlight_stroke);
                                 }
                                 let display_name = if simplify_labels {
                                     Self::compact_lineage_node_label(&row.display_name, 26)
@@ -5571,92 +5871,150 @@ impl GENtleApp {
                                 }
                             }
 
-                            if let Some(pointer) = resp.interact_pointer_pos() {
-                                let mut hit_row: Option<&LineageRow> = None;
-                                for row in rows {
-                                    let Some(pos) = pos_by_node.get(&row.node_id).copied() else {
-                                        continue;
+                            let hit_row = hovered_node_id
+                                .as_ref()
+                                .and_then(|node_id| rows.iter().find(|row| &row.node_id == node_id));
+                            if let Some(row) = hit_row {
+                                let mut hover_pool_range: Option<(usize, usize)> = None;
+                                let mut hover_ladder_hint: Option<String> = None;
+                                if row.pool_size > 1 {
+                                    let member_lengths: Vec<(String, usize)> = {
+                                        let engine = self.engine.read().unwrap();
+                                        row.pool_members
+                                            .iter()
+                                            .filter_map(|seq_id| {
+                                                engine
+                                                    .state()
+                                                    .sequences
+                                                    .get(seq_id)
+                                                    .map(|dna| (seq_id.clone(), dna.len()))
+                                            })
+                                            .collect()
                                     };
-                                    let hit = if row.pool_size > 1 {
-                                        egui::Rect::from_center_size(
-                                            pos,
-                                            Vec2::new(30.0 * graph_zoom, 24.0 * graph_zoom),
-                                        )
-                                        .contains(pointer)
-                                    } else {
-                                        pointer.distance(pos) <= 18.0 * graph_zoom
-                                    };
-                                    if hit {
-                                        hit_row = Some(row);
-                                        break;
+                                    if !member_lengths.is_empty() {
+                                        let min_bp = member_lengths
+                                            .iter()
+                                            .map(|(_, bp)| *bp)
+                                            .min()
+                                            .unwrap_or(0);
+                                        let max_bp = member_lengths
+                                            .iter()
+                                            .map(|(_, bp)| *bp)
+                                            .max()
+                                            .unwrap_or(min_bp);
+                                        hover_pool_range = Some((min_bp, max_bp));
+                                        if let Ok(layout) =
+                                            crate::pool_gel::build_pool_gel_layout(&member_lengths, &[])
+                                        {
+                                            if !layout.selected_ladders.is_empty() {
+                                                hover_ladder_hint = Some(layout.selected_ladders.join(" + "));
+                                            }
+                                        }
                                     }
                                 }
-                                let space_pan_requested = ui.input(|i| i.key_down(Key::Space));
-                                if resp.drag_started() {
-                                    if space_pan_requested && hit_row.is_none() {
-                                        self.lineage_graph_pan_origin = Some(graph_scroll_offset);
-                                        self.lineage_graph_drag_origin = None;
-                                    } else if let Some(row) = hit_row {
-                                        let start_offset = self
-                                            .lineage_graph_node_offsets
-                                            .get(&row.node_id)
-                                            .copied()
-                                            .unwrap_or(Vec2::ZERO);
-                                        self.lineage_graph_drag_origin =
-                                            Some((row.node_id.clone(), start_offset));
-                                        self.lineage_graph_pan_origin = None;
-                                    } else {
-                                        self.lineage_graph_drag_origin = None;
-                                        self.lineage_graph_pan_origin = None;
+                                let tooltip_member_preview = if row.pool_size > 1 {
+                                    row.pool_members
+                                        .iter()
+                                        .take(6)
+                                        .cloned()
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                } else {
+                                    String::new()
+                                };
+                                resp.clone().on_hover_ui_at_pointer(|ui| {
+                                    ui.strong(&row.display_name);
+                                    ui.monospace(format!(
+                                        "{} | {} bp | {}",
+                                        row.seq_id,
+                                        row.length,
+                                        if row.circular { "circular" } else { "linear" }
+                                    ));
+                                    ui.small(format!("node={} | origin={}", row.node_id, row.origin));
+                                    ui.small(format!("parents={} | op={}", row.parents.len(), row.created_by_op));
+                                    if row.pool_size > 1 {
+                                        ui.separator();
+                                        ui.small(format!("pool members={}", row.pool_size));
+                                        if let Some((min_bp, max_bp)) = hover_pool_range {
+                                            ui.small(format!("pool range={}..{} bp", min_bp, max_bp));
+                                        }
+                                        if let Some(ladders) = &hover_ladder_hint {
+                                            ui.small(format!("suggested ladders={}", ladders));
+                                        }
+                                        if !tooltip_member_preview.is_empty() {
+                                            ui.small(format!("members: {}", tooltip_member_preview));
+                                        }
                                     }
+                                });
+                            }
+                            let space_pan_requested = ui.input(|i| i.key_down(Key::Space));
+                            if resp.drag_started() {
+                                if space_pan_requested && hit_row.is_none() {
+                                    self.lineage_graph_pan_origin = Some(graph_scroll_offset);
+                                    self.lineage_graph_drag_origin = None;
+                                } else if let Some(row) = hit_row {
+                                    let start_offset = self
+                                        .lineage_graph_node_offsets
+                                        .get(&row.node_id)
+                                        .copied()
+                                        .unwrap_or(Vec2::ZERO);
+                                    self.lineage_graph_drag_origin =
+                                        Some((row.node_id.clone(), start_offset));
+                                    self.lineage_graph_pan_origin = None;
+                                    self.lineage_graph_selected_node_id = Some(row.node_id.clone());
+                                } else {
+                                    self.lineage_graph_drag_origin = None;
+                                    self.lineage_graph_pan_origin = None;
                                 }
-                                if let Some(start_scroll_offset) = self.lineage_graph_pan_origin {
+                            }
+                            if let Some(start_scroll_offset) = self.lineage_graph_pan_origin {
+                                if resp.dragged() {
+                                    let next_offset = start_scroll_offset - resp.drag_delta();
+                                    graph_scroll_offset = Vec2::new(
+                                        next_offset.x.max(0.0),
+                                        next_offset.y.max(0.0),
+                                    );
+                                }
+                                if resp.drag_stopped() {
+                                    self.lineage_graph_pan_origin = None;
+                                    persist_workspace_after_frame = true;
+                                }
+                            }
+                            if self.lineage_graph_pan_origin.is_none() {
+                                if let Some((node_id, start_offset)) =
+                                    self.lineage_graph_drag_origin.clone()
+                                {
                                     if resp.dragged() {
-                                        let next_offset = start_scroll_offset - resp.drag_delta();
-                                        graph_scroll_offset = Vec2::new(
-                                            next_offset.x.max(0.0),
-                                            next_offset.y.max(0.0),
-                                        );
+                                        self.lineage_graph_node_offsets
+                                            .insert(node_id.clone(), start_offset + resp.drag_delta());
                                     }
                                     if resp.drag_stopped() {
-                                        self.lineage_graph_pan_origin = None;
+                                        self.lineage_graph_drag_origin = None;
                                         persist_workspace_after_frame = true;
                                     }
                                 }
-                                if self.lineage_graph_pan_origin.is_none() {
-                                    if let Some((node_id, start_offset)) =
-                                        self.lineage_graph_drag_origin.clone()
-                                    {
-                                        if resp.dragged() {
-                                            self.lineage_graph_node_offsets
-                                                .insert(node_id.clone(), start_offset + resp.drag_delta());
-                                        }
-                                        if resp.drag_stopped() {
-                                            self.lineage_graph_drag_origin = None;
-                                            persist_workspace_after_frame = true;
-                                        }
-                                    }
+                            }
+                            if self.lineage_graph_pan_origin.is_some() {
+                                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                            } else if space_pan_requested && hit_row.is_none() {
+                                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
+                            } else if self.lineage_graph_drag_origin.is_some() {
+                                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                            }
+                            if self.lineage_graph_pan_origin.is_none()
+                                && self.lineage_graph_drag_origin.is_none()
+                            {
+                                if resp.clicked() {
+                                    self.lineage_graph_selected_node_id =
+                                        hit_row.map(|row| row.node_id.clone());
                                 }
-                                if self.lineage_graph_pan_origin.is_some() {
-                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
-                                } else if space_pan_requested && hit_row.is_none() {
-                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
-                                } else if self.lineage_graph_drag_origin.is_some() {
-                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
-                                }
-                                if self.lineage_graph_pan_origin.is_none()
-                                    && self.lineage_graph_drag_origin.is_none()
-                                {
-                                    if let Some(row) = hit_row {
-                                        if resp.double_clicked() {
+                                if let Some(row) = hit_row {
+                                    if resp.double_clicked() {
+                                        if row.pool_size > 1 {
+                                            open_pool =
+                                                Some((row.seq_id.clone(), row.pool_members.clone()));
+                                        } else {
                                             open_seq = Some(row.seq_id.clone());
-                                        } else if resp.clicked() {
-                                            if row.pool_size > 1 {
-                                                open_pool =
-                                                    Some((row.seq_id.clone(), row.pool_members.clone()));
-                                            } else {
-                                                open_seq = Some(row.seq_id.clone());
-                                            }
                                         }
                                     }
                                 }
@@ -5971,16 +6329,46 @@ impl GENtleApp {
         let defaults = DisplaySettings::default();
         self.configuration_graphics.show_sequence_panel = defaults.show_sequence_panel;
         self.configuration_graphics.show_map_panel = defaults.show_map_panel;
+        self.configuration_graphics.show_features = defaults.show_features;
         self.configuration_graphics.show_cds_features = defaults.show_cds_features;
         self.configuration_graphics.show_gene_features = defaults.show_gene_features;
         self.configuration_graphics.show_mrna_features = defaults.show_mrna_features;
         self.configuration_graphics.show_tfbs = defaults.show_tfbs;
         self.configuration_graphics.regulatory_tracks_near_baseline =
             defaults.regulatory_tracks_near_baseline;
+        self.configuration_graphics.tfbs_display_use_llr_bits = defaults.tfbs_display_use_llr_bits;
+        self.configuration_graphics.tfbs_display_min_llr_bits = defaults.tfbs_display_min_llr_bits;
+        self.configuration_graphics.tfbs_display_use_llr_quantile =
+            defaults.tfbs_display_use_llr_quantile;
+        self.configuration_graphics.tfbs_display_min_llr_quantile =
+            defaults.tfbs_display_min_llr_quantile;
+        self.configuration_graphics.tfbs_display_use_true_log_odds_bits =
+            defaults.tfbs_display_use_true_log_odds_bits;
+        self.configuration_graphics.tfbs_display_min_true_log_odds_bits =
+            defaults.tfbs_display_min_true_log_odds_bits;
+        self.configuration_graphics.tfbs_display_use_true_log_odds_quantile =
+            defaults.tfbs_display_use_true_log_odds_quantile;
+        self.configuration_graphics.tfbs_display_min_true_log_odds_quantile =
+            defaults.tfbs_display_min_true_log_odds_quantile;
+        self.configuration_graphics.vcf_display_show_snp = defaults.vcf_display_show_snp;
+        self.configuration_graphics.vcf_display_show_ins = defaults.vcf_display_show_ins;
+        self.configuration_graphics.vcf_display_show_del = defaults.vcf_display_show_del;
+        self.configuration_graphics.vcf_display_show_sv = defaults.vcf_display_show_sv;
+        self.configuration_graphics.vcf_display_show_other = defaults.vcf_display_show_other;
+        self.configuration_graphics.vcf_display_pass_only = defaults.vcf_display_pass_only;
+        self.configuration_graphics.vcf_display_use_min_qual = defaults.vcf_display_use_min_qual;
+        self.configuration_graphics.vcf_display_min_qual = defaults.vcf_display_min_qual;
+        self.configuration_graphics.vcf_display_use_max_qual = defaults.vcf_display_use_max_qual;
+        self.configuration_graphics.vcf_display_max_qual = defaults.vcf_display_max_qual;
+        self.configuration_graphics.vcf_display_required_info_keys =
+            defaults.vcf_display_required_info_keys.clone();
         self.configuration_graphics.show_restriction_enzymes = defaults.show_restriction_enzymes;
         self.configuration_graphics.show_gc_contents = defaults.show_gc_contents;
         self.configuration_graphics.show_open_reading_frames = defaults.show_open_reading_frames;
         self.configuration_graphics.show_methylation_sites = defaults.show_methylation_sites;
+        self.configuration_graphics.feature_details_font_size = defaults.feature_details_font_size;
+        self.configuration_graphics.linear_view_start_bp = defaults.linear_view_start_bp;
+        self.configuration_graphics.linear_view_span_bp = defaults.linear_view_span_bp;
         self.configuration_graphics_dirty = true;
     }
 
@@ -6164,6 +6552,12 @@ impl GENtleApp {
 
         ui.separator();
         ui.heading("Feature Layers");
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.show_features,
+                "Show feature overlays",
+            )
+            .changed();
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_cds_features,
@@ -7073,6 +7467,7 @@ impl eframe::App for GENtleApp {
 
             self.poll_prepare_reference_genome_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
+            self.poll_genome_track_import_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
 
             // Show menu bar

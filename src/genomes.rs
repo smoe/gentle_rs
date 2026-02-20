@@ -3583,6 +3583,45 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_annotation_gene_records_handles_malformed_gtf_fields() {
+        let td = tempdir().unwrap();
+        let path = td.path().join("malformed.gtf");
+        let mut bytes = vec![];
+        bytes.extend_from_slice(b"chr1\tsrc\tgene\t1\t10\t.\t+\t.\tgene_id \"G1\"; gene_name \"Good One\"; gene_biotype \"protein_coding\";\n");
+        bytes.extend_from_slice(b"chr1 src gene 11 20 . + . gene_id \"BROKEN_SPACES\"\n");
+        bytes.extend_from_slice(b"chr1\tsrc\tgene\t21\tthirty\t.\t+\t.\tgene_id \"BROKEN_END\";\n");
+        bytes.extend_from_slice(b"chr1\tsrc\tgene\t184467440737095516151\t190\t.\t+\t.\tgene_id \"TOO_BIG\";\n");
+        bytes.extend_from_slice(b"chr1\tsrc\tgene\t31\t40\t.\t?\t.\tgene_name \"No strand\";\n");
+        bytes.extend_from_slice(
+            b"chr1\tsrc\tgene\t41\t50\t.\t-\t.\tID=gene:G2;Name=Good Two;gene_biotype=lncRNA\n",
+        );
+        bytes.extend_from_slice(b"chr1\tsrc\texon\t41\t50\t.\t-\t.\tID=exon:E1\n");
+        fs::write(&path, bytes).unwrap();
+
+        let genes =
+            parse_annotation_gene_records_with_progress(&path, |_done, _total| {}).unwrap();
+        assert_eq!(genes.len(), 3);
+        assert!(genes.iter().any(|g| {
+            g.gene_id.as_deref() == Some("G1")
+                && g.gene_name.as_deref() == Some("Good One")
+                && g.biotype.as_deref() == Some("protein_coding")
+                && g.strand == Some('+')
+        }));
+        assert!(genes.iter().any(|g| {
+            g.gene_id.as_deref() == Some("G2")
+                && g.gene_name.as_deref() == Some("Good Two")
+                && g.biotype.as_deref() == Some("lncRNA")
+                && g.strand == Some('-')
+        }));
+        assert!(genes.iter().any(|g| {
+            g.gene_name.as_deref() == Some("No strand")
+                && g.strand.is_none()
+                && g.start_1based == 31
+                && g.end_1based == 40
+        }));
+    }
+
+    #[test]
     fn test_build_ncbi_assembly_ftp_urls() {
         let entry = GenomeCatalogEntry {
             ncbi_assembly_accession: Some("gcf_000005845.2".to_string()),

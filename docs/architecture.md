@@ -2,13 +2,18 @@
 
 Last updated: 2026-02-20
 
-This document describes how GENtle is intended to work, what is already
-implemented, and what should be built next.
+This document describes how GENtle is intended to work and the durable
+architecture constraints behind implementation choices.
 
 It has two goals:
 
 - Human-readable architecture guide
-- Reliable handoff/resume note if work is interrupted
+- Stable record of architectural decisions and invariants
+
+Related shared documents:
+
+- `docs/protocol.md`: operation/state/result contracts
+- `docs/roadmap.md`: implementation status, known gaps, and execution order
 
 ## 1. Product intent
 
@@ -58,6 +63,14 @@ Tooltip coverage rule:
 - Maintenance check: scan button call sites and verify coverage before
   release (for example via `rg` over `.button`/`.small_button` call sites).
 
+Visual consistency rule:
+
+- Legends must map 1:1 to rendered glyph semantics (shape + color + label).
+- If node/track glyph semantics change, legend text/colors must be updated in
+  the same change.
+- Interaction contracts should be explicit where ambiguity is costly
+  (for example, click vs double-click behavior).
+
 ## 2. Core architecture rule
 
 GENtle should follow a single-engine architecture:
@@ -71,367 +84,10 @@ GENtle should follow a single-engine architecture:
 Frontends must not implement their own cloning/business logic.
 They only translate user input into engine operations and display results.
 
-## 3. Current implementation status
+## 3. Implementation status and roadmap
 
-### Already in place
-
-- New shared engine module: `src/engine.rs`
-- New shared shell command layer: `src/engine_shell.rs`
-- New automation CLI: `src/bin/gentle_cli.rs`
-- Protocol draft doc: `docs/protocol.md`
-- CLI docs updated: `docs/cli.md`
-- Project lineage/provenance graph in engine state (`ProjectState.lineage`)
-- Main window lineage view (branch/merge aware sequence history list)
-- First-class container state in engine (`ProjectState.container_state`)
-- Container-aware operations in engine (`DigestContainer`,
-  `MergeContainersById`, `LigationContainer`,
-  `FilterContainerByMolecularWeight`)
-- Shared normalized state summary from engine (`EngineStateSummary`)
-- Resource sync/auto-feed baseline:
-  - CLI import of REBASE (`resources sync-rebase`) and JASPAR (`resources sync-jaspar`)
-  - JS shell resource sync (`sync_rebase`, `sync_jaspar`)
-  - Lua shell resource sync (`sync_rebase`, `sync_jaspar`)
-  - GUI File menu import actions (`Import REBASE Data...`, `Import JASPAR Data...`)
-  - Runtime loading of local REBASE enzyme snapshot and local JASPAR motif registry
-- Reference genome prepare/extract baseline:
-  - engine operation `PrepareGenome` (one-time local install/cache of sequence + annotation)
-  - engine operation `ExtractGenomeRegion` (indexed region retrieval into project sequence state)
-  - engine operation `ExtractGenomeGene` (gene-name/id-based retrieval from indexed annotations)
-  - BLAST indexing during prepare (`makeblastdb`) with persisted DB prefix/status in manifest
-  - BLAST indexing is best-effort during prepare: missing/failed `makeblastdb`
-    is surfaced as warnings while genome preparation itself can still succeed
-  - BLAST query API for prepared references/helpers (`blastn-short` / `blastn`)
-  - dedicated GUI BLAST viewport (`BLAST Genome Sequence...`) with helper-catalog shortcut
-  - BLAST worker-thread execution in GUI (progress + non-blocking UI)
-  - BLAST GUI query source modes: manual sequence, project sequence, project pool/container
-  - optional `cache_dir` override passed through both operations
-  - progress events for background genome preparation in GUI
-  - annotation-derived gene listing API for GUI gene-name filtering and gene extraction
-  - persistent `genes.json` index built during prepare for fast retrieval
-  - local manifest + FASTA index persisted per prepared genome
-  - catalog support for NCBI assembly-derived downloads via
-    `ncbi_assembly_accession` + `ncbi_assembly_name` (direct GenBank/RefSeq FTP)
-  - catalog support for GenBank accession-derived helper downloads via
-    `genbank_accession` (NCBI EFetch FASTA + GenBank annotation)
-  - GenBank FEATURE normalization into indexed retrieval records (for vector
-    elements such as promoter/CDS/origin/LTR/ITR in helper workflows)
-  - additional starter helper-system catalog shipped as `assets/helper_genomes.json`
-    for local vector inventories (plasmid/lenti/adeno/AAV + yeast/E. coli hosts)
-  - catalog validation hardening for inconsistent source declarations
-    (assembly vs GenBank fields, unpublished placeholders, missing source fields)
-  - HTTP download hardening for genome preparation (timeouts, retry/backoff on
-    transient status/network errors, clearer fetch error reporting)
-- Built-in JASPAR motif snapshot (2026 CORE non-redundant derived) is shipped in `assets/jaspar.motifs.json`
-    with runtime override at `data/resources/jaspar.motifs.json`
-- Genome signal-track import baseline:
-  - engine operation `ImportGenomeBedTrack` (BED/BED.GZ)
-  - engine operation `ImportGenomeBigWigTrack` (BigWig via `bigWigToBedGraph` conversion)
-  - engine operation `ImportGenomeVcfTrack` (VCF/VCF.GZ variant overlays)
-  - engine operation `ImportBlastHitsTrack` (materialize BLAST alignments as feature tracks)
-  - stranded anchor-aware coordinate remapping for genome-anchored sequences
-  - generated signal features normalized with shared qualifiers
-    (`gentle_track_source`, `gentle_generated`)
-  - generated BED/BigWig/VCF/BLAST overlays are stored as `track` features and
-    grouped in GUI feature tree under `Tracks` by `gentle_track_name`
-  - GUI track-import dialog supports BED, BigWig, and VCF with explicit source
-    override (`auto|bed|bigwig|vcf`) plus extension detection
-  - tracked signal-file subscriptions are engine-managed (persisted in
-    `ProjectState.metadata`) and can be auto-reapplied to newly anchored
-    extracted sequences
-- Candidate-set exploration/scoring baseline (engine-backed, exposed in shared shell for CLI + GUI Shell):
-  - persistent candidate-set storage in
-    `ProjectState.metadata["candidate_sets"]`
-  - shell command family `candidates` with:
-    - `generate` (window-based candidate generation from a sequence, optional
-      feature proximity constraints)
-    - `score` (derived metric expressions over per-candidate metrics)
-    - `score-distance` (distance metric to nearest feature / filtered feature group)
-    - `filter` (value and quantile cutoffs into explicit output sets)
-    - `set-op` (union/intersect/subtract between explicit candidate sets)
-  - built-in base metrics include:
-    - sequence composition (`gc_fraction`, `at_fraction`, per-base fractions/counts)
-    - `length_bp`
-    - `molecular_weight_da` (approximate)
-    - `distance_to_seq_start_bp`, `distance_to_seq_end_bp`
-    - `distance_to_nearest_feature_bp` when feature context is available
-- TFBS runtime guardrails:
-  - `AnnotateTfbs.max_hits` supports safe caps
-  - default cap is `500` accepted hits per operation
-  - `max_hits: 0` means unlimited (explicit opt-out for CLI/automation)
-- TFBS progress + responsiveness hardening:
-  - engine emits coarse-grained progress for long scans
-  - GUI worker forwarding and polling are throttled to avoid UI starvation
-- TFBS display filtering is first-class and persistent:
-  - four optional criteria (`llr_bits`, `llr_quantile`,
-    `true_log_odds_bits`, `true_log_odds_quantile`)
-  - filter state is synchronized into `ProjectState.display`
-- Linear map viewport state is first-class and persistent:
-  - zoom/pan state (`linear_view_start_bp`, `linear_view_span_bp`)
-  - display-density LOD hides cluttered tracks at coarse scales (notably restriction sites)
-- SVG export parity for TFBS filtering:
-  - linear/circular SVG export uses the same TFBS display criteria as GUI
-  - no recomputation required to reduce visual TFBS density
-  - linear SVG now mirrors GUI regulatory-lane grouping for dense TFBS /
-    regulatory tracks
-
-### Engine capabilities currently implemented
-
-- State container (`ProjectState`)
-- Operations:
-  - `LoadFile`
-  - `SaveFile`
-  - `RenderSequenceSvg`
-  - `RenderRnaStructureSvg`
-  - `RenderLineageSvg`
-  - `RenderPoolGelSvg`
-  - `ExportDnaLadders`
-  - `ExportRnaLadders`
-  - `ExportPool`
-  - `PrepareGenome`
-  - `ExtractGenomeRegion`
-  - `ExtractGenomeGene`
-  - `ImportGenomeBedTrack`
-  - `ImportGenomeBigWigTrack`
-  - `ImportGenomeVcfTrack`
-  - `ImportBlastHitsTrack`
-  - `DigestContainer`
-  - `MergeContainersById`
-  - `LigationContainer`
-  - `FilterContainerByMolecularWeight`
-  - `Digest`
-  - `MergeContainers`
-  - `Ligation` (protocol-driven: sticky/blunt)
-  - `Pcr`
-  - `PcrAdvanced`
-  - `PcrMutagenesis`
-  - `ExtractRegion`
-  - `ExtractAnchoredRegion`
-  - `SelectCandidate`
-  - `FilterByMolecularWeight`
-  - `Reverse`
-  - `Complement`
-  - `ReverseComplement`
-  - `Branch`
-  - `SetDisplayVisibility`
-  - `SetLinearViewport`
-  - `SetTopology`
-  - `RecomputeFeatures`
-  - `SetParameter`
-  - `AnnotateTfbs` (TFBS annotation with LLR + true-log-odds scoring, progress reporting,
-    and safety cap support)
-- Workflow execution (`Workflow`)
-- Structured errors (`ErrorCode` + message)
-- Capabilities negotiation (`GentleEngine::capabilities()`)
-- Shared state summary (`GentleEngine::summarize_state()`)
-- Persistent state through CLI JSON file
-
-### GUI status relevant to architecture
-
-- Linear renderer rewritten
-- Added overlap management and strand-aware placement in linear mode
-- Dense regulatory features (TFBS/`regulatory*`) are lane-packed into a
-  dedicated upper group in linear mode; coordinate-only fallback labels are
-  suppressed for unlabeled regulatory features
-- Linear map toolbar provides a placement toggle for regulatory tracks
-  (`REG@TOP` / `REG@DNA`) and keeps this setting synchronized into shared
-  display state used by GUI and SVG export (`REG@DNA` renders a single
-  baseline-adjacent regulatory lane)
-- Circular renderer now supports multipart feature locations (`Join`, `Order`,
-  nested `Complement`/`External`): exon-like segments are rendered separately
-  with intron arches between them
-- Circular intron arches have feature-aware styling (notably emphasized for
-  mRNA) with hover/selection accenting for readability
-- Added context-sensitive button tooltips across actionable controls
-  (toolbar, menu, dialogs, lineage actions, strict engine ops, shell panel)
-- Added linear overlays for ORF/GC/methylation/ticks
-- Main lineage view supports both table/graph and a container list with open
-  actions (sequence/pool)
-- Pool-context Engine Ops includes ladder-aware virtual gel preview and shared
-  SVG export route
-- GUI DNA window now includes `Shell` panel backed by shared shell command
-  parsing/execution (same command semantics as `gentle_cli shell`)
-- Engine Ops panel supports asynchronous TFBS annotation with live per-motif and
-  total progress bars
-- TFBS display filtering is interactive (checkbox criteria + thresholds) and
-  persistent per sequence
-- Engine Ops panel area is scrollable and vertically resizable
-
-### Status matrix
-
-Legend:
-
-- `Done`: implemented and available
-- `Partial`: available but not yet routed through shared engine everywhere
-- `Planned`: not implemented yet
-
-| Area | GUI | JS | Lua | CLI (`gentle_cli`) | Core engine |
-|---|---|---|---|---|---|
-| Load sequence file | Done | Done | Done | Done | Done |
-| Save sequence file | Done | Done | Done | Done | Done |
-| Restriction digest | Done | Done | Done | Done | Done |
-| Container state model | Done | Done | Done | Done | Done |
-| Container-first operations | Done | Done | Done | Done | Done |
-| Topology change (linear/circular) | Done | Done | Done | Done | Done |
-| Feature recomputation | Done | Done | Done | Done | Done |
-| Ligation | Done | Done | Done | Done | Done |
-| PCR | Done | Done | Done | Done | Done |
-| Region extraction/editing | Done | Done | Done | Done | Done |
-| View toggles (show/hide tracks and panels) | Done | Done | Done | Done | Done |
-| TFBS annotation with progress | Done | Done | Done | Done | Done |
-| TFBS display filtering (4 criteria) | Done | Done | Done | Done | Done |
-| Sequence SVG export | Done | Done | Done | Done | Done |
-| RNA secondary-structure SVG export | Done | Done | Done | Done | Done |
-| Lineage SVG export | Done | Done | Done | Done | Done |
-| Pool gel SVG export (auto ladder selection) | Done | Done | Done | Done | Done |
-| Pool export (overhang-aware) | Done | Done | Done | Done | Done |
-| Reference genome prepare + gene/region extraction | Done | Done | Done | Done | Done |
-| Genome BED track import | Done | Done | Done | Done | Done |
-| Genome BigWig track import | Done | Done | Done | Done | Done |
-| Genome VCF track import | Done | Done | Done | Done | Done |
-| State summary (seq + container) | Done | Done | Done | Done | Done |
-| Shared operation protocol | Partial | Done | Done | Done | Done |
-
-### Operation parity matrix (code-backed, current)
-
-This matrix is stricter than the high-level status matrix above.
-It describes whether a frontend currently executes the corresponding shared
-engine operation.
-
-Legend:
-
-- `Wired`: frontend invokes `Operation` through `GentleEngine`
-- `Exposed`: available through frontend API/command, but not necessarily bound in GUI
-- `Missing`: not currently available in that adapter
-
-| Operation | GUI | CLI (`gentle_cli`) | JS shell | Lua shell | Engine |
-|---|---|---|---|---|---|
-| `LoadFile` | Wired | Wired | Exposed | Exposed | Implemented |
-| `SaveFile` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RenderSequenceSvg` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RenderRnaStructureSvg` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RenderLineageSvg` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RenderPoolGelSvg` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ExportDnaLadders` | Exposed | Wired | Exposed | Exposed | Implemented |
-| `ExportRnaLadders` | Exposed | Wired | Exposed | Exposed | Implemented |
-| `ExportPool` | Wired | Wired | Exposed | Exposed | Implemented |
-| `PrepareGenome` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ExtractGenomeRegion` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ExtractGenomeGene` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ImportGenomeBedTrack` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ImportGenomeBigWigTrack` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ImportGenomeVcfTrack` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ImportBlastHitsTrack` | Wired | Wired | Exposed | Exposed | Implemented |
-| `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
-| `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
-| `LigationContainer` | Wired | Wired | Exposed | Exposed | Implemented |
-| `FilterContainerByMolecularWeight` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Digest` | Wired | Wired | Exposed | Exposed | Implemented |
-| `MergeContainers` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Ligation` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Pcr` | Wired | Wired | Exposed | Exposed | Implemented |
-| `PcrAdvanced` | Wired | Wired | Exposed | Exposed | Implemented |
-| `PcrMutagenesis` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ExtractRegion` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ExtractAnchoredRegion` | Wired | Wired | Exposed | Exposed | Implemented |
-| `SelectCandidate` | Wired | Wired | Exposed | Exposed | Implemented |
-| `FilterByMolecularWeight` | Wired | Wired | Exposed | Exposed | Implemented |
-| `FilterByDesignConstraints` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Reverse` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Complement` | Wired | Wired | Exposed | Exposed | Implemented |
-| `ReverseComplement` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Branch` | Wired | Wired | Exposed | Exposed | Implemented |
-| `SetDisplayVisibility` | Wired | Wired | Exposed | Exposed | Implemented |
-| `SetLinearViewport` | Wired | Wired | Exposed | Exposed | Implemented |
-| `SetTopology` | Wired | Wired | Exposed | Exposed | Implemented |
-| `RecomputeFeatures` | Wired | Wired | Exposed | Exposed | Implemented |
-| `SetParameter` | Wired | Wired | Exposed | Exposed | Implemented |
-| `AnnotateTfbs` | Wired | Wired | Exposed | Exposed | Implemented |
-| `Workflow` (multi-op run) | Wired | Wired | Exposed | Exposed | Implemented |
-
-Notes from current code:
-
-- GUI now routes most day-to-day cloning actions through engine operations
-  (digest/merge/ligation/PCR variants/reverse-family/toggles/save).
-- GUI TFBS feature density can be reduced at display time via score-based
-  criteria without mutating sequence annotations.
-- SVG export now honors TFBS display criteria from shared display state.
-- GUI now exposes direct actions for `ExtractRegion`, `RecomputeFeatures`,
-  `SetParameter`, `FilterByDesignConstraints`, container-first operations,
-  sequence SVG rendering, lineage SVG rendering, and workflow execution through
-  shared engine operations.
-- GUI now exposes dedicated controls for `PrepareGenome` and
-  `ExtractGenomeRegion` from the main-window menu as separate dialogs:
-  `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
-  `Prepare Reference Genome...` is rendered in its own viewport window.
-- GUI now exposes a dedicated BLAST viewport (`BLAST Genome Sequence...`) with
-  helper-catalog entry point (`BLAST Helper Sequence...`), and runs BLAST work
-  in a background worker thread with progress reporting.
-- GUI now exposes a third reference-genome dialog, `Prepared References...`,
-  to inspect prepared installations (paths, readiness flags, source types,
-  and checksum fingerprints).
-- GUI also exposes helper-catalog shortcuts (`Prepare Helper Genome...`,
-  `Retrieve Helper Sequence...`) that preselect helper catalog/cache defaults.
-- GUI genome selection is catalog-backed dropdown (no free-text genome id
-  entry); prepare dialogs only list unprepared entries and retrieval dialogs
-  only list prepared entries. Retrieval provides paged/top-N regex filtering,
-  biotype checkbox filtering from parsed annotations, and direct engine-backed
-  extraction.
-- GUI operation parity is near-complete for sequence/container workflows; some
-  utility-style contracts (notably `ExportDnaLadders` / `ExportRnaLadders`) are currently exposed
-  through shared shell/adapter surfaces rather than dedicated first-class GUI
-  controls.
-- GUI main-loop hardening now avoids redundant per-frame window-title updates
-  to prevent idle redraw/event churn on macOS.
-- CLI exposes all implemented operations (`op`/`workflow`) and adds some
-  adapter-level utilities (render and import helpers).
-- CLI now exposes a shared shell command path (`gentle_cli shell ...`) that
-  reuses `src/engine_shell.rs` (also used by GUI `Shell` panel).
-- Shared shell command coverage now includes `genomes`, `helpers`,
-  `resources`, `ladders`, `tracks`, `candidates`, and `import-pool`, and `gentle_cli` top-level
-  dispatch routes these trees through the same shared parser/executor used by
-  GUI Shell.
-- Shared `tracks` command tree now includes `import-bed`, `import-bigwig`, and
-  `import-vcf` (BigWig converted through `bigWigToBedGraph` before import),
-  plus tracked-source management (`tracks tracked list/add/remove/clear/apply/sync`).
-- Tracked-source subscription state is managed through engine methods
-  (storage remains `ProjectState.metadata["genome_bed_track_subscriptions"]`)
-  and can auto-sync tracked BED/BigWig/VCF sources onto newly created anchored
-  sequences.
-- Shared shell/CLI reference commands now include `genomes blast` and
-  `helpers blast`, plus `genomes blast-track` / `helpers blast-track` to
-  materialize BLAST hits directly into project features.
-- Shared shell/CLI `genomes status` and `helpers status` now include resolved
-  source type reporting (`sequence_source_type`, `annotation_source_type`) in
-  addition to prepared/not-prepared state.
-- Shared shell/CLI now include `genomes validate-catalog` and
-  `helpers validate-catalog` for preflight catalog validation.
-- Genome preparation now persists SHA-1 integrity fields in per-genome manifest
-  files and validates/backfills them on cache reuse; HTTP source downloads use
-  resumable Range requests with retry/backoff.
-- CLI includes dedicated `helpers` convenience subcommands (list/status/genes/
-  prepare/blast/extract-region/extract-gene) that default to
-  `assets/helper_genomes.json`.
-- CLI/JS/Lua now expose dedicated reference-genome helper surfaces in addition
-  to raw operation bridges:
-  - catalog listing
-  - prepared-status checks
-  - gene-index listing
-  - BLAST query helpers
-  - prepare/extract convenience wrappers
-- REBASE/JASPAR snapshot update paths are now exposed across CLI, JS, Lua, and
-  GUI (GUI through File-menu import actions).
-- JS/Lua expose generic operation/workflow bridges through `GentleEngine`
-  (`apply_operation`, `apply_workflow`) and therefore can reach the full
-  operation set.
-- CLI/JS/Lua now share engine-provided normalized state summaries
-  (`summarize_state` / `state_summary`).
-
-Immediate parity goal:
-
-1. Maintain operation parity as new operations are added.
-2. Move remaining CLI-only utilities that represent stable contracts into
-   engine-level operations.
-3. Keep JS/Lua convenience wrappers thin over shared operation contracts.
+Shared implementation status, parity matrices, known gaps, and execution order
+are now maintained in `docs/roadmap.md`.
 
 ## 4. Engine model
 
@@ -441,8 +97,10 @@ Immediate parity goal:
 
 - `sequences: HashMap<SeqId, DNAsequence>`
 - `metadata: HashMap<String, serde_json::Value>`
-  - includes persisted candidate scoring/filter sets at
-    `metadata["candidate_sets"]` (schema `gentle.candidate_sets.v1`)
+  - includes in-memory candidate scoring/filter sets at
+    `metadata["candidate_sets"]` (`gentle.candidate_sets.v1`)
+  - on disk, candidate metadata may be a sidecar reference
+    (`gentle.candidate_sets.ref.v1`) pointing to JSONL-indexed records
 - `lineage: LineageGraph`
   - `nodes` (sequence lineage nodes with origin + creation op)
   - `seq_to_node` (current sequence id -> latest lineage node)
@@ -599,14 +257,24 @@ contracts into stable engine operations.
 
 ### Candidate query/optimization command contract (current)
 
-Current implementation is shell-level (shared by `gentle_cli shell` and GUI
-Shell panel), intended as the first step toward macro-style optimization flows:
+Current implementation is engine-level and exposed through:
 
+- first-class `gentle_cli candidates ...`
+- shared shell (`gentle_cli shell` + GUI shell panel)
+- dedicated Engine Ops GUI candidate panel
+
+Command surface:
+
+- `candidates list`
+- `candidates show SET_NAME [--limit N] [--offset N]`
+- `candidates metrics SET_NAME`
+- `candidates delete SET_NAME`
 - `candidates generate SET_NAME SEQ_ID --length N ...`
 - `candidates score SET_NAME METRIC_NAME EXPRESSION`
 - `candidates score-distance SET_NAME METRIC_NAME ...`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
 - `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
+- `candidates macro SCRIPT_OR_@FILE`
 
 This enables reusable query composition:
 
@@ -629,90 +297,7 @@ Important separation:
 - Image interpretation remains probabilistic and should output proposals,
   not direct mutations without confirmation
 
-## 9. Roadmap (recommended order)
-
-### Phase A: expand operation parity
-
-Phase A core scope is complete.
-
-Remaining Phase A items:
-
-- keep adapter-level helpers as wrappers over engine operations
-
-### Phase B: GUI migration
-
-Route GUI actions through engine operations.
-Keep UI state thin and avoid direct mutations where possible.
-
-### Phase C: view model contract
-
-Introduce a frontend-neutral view model schema:
-
-- tracks
-- features
-- labels
-- overlays (ORF/GC/methylation)
-- selections
-
-Use same view model for GUI and machine consumers.
-
-### Phase D: protocol hardening
-
-- versioned schema files
-- compatibility policy
-- richer error taxonomy and validation
-- operation provenance metadata (engine version, timestamps, input references)
-- process-protocol export contract (plain-text, technical-assistant-friendly
-  step list derived from workflow/operation provenance)
-- re-enable and harden adapter screenshot bridge only after endpoint-security
-  exception/approval is explicitly confirmed (then expand backend coverage and
-  automated tests)
-- keep graphics-backed documentation updates manual for now; postpone
-  auto-updated documentation with graphics until screenshot backend parity and
-  security policy are stabilized
-
-### Phase E: interpretation (later)
-
-- parse sketches/images into `StatePatchProposal`
-- confidence scores
-- explicit user/agent confirmation before apply
-
-## 10. Practical resume checklist
-
-If work is interrupted, resume in this order:
-
-1. Read this file (`docs/architecture.md`)
-2. Read machine contract (`docs/protocol.md`)
-3. Inspect engine (`src/engine.rs`)
-4. Inspect CLI adapter (`src/bin/gentle_cli.rs`)
-5. Run quick sanity:
-   - `cargo check -q`
-   - `cargo run --bin gentle_cli -- capabilities`
-   - `cargo run --bin gentle_cli -- state-summary`
-   - `cargo test -q render_export::tests::`
-6. Continue with next Phase A operation implementation
-
-## 11. Current known gaps
-
-- View model contract is not yet formalized
-- Some rendering/import/export utilities are still adapter-level contracts
-  instead of engine operations
-- Candidate scoring/filter/set-algebra is promoted to first-class engine
-  operations and exposed through shared shell `candidates` commands; dedicated
-  GUI forms for this workflow are still pending
-- `import-pool` remains a shared shell/CLI utility contract (no dedicated
-  engine operation yet)
-- No dedicated engine operation yet for exporting a full run/process as a
-  technical-assistant protocol text artifact
-- guideRNA operations are not yet fully implemented (guide-candidate model,
-  oligo generation/export, and macro template flow are pending). Draft spec:
-  `docs/rna_guides_spec.md`
-- Screenshot bridge is intentionally disabled by security policy in the current
-  branch; historical implementation was adapter-level and macOS-backed
-- Auto-updated documentation with embedded graphics is intentionally postponed
-  (manual update flow remains the active policy)
-
-## 12. Decision log (concise)
+## 9. Decision log (concise)
 
 - Adopt single shared engine for all frontends: accepted
 - Use JSON operation/workflow protocol for automation: accepted
@@ -764,5 +349,6 @@ If work is interrupted, resume in this order:
   and implemented.
 - Add candidate-set scoring/filter/set-algebra workflow (derived expressions,
   value+quantile filters, and explicit set union/intersection/subtraction):
-  accepted and implemented as first-class engine operations, exposed via shared
-  shell (`candidates`) across CLI + GUI shell.
+  accepted and implemented as first-class engine operations, exposed through
+  first-class CLI (`gentle_cli candidates ...`), shared shell (`candidates`),
+  and dedicated GUI Engine Ops candidate forms.

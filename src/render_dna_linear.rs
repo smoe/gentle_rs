@@ -1,5 +1,5 @@
 use crate::{
-    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
+    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     open_reading_frame::OpenReadingFrame,
@@ -253,6 +253,7 @@ impl RenderDnaLinear {
         show_mrna_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
+        vcf_display_criteria: VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
@@ -275,6 +276,9 @@ impl RenderDnaLinear {
                 return false;
             }
             return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
+        }
+        if RenderDna::is_vcf_track_feature(feature) {
+            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
         }
         true
     }
@@ -400,6 +404,7 @@ impl RenderDnaLinear {
             show_mrna_features,
             show_tfbs,
             tfbs_display_criteria,
+            vcf_display_criteria,
             regulatory_tracks_near_baseline,
             hidden_feature_kinds,
         ) = self
@@ -412,6 +417,7 @@ impl RenderDnaLinear {
                     display.show_mrna_features(),
                     display.show_tfbs(),
                     display.tfbs_display_criteria(),
+                    display.vcf_display_criteria(),
                     display.regulatory_tracks_near_baseline(),
                     display.hidden_feature_kinds().clone(),
                 )
@@ -422,6 +428,7 @@ impl RenderDnaLinear {
                 true,
                 false,
                 TfbsDisplayCriteria::default(),
+                VcfDisplayCriteria::default(),
                 false,
                 BTreeSet::new(),
             ));
@@ -438,6 +445,7 @@ impl RenderDnaLinear {
                 show_mrna_features,
                 show_tfbs,
                 tfbs_display_criteria,
+                vcf_display_criteria.clone(),
                 &hidden_feature_kinds,
             ) {
                 continue;
