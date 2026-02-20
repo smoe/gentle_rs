@@ -4,8 +4,7 @@ use crate::{
     enzymes::active_restriction_enzymes,
     genomes::{
         is_prepare_cancelled_error, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
-        GenomeSourcePlan,
-        PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
+        GenomeSourcePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     iupac_code::IupacCode,
@@ -996,10 +995,11 @@ pub enum LigationProtocol {
     Blunt,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AnchorBoundary {
     Start,
     End,
+    Middle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1008,8 +1008,8 @@ pub enum AnchorDirection {
     Downstream,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnchoredRegionAnchor {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SequenceAnchor {
     Position {
         zero_based: usize,
     },
@@ -1020,6 +1020,9 @@ pub enum AnchoredRegionAnchor {
         occurrence: Option<usize>,
     },
 }
+
+// Backward-compatible alias kept while adapter/docs migrate to SequenceAnchor.
+pub type AnchoredRegionAnchor = SequenceAnchor;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -1445,7 +1448,7 @@ pub enum Operation {
     },
     ExtractAnchoredRegion {
         input: SeqId,
-        anchor: AnchoredRegionAnchor,
+        anchor: SequenceAnchor,
         direction: AnchorDirection,
         target_length_bp: usize,
         length_tolerance_bp: usize,
@@ -1456,6 +1459,15 @@ pub enum Operation {
         output_prefix: Option<String>,
         unique: Option<bool>,
         max_candidates: Option<usize>,
+    },
+    GenerateCandidateSetBetweenAnchors {
+        set_name: String,
+        seq_id: SeqId,
+        anchor_a: SequenceAnchor,
+        anchor_b: SequenceAnchor,
+        length_bp: usize,
+        step_bp: usize,
+        limit: Option<usize>,
     },
     SelectCandidate {
         input: SeqId,
@@ -2320,6 +2332,7 @@ impl GentleEngine {
                 "FilterByMolecularWeight".to_string(),
                 "FilterByDesignConstraints".to_string(),
                 "GenerateCandidateSet".to_string(),
+                "GenerateCandidateSetBetweenAnchors".to_string(),
                 "DeleteCandidateSet".to_string(),
                 "ScoreCandidateSetExpression".to_string(),
                 "ScoreCandidateSetDistance".to_string(),
@@ -3552,7 +3565,11 @@ impl GentleEngine {
                         }
                     }
                 }
-                if ambiguous { None } else { strand }
+                if ambiguous {
+                    None
+                } else {
+                    strand
+                }
             };
             match geometry_mode {
                 CandidateFeatureGeometryMode::FeatureSpan => {
@@ -3681,6 +3698,20 @@ impl GentleEngine {
             right_start.saturating_sub(left_end)
         } else if right_end <= left_start {
             left_start.saturating_sub(right_end)
+        } else {
+            0
+        }
+    }
+
+    fn boundary_distance(
+        candidate_start: usize,
+        candidate_end: usize,
+        boundary_pos: usize,
+    ) -> usize {
+        if boundary_pos < candidate_start {
+            candidate_start.saturating_sub(boundary_pos)
+        } else if boundary_pos > candidate_end {
+            boundary_pos.saturating_sub(candidate_end)
         } else {
             0
         }
@@ -4153,9 +4184,7 @@ impl GentleEngine {
             || label_regex.is_some()
             || max_distance_bp.is_some()
             || feature_strand_relation != CandidateFeatureStrandRelation::Any;
-        if has_feature_filter
-            && matching_feature_count == 0
-        {
+        if has_feature_filter && matching_feature_count == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: "No features matched feature filters while generating candidate set"
@@ -4295,6 +4324,193 @@ impl GentleEngine {
                 effective_boundary_mode.as_str(),
                 feature_strand_relation.as_str()
             ));
+        }
+        Ok(())
+    }
+
+    fn op_generate_candidate_set_between_anchors(
+        &mut self,
+        set_name: String,
+        seq_id: SeqId,
+        anchor_a: SequenceAnchor,
+        anchor_b: SequenceAnchor,
+        length_bp: usize,
+        step_bp: usize,
+        limit: Option<usize>,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let set_name = Self::normalize_candidate_set_name(&set_name)?;
+        if length_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSetBetweenAnchors requires length_bp >= 1".to_string(),
+            });
+        }
+        if step_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSetBetweenAnchors requires step_bp >= 1".to_string(),
+            });
+        }
+        let limit = limit.unwrap_or(self.max_fragments_per_container());
+        if limit == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSetBetweenAnchors requires limit >= 1".to_string(),
+            });
+        }
+
+        let dna = self
+            .state
+            .sequences
+            .get(&seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        let is_circular = dna.is_circular();
+
+        let anchor_a_pos = Self::resolve_sequence_anchor_position(dna, &anchor_a, "anchor_a")?;
+        let anchor_b_pos = Self::resolve_sequence_anchor_position(dna, &anchor_b, "anchor_b")?;
+        if anchor_a_pos == anchor_b_pos {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSetBetweenAnchors requires distinct anchor positions"
+                    .to_string(),
+            });
+        }
+
+        let left = anchor_a_pos.min(anchor_b_pos);
+        let right = anchor_a_pos.max(anchor_b_pos);
+        let span = right.saturating_sub(left);
+        if span < length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Anchor span {} bp is shorter than requested candidate length {} bp",
+                    span, length_bp
+                ),
+            });
+        }
+
+        let mut candidates = vec![];
+        let mut considered = 0usize;
+        let mut truncated = false;
+        let upper = right.saturating_sub(length_bp);
+        let mut start = left;
+        while start <= upper {
+            let end = start + length_bp;
+            considered += 1;
+            let Some(fragment) = dna.get_range_safe(start..end) else {
+                start = start.saturating_add(step_bp);
+                continue;
+            };
+            let sequence = String::from_utf8_lossy(&fragment).to_string();
+            let mut metrics =
+                Self::compute_candidate_metrics(&fragment, start, end, dna.len(), None);
+            let dist_a = Self::boundary_distance(start, end, anchor_a_pos);
+            let dist_b = Self::boundary_distance(start, end, anchor_b_pos);
+            metrics.insert("anchor_a_position_bp".to_string(), anchor_a_pos as f64);
+            metrics.insert("anchor_b_position_bp".to_string(), anchor_b_pos as f64);
+            metrics.insert("distance_to_anchor_a_bp".to_string(), dist_a as f64);
+            metrics.insert("distance_to_anchor_b_bp".to_string(), dist_b as f64);
+            metrics.insert(
+                "distance_to_nearest_anchor_bp".to_string(),
+                dist_a.min(dist_b) as f64,
+            );
+            metrics.insert("anchor_interval_start_bp".to_string(), left as f64);
+            metrics.insert("anchor_interval_end_bp".to_string(), right as f64);
+            metrics.insert("anchor_interval_span_bp".to_string(), span as f64);
+            metrics.insert(
+                "anchor_order_sign".to_string(),
+                if anchor_a_pos <= anchor_b_pos {
+                    1.0
+                } else {
+                    -1.0
+                },
+            );
+            metrics.insert(
+                "candidate_offset_from_anchor_a_bp".to_string(),
+                if anchor_a_pos <= anchor_b_pos {
+                    start.saturating_sub(anchor_a_pos) as f64
+                } else {
+                    anchor_a_pos.saturating_sub(end) as f64
+                },
+            );
+            candidates.push(CandidateRecord {
+                seq_id: seq_id.clone(),
+                start_0based: start,
+                end_0based: end,
+                sequence,
+                metrics,
+            });
+            if candidates.len() >= limit {
+                truncated = true;
+                break;
+            }
+            start = start.saturating_add(step_bp);
+        }
+
+        if candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "No candidates generated between the two anchors".to_string(),
+            });
+        }
+
+        let generated = candidates.len();
+        let mut store = self.read_candidate_store();
+        let replaced_existing = store
+            .sets
+            .insert(
+                set_name.clone(),
+                CandidateSet {
+                    name: set_name.clone(),
+                    created_at_unix_ms: Self::now_unix_ms(),
+                    source_seq_ids: vec![seq_id.clone()],
+                    candidates,
+                },
+            )
+            .is_some();
+        let metric_names = store
+            .sets
+            .get(&set_name)
+            .map(Self::metric_names_for_candidate_set)
+            .unwrap_or_default();
+        self.write_candidate_store(store)?;
+
+        result.messages.push(format!(
+            "Generated candidate set '{}' between anchors on '{}' ({} candidates, {} windows considered, span={} bp)",
+            set_name, seq_id, generated, considered, span
+        ));
+        result.messages.push(format!(
+            "Anchor positions on '{}': anchor_a={}, anchor_b={}",
+            seq_id, anchor_a_pos, anchor_b_pos
+        ));
+        if truncated {
+            result.warnings.push(format!(
+                "Candidate generation for '{}' was truncated at limit={}",
+                set_name, limit
+            ));
+        }
+        if replaced_existing {
+            result.warnings.push(format!(
+                "Candidate set '{}' replaced existing set",
+                set_name
+            ));
+        }
+        if !metric_names.is_empty() {
+            result.messages.push(format!(
+                "Candidate set '{}' metrics: {}",
+                set_name,
+                metric_names.join(", ")
+            ));
+        }
+        if is_circular {
+            result.warnings.push(
+                "GenerateCandidateSetBetweenAnchors currently uses linearized anchor interval semantics on circular sequences"
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -7607,25 +7823,25 @@ impl GentleEngine {
         labels
     }
 
-    fn resolve_anchor_position(
+    fn resolve_sequence_anchor_position(
         dna: &DNAsequence,
-        anchor: &AnchoredRegionAnchor,
+        anchor: &SequenceAnchor,
+        anchor_name: &str,
     ) -> Result<usize, EngineError> {
         match anchor {
-            AnchoredRegionAnchor::Position { zero_based } => {
+            SequenceAnchor::Position { zero_based } => {
                 if *zero_based > dna.len() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!(
-                            "Anchor position {} is out of bounds for sequence length {}",
-                            zero_based,
-                            dna.len()
+                            "Sequence anchor '{anchor_name}' position {} is out of bounds for sequence length {}",
+                            zero_based, dna.len()
                         ),
                     });
                 }
                 Ok(*zero_based)
             }
-            AnchoredRegionAnchor::FeatureBoundary {
+            SequenceAnchor::FeatureBoundary {
                 feature_kind,
                 feature_label,
                 boundary,
@@ -7659,9 +7875,12 @@ impl GentleEngine {
                     if from < 0 || to < 0 {
                         continue;
                     }
+                    let start = from as usize;
+                    let end = to as usize;
                     let pos = match boundary {
-                        AnchorBoundary::Start => from as usize,
-                        AnchorBoundary::End => to as usize,
+                        AnchorBoundary::Start => start,
+                        AnchorBoundary::End => end,
+                        AnchorBoundary::Middle => start + (end.saturating_sub(start) / 2),
                     };
                     if pos <= dna.len() {
                         matches.push(pos);
@@ -7670,7 +7889,7 @@ impl GentleEngine {
                 if matches.is_empty() {
                     return Err(EngineError {
                         code: ErrorCode::NotFound,
-                        message: "No feature matched anchored-region anchor".to_string(),
+                        message: format!("No feature matched sequence anchor '{}'", anchor_name),
                     });
                 }
                 matches.sort_unstable();
@@ -7678,9 +7897,8 @@ impl GentleEngine {
                 matches.get(idx).cloned().ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!(
-                        "Feature anchor occurrence {} was requested, but only {} match(es) found",
-                        idx,
-                        matches.len()
+                        "Sequence anchor '{}' occurrence {} was requested, but only {} match(es) found",
+                        anchor_name, idx, matches.len()
                     ),
                 })
             }
@@ -10002,7 +10220,7 @@ impl GentleEngine {
                     });
                 }
 
-                let anchor_pos = Self::resolve_anchor_position(&dna, &anchor)?;
+                let anchor_pos = Self::resolve_sequence_anchor_position(&dna, &anchor, "anchor")?;
                 let min_len = target_length_bp.saturating_sub(length_tolerance_bp).max(1);
                 let max_len = target_length_bp
                     .saturating_add(length_tolerance_bp)
@@ -10548,6 +10766,26 @@ impl GentleEngine {
                     feature_geometry_mode,
                     feature_boundary_mode,
                     feature_strand_relation,
+                    limit,
+                    &mut result,
+                )?;
+            }
+            Operation::GenerateCandidateSetBetweenAnchors {
+                set_name,
+                seq_id,
+                anchor_a,
+                anchor_b,
+                length_bp,
+                step_bp,
+                limit,
+            } => {
+                self.op_generate_candidate_set_between_anchors(
+                    set_name,
+                    seq_id,
+                    anchor_a,
+                    anchor_b,
+                    length_bp,
+                    step_bp,
                     limit,
                     &mut result,
                 )?;
@@ -15340,6 +15578,99 @@ ORIGIN
     }
 
     #[test]
+    fn test_extract_anchored_region_supports_middle_feature_boundary() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(6, 14),
+            qualifiers: vec![("label".into(), Some("MID_GENE".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        let res = engine
+            .apply(Operation::ExtractAnchoredRegion {
+                input: "seqA".to_string(),
+                anchor: SequenceAnchor::FeatureBoundary {
+                    feature_kind: Some("gene".to_string()),
+                    feature_label: Some("MID_GENE".to_string()),
+                    boundary: AnchorBoundary::Middle,
+                    occurrence: Some(0),
+                },
+                direction: AnchorDirection::Upstream,
+                target_length_bp: 4,
+                length_tolerance_bp: 0,
+                required_re_sites: vec![],
+                required_tf_motifs: vec![],
+                forward_primer: None,
+                reverse_primer: None,
+                output_prefix: Some("mid".to_string()),
+                unique: Some(true),
+                max_candidates: Some(1),
+            })
+            .expect("extract using middle boundary");
+        assert_eq!(res.created_seq_ids, vec!["mid_1".to_string()]);
+        let seq = engine
+            .state()
+            .sequences
+            .get("mid_1")
+            .expect("created middle-boundary extract");
+        assert_eq!(seq.len(), 4);
+    }
+
+    #[test]
+    fn test_generate_candidate_set_between_two_sequence_anchors() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGTACGT").unwrap(),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let res = engine
+            .apply(Operation::GenerateCandidateSetBetweenAnchors {
+                set_name: "between".to_string(),
+                seq_id: "seqA".to_string(),
+                anchor_a: SequenceAnchor::Position { zero_based: 2 },
+                anchor_b: SequenceAnchor::Position { zero_based: 10 },
+                length_bp: 4,
+                step_bp: 2,
+                limit: Some(32),
+            })
+            .expect("generate between anchors");
+        assert!(res.messages.iter().any(|m| m.contains("between anchors")));
+
+        let summary = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|set| set.name == "between")
+            .expect("between set summary");
+        assert_eq!(summary.candidate_count, 3);
+
+        let (page, total, _) = engine
+            .inspect_candidate_set_page("between", 64, 0)
+            .expect("inspect between candidates");
+        assert_eq!(total, 3);
+        assert_eq!(page.candidates[0].start_0based, 2);
+        assert_eq!(page.candidates[0].end_0based, 6);
+        assert_eq!(
+            page.candidates[0]
+                .metrics
+                .get("distance_to_anchor_a_bp")
+                .copied(),
+            Some(0.0)
+        );
+        assert_eq!(
+            page.candidates[0]
+                .metrics
+                .get("anchor_interval_span_bp")
+                .copied(),
+            Some(8.0)
+        );
+    }
+
+    #[test]
     fn test_candidate_generation_feature_parts_ignores_multipart_gaps() {
         let mut state = ProjectState::default();
         let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
@@ -15541,6 +15872,101 @@ ORIGIN
         assert!(same_count > 0);
         assert!(opposite_count > 0);
         assert_eq!(same_count + opposite_count, any_count);
+    }
+
+    #[test]
+    fn test_candidate_distance_feature_strand_relation_prefers_matching_strand_features() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(2, 5),
+            qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::Complement(Box::new(
+                gb_io::seq::Location::simple_range(12, 15),
+            )),
+            qualifiers: vec![("label".into(), Some("MINUS_GENE".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: Some(256),
+            })
+            .expect("generate candidate windows");
+
+        engine
+            .apply(Operation::ScoreCandidateSetDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_any".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: Some(CandidateFeatureStrandRelation::Any),
+            })
+            .expect("score distance any");
+        engine
+            .apply(Operation::ScoreCandidateSetDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_same".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: Some(CandidateFeatureStrandRelation::Same),
+            })
+            .expect("score distance same");
+        engine
+            .apply(Operation::ScoreCandidateSetDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_opposite".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: Some(CandidateFeatureStrandRelation::Opposite),
+            })
+            .expect("score distance opposite");
+
+        let (page, _, _) = engine
+            .inspect_candidate_set_page("windows", 4096, 0)
+            .expect("inspect scored windows");
+        let at_pos = |pos: usize, metric: &str| -> f64 {
+            page.candidates
+                .iter()
+                .find(|candidate| candidate.start_0based == pos)
+                .and_then(|candidate| candidate.metrics.get(metric).copied())
+                .unwrap_or(f64::NAN)
+        };
+
+        let plus_any = at_pos(2, "dist_any");
+        let plus_same = at_pos(2, "dist_same");
+        let plus_opposite = at_pos(2, "dist_opposite");
+        assert_eq!(plus_any, 0.0);
+        assert_eq!(plus_same, 0.0);
+        assert!(plus_opposite > 0.0);
+
+        let minus_any = at_pos(14, "dist_any");
+        let minus_same = at_pos(14, "dist_same");
+        let minus_opposite = at_pos(14, "dist_opposite");
+        assert_eq!(minus_any, 0.0);
+        assert!(minus_same > 0.0);
+        assert_eq!(minus_opposite, 0.0);
     }
 
     #[test]

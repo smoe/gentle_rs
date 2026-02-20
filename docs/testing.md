@@ -40,6 +40,29 @@ Recommended method:
 - add integration tests that run `gentle_cli` as a subprocess
 - compare normalized JSON output against golden files
 
+### 3.1 Canonical workflow example tests
+
+Canonical protocol examples in `docs/examples/workflows/*.json` are now part of
+the test surface.
+
+Execution:
+
+```bash
+cargo test workflow_examples -- --test-threads=1
+```
+
+Online-only examples are opt-in:
+
+```bash
+GENTLE_TEST_ONLINE=1 cargo test workflow_examples -- --test-threads=1
+```
+
+`test_mode` policy from each example file:
+
+- `always`: parsed, validated, and executed in default runs
+- `online`: executed only with `GENTLE_TEST_ONLINE=1`
+- `skip`: parsed/validated only
+
 ## 4. Rendering tests (required)
 
 Graphics are part of functionality. Visibility toggles and biology overlays must

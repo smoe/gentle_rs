@@ -33,6 +33,10 @@ path = "src/bin/gentle_js.rs"
 name = "gentle_cli"
 path = "src/bin/gentle_cli.rs"
 
+[[bin]]
+name = "gentle_examples_docs"
+path = "src/bin/gentle_examples_docs.rs"
+
 [lib]
 name = "gentle"
 
