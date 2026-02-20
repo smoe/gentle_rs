@@ -93,6 +93,12 @@ Current draft operations:
 
 Adapter utility contracts (current, non-engine operations):
 
+- `help [COMMAND ...] [--format text|json|markdown] [--interface ...]`
+  - backed by structured glossary source `docs/glossary.json`
+  - `--format text` renders human-readable help
+  - `--format json` renders machine-readable help catalog/topic payload
+  - `--format markdown` renders documentation-ready markdown
+
 - `screenshot-window OUTPUT.png`
   - currently disabled by security policy
   - returns deterministic disabled message from shared shell/CLI/GUI command
