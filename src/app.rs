@@ -43,6 +43,8 @@ use serde::{Deserialize, Serialize};
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
+const MAX_RECENT_PROJECTS: usize = 12;
+const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -63,6 +65,7 @@ struct PersistedConfiguration {
     blastn_executable: String,
     bigwig_to_bedgraph_executable: String,
     graphics_defaults: DisplaySettings,
+    recent_projects: Vec<String>,
 }
 
 impl Default for PersistedConfiguration {
@@ -73,6 +76,7 @@ impl Default for PersistedConfiguration {
             blastn_executable: String::new(),
             bigwig_to_bedgraph_executable: String::new(),
             graphics_defaults: DisplaySettings::default(),
+            recent_projects: vec![],
         }
     }
 }
@@ -83,6 +87,7 @@ enum GenomeTrackSourceSelection {
     Auto,
     Bed,
     BigWig,
+    Vcf,
 }
 
 impl GenomeTrackSourceSelection {
@@ -91,6 +96,7 @@ impl GenomeTrackSourceSelection {
             Self::Auto => "Auto (from extension)",
             Self::Bed => "BED",
             Self::BigWig => "BigWig",
+            Self::Vcf => "VCF",
         }
     }
 
@@ -99,6 +105,7 @@ impl GenomeTrackSourceSelection {
             Self::Auto => GenomeTrackSource::from_path(path),
             Self::Bed => GenomeTrackSource::Bed,
             Self::BigWig => GenomeTrackSource::BigWig,
+            Self::Vcf => GenomeTrackSource::Vcf,
         }
     }
 }
@@ -134,8 +141,14 @@ pub struct GENtleApp {
     configuration_graphics_dirty: bool,
     configuration_status: String,
     current_project_path: Option<String>,
+    recent_project_paths: Vec<String>,
     lineage_graph_view: bool,
     lineage_graph_zoom: f32,
+    lineage_graph_area_height: f32,
+    lineage_container_area_height: f32,
+    lineage_graph_scroll_offset: Vec2,
+    lineage_graph_pan_origin: Option<Vec2>,
+    lineage_graph_compact_labels: bool,
     lineage_graph_node_offsets: HashMap<String, Vec2>,
     lineage_graph_drag_origin: Option<(String, Vec2)>,
     lineage_graph_offsets_synced_stamp: u64,
@@ -205,10 +218,11 @@ pub struct GENtleApp {
     genome_blast_import_clear_existing: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum ProjectAction {
     New,
     Open,
+    OpenPath(String),
     Close,
 }
 
@@ -305,6 +319,30 @@ struct ContainerRow {
     members: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct PersistedLineageGraphWorkspace {
+    zoom: f32,
+    graph_area_height: f32,
+    container_area_height: f32,
+    scroll_offset: [f32; 2],
+    compact_labels: bool,
+    node_offsets: HashMap<String, [f32; 2]>,
+}
+
+impl Default for PersistedLineageGraphWorkspace {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            graph_area_height: 420.0,
+            container_area_height: 220.0,
+            scroll_offset: [0.0, 0.0],
+            compact_labels: true,
+            node_offsets: HashMap::new(),
+        }
+    }
+}
+
 impl Default for GENtleApp {
     fn default() -> Self {
         Self {
@@ -339,8 +377,14 @@ impl Default for GENtleApp {
             configuration_graphics_dirty: false,
             configuration_status: String::new(),
             current_project_path: None,
+            recent_project_paths: vec![],
             lineage_graph_view: false,
             lineage_graph_zoom: 1.0,
+            lineage_graph_area_height: 420.0,
+            lineage_container_area_height: 220.0,
+            lineage_graph_scroll_offset: Vec2::ZERO,
+            lineage_graph_pan_origin: None,
+            lineage_graph_compact_labels: true,
             lineage_graph_node_offsets: HashMap::new(),
             lineage_graph_drag_origin: None,
             lineage_graph_offsets_synced_stamp: 0,
@@ -467,6 +511,7 @@ impl GENtleApp {
                 .trim()
                 .to_string(),
             graphics_defaults: self.configuration_graphics.clone(),
+            recent_projects: self.recent_project_paths.clone(),
         };
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| format!("Could not serialize GUI configuration: {e}"))?;
@@ -476,6 +521,107 @@ impl GENtleApp {
                 path.display()
             )
         })
+    }
+
+    fn normalize_project_path(path: &str) -> String {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        let input = PathBuf::from(trimmed);
+        let absolute = if input.is_absolute() {
+            input
+        } else {
+            env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(input)
+        };
+        absolute
+            .canonicalize()
+            .unwrap_or(absolute)
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn normalize_recent_project_paths(paths: Vec<String>) -> Vec<String> {
+        let mut normalized = Vec::new();
+        let mut seen = HashSet::new();
+        for raw in paths {
+            let normalized_path = Self::normalize_project_path(&raw);
+            if normalized_path.is_empty() {
+                continue;
+            }
+            if seen.insert(normalized_path.clone()) {
+                normalized.push(normalized_path);
+                if normalized.len() >= MAX_RECENT_PROJECTS {
+                    break;
+                }
+            }
+        }
+        normalized
+    }
+
+    fn record_recent_project_path(&mut self, path: &str) {
+        let normalized = Self::normalize_project_path(path);
+        if normalized.is_empty() {
+            return;
+        }
+
+        let old_paths = self.recent_project_paths.clone();
+        self.recent_project_paths
+            .retain(|existing| existing != &normalized);
+        self.recent_project_paths.insert(0, normalized);
+        if self.recent_project_paths.len() > MAX_RECENT_PROJECTS {
+            self.recent_project_paths.truncate(MAX_RECENT_PROJECTS);
+        }
+
+        if self.recent_project_paths != old_paths {
+            if let Err(err) = self.write_persisted_configuration_to_disk() {
+                eprintln!("{err}");
+            }
+        }
+    }
+
+    fn remove_recent_project_path(&mut self, path: &str) {
+        let normalized = Self::normalize_project_path(path);
+        if normalized.is_empty() {
+            return;
+        }
+        let len_before = self.recent_project_paths.len();
+        self.recent_project_paths
+            .retain(|existing| existing != &normalized);
+        if self.recent_project_paths.len() != len_before {
+            if let Err(err) = self.write_persisted_configuration_to_disk() {
+                eprintln!("{err}");
+            }
+        }
+    }
+
+    fn clear_recent_project_paths(&mut self) {
+        if self.recent_project_paths.is_empty() {
+            return;
+        }
+        self.recent_project_paths.clear();
+        if let Err(err) = self.write_persisted_configuration_to_disk() {
+            eprintln!("{err}");
+        }
+    }
+
+    fn recent_project_menu_label(path: &str) -> String {
+        let parsed = Path::new(path);
+        let name = parsed
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.to_string());
+        let parent = parsed
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        if parent.is_empty() {
+            name
+        } else {
+            format!("{name} ({parent})")
+        }
     }
 
     fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
@@ -538,6 +684,7 @@ impl GENtleApp {
             );
         }
         self.configuration_graphics = saved.graphics_defaults;
+        self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
         self.configuration_rnapkin_validation_message.clear();
@@ -1204,6 +1351,12 @@ impl GENtleApp {
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
+        self.lineage_graph_zoom = 1.0;
+        self.lineage_graph_area_height = 420.0;
+        self.lineage_container_area_height = 220.0;
+        self.lineage_graph_scroll_offset = Vec2::ZERO;
+        self.lineage_graph_pan_origin = None;
+        self.lineage_graph_compact_labels = true;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
@@ -1224,7 +1377,25 @@ impl GENtleApp {
         self.genome_track_autosync_status.clear();
         self.tracked_autosync_last_op_count = None;
         self.load_bed_track_subscriptions_from_state();
+        self.load_lineage_graph_workspace_from_state();
         self.mark_clean_snapshot();
+    }
+
+    fn set_current_project_path_and_track_recent(&mut self, path: &str) {
+        let normalized = Self::normalize_project_path(path);
+        if normalized.is_empty() {
+            self.current_project_path = None;
+            return;
+        }
+        self.current_project_path = Some(normalized.clone());
+        self.record_recent_project_path(&normalized);
+    }
+
+    fn open_project_path(&mut self, path: &str) {
+        if let Err(err) = self.load_project_from_file(path) {
+            eprintln!("Could not open project '{}': {err}", path);
+            self.remove_recent_project_path(path);
+        }
     }
 
     fn prompt_open_project(&mut self) {
@@ -1233,7 +1404,7 @@ impl GENtleApp {
             .pick_file()
         {
             let path = path.display().to_string();
-            let _ = self.load_project_from_file(&path);
+            self.open_project_path(&path);
         }
     }
 
@@ -1252,7 +1423,7 @@ impl GENtleApp {
         {
             let path = path.display().to_string();
             if self.save_project_to_file(&path).is_ok() {
-                self.current_project_path = Some(path);
+                self.set_current_project_path_and_track_recent(&path);
                 self.mark_clean_snapshot();
             }
         }
@@ -1426,6 +1597,14 @@ impl GENtleApp {
                 clear_existing: Some(subscription.clear_existing),
             },
             GenomeTrackSource::BigWig => Operation::ImportGenomeBigWigTrack {
+                seq_id: seq_id.to_string(),
+                path: subscription.path.clone(),
+                track_name: subscription.track_name.clone(),
+                min_score: subscription.min_score,
+                max_score: subscription.max_score,
+                clear_existing: Some(subscription.clear_existing),
+            },
+            GenomeTrackSource::Vcf => Operation::ImportGenomeVcfTrack {
                 seq_id: seq_id.to_string(),
                 path: subscription.path.clone(),
                 track_name: subscription.track_name.clone(),
@@ -3743,6 +3922,11 @@ impl GENtleApp {
                         GenomeTrackSourceSelection::BigWig,
                         GenomeTrackSourceSelection::BigWig.label(),
                     );
+                    ui.selectable_value(
+                        &mut self.genome_track_source_selection,
+                        GenomeTrackSourceSelection::Vcf,
+                        GenomeTrackSourceSelection::Vcf.label(),
+                    );
                 });
             ui.small(format!("Detected extension: {}", detected_source.label()));
         });
@@ -3756,7 +3940,7 @@ impl GENtleApp {
                 .clicked()
             {
                 if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig"])
+                    .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig", "vcf"])
                     .pick_file()
                 {
                     self.genome_track_path = path.display().to_string();
@@ -3796,7 +3980,7 @@ impl GENtleApp {
                     egui::Button::new("Import To Selected"),
                 )
                 .on_hover_text(
-                    "Import this BED/BigWig signal file onto only the currently selected anchored sequence.",
+                    "Import this BED/BigWig/VCF signal file onto only the currently selected anchored sequence.",
                 )
                 .clicked()
             {
@@ -4045,6 +4229,7 @@ impl GENtleApp {
     fn save_current_project(&mut self) -> bool {
         if let Some(path) = self.current_project_path.clone() {
             if self.save_project_to_file(&path).is_ok() {
+                self.record_recent_project_path(&path);
                 self.mark_clean_snapshot();
                 return true;
             }
@@ -4058,7 +4243,7 @@ impl GENtleApp {
         {
             let path = path.display().to_string();
             if self.save_project_to_file(&path).is_ok() {
-                self.current_project_path = Some(path);
+                self.set_current_project_path_and_track_recent(&path);
                 self.mark_clean_snapshot();
                 return true;
             }
@@ -4070,6 +4255,7 @@ impl GENtleApp {
         match action {
             ProjectAction::New => self.new_project(),
             ProjectAction::Open => self.prompt_open_project(),
+            ProjectAction::OpenPath(path) => self.open_project_path(&path),
             ProjectAction::Close => self.close_project(),
         }
     }
@@ -4094,12 +4280,18 @@ impl GENtleApp {
         let state = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()))?;
 
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
-        self.current_project_path = Some(path.to_string());
+        self.set_current_project_path_and_track_recent(path);
         self.lineage_cache_valid = false;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
         self.lineage_op_label_by_id.clear();
         self.lineage_containers.clear();
+        self.lineage_graph_zoom = 1.0;
+        self.lineage_graph_area_height = 420.0;
+        self.lineage_container_area_height = 220.0;
+        self.lineage_graph_scroll_offset = Vec2::ZERO;
+        self.lineage_graph_pan_origin = None;
+        self.lineage_graph_compact_labels = true;
         self.lineage_graph_node_offsets.clear();
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
@@ -4108,7 +4300,7 @@ impl GENtleApp {
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
         self.load_bed_track_subscriptions_from_state();
-        self.load_lineage_node_offsets_from_state();
+        self.load_lineage_graph_workspace_from_state();
 
         self.mark_clean_snapshot();
         Ok(())
@@ -4124,17 +4316,54 @@ impl GENtleApp {
         }
     }
 
-    fn load_lineage_node_offsets_from_state(&mut self) {
-        let serialized = self
-            .engine
-            .read()
-            .unwrap()
-            .state()
-            .metadata
-            .get(LINEAGE_NODE_OFFSETS_METADATA_KEY)
-            .cloned();
+    fn load_lineage_graph_workspace_from_state(&mut self) {
+        let (workspace_serialized, legacy_offsets_serialized) = {
+            let engine = self.engine.read().unwrap();
+            let metadata = &engine.state().metadata;
+            (
+                metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY).cloned(),
+                metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY).cloned(),
+            )
+        };
+
+        self.lineage_graph_zoom = 1.0;
+        self.lineage_graph_area_height = 420.0;
+        self.lineage_container_area_height = 220.0;
+        self.lineage_graph_scroll_offset = Vec2::ZERO;
+        self.lineage_graph_pan_origin = None;
+        self.lineage_graph_compact_labels = true;
         self.lineage_graph_node_offsets.clear();
-        if let Some(serialized) = serialized {
+        if let Some(serialized) = workspace_serialized {
+            if let Ok(workspace) =
+                serde_json::from_value::<PersistedLineageGraphWorkspace>(serialized)
+            {
+                if workspace.zoom.is_finite() {
+                    self.lineage_graph_zoom = workspace.zoom.clamp(0.35, 4.0);
+                }
+                if workspace.graph_area_height.is_finite() {
+                    self.lineage_graph_area_height =
+                        workspace.graph_area_height.clamp(220.0, 2400.0);
+                }
+                if workspace.container_area_height.is_finite() {
+                    self.lineage_container_area_height =
+                        workspace.container_area_height.clamp(120.0, 1600.0);
+                }
+                if workspace.scroll_offset[0].is_finite() && workspace.scroll_offset[1].is_finite()
+                {
+                    self.lineage_graph_scroll_offset = Vec2::new(
+                        workspace.scroll_offset[0].max(0.0),
+                        workspace.scroll_offset[1].max(0.0),
+                    );
+                }
+                self.lineage_graph_compact_labels = workspace.compact_labels;
+                for (node_id, pair) in workspace.node_offsets {
+                    if pair[0].is_finite() && pair[1].is_finite() {
+                        self.lineage_graph_node_offsets
+                            .insert(node_id, Vec2::new(pair[0], pair[1]));
+                    }
+                }
+            }
+        } else if let Some(serialized) = legacy_offsets_serialized {
             if let Ok(raw) = serde_json::from_value::<HashMap<String, [f32; 2]>>(serialized) {
                 for (node_id, pair) in raw {
                     if pair[0].is_finite() && pair[1].is_finite() {
@@ -4148,26 +4377,54 @@ impl GENtleApp {
         self.lineage_graph_offsets_synced_stamp = 0;
     }
 
-    fn persist_lineage_node_offsets_to_state(&mut self) {
+    fn persist_lineage_graph_workspace_to_state(&mut self) {
         let mut raw: HashMap<String, [f32; 2]> = HashMap::new();
         for (node_id, offset) in &self.lineage_graph_node_offsets {
             if offset.x.is_finite() && offset.y.is_finite() {
                 raw.insert(node_id.clone(), [offset.x, offset.y]);
             }
         }
+
+        let workspace = PersistedLineageGraphWorkspace {
+            zoom: self.lineage_graph_zoom.clamp(0.35, 4.0),
+            graph_area_height: self.lineage_graph_area_height.clamp(220.0, 2400.0),
+            container_area_height: self.lineage_container_area_height.clamp(120.0, 1600.0),
+            scroll_offset: [
+                self.lineage_graph_scroll_offset.x.max(0.0),
+                self.lineage_graph_scroll_offset.y.max(0.0),
+            ],
+            compact_labels: self.lineage_graph_compact_labels,
+            node_offsets: raw.clone(),
+        };
+
+        let workspace_is_default = (workspace.zoom - 1.0).abs() <= 0.0001
+            && (workspace.graph_area_height - 420.0).abs() <= 0.0001
+            && (workspace.container_area_height - 220.0).abs() <= 0.0001
+            && workspace.scroll_offset[0].abs() <= 0.0001
+            && workspace.scroll_offset[1].abs() <= 0.0001
+            && workspace.compact_labels
+            && workspace.node_offsets.is_empty();
+
         let mut engine = self.engine.write().unwrap();
         let state = engine.state_mut();
+        if workspace_is_default {
+            state.metadata.remove(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY);
+        } else if let Ok(value) = serde_json::to_value(&workspace) {
+            if state.metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY) != Some(&value) {
+                state
+                    .metadata
+                    .insert(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY.to_string(), value);
+            }
+        }
+
         if raw.is_empty() {
             state.metadata.remove(LINEAGE_NODE_OFFSETS_METADATA_KEY);
-            return;
-        }
-        let Ok(value) = serde_json::to_value(raw) else {
-            return;
-        };
-        if state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value) {
-            state
-                .metadata
-                .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
+        } else if let Ok(value) = serde_json::to_value(raw) {
+            if state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value) {
+                state
+                    .metadata
+                    .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
+            }
         }
     }
 
@@ -4190,6 +4447,45 @@ impl GENtleApp {
                     self.request_project_action(ProjectAction::Open);
                     ui.close_menu();
                 }
+                ui.menu_button("Open Recent Project...", |ui| {
+                    if self.recent_project_paths.is_empty() {
+                        ui.add_enabled(false, egui::Button::new("No recent projects"));
+                        return;
+                    }
+
+                    let recent_paths = self.recent_project_paths.clone();
+                    let mut selected_recent_path: Option<String> = None;
+                    for path in recent_paths {
+                        let exists = Path::new(&path).is_file();
+                        let mut label = Self::recent_project_menu_label(&path);
+                        if !exists {
+                            label.push_str(" [missing]");
+                        }
+                        let clicked = ui
+                            .add_enabled(exists, egui::Button::new(label))
+                            .on_hover_text(path.clone())
+                            .clicked();
+                        if clicked {
+                            selected_recent_path = Some(path);
+                        }
+                    }
+
+                    ui.separator();
+                    if ui
+                        .button("Clear Recent Projects")
+                        .on_hover_text("Remove all items from Open Recent Project menu")
+                        .clicked()
+                    {
+                        self.clear_recent_project_paths();
+                        ui.close_menu();
+                        return;
+                    }
+
+                    if let Some(path) = selected_recent_path {
+                        self.request_project_action(ProjectAction::OpenPath(path));
+                        ui.close_menu();
+                    }
+                });
                 if ui
                     .button("Close Project")
                     .on_hover_text("Close the current project from the workspace")
@@ -4254,7 +4550,7 @@ impl GENtleApp {
                 }
                 if ui
                     .button("Import Genome Track...")
-                    .on_hover_text("Import BED/BigWig tracks onto anchored sequences")
+                    .on_hover_text("Import BED/BigWig/VCF tracks onto anchored sequences")
                     .clicked()
                 {
                     self.open_genome_bed_track_dialog();
@@ -4366,7 +4662,7 @@ impl GENtleApp {
                 }
                 if ui
                     .button("Import Genome Track...")
-                    .on_hover_text("Import BED/BigWig tracks onto anchored sequences")
+                    .on_hover_text("Import BED/BigWig/VCF tracks onto anchored sequences")
                     .clicked()
                 {
                     self.open_genome_bed_track_dialog();
@@ -4838,6 +5134,34 @@ impl GENtleApp {
         (layout_by_node, max_layer + 1, max_nodes_in_layer)
     }
 
+    fn compact_lineage_node_label(raw: &str, max_chars: usize) -> String {
+        if max_chars == 0 {
+            return String::new();
+        }
+        let char_count = raw.chars().count();
+        if char_count <= max_chars {
+            return raw.to_string();
+        }
+        let keep = max_chars.saturating_sub(3).max(1);
+        let prefix: String = raw.chars().take(keep).collect();
+        format!("{prefix}...")
+    }
+
+    fn compact_lineage_op_label(raw: &str) -> String {
+        let mut head = raw.split(':').next().unwrap_or(raw).trim().to_string();
+        if head.eq_ignore_ascii_case("Molecular weight filter (container)") {
+            return "MW filter".to_string();
+        }
+        if head.eq_ignore_ascii_case("Merge containers by id") {
+            return "Merge by id".to_string();
+        }
+        if head.len() > 20 {
+            head.truncate(17);
+            head.push_str("...");
+        }
+        head
+    }
+
     fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
@@ -4886,6 +5210,23 @@ impl GENtleApp {
         let mut open_seq: Option<String> = None;
         let mut open_pool: Option<(String, Vec<String>)> = None;
         let mut select_candidate_from: Option<String> = None;
+        let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
+        let mut graph_area_height = self.lineage_graph_area_height.clamp(220.0, 2400.0);
+        let mut container_area_height = self.lineage_container_area_height.clamp(120.0, 1600.0);
+        let mut graph_scroll_offset = Vec2::new(
+            if self.lineage_graph_scroll_offset.x.is_finite() {
+                self.lineage_graph_scroll_offset.x.max(0.0)
+            } else {
+                0.0
+            },
+            if self.lineage_graph_scroll_offset.y.is_finite() {
+                self.lineage_graph_scroll_offset.y.max(0.0)
+            } else {
+                0.0
+            },
+        );
+        let mut graph_compact_labels = self.lineage_graph_compact_labels;
+        let mut persist_workspace_after_frame = false;
         if self.lineage_graph_view {
             if self.lineage_graph_offsets_synced_stamp != self.lineage_cache_stamp {
                 let offset_count_before = self.lineage_graph_node_offsets.len();
@@ -4903,17 +5244,22 @@ impl GENtleApp {
                 {
                     self.lineage_graph_drag_origin = None;
                 }
+                if self
+                    .lineage_graph_pan_origin
+                    .as_ref()
+                    .is_some_and(|_| active_node_ids.is_empty())
+                {
+                    self.lineage_graph_pan_origin = None;
+                }
                 if self.lineage_graph_node_offsets.len() != offset_count_before {
-                    self.persist_lineage_node_offsets_to_state();
+                    persist_workspace_after_frame = true;
                 }
                 self.lineage_graph_offsets_synced_stamp = self.lineage_cache_stamp;
             }
             let rows = &self.lineage_rows;
             let lineage_edges = &self.lineage_edges;
             let op_label_by_id = &self.lineage_op_label_by_id;
-            let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
             let mut request_fit_zoom = false;
-            let mut persist_offsets_after_frame = false;
             ui.horizontal(|ui| {
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
@@ -4945,27 +5291,55 @@ impl GENtleApp {
                 {
                     self.lineage_graph_node_offsets.clear();
                     self.lineage_graph_drag_origin = None;
-                    persist_offsets_after_frame = true;
+                    self.lineage_graph_pan_origin = None;
+                    persist_workspace_after_frame = true;
                 }
+                ui.separator();
+                if ui
+                    .checkbox(&mut graph_compact_labels, "Compact labels")
+                    .on_hover_text(
+                        "Reduce label density in crowded graphs by simplifying operation and node labels",
+                    )
+                    .changed()
+                {
+                    persist_workspace_after_frame = true;
+                }
+                ui.separator();
                 ui.add(
                     egui::Slider::new(&mut graph_zoom, 0.35..=4.0)
                         .logarithmic(true)
                         .text("Zoom"),
                 );
                 ui.label(format!("{:.0}%", graph_zoom * 100.0));
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut graph_area_height)
+                            .range(220.0..=2400.0)
+                            .speed(2.0)
+                            .prefix("Graph h "),
+                    )
+                    .on_hover_text("Persisted preferred height of the graph area")
+                    .changed()
+                {
+                    persist_workspace_after_frame = true;
+                }
             });
             ui.separator();
+            let graph_resize_max_height = ui.available_height().max(220.0);
             egui::Resize::default()
                 .id_salt("lineage_graph_area_resize")
-                .default_height(420.0)
+                .default_height(graph_area_height.min(graph_resize_max_height))
                 .min_height(220.0)
-                .max_height(ui.available_height().max(220.0))
+                .max_height(graph_resize_max_height)
                 .resizable(egui::Vec2b::new(false, true))
                 .show(ui, |ui| {
+                    graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
                     ui.small(
-                        "Resize area by dragging lower edge. Drag nodes to reposition. Cmd/Ctrl+scroll zooms.",
+                        "Resize area by dragging lower edge. Hold Space + drag background to pan. Drag nodes to reposition. Cmd/Ctrl+scroll zooms.",
                     );
-                    egui::ScrollArea::both()
+                    let graph_scroll_output = egui::ScrollArea::both()
+                        .id_salt("lineage_graph_scroll")
+                        .scroll_offset(graph_scroll_offset)
                         .drag_to_scroll(false)
                         .max_height(ui.available_height())
                         .show(ui, |ui| {
@@ -5001,10 +5375,33 @@ impl GENtleApp {
                                     graph_zoom = (graph_zoom * factor).clamp(0.35, 4.0);
                                 }
                             }
+                            let dense_graph = rows.len() >= 22 || lineage_edges.len() >= 30;
+                            let simplify_labels = graph_compact_labels && dense_graph;
+                            let edge_label_stride = if simplify_labels {
+                                if lineage_edges.len() > 180 {
+                                    4
+                                } else if lineage_edges.len() > 120 {
+                                    3
+                                } else if lineage_edges.len() > 60 {
+                                    2
+                                } else {
+                                    1
+                                }
+                            } else {
+                                1
+                            };
                             let rect = resp.rect;
                             let edge_stroke_width = (1.0 * graph_zoom).clamp(1.0, 2.5);
-                            let op_font_size = (10.0 * graph_zoom).clamp(9.0, 16.0);
-                            let name_font_size = (12.0 * graph_zoom).clamp(10.0, 18.0);
+                            let op_font_size = if simplify_labels {
+                                (9.0 * graph_zoom).clamp(8.0, 14.0)
+                            } else {
+                                (10.0 * graph_zoom).clamp(9.0, 16.0)
+                            };
+                            let name_font_size = if simplify_labels {
+                                (11.0 * graph_zoom).clamp(9.0, 15.0)
+                            } else {
+                                (12.0 * graph_zoom).clamp(10.0, 18.0)
+                            };
                             let details_font_size = (10.0 * graph_zoom).clamp(9.0, 15.0);
                             let node_radius = 16.0 * graph_zoom;
                             let mut pos_by_node: HashMap<String, Pos2> = HashMap::new();
@@ -5029,7 +5426,9 @@ impl GENtleApp {
                             let mut used_label_rects: Vec<egui::Rect> = Vec::new();
                             let mut op_label_galleys: HashMap<String, Arc<egui::Galley>> =
                                 HashMap::new();
-                            for (from_node, to_node, op_id) in lineage_edges {
+                            for (edge_idx, (from_node, to_node, op_id)) in
+                                lineage_edges.iter().enumerate()
+                            {
                                 let Some(from) = pos_by_node.get(from_node) else {
                                     continue;
                                 };
@@ -5040,12 +5439,19 @@ impl GENtleApp {
                                     [*from, *to],
                                     egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
                                 );
+                                if edge_label_stride > 1 && edge_idx % edge_label_stride != 0 {
+                                    continue;
+                                }
                                 let mid = Pos2::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
                                 let op_label = op_label_by_id
                                     .get(op_id)
                                     .cloned()
                                     .unwrap_or_else(|| op_id.clone());
-                                let display = op_label;
+                                let display = if simplify_labels {
+                                    Self::compact_lineage_op_label(&op_label)
+                                } else {
+                                    op_label
+                                };
                                 let galley = op_label_galleys
                                     .entry(display.clone())
                                     .or_insert_with(|| {
@@ -5142,27 +5548,33 @@ impl GENtleApp {
                                         egui::Color32::from_rgb(90, 140, 210),
                                     );
                                 }
+                                let display_name = if simplify_labels {
+                                    Self::compact_lineage_node_label(&row.display_name, 26)
+                                } else {
+                                    row.display_name.clone()
+                                };
                                 painter.text(
                                     pos + Vec2::new(22.0 * graph_zoom, -4.0 * graph_zoom),
                                     egui::Align2::LEFT_BOTTOM,
-                                    &row.display_name,
+                                    display_name,
                                     egui::FontId::proportional(name_font_size),
                                     egui::Color32::BLACK,
                                 );
-                                painter.text(
-                                    pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom),
-                                    egui::Align2::LEFT_TOP,
-                                    format!("{} ({} bp)", row.seq_id, row.length),
-                                    egui::FontId::proportional(details_font_size),
-                                    egui::Color32::BLACK,
-                                );
+                                if !simplify_labels {
+                                    painter.text(
+                                        pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom),
+                                        egui::Align2::LEFT_TOP,
+                                        format!("{} ({} bp)", row.seq_id, row.length),
+                                        egui::FontId::proportional(details_font_size),
+                                        egui::Color32::BLACK,
+                                    );
+                                }
                             }
 
-                            // Interactions: drag moves nodes; double-click opens sequence; single-click keeps current behavior.
                             if let Some(pointer) = resp.interact_pointer_pos() {
                                 let mut hit_row: Option<&LineageRow> = None;
                                 for row in rows {
-                                    let Some(pos) = pos_by_node.get(&row.node_id).cloned() else {
+                                    let Some(pos) = pos_by_node.get(&row.node_id).copied() else {
                                         continue;
                                     };
                                     let hit = if row.pool_size > 1 {
@@ -5179,8 +5591,12 @@ impl GENtleApp {
                                         break;
                                     }
                                 }
+                                let space_pan_requested = ui.input(|i| i.key_down(Key::Space));
                                 if resp.drag_started() {
-                                    if let Some(row) = hit_row {
+                                    if space_pan_requested && hit_row.is_none() {
+                                        self.lineage_graph_pan_origin = Some(graph_scroll_offset);
+                                        self.lineage_graph_drag_origin = None;
+                                    } else if let Some(row) = hit_row {
                                         let start_offset = self
                                             .lineage_graph_node_offsets
                                             .get(&row.node_id)
@@ -5188,34 +5604,59 @@ impl GENtleApp {
                                             .unwrap_or(Vec2::ZERO);
                                         self.lineage_graph_drag_origin =
                                             Some((row.node_id.clone(), start_offset));
+                                        self.lineage_graph_pan_origin = None;
                                     } else {
                                         self.lineage_graph_drag_origin = None;
+                                        self.lineage_graph_pan_origin = None;
                                     }
                                 }
-                                if let Some((node_id, start_offset)) =
-                                    self.lineage_graph_drag_origin.clone()
-                                {
+                                if let Some(start_scroll_offset) = self.lineage_graph_pan_origin {
                                     if resp.dragged() {
-                                        self.lineage_graph_node_offsets
-                                            .insert(node_id.clone(), start_offset + resp.drag_delta());
+                                        let next_offset = start_scroll_offset - resp.drag_delta();
+                                        graph_scroll_offset = Vec2::new(
+                                            next_offset.x.max(0.0),
+                                            next_offset.y.max(0.0),
+                                        );
                                     }
                                     if resp.drag_stopped() {
-                                        self.lineage_graph_drag_origin = None;
-                                        persist_offsets_after_frame = true;
+                                        self.lineage_graph_pan_origin = None;
+                                        persist_workspace_after_frame = true;
                                     }
                                 }
-                                if self.lineage_graph_drag_origin.is_some() {
+                                if self.lineage_graph_pan_origin.is_none() {
+                                    if let Some((node_id, start_offset)) =
+                                        self.lineage_graph_drag_origin.clone()
+                                    {
+                                        if resp.dragged() {
+                                            self.lineage_graph_node_offsets
+                                                .insert(node_id.clone(), start_offset + resp.drag_delta());
+                                        }
+                                        if resp.drag_stopped() {
+                                            self.lineage_graph_drag_origin = None;
+                                            persist_workspace_after_frame = true;
+                                        }
+                                    }
+                                }
+                                if self.lineage_graph_pan_origin.is_some() {
+                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                                } else if space_pan_requested && hit_row.is_none() {
+                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
+                                } else if self.lineage_graph_drag_origin.is_some() {
                                     ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
                                 }
-                                if let Some(row) = hit_row {
-                                    if resp.double_clicked() {
-                                        open_seq = Some(row.seq_id.clone());
-                                    } else if resp.clicked() {
-                                        if row.pool_size > 1 {
-                                            open_pool =
-                                                Some((row.seq_id.clone(), row.pool_members.clone()));
-                                        } else {
+                                if self.lineage_graph_pan_origin.is_none()
+                                    && self.lineage_graph_drag_origin.is_none()
+                                {
+                                    if let Some(row) = hit_row {
+                                        if resp.double_clicked() {
                                             open_seq = Some(row.seq_id.clone());
+                                        } else if resp.clicked() {
+                                            if row.pool_size > 1 {
+                                                open_pool =
+                                                    Some((row.seq_id.clone(), row.pool_members.clone()));
+                                            } else {
+                                                open_seq = Some(row.seq_id.clone());
+                                            }
                                         }
                                     }
                                 }
@@ -5224,14 +5665,31 @@ impl GENtleApp {
                                 && !ui.input(|i| i.pointer.primary_down())
                             {
                                 self.lineage_graph_drag_origin = None;
-                                persist_offsets_after_frame = true;
+                                persist_workspace_after_frame = true;
+                            }
+                            if self.lineage_graph_pan_origin.is_some()
+                                && !ui.input(|i| i.pointer.primary_down())
+                            {
+                                self.lineage_graph_pan_origin = None;
+                                persist_workspace_after_frame = true;
                             }
                         });
+                    let max_scroll_x =
+                        (graph_scroll_output.content_size.x - graph_scroll_output.inner_rect.width())
+                            .max(0.0);
+                    let max_scroll_y = (graph_scroll_output.content_size.y
+                        - graph_scroll_output.inner_rect.height())
+                    .max(0.0);
+                    if self.lineage_graph_pan_origin.is_some() {
+                        graph_scroll_offset.x = graph_scroll_offset.x.clamp(0.0, max_scroll_x);
+                        graph_scroll_offset.y = graph_scroll_offset.y.clamp(0.0, max_scroll_y);
+                    } else {
+                        let mut measured_offset = graph_scroll_output.state.offset;
+                        measured_offset.x = measured_offset.x.clamp(0.0, max_scroll_x);
+                        measured_offset.y = measured_offset.y.clamp(0.0, max_scroll_y);
+                        graph_scroll_offset = measured_offset;
+                    }
                 });
-            if persist_offsets_after_frame {
-                self.persist_lineage_node_offsets_to_state();
-            }
-            self.lineage_graph_zoom = graph_zoom;
         } else {
             ui.horizontal(|ui| {
                 ui.strong("Node");
@@ -5295,13 +5753,29 @@ impl GENtleApp {
         ui.separator();
         ui.heading("Containers");
         ui.label("Container-level view of candidate sequence sets");
+        ui.horizontal(|ui| {
+            if ui
+                .add(
+                    egui::DragValue::new(&mut container_area_height)
+                        .range(120.0..=1600.0)
+                        .speed(2.0)
+                        .prefix("Container h "),
+                )
+                .on_hover_text("Persisted preferred height of the containers area")
+                .changed()
+            {
+                persist_workspace_after_frame = true;
+            }
+        });
+        let container_resize_max_height = ui.available_height().max(120.0);
         egui::Resize::default()
             .id_salt("lineage_container_area_resize")
-            .default_height(220.0)
+            .default_height(container_area_height.min(container_resize_max_height))
             .min_height(120.0)
-            .max_height(ui.available_height().max(120.0))
+            .max_height(container_resize_max_height)
             .resizable(egui::Vec2b::new(false, true))
             .show(ui, |ui| {
+                container_area_height = ui.max_rect().height().clamp(120.0, 1600.0);
                 egui::ScrollArea::both()
                     .id_salt("lineage_container_grid_scroll")
                     .auto_shrink([false, false])
@@ -5346,6 +5820,30 @@ impl GENtleApp {
                             });
                     });
             });
+
+        if (self.lineage_graph_zoom - graph_zoom).abs() > 0.0001 {
+            self.lineage_graph_zoom = graph_zoom;
+            persist_workspace_after_frame = true;
+        }
+        if (self.lineage_graph_area_height - graph_area_height).abs() > 0.5 {
+            self.lineage_graph_area_height = graph_area_height;
+            persist_workspace_after_frame = true;
+        }
+        if (self.lineage_container_area_height - container_area_height).abs() > 0.5 {
+            self.lineage_container_area_height = container_area_height;
+            persist_workspace_after_frame = true;
+        }
+        if self.lineage_graph_compact_labels != graph_compact_labels {
+            self.lineage_graph_compact_labels = graph_compact_labels;
+            persist_workspace_after_frame = true;
+        }
+        if (self.lineage_graph_scroll_offset - graph_scroll_offset).length_sq() > 0.25 {
+            self.lineage_graph_scroll_offset = graph_scroll_offset;
+            persist_workspace_after_frame = true;
+        }
+        if persist_workspace_after_frame {
+            self.persist_lineage_graph_workspace_to_state();
+        }
 
         if let Some(input) = select_candidate_from {
             let criterion = format!("gui_lineage_select:{input}");
@@ -6204,7 +6702,7 @@ impl GENtleApp {
                 error,
                 unique
             ),
-            Operation::FilterBySequenceQuality {
+            Operation::FilterByDesignConstraints {
                 inputs,
                 gc_min,
                 gc_max,
@@ -6215,7 +6713,7 @@ impl GENtleApp {
                 unique,
                 ..
             } => format!(
-                "Sequence quality filter: inputs={}, gc_min={:?}, gc_max={:?}, max_homopolymer_run={:?}, reject_ambiguous_bases={}, avoid_u6_terminator_tttt={}, forbidden_motifs={}, unique={}",
+                "Design-constraint filter: inputs={}, gc_min={:?}, gc_max={:?}, max_homopolymer_run={:?}, reject_ambiguous_bases={}, avoid_u6_terminator_tttt={}, forbidden_motifs={}, unique={}",
                 inputs.join(", "),
                 gc_min,
                 gc_max,
@@ -6469,6 +6967,22 @@ impl GENtleApp {
                 max_score,
                 clear_existing.unwrap_or(false)
             ),
+            Operation::ImportGenomeVcfTrack {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => format!(
+                "Import genome VCF track: seq_id={}, path={}, track_name={}, min_score={:?}, max_score={:?}, clear_existing={}",
+                seq_id,
+                path,
+                track_name.clone().unwrap_or_else(|| "-".to_string()),
+                min_score,
+                max_score,
+                clear_existing.unwrap_or(false)
+            ),
             Operation::ImportBlastHitsTrack {
                 seq_id,
                 hits,
@@ -6481,6 +6995,7 @@ impl GENtleApp {
                 hits.len(),
                 clear_existing.unwrap_or(false)
             ),
+            other => format!("{other:?}"),
         }
     }
 }
@@ -6616,7 +7131,7 @@ impl eframe::App for GENtleApp {
 
 #[cfg(test)]
 mod tests {
-    use super::GENtleApp;
+    use super::{GENtleApp, MAX_RECENT_PROJECTS};
     use std::fs;
     use tempfile::tempdir;
 
@@ -6678,5 +7193,36 @@ mod tests {
         let temp = tempdir().unwrap();
         let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, temp.path());
         assert_eq!(rewritten, markdown);
+    }
+
+    #[test]
+    fn normalize_recent_project_paths_deduplicates_and_limits() {
+        let mut paths = Vec::new();
+        for idx in 0..(MAX_RECENT_PROJECTS + 4) {
+            paths.push(format!("/tmp/gentle_project_{idx}.gentle.json"));
+        }
+        paths.insert(2, "/tmp/gentle_project_1.gentle.json".to_string());
+        paths.insert(4, "   ".to_string());
+
+        let normalized = GENtleApp::normalize_recent_project_paths(paths);
+        assert_eq!(normalized.len(), MAX_RECENT_PROJECTS);
+        assert_eq!(
+            normalized[0],
+            GENtleApp::normalize_project_path("/tmp/gentle_project_0.gentle.json")
+        );
+        assert_eq!(
+            normalized[1],
+            GENtleApp::normalize_project_path("/tmp/gentle_project_1.gentle.json")
+        );
+        let needle = GENtleApp::normalize_project_path("/tmp/gentle_project_1.gentle.json");
+        assert_eq!(normalized.iter().filter(|p| *p == &needle).count(), 1);
+    }
+
+    #[test]
+    fn recent_project_menu_label_shows_name_and_parent() {
+        let temp = tempdir().unwrap();
+        let project_path = temp.path().join("my_project.gentle.json");
+        let label = GENtleApp::recent_project_menu_label(project_path.to_string_lossy().as_ref());
+        assert!(label.starts_with("my_project.gentle.json ("));
     }
 }

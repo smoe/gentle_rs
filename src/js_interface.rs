@@ -473,6 +473,18 @@ impl JavaScriptInterface {
           			}
           		});
           	}
+          	function import_genome_vcf_track(state, seq_id, path, track_name, min_score, max_score, clear_existing) {
+          		return apply_operation(state, {
+          			ImportGenomeVcfTrack: {
+          				seq_id: seq_id,
+          				path: path,
+          				track_name: track_name ?? null,
+          				min_score: (min_score === undefined ? null : min_score),
+          				max_score: (max_score === undefined ? null : max_score),
+          				clear_existing: (clear_existing === undefined ? null : !!clear_existing)
+          			}
+          		});
+          	}
           	function render_pool_gel_svg(state, inputs, path, ladders) {
           		const seqIds = (Array.isArray(inputs) ? inputs : String(inputs).split(","))
           			.map(s => String(s).trim())

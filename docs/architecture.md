@@ -126,17 +126,34 @@ They only translate user input into engine operations and display results.
 - Genome signal-track import baseline:
   - engine operation `ImportGenomeBedTrack` (BED/BED.GZ)
   - engine operation `ImportGenomeBigWigTrack` (BigWig via `bigWigToBedGraph` conversion)
+  - engine operation `ImportGenomeVcfTrack` (VCF/VCF.GZ variant overlays)
   - engine operation `ImportBlastHitsTrack` (materialize BLAST alignments as feature tracks)
   - stranded anchor-aware coordinate remapping for genome-anchored sequences
   - generated signal features normalized with shared qualifiers
     (`gentle_track_source`, `gentle_generated`)
-  - generated BED/BigWig/BLAST overlays are stored as `track` features and
+  - generated BED/BigWig/VCF/BLAST overlays are stored as `track` features and
     grouped in GUI feature tree under `Tracks` by `gentle_track_name`
-  - GUI track-import dialog supports BED and BigWig with explicit source
-    override (`auto|bed|bigwig`) plus extension detection
+  - GUI track-import dialog supports BED, BigWig, and VCF with explicit source
+    override (`auto|bed|bigwig|vcf`) plus extension detection
   - tracked signal-file subscriptions are engine-managed (persisted in
     `ProjectState.metadata`) and can be auto-reapplied to newly anchored
     extracted sequences
+- Candidate-set exploration/scoring baseline (engine-backed, exposed in shared shell for CLI + GUI Shell):
+  - persistent candidate-set storage in
+    `ProjectState.metadata["candidate_sets"]`
+  - shell command family `candidates` with:
+    - `generate` (window-based candidate generation from a sequence, optional
+      feature proximity constraints)
+    - `score` (derived metric expressions over per-candidate metrics)
+    - `score-distance` (distance metric to nearest feature / filtered feature group)
+    - `filter` (value and quantile cutoffs into explicit output sets)
+    - `set-op` (union/intersect/subtract between explicit candidate sets)
+  - built-in base metrics include:
+    - sequence composition (`gc_fraction`, `at_fraction`, per-base fractions/counts)
+    - `length_bp`
+    - `molecular_weight_da` (approximate)
+    - `distance_to_seq_start_bp`, `distance_to_seq_end_bp`
+    - `distance_to_nearest_feature_bp` when feature context is available
 - TFBS runtime guardrails:
   - `AnnotateTfbs.max_hits` supports safe caps
   - default cap is `500` accepted hits per operation
@@ -175,6 +192,7 @@ They only translate user input into engine operations and display results.
   - `ExtractGenomeGene`
   - `ImportGenomeBedTrack`
   - `ImportGenomeBigWigTrack`
+  - `ImportGenomeVcfTrack`
   - `ImportBlastHitsTrack`
   - `DigestContainer`
   - `MergeContainersById`
@@ -269,6 +287,7 @@ Legend:
 | Reference genome prepare + gene/region extraction | Done | Done | Done | Done | Done |
 | Genome BED track import | Done | Done | Done | Done | Done |
 | Genome BigWig track import | Done | Done | Done | Done | Done |
+| Genome VCF track import | Done | Done | Done | Done | Done |
 | State summary (seq + container) | Done | Done | Done | Done | Done |
 | Shared operation protocol | Partial | Done | Done | Done | Done |
 
@@ -300,6 +319,7 @@ Legend:
 | `ExtractGenomeGene` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ImportGenomeBedTrack` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ImportGenomeBigWigTrack` | Wired | Wired | Exposed | Exposed | Implemented |
+| `ImportGenomeVcfTrack` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ImportBlastHitsTrack` | Wired | Wired | Exposed | Exposed | Implemented |
 | `DigestContainer` | Wired | Wired | Exposed | Exposed | Implemented |
 | `MergeContainersById` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -315,7 +335,7 @@ Legend:
 | `ExtractAnchoredRegion` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SelectCandidate` | Wired | Wired | Exposed | Exposed | Implemented |
 | `FilterByMolecularWeight` | Wired | Wired | Exposed | Exposed | Implemented |
-| `FilterBySequenceQuality` | Wired | Wired | Exposed | Exposed | Implemented |
+| `FilterByDesignConstraints` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Reverse` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Complement` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ReverseComplement` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -336,7 +356,7 @@ Notes from current code:
   criteria without mutating sequence annotations.
 - SVG export now honors TFBS display criteria from shared display state.
 - GUI now exposes direct actions for `ExtractRegion`, `RecomputeFeatures`,
-  `SetParameter`, `FilterBySequenceQuality`, container-first operations,
+  `SetParameter`, `FilterByDesignConstraints`, container-first operations,
   sequence SVG rendering, lineage SVG rendering, and workflow execution through
   shared engine operations.
 - GUI now exposes dedicated controls for `PrepareGenome` and
@@ -367,15 +387,15 @@ Notes from current code:
 - CLI now exposes a shared shell command path (`gentle_cli shell ...`) that
   reuses `src/engine_shell.rs` (also used by GUI `Shell` panel).
 - Shared shell command coverage now includes `genomes`, `helpers`,
-  `resources`, `ladders`, `tracks`, and `import-pool`, and `gentle_cli` top-level
+  `resources`, `ladders`, `tracks`, `candidates`, and `import-pool`, and `gentle_cli` top-level
   dispatch routes these trees through the same shared parser/executor used by
   GUI Shell.
-- Shared `tracks` command tree now includes both `import-bed` and
-  `import-bigwig` (BigWig converted through `bigWigToBedGraph` before import),
+- Shared `tracks` command tree now includes `import-bed`, `import-bigwig`, and
+  `import-vcf` (BigWig converted through `bigWigToBedGraph` before import),
   plus tracked-source management (`tracks tracked list/add/remove/clear/apply/sync`).
 - Tracked-source subscription state is managed through engine methods
   (storage remains `ProjectState.metadata["genome_bed_track_subscriptions"]`)
-  and can auto-sync tracked BED/BigWig sources onto newly created anchored
+  and can auto-sync tracked BED/BigWig/VCF sources onto newly created anchored
   sequences.
 - Shared shell/CLI reference commands now include `genomes blast` and
   `helpers blast`, plus `genomes blast-track` / `helpers blast-track` to
@@ -421,6 +441,8 @@ Immediate parity goal:
 
 - `sequences: HashMap<SeqId, DNAsequence>`
 - `metadata: HashMap<String, serde_json::Value>`
+  - includes persisted candidate scoring/filter sets at
+    `metadata["candidate_sets"]` (schema `gentle.candidate_sets.v1`)
 - `lineage: LineageGraph`
   - `nodes` (sequence lineage nodes with origin + creation op)
   - `seq_to_node` (current sequence id -> latest lineage node)
@@ -575,6 +597,24 @@ Current work satisfies (1) through (4) for most operations; remaining gaps are
 mainly view-model formalization and promoting remaining adapter-level utility
 contracts into stable engine operations.
 
+### Candidate query/optimization command contract (current)
+
+Current implementation is shell-level (shared by `gentle_cli shell` and GUI
+Shell panel), intended as the first step toward macro-style optimization flows:
+
+- `candidates generate SET_NAME SEQ_ID --length N ...`
+- `candidates score SET_NAME METRIC_NAME EXPRESSION`
+- `candidates score-distance SET_NAME METRIC_NAME ...`
+- `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
+- `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
+
+This enables reusable query composition:
+
+1. generate explicit candidate sets
+2. attach base/derived scores
+3. filter by absolute threshold and/or quantile
+4. intersect/union/subtract with other candidate sets
+
 ## 8. Rendering and interpretation direction
 
 Two additional layers are needed for full human/AI collaboration:
@@ -657,6 +697,9 @@ If work is interrupted, resume in this order:
 - View model contract is not yet formalized
 - Some rendering/import/export utilities are still adapter-level contracts
   instead of engine operations
+- Candidate scoring/filter/set-algebra is promoted to first-class engine
+  operations and exposed through shared shell `candidates` commands; dedicated
+  GUI forms for this workflow are still pending
 - `import-pool` remains a shared shell/CLI utility contract (no dedicated
   engine operation yet)
 - No dedicated engine operation yet for exporting a full run/process as a
@@ -713,9 +756,13 @@ If work is interrupted, resume in this order:
   GUI update loop: accepted and implemented
 - Defer for now: `import-pool` engine operation until first-class container
   semantics settle for stable import behavior across adapters.
-- Add guideRNA-design base layer (practical sequence filters + oligo/export
+- Add guideRNA-design base layer (practical design-constraint filters + oligo/export
   + macro-template workflow model): accepted and planned (spec draft in
   `docs/rna_guides_spec.md`).
-- Add practical sequence-quality filtering operation (`FilterBySequenceQuality`;
+- Add design-constraint filtering operation (`FilterByDesignConstraints`;
   GC bounds, homopolymer cap, U6 `TTTT` avoidance, forbidden motifs): accepted
   and implemented.
+- Add candidate-set scoring/filter/set-algebra workflow (derived expressions,
+  value+quantile filters, and explicit set union/intersection/subtraction):
+  accepted and implemented as first-class engine operations, exposed via shared
+  shell (`candidates`) across CLI + GUI shell.

@@ -19,7 +19,10 @@ use serde_json::{json, Value};
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
-use std::{collections::BTreeSet, fs};
+use std::{
+    collections::BTreeSet,
+    fs,
+};
 
 #[derive(Debug, Clone)]
 pub enum ShellCommand {
@@ -168,6 +171,14 @@ pub enum ShellCommand {
         max_score: Option<f64>,
         clear_existing: bool,
     },
+    TracksImportVcf {
+        seq_id: String,
+        path: String,
+        track_name: Option<String>,
+        min_score: Option<f64>,
+        max_score: Option<f64>,
+        clear_existing: bool,
+    },
     TracksTrackedList,
     TracksTrackedAdd {
         subscription: GenomeTrackSubscription,
@@ -179,6 +190,54 @@ pub enum ShellCommand {
     TracksTrackedApply {
         index: Option<usize>,
         only_new_anchors: bool,
+    },
+    CandidatesList,
+    CandidatesDelete {
+        set_name: String,
+    },
+    CandidatesGenerate {
+        set_name: String,
+        seq_id: String,
+        length_bp: usize,
+        step_bp: usize,
+        feature_kinds: Vec<String>,
+        feature_label_regex: Option<String>,
+        max_distance_bp: Option<usize>,
+        limit: usize,
+    },
+    CandidatesShow {
+        set_name: String,
+        limit: usize,
+        offset: usize,
+    },
+    CandidatesMetrics {
+        set_name: String,
+    },
+    CandidatesScoreExpression {
+        set_name: String,
+        metric: String,
+        expression: String,
+    },
+    CandidatesScoreDistance {
+        set_name: String,
+        metric: String,
+        feature_kinds: Vec<String>,
+        feature_label_regex: Option<String>,
+    },
+    CandidatesFilter {
+        input_set: String,
+        output_set: String,
+        metric: String,
+        min: Option<f64>,
+        max: Option<f64>,
+        min_quantile: Option<f64>,
+        max_quantile: Option<f64>,
+    },
+    CandidatesSetOp {
+        op: CandidateSetOperator,
+        left_set: String,
+        right_set: String,
+        output_set: String,
     },
     Op {
         payload: String,
@@ -254,6 +313,36 @@ struct PoolExport {
     human_id: String,
     member_count: usize,
     members: Vec<PoolMember>,
+}
+
+const CANDIDATE_SETS_METADATA_KEY: &str = "candidate_sets";
+const DEFAULT_CANDIDATE_PAGE_SIZE: usize = 100;
+const DEFAULT_CANDIDATE_SET_LIMIT: usize = 50_000;
+
+#[derive(Debug, Clone, Copy)]
+pub enum CandidateSetOperator {
+    Union,
+    Intersect,
+    Subtract,
+}
+
+impl CandidateSetOperator {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "union" => Some(Self::Union),
+            "intersect" | "intersection" => Some(Self::Intersect),
+            "subtract" | "difference" => Some(Self::Subtract),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Union => "union",
+            Self::Intersect => "intersect",
+            Self::Subtract => "subtract",
+        }
+    }
 }
 
 impl ShellCommand {
@@ -562,6 +651,27 @@ impl ShellCommand {
                     .unwrap_or_else(|| "-".to_string()),
                 clear_existing
             ),
+            Self::TracksImportVcf {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => format!(
+                "import VCF track for '{seq_id}' from '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
+                path,
+                track_name
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string()),
+                min_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                max_score
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                clear_existing
+            ),
             Self::TracksTrackedList => "list tracked genome signal files".to_string(),
             Self::TracksTrackedAdd { subscription } => format!(
                 "add tracked {} file '{}' (track_name='{}', min_score={}, max_score={}, clear_existing={})",
@@ -598,6 +708,101 @@ impl ShellCommand {
                     only_new_anchors
                 ),
             },
+            Self::CandidatesList => "list persisted candidate sets".to_string(),
+            Self::CandidatesDelete { set_name } => {
+                format!("delete candidate set '{set_name}'")
+            }
+            Self::CandidatesGenerate {
+                set_name,
+                seq_id,
+                length_bp,
+                step_bp,
+                feature_kinds,
+                feature_label_regex,
+                max_distance_bp,
+                limit,
+            } => {
+                let kinds = if feature_kinds.is_empty() {
+                    "-".to_string()
+                } else {
+                    feature_kinds.join(",")
+                };
+                let label = feature_label_regex
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-");
+                let distance = max_distance_bp
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "generate candidate set '{set_name}' from '{seq_id}' (length={length_bp}, step={step_bp}, feature_kinds={kinds}, feature_label_regex={label}, max_distance={distance}, limit={limit})"
+                )
+            }
+            Self::CandidatesShow {
+                set_name,
+                limit,
+                offset,
+            } => format!("show candidates in '{set_name}' (limit={limit}, offset={offset})"),
+            Self::CandidatesMetrics { set_name } => {
+                format!("list available metrics for candidate set '{set_name}'")
+            }
+            Self::CandidatesScoreExpression {
+                set_name,
+                metric,
+                expression,
+            } => format!(
+                "compute derived metric '{metric}' for candidate set '{set_name}' using expression '{expression}'"
+            ),
+            Self::CandidatesScoreDistance {
+                set_name,
+                metric,
+                feature_kinds,
+                feature_label_regex,
+            } => {
+                let kinds = if feature_kinds.is_empty() {
+                    "-".to_string()
+                } else {
+                    feature_kinds.join(",")
+                };
+                let label = feature_label_regex
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-");
+                format!(
+                    "compute distance metric '{metric}' for candidate set '{set_name}' (feature_kinds={kinds}, feature_label_regex={label})"
+                )
+            }
+            Self::CandidatesFilter {
+                input_set,
+                output_set,
+                metric,
+                min,
+                max,
+                min_quantile,
+                max_quantile,
+            } => format!(
+                "filter candidate set '{input_set}' by metric '{metric}' into '{output_set}' (min={}, max={}, min_quantile={}, max_quantile={})",
+                min.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
+                max.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string()),
+                min_quantile
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                max_quantile
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+            Self::CandidatesSetOp {
+                op,
+                left_set,
+                right_set,
+                output_set,
+            } => format!(
+                "candidate set {} '{}' and '{}' into '{}'",
+                op.as_str(),
+                left_set,
+                right_set,
+                output_set
+            ),
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -614,10 +819,17 @@ impl ShellCommand {
                 | Self::ReferenceBlastTrack { .. }
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
+                | Self::TracksImportVcf { .. }
                 | Self::TracksTrackedAdd { .. }
                 | Self::TracksTrackedRemove { .. }
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
+                | Self::CandidatesDelete { .. }
+                | Self::CandidatesGenerate { .. }
+                | Self::CandidatesScoreExpression { .. }
+                | Self::CandidatesScoreDistance { .. }
+                | Self::CandidatesFilter { .. }
+                | Self::CandidatesSetOp { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
         )
@@ -665,12 +877,22 @@ helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH]
 helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
+tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 tracks tracked list\n\
-tracks tracked add PATH [--source auto|bed|bigwig] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
+tracks tracked add PATH [--source auto|bed|bigwig|vcf] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 tracks tracked remove INDEX\n\
 tracks tracked clear\n\
 tracks tracked apply [--index N] [--only-new-anchors]\n\
 tracks tracked sync\n\
+candidates list\n\
+candidates delete SET_NAME\n\
+candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]\n\
+candidates show SET_NAME [--limit N] [--offset N]\n\
+candidates metrics SET_NAME\n\
+candidates score SET_NAME METRIC_NAME EXPRESSION\n\
+candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]\n\
+candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n\
+candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
 IDS is comma-separated sequence IDs"
@@ -1412,6 +1634,374 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
     }
 }
 
+fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "candidates requires a subcommand: list, delete, generate, show, metrics, score, score-distance, filter, set-op"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("candidates list takes no options".to_string());
+            }
+            Ok(ShellCommand::CandidatesList)
+        }
+        "delete" => {
+            if tokens.len() != 3 {
+                return Err("candidates delete requires SET_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesDelete {
+                set_name: tokens[2].clone(),
+            })
+        }
+        "generate" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates generate requires SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let seq_id = tokens[3].clone();
+            let mut length_bp: Option<usize> = None;
+            let mut step_bp: usize = 1;
+            let mut feature_kinds: Vec<String> = vec![];
+            let mut feature_label_regex: Option<String> = None;
+            let mut max_distance_bp: Option<usize> = None;
+            let mut limit: usize = DEFAULT_CANDIDATE_SET_LIMIT;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--length" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--length", "candidates generate")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --length value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--length must be >= 1".to_string());
+                        }
+                        length_bp = Some(parsed);
+                    }
+                    "--step" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--step", "candidates generate")?;
+                        step_bp = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --step value '{raw}': {e}"))?;
+                        if step_bp == 0 {
+                            return Err("--step must be >= 1".to_string());
+                        }
+                    }
+                    "--feature-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-kind",
+                            "candidates generate",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            feature_kinds.push(trimmed.to_string());
+                        }
+                    }
+                    "--feature-label-regex" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-label-regex",
+                            "candidates generate",
+                        )?;
+                        if raw.trim().is_empty() {
+                            feature_label_regex = None;
+                        } else {
+                            feature_label_regex = Some(raw);
+                        }
+                    }
+                    "--max-distance" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-distance",
+                            "candidates generate",
+                        )?;
+                        max_distance_bp = Some(
+                            raw.parse::<usize>()
+                                .map_err(|e| format!("Invalid --max-distance value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--limit" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--limit", "candidates generate")?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates generate"
+                        ));
+                    }
+                }
+            }
+            let Some(length_bp) = length_bp else {
+                return Err("candidates generate requires --length N".to_string());
+            };
+            Ok(ShellCommand::CandidatesGenerate {
+                set_name,
+                seq_id,
+                length_bp,
+                step_bp,
+                feature_kinds,
+                feature_label_regex,
+                max_distance_bp,
+                limit,
+            })
+        }
+        "show" => {
+            if tokens.len() < 3 {
+                return Err("candidates show requires SET_NAME [--limit N] [--offset N]".to_string());
+            }
+            let set_name = tokens[2].clone();
+            let mut limit = DEFAULT_CANDIDATE_PAGE_SIZE;
+            let mut offset = 0usize;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--limit" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--limit", "candidates show")?;
+                        limit = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --limit value '{raw}': {e}"))?;
+                        if limit == 0 {
+                            return Err("--limit must be >= 1".to_string());
+                        }
+                    }
+                    "--offset" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--offset", "candidates show")?;
+                        offset = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for candidates show"));
+                    }
+                }
+            }
+            Ok(ShellCommand::CandidatesShow {
+                set_name,
+                limit,
+                offset,
+            })
+        }
+        "metrics" => {
+            if tokens.len() != 3 {
+                return Err("candidates metrics requires SET_NAME".to_string());
+            }
+            Ok(ShellCommand::CandidatesMetrics {
+                set_name: tokens[2].clone(),
+            })
+        }
+        "score" => {
+            if tokens.len() < 5 {
+                return Err("candidates score requires SET_NAME METRIC_NAME EXPRESSION".to_string());
+            }
+            let set_name = tokens[2].clone();
+            let metric = tokens[3].clone();
+            let expression = tokens[4..].join(" ");
+            if expression.trim().is_empty() {
+                return Err("candidates score requires non-empty EXPRESSION".to_string());
+            }
+            Ok(ShellCommand::CandidatesScoreExpression {
+                set_name,
+                metric,
+                expression,
+            })
+        }
+        "score-distance" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "candidates score-distance requires SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]"
+                        .to_string(),
+                );
+            }
+            let set_name = tokens[2].clone();
+            let metric = tokens[3].clone();
+            let mut feature_kinds: Vec<String> = vec![];
+            let mut feature_label_regex: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--feature-kind" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-kind",
+                            "candidates score-distance",
+                        )?;
+                        let trimmed = raw.trim();
+                        if !trimmed.is_empty() {
+                            feature_kinds.push(trimmed.to_string());
+                        }
+                    }
+                    "--feature-label-regex" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-label-regex",
+                            "candidates score-distance",
+                        )?;
+                        feature_label_regex = Some(raw);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for candidates score-distance"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::CandidatesScoreDistance {
+                set_name,
+                metric,
+                feature_kinds,
+                feature_label_regex,
+            })
+        }
+        "filter" => {
+            if tokens.len() < 5 {
+                return Err("candidates filter requires INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]".to_string());
+            }
+            let input_set = tokens[2].clone();
+            let output_set = tokens[3].clone();
+            let mut metric: Option<String> = None;
+            let mut min: Option<f64> = None;
+            let mut max: Option<f64> = None;
+            let mut min_quantile: Option<f64> = None;
+            let mut max_quantile: Option<f64> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--metric" => {
+                        metric = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--metric",
+                            "candidates filter",
+                        )?);
+                    }
+                    "--min" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--min", "candidates filter")?;
+                        min = Some(
+                            raw.parse::<f64>()
+                                .map_err(|e| format!("Invalid --min value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--max" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max", "candidates filter")?;
+                        max = Some(
+                            raw.parse::<f64>()
+                                .map_err(|e| format!("Invalid --max value '{raw}': {e}"))?,
+                        );
+                    }
+                    "--min-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-quantile",
+                            "candidates filter",
+                        )?;
+                        min_quantile = Some(raw.parse::<f64>().map_err(|e| {
+                            format!("Invalid --min-quantile value '{raw}': {e}")
+                        })?);
+                    }
+                    "--max-quantile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-quantile",
+                            "candidates filter",
+                        )?;
+                        max_quantile = Some(raw.parse::<f64>().map_err(|e| {
+                            format!("Invalid --max-quantile value '{raw}': {e}")
+                        })?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for candidates filter"));
+                    }
+                }
+            }
+            let metric = metric.ok_or_else(|| "candidates filter requires --metric".to_string())?;
+            if min
+                .zip(max)
+                .map(|(lo, hi)| lo > hi)
+                .unwrap_or(false)
+            {
+                return Err("--min must be <= --max".to_string());
+            }
+            if min_quantile
+                .zip(max_quantile)
+                .map(|(lo, hi)| lo > hi)
+                .unwrap_or(false)
+            {
+                return Err("--min-quantile must be <= --max-quantile".to_string());
+            }
+            for (name, value) in [("min-quantile", min_quantile), ("max-quantile", max_quantile)] {
+                if let Some(q) = value {
+                    if !(0.0..=1.0).contains(&q) {
+                        return Err(format!("--{name} must be between 0 and 1"));
+                    }
+                }
+            }
+            if min.is_none() && max.is_none() && min_quantile.is_none() && max_quantile.is_none() {
+                return Err(
+                    "candidates filter requires at least one of --min/--max/--min-quantile/--max-quantile"
+                        .to_string(),
+                );
+            }
+            Ok(ShellCommand::CandidatesFilter {
+                input_set,
+                output_set,
+                metric,
+                min,
+                max,
+                min_quantile,
+                max_quantile,
+            })
+        }
+        "set-op" => {
+            if tokens.len() != 6 {
+                return Err(
+                    "candidates set-op requires union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET"
+                        .to_string(),
+                );
+            }
+            let op = CandidateSetOperator::parse(&tokens[2]).ok_or_else(|| {
+                format!(
+                    "Unsupported candidates set-op '{}'; expected union|intersect|subtract",
+                    tokens[2]
+                )
+            })?;
+            Ok(ShellCommand::CandidatesSetOp {
+                op,
+                left_set: tokens[3].clone(),
+                right_set: tokens[4].clone(),
+                output_set: tokens[5].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown candidates subcommand '{other}' (expected list, delete, generate, show, metrics, score, score-distance, filter, set-op)"
+        )),
+    }
+}
+
 pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.is_empty() {
         return Err("Missing shell command".to_string());
@@ -1710,7 +2300,10 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "tracks" => {
             if tokens.len() < 2 {
-                return Err("tracks requires a subcommand: import-bed or import-bigwig".to_string());
+                return Err(
+                    "tracks requires a subcommand: import-bed, import-bigwig, import-vcf, or tracked"
+                        .to_string(),
+                );
             }
             match tokens[1].as_str() {
                 "import-bed" => {
@@ -1857,6 +2450,78 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         clear_existing,
                     })
                 }
+                "import-vcf" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "tracks import-vcf requires SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]".to_string()
+                        );
+                    }
+                    let seq_id = tokens[2].clone();
+                    let path = tokens[3].clone();
+                    let mut track_name: Option<String> = None;
+                    let mut min_score: Option<f64> = None;
+                    let mut max_score: Option<f64> = None;
+                    let mut clear_existing = false;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--name" => {
+                                track_name = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--name",
+                                    "tracks import-vcf",
+                                )?);
+                            }
+                            "--min-score" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--min-score",
+                                    "tracks import-vcf",
+                                )?;
+                                min_score = Some(raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --min-score value '{raw}': {e}")
+                                })?);
+                            }
+                            "--max-score" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--max-score",
+                                    "tracks import-vcf",
+                                )?;
+                                max_score = Some(raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --max-score value '{raw}': {e}")
+                                })?);
+                            }
+                            "--clear-existing" => {
+                                clear_existing = true;
+                                idx += 1;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for tracks import-vcf"
+                                ));
+                            }
+                        }
+                    }
+                    if min_score
+                        .zip(max_score)
+                        .map(|(min, max)| min > max)
+                        .unwrap_or(false)
+                    {
+                        return Err("--min-score must be <= --max-score".to_string());
+                    }
+                    Ok(ShellCommand::TracksImportVcf {
+                        seq_id,
+                        path,
+                        track_name,
+                        min_score,
+                        max_score,
+                        clear_existing,
+                    })
+                }
                 "tracked" => {
                     if tokens.len() < 3 {
                         return Err(
@@ -1873,7 +2538,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         "add" => {
                             if tokens.len() < 4 {
                                 return Err(
-                                    "tracks tracked add requires PATH [--source auto|bed|bigwig] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]".to_string(),
+                                    "tracks tracked add requires PATH [--source auto|bed|bigwig|vcf] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]".to_string(),
                                 );
                             }
                             let path = tokens[3].clone();
@@ -1897,9 +2562,10 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                                             "auto" => GenomeTrackSource::from_path(&path),
                                             "bed" => GenomeTrackSource::Bed,
                                             "bigwig" | "bw" => GenomeTrackSource::BigWig,
+                                            "vcf" => GenomeTrackSource::Vcf,
                                             _ => {
                                                 return Err(format!(
-                                                    "Unsupported --source value '{}'; expected auto|bed|bigwig",
+                                                    "Unsupported --source value '{}'; expected auto|bed|bigwig|vcf",
                                                     raw
                                                 ))
                                             }
@@ -2028,12 +2694,13 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                     }
                 }
                 other => Err(format!(
-                    "Unknown tracks subcommand '{other}' (expected import-bed, import-bigwig, or tracked)"
+                    "Unknown tracks subcommand '{other}' (expected import-bed, import-bigwig, import-vcf, or tracked)"
                 )),
             }
         }
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
+        "candidates" => parse_candidates_command(tokens),
         "op" => {
             let payload = tokens[1..].join(" ");
             if payload.trim().is_empty() {
@@ -2730,6 +3397,31 @@ pub fn execute_shell_command_with_options(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::TracksImportVcf {
+            seq_id,
+            path,
+            track_name,
+            min_score,
+            max_score,
+            clear_existing,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportGenomeVcfTrack {
+                    seq_id: seq_id.clone(),
+                    path: path.clone(),
+                    track_name: track_name.clone(),
+                    min_score: *min_score,
+                    max_score: *max_score,
+                    clear_existing: Some(*clear_existing),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::TracksTrackedList => {
             let subscriptions = engine.list_genome_track_subscriptions();
             ShellRunResult {
@@ -2800,6 +3492,280 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::CandidatesList => {
+            let sets = engine.list_candidate_sets();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.candidate_sets.v1",
+                    "set_count": sets.len(),
+                    "sets": sets
+                }),
+            }
+        }
+        ShellCommand::CandidatesDelete { set_name } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::DeleteCandidateSet {
+                    set_name: set_name.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let remaining = engine.list_candidate_sets().len();
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let removed = before != after;
+            ShellRunResult {
+                state_changed: removed,
+                output: json!({
+                    "removed": removed,
+                    "set_name": set_name,
+                    "remaining_set_count": remaining,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesGenerate {
+            set_name,
+            seq_id,
+            length_bp,
+            step_bp,
+            feature_kinds,
+            feature_label_regex,
+            max_distance_bp,
+            limit,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::GenerateCandidateSet {
+                    set_name: set_name.clone(),
+                    seq_id: seq_id.clone(),
+                    length_bp: *length_bp,
+                    step_bp: *step_bp,
+                    feature_kinds: feature_kinds.clone(),
+                    feature_label_regex: feature_label_regex.clone(),
+                    max_distance_bp: *max_distance_bp,
+                    limit: Some(*limit),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "seq_id": seq_id,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesShow {
+            set_name,
+            limit,
+            offset,
+        } => {
+            let (page, total, clamped_offset) = engine
+                .inspect_candidate_set_page(set_name, *limit, *offset)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "set_name": page.name,
+                    "candidate_count": total,
+                    "offset": clamped_offset,
+                    "limit": limit,
+                    "returned": page.candidates.len(),
+                    "source_seq_ids": page.source_seq_ids,
+                    "created_at_unix_ms": page.created_at_unix_ms,
+                    "rows": page.candidates
+                }),
+            }
+        }
+        ShellCommand::CandidatesMetrics { set_name } => {
+            let metrics = engine
+                .list_candidate_set_metrics(set_name)
+                .map_err(|e| e.to_string())?;
+            let candidate_count = engine
+                .list_candidate_sets()
+                .into_iter()
+                .find(|summary| summary.name == *set_name)
+                .map(|summary| summary.candidate_count)
+                .unwrap_or(0);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "set_name": set_name,
+                    "candidate_count": candidate_count,
+                    "metric_count": metrics.len(),
+                    "metrics": metrics
+                }),
+            }
+        }
+        ShellCommand::CandidatesScoreExpression {
+            set_name,
+            metric,
+            expression,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ScoreCandidateSetExpression {
+                    set_name: set_name.clone(),
+                    metric: metric.clone(),
+                    expression: expression.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "metric": metric,
+                    "expression": expression,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesScoreDistance {
+            set_name,
+            metric,
+            feature_kinds,
+            feature_label_regex,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ScoreCandidateSetDistance {
+                    set_name: set_name.clone(),
+                    metric: metric.clone(),
+                    feature_kinds: feature_kinds.clone(),
+                    feature_label_regex: feature_label_regex.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "set_name": set_name,
+                    "metric": metric,
+                    "feature_kind_filter": feature_kinds,
+                    "feature_label_regex": feature_label_regex,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesFilter {
+            input_set,
+            output_set,
+            metric,
+            min,
+            max,
+            min_quantile,
+            max_quantile,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::FilterCandidateSet {
+                    input_set: input_set.clone(),
+                    output_set: output_set.clone(),
+                    metric: metric.clone(),
+                    min: *min,
+                    max: *max,
+                    min_quantile: *min_quantile,
+                    max_quantile: *max_quantile,
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "input_set": input_set,
+                    "output_set": output_set,
+                    "metric": metric,
+                    "min_quantile": min_quantile,
+                    "max_quantile": max_quantile,
+                    "result": op_result
+                }),
+            }
+        }
+        ShellCommand::CandidatesSetOp {
+            op,
+            left_set,
+            right_set,
+            output_set,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::CandidateSetOp {
+                    op: match op {
+                        CandidateSetOperator::Union => crate::engine::CandidateSetOperator::Union,
+                        CandidateSetOperator::Intersect => {
+                            crate::engine::CandidateSetOperator::Intersect
+                        }
+                        CandidateSetOperator::Subtract => {
+                            crate::engine::CandidateSetOperator::Subtract
+                        }
+                    },
+                    left_set: left_set.clone(),
+                    right_set: right_set.clone(),
+                    output_set: output_set.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(CANDIDATE_SETS_METADATA_KEY)
+                .cloned();
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "operator": op.as_str(),
+                    "left_set": left_set,
+                    "right_set": right_set,
+                    "output_set": output_set,
+                    "result": op_result
+                }),
+            }
+        }
         ShellCommand::Op { payload } => {
             let json_text = parse_json_payload(payload)?;
             let op: Operation = serde_json::from_str(&json_text)
@@ -2832,6 +3798,8 @@ pub fn execute_shell_command_with_options(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dna_sequence::DNAsequence;
+    use gb_io::seq::{Feature, FeatureKind, Location};
     use std::fs;
     use tempfile::tempdir;
 
@@ -3130,6 +4098,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_tracks_import_vcf() {
+        let cmd = parse_shell_line(
+            "tracks import-vcf toy_slice test_files/data/variants.vcf.gz --name SNPs --min-score 10 --max-score 60 --clear-existing",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::TracksImportVcf {
+                seq_id,
+                path,
+                track_name,
+                min_score,
+                max_score,
+                clear_existing,
+            } => {
+                assert_eq!(seq_id, "toy_slice".to_string());
+                assert_eq!(path, "test_files/data/variants.vcf.gz".to_string());
+                assert_eq!(track_name, Some("SNPs".to_string()));
+                assert_eq!(min_score, Some(10.0));
+                assert_eq!(max_score, Some(60.0));
+                assert!(clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_tracks_tracked_add_with_options() {
         let cmd = parse_shell_line(
             "tracks tracked add test_files/data/signal.bw --source bed --name ChIP --min-score 0.5 --max-score 2.5 --clear-existing",
@@ -3143,6 +4137,22 @@ mod tests {
                 assert_eq!(subscription.min_score, Some(0.5));
                 assert_eq!(subscription.max_score, Some(2.5));
                 assert!(subscription.clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_tracks_tracked_add_with_vcf_source() {
+        let cmd = parse_shell_line(
+            "tracks tracked add test_files/data/variants.vcf.gz --source vcf --name Variants",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::TracksTrackedAdd { subscription } => {
+                assert_eq!(subscription.source, GenomeTrackSource::Vcf);
+                assert_eq!(subscription.path, "test_files/data/variants.vcf.gz");
+                assert_eq!(subscription.track_name.as_deref(), Some("Variants"));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -3177,6 +4187,185 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_candidates_generate_with_feature_filters() {
+        let cmd = parse_shell_line(
+            "candidates generate set1 seqA --length 20 --step 5 --feature-kind gene --feature-kind CDS --feature-label-regex '^TP53$' --max-distance 100 --limit 50",
+        )
+        .expect("parse candidates generate");
+        match cmd {
+            ShellCommand::CandidatesGenerate {
+                set_name,
+                seq_id,
+                length_bp,
+                step_bp,
+                feature_kinds,
+                feature_label_regex,
+                max_distance_bp,
+                limit,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(seq_id, "seqA");
+                assert_eq!(length_bp, 20);
+                assert_eq!(step_bp, 5);
+                assert_eq!(feature_kinds, vec!["gene".to_string(), "CDS".to_string()]);
+                assert_eq!(feature_label_regex.as_deref(), Some("^TP53$"));
+                assert_eq!(max_distance_bp, Some(100));
+                assert_eq!(limit, 50);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_score_expression_preserves_formula() {
+        let cmd = parse_shell_line(
+            "candidates score set1 custom_score '(gc_fraction*100)+(length_bp/2)'",
+        )
+        .expect("parse candidates score");
+        match cmd {
+            ShellCommand::CandidatesScoreExpression {
+                set_name,
+                metric,
+                expression,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(metric, "custom_score");
+                assert_eq!(expression, "(gc_fraction*100)+(length_bp/2)");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_candidates_generate_score_distance_and_filter() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("gene"),
+            location: Location::simple_range(5, 6),
+            qualifiers: vec![("label".into(), Some("target".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        let generated = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesGenerate {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 4,
+                step_bp: 4,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                limit: 10,
+            },
+        )
+        .expect("generate candidates");
+        assert!(generated.state_changed);
+        assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
+        assert!(
+            generated.output["result"]["messages"]
+                .as_array()
+                .map(|messages| !messages.is_empty())
+                .unwrap_or(false)
+        );
+
+        let score_distance = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesScoreDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_gene".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+            },
+        )
+        .expect("score distance");
+        assert!(score_distance.state_changed);
+
+        let filtered = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesFilter {
+                input_set: "windows".to_string(),
+                output_set: "near_gene".to_string(),
+                metric: "dist_gene".to_string(),
+                min: None,
+                max: Some(0.0),
+                min_quantile: None,
+                max_quantile: None,
+            },
+        )
+        .expect("filter by distance");
+        assert!(filtered.state_changed);
+        assert_eq!(filtered.output["output_set"].as_str(), Some("near_gene"));
+
+        let shown = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesShow {
+                set_name: "near_gene".to_string(),
+                limit: 10,
+                offset: 0,
+            },
+        )
+        .expect("show near_gene");
+        assert!(!shown.state_changed);
+        assert_eq!(shown.output["candidate_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn execute_candidates_set_operations() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesGenerate {
+                set_name: "left".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 4,
+                step_bp: 4,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                limit: 10,
+            },
+        )
+        .expect("generate left");
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesGenerate {
+                set_name: "right".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 4,
+                step_bp: 2,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                limit: 10,
+            },
+        )
+        .expect("generate right");
+
+        let intersect = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesSetOp {
+                op: CandidateSetOperator::Intersect,
+                left_set: "left".to_string(),
+                right_set: "right".to_string(),
+                output_set: "inter".to_string(),
+            },
+        )
+        .expect("set intersect");
+        assert!(intersect.state_changed);
+        assert_eq!(intersect.output["operator"].as_str(), Some("intersect"));
+        assert_eq!(intersect.output["output_set"].as_str(), Some("inter"));
     }
 
     #[test]

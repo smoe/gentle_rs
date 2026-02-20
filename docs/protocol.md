@@ -67,7 +67,7 @@ Current draft operations:
 - `ExtractRegion { input, from, to, output_id? }`
 - `SelectCandidate { input, criterion, output_id? }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
-- `FilterBySequenceQuality { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
+- `FilterByDesignConstraints { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
 - `Reverse { input, output_id? }`
 - `Complement { input, output_id? }`
 - `ReverseComplement { input, output_id? }`
@@ -126,9 +126,9 @@ Current ligation protocol behavior:
   - `effective_max = ceil(max_bp * (1 + error))`
 - `unique = true` requires exactly one match, otherwise the operation fails.
 
-`FilterBySequenceQuality` semantics:
+`FilterByDesignConstraints` semantics:
 
-- Applies practical sequence filters across provided input sequence ids.
+- Applies practical design-constraint filters across provided input sequence ids.
 - Optional GC bounds:
   - `gc_min` and/or `gc_max` (fractional range `0.0..1.0`)
   - when both are provided, `gc_min <= gc_max` is required
@@ -320,7 +320,8 @@ This supports:
 - render/view model endpoint for frontend-independent graphical representation
 - schema publication for strict client-side validation
 - CRISPR guide-design base layer:
-  - practical sequence filters (GC bounds, homopolymers, U6 terminator rules)
+  - guide-candidate domain model and ranking layer
   - oligo generation and export contracts (table/plate/protocol text)
   - macro/template expansion into deterministic `Workflow` JSON
-  - see draft: `docs/crispr_guides_spec.md`
+  - design-constraint filtering is already available as `FilterByDesignConstraints`
+  - see draft: `docs/rna_guides_spec.md`

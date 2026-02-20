@@ -183,6 +183,16 @@ Supported commands:
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+- `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
+- `candidates list`
+- `candidates delete SET_NAME`
+- `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
+- `candidates show SET_NAME [--limit N] [--offset N]`
+- `candidates metrics SET_NAME`
+- `candidates score SET_NAME METRIC_NAME EXPRESSION`
+- `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
+- `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
+- `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
 
@@ -195,8 +205,34 @@ Screenshot command (shared shell, implemented):
   - captures active/topmost GENtle window only
   - window lookup uses native AppKit in-process path (no AppleScript bridge)
   - saves to caller-provided output filename/path
-  - current backend support: macOS (`screencapture`); other platforms currently
-    return unsupported
+- current backend support: macOS (`screencapture`); other platforms currently
+  return unsupported
+
+## Candidate-Set Workflow (GUI Shell)
+
+Candidate-set generation/scoring/filtering is now backed by shared engine
+operations and available directly from the GUI Shell.
+
+Recommended flow in one sequence window:
+
+1. Generate a seed set:
+   - `candidates generate sgrnas my_seq --length 20 --step 1 --limit 10000`
+2. Add derived metrics:
+   - `candidates score sgrnas gc_bias "100 * (gc_fraction - at_fraction)"`
+   - `candidates score-distance sgrnas dist_gene --feature-kind gene`
+3. Filter into explicit subsets:
+   - `candidates filter sgrnas sgrnas_gc_ok --metric gc_bias --min -20 --max 20`
+   - `candidates filter sgrnas_gc_ok sgrnas_top --metric dist_gene --max-quantile 0.25`
+4. Combine subsets:
+   - `candidates set-op intersect sgrnas_top other_set final_set`
+5. Inspect/paginate:
+   - `candidates show final_set --limit 50 --offset 0`
+
+Persistence:
+
+- Candidate sets are persisted in project metadata at
+  `metadata["candidate_sets"]` (schema `gentle.candidate_sets.v1`).
+- Saved projects keep these sets across reloads.
 
 ## Documentation automation status
 
@@ -280,12 +316,20 @@ In `Main window -> Graph` view:
   - `Reset Layout` restores default node placement after manual moves
 - Pan:
   - use scrollbars, mouse wheel, or touchpad scrolling in the graph viewport
+  - hold `Space` and drag on empty graph background
 - Node layout:
   - drag a node with the mouse to reposition it
   - moved positions are persisted in project metadata and restored when the
     project is reopened
   - automatic graph layout uses DAG layering (parents left, children right)
     with crossing-minimizing ordering between layers
+- Dense graph readability:
+  - `Compact labels` reduces label density when the graph is crowded
+  - operation labels are shortened and node detail labels are reduced
+- Workspace persistence:
+  - graph node positions, zoom, compact-label toggle, graph scroll/pan offset,
+    and preferred graph/container panel heights are stored in project metadata
+  - panel heights can be adjusted with `Graph h` and `Container h`
 
 Why zoom controls differ between views:
 
@@ -376,14 +420,14 @@ Within `Region extraction and engine settings`, GUI provides:
   - persists in project display settings (`feature_details_font_size`)
   - `Reset Font` restores default (`11.0 px`)
 
-## Practical Sequence Filter (Engine Ops)
+## Design Constraints Filter (Engine Ops)
 
-The core operations panel includes `Filter SeqQ` for practical sequence
+The core operations panel includes `Filter Design` for practical design-constraint
 screening.
 
 Inputs:
 
-- `SeqQ inputs`: comma-separated sequence IDs
+- `Design inputs`: comma-separated sequence IDs
 - `GC min` / `GC max`
 - `max homopoly`
 - `Reject ambiguous`
@@ -392,7 +436,14 @@ Inputs:
 - `Unique`
 - `prefix`
 
-Execution calls engine operation `FilterBySequenceQuality` and creates filtered
+Defaults in the GUI form:
+
+- `GC min=0.30`, `GC max=0.70`
+- `max homopoly=4`
+- `Reject ambiguous=true`
+- `Avoid U6 TTTT=true`
+
+Execution calls engine operation `FilterByDesignConstraints` and creates filtered
 in-silico selection outputs.
 
 ## Anchored Region Extraction (Engine Ops)
@@ -523,11 +574,11 @@ Recommended flow:
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
    - use `Retrieve` directly from an inspected row
-5. Overlay signal tracks (BED or BigWig) onto an extracted sequence:
+5. Overlay signal tracks (BED, BigWig, or VCF) onto an extracted sequence:
    - open `Genome -> Import Genome Track...`
    - this opens in its own floating window
    - optionally select a genome-anchored sequence (for one-sequence import)
-   - choose a track file (`.bed`, `.bed.gz`, `.bw`, or `.bigWig`)
+   - choose a track file (`.bed`, `.bed.gz`, `.bw`, `.bigWig`, `.vcf`, or `.vcf.gz`)
    - optionally set track name and score filters
    - click one of:
      - `Import To Selected`: import onto only the currently selected anchored sequence
@@ -570,7 +621,9 @@ Notes:
   sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
   indexes extracted feature records for search/retrieval.
 - Genome track import accepts BED (`.bed` / `.bed.gz`) and BigWig (`.bw` / `.bigWig`) inputs.
+- Genome track import also accepts VCF (`.vcf` / `.vcf.gz`) inputs.
 - BigWig import uses `bigWigToBedGraph` and can be overridden via `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`.
+- VCF score filtering uses VCF `QUAL` for `min_score` / `max_score`.
 - Genome track import requires a genome-anchored sequence (`ExtractGenomeRegion` or
   `ExtractGenomeGene`) to map genomic coordinates into local sequence coordinates.
 - Imported GenBank files that include an NCBI `ACCESSION ... REGION: start..end`
@@ -581,7 +634,7 @@ Notes:
   sequence coordinates accordingly.
 - `Import To All Anchored + Track` stores a tracked subscription in project
   metadata and auto-applies it to newly added anchored sequences.
-- Imported BED/BigWig signals are materialized as generated `track` features.
+- Imported BED/BigWig/VCF signals are materialized as generated `track` features.
   They render as dense signal tracks (lane-packed in linear view) and appear in
   the feature tree under a dedicated `Tracks` category, grouped by experiment
   (`gentle_track_name`).
@@ -622,6 +675,7 @@ Use the top application menu:
 
 - `File -> Open Sequence...`
 - `File -> Open Project...`
+- `File -> Open Recent Project...`
 - `File -> Prepare Reference Genome...`
 - `File -> Prepared References...`
 - `File -> Retrieve Genome Sequence...`
