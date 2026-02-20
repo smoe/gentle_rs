@@ -391,6 +391,7 @@ pub fn export_pool_gel_svg(layout: &PoolGelLayout) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "snapshot-tests")]
     use std::fs;
 
     #[test]
@@ -422,6 +423,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "snapshot-tests")]
     fn snapshot_pool_gel_svg() {
         let members = vec![
             ("frag_a".to_string(), 350),
@@ -439,6 +441,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "snapshot-tests")]
     #[ignore]
     fn write_pool_gel_snapshot() {
         let members = vec![

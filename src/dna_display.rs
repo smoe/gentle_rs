@@ -155,9 +155,14 @@ pub struct DnaDisplay {
     selection: Option<Selection>,
     linear_view_start_bp: usize,
     linear_view_span_bp: usize,
+    feature_details_font_size: f32,
 }
 
 impl DnaDisplay {
+    fn clamp_feature_details_font_size(value: f32) -> f32 {
+        value.clamp(8.0, 24.0)
+    }
+
     fn mark_layout_dirty(&mut self) {
         self.update_layout.update_all();
     }
@@ -413,6 +418,18 @@ impl DnaDisplay {
             self.mark_layout_dirty();
         }
     }
+
+    pub fn feature_details_font_size(&self) -> f32 {
+        Self::clamp_feature_details_font_size(self.feature_details_font_size)
+    }
+
+    pub fn set_feature_details_font_size(&mut self, value: f32) {
+        let value = Self::clamp_feature_details_font_size(value);
+        if (self.feature_details_font_size - value).abs() > f32::EPSILON {
+            self.feature_details_font_size = value;
+            self.mark_layout_dirty();
+        }
+    }
 }
 
 impl Default for DnaDisplay {
@@ -420,7 +437,7 @@ impl Default for DnaDisplay {
         Self {
             show_restriction_enzymes: true,
             show_reverse_complement: true,
-            show_open_reading_frames: true,
+            show_open_reading_frames: false,
             show_features: true,
             show_cds_features: true,
             show_gene_features: true,
@@ -437,6 +454,7 @@ impl Default for DnaDisplay {
             selection: None,
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
+            feature_details_font_size: 11.0,
         }
     }
 }

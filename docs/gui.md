@@ -233,6 +233,8 @@ Markdown image support:
 - use standard markdown image syntax (`![alt](path-or-url)`)
 - relative image paths in `docs/*.md` are resolved relative to the markdown file location
 - `Reload` in the help window reloads markdown + images from disk
+- help viewer supports in-window text search (`Cmd/Ctrl+F` focuses search box)
+- search UI includes match count and `Prev`/`Next` navigation
 
 ## Map interactions
 
@@ -241,6 +243,56 @@ The DNA map supports mouse interactions:
 - Hover: highlights/inspects map elements
 - Click: selects a feature
 - Double-click: creates a sequence selection from the clicked feature or restriction site
+
+### Linear DNA map: zoom and pan (mouse/touchpad)
+
+When the sequence is in linear mode and your pointer is over the map:
+
+- Zoom with vertical scroll:
+  - mouse wheel up/down
+  - touchpad two-finger vertical swipe
+- Pan with horizontal scroll:
+  - touchpad two-finger horizontal swipe
+  - on many mice/systems: Shift + mouse wheel
+- Zoom is centered around the current cursor position on the map.
+
+Toolbar alternatives (linear mode):
+
+- `-`: zoom out
+- `+`: zoom in
+- `Fit`: reset view to full sequence
+- `Pan` slider: move the current viewport left/right
+
+Notes:
+
+- The map reacts to scroll only while hovered.
+- Scroll direction follows your OS/input-device settings (for example natural
+  scrolling).
+
+### Lineage graph: zoom and pan (mouse/touchpad)
+
+In `Main window -> Graph` view:
+
+- Zoom:
+  - hold `Cmd` (macOS) or `Ctrl` (Windows/Linux), then scroll vertically
+    over the graph
+  - or use `-`, `+`, `Reset`, `Fit`, and the `Zoom` slider above the graph
+  - `Reset Layout` restores default node placement after manual moves
+- Pan:
+  - use scrollbars, mouse wheel, or touchpad scrolling in the graph viewport
+- Node layout:
+  - drag a node with the mouse to reposition it
+  - moved positions are persisted in project metadata and restored when the
+    project is reopened
+  - automatic graph layout uses DAG layering (parents left, children right)
+    with crossing-minimizing ordering between layers
+
+Why zoom controls differ between views:
+
+- Linear DNA map uses plain vertical scroll for zoom because it has dedicated
+  horizontal panning (scroll + pan slider) and a cursor-centered local viewport.
+- Lineage graph uses `Cmd/Ctrl + scroll` for zoom so plain scrolling remains
+  available for navigating the larger graph canvas.
 
 ## Linear map conventions
 
@@ -252,7 +304,8 @@ Current linear map conventions are:
   dedicated upper lanes above forward-strand coding features to keep dense loci
   readable
 - `REG@TOP` / `REG@DNA` toggle in the map toolbar switches regulatory-feature
-  placement between dedicated top lanes and near-baseline/GC-strip lanes
+  placement between dedicated top lanes and a single near-baseline/GC-strip
+  lane
 - Directional features use arrow-shaped ends
 - Feature labels are lane-packed to reduce overlap
 - Coordinate fallback labels are suppressed for unlabeled regulatory features
@@ -313,6 +366,34 @@ Controls:
   - if empty, ladder selection is automatic
 - `Export Pool Gel SVG`: writes the current ladder + pool band view to SVG via
   shared engine operation `RenderPoolGelSvg`
+
+## Engine Settings (Engine Ops)
+
+Within `Region extraction and engine settings`, GUI provides:
+
+- `Feature details font` slider (`8.0..24.0 px`)
+  - controls the font size used in the feature tree/detail text
+  - persists in project display settings (`feature_details_font_size`)
+  - `Reset Font` restores default (`11.0 px`)
+
+## Practical Sequence Filter (Engine Ops)
+
+The core operations panel includes `Filter SeqQ` for practical sequence
+screening.
+
+Inputs:
+
+- `SeqQ inputs`: comma-separated sequence IDs
+- `GC min` / `GC max`
+- `max homopoly`
+- `Reject ambiguous`
+- `Avoid U6 TTTT`
+- `Forbidden motifs` (comma-separated IUPAC motifs)
+- `Unique`
+- `prefix`
+
+Execution calls engine operation `FilterBySequenceQuality` and creates filtered
+in-silico selection outputs.
 
 ## Anchored Region Extraction (Engine Ops)
 
@@ -449,10 +530,13 @@ Recommended flow:
    - choose a track file (`.bed`, `.bed.gz`, `.bw`, or `.bigWig`)
    - optionally set track name and score filters
    - click one of:
-     - `Import To Selected`
-     - `Import To All Anchored (One-Time)`
-     - `Import To All Anchored + Track`
-   - tracked files are listed in the same window and can be re-applied or removed
+     - `Import To Selected`: import onto only the currently selected anchored sequence
+     - `Import To All Anchored (One-Time)`: import onto all currently anchored sequences without saving a subscription
+     - `Import To All Anchored + Track`: import onto all currently anchored sequences and save a tracked subscription for auto-sync to future anchored extracts
+   - tracked files are listed in the same window and can be managed:
+     - `Apply now`: re-apply one tracked file to all currently anchored sequences
+     - `Remove`: delete one tracked subscription (already imported features remain)
+     - `Clear Tracked Files`: delete all tracked subscriptions (already imported features remain)
 
 Equivalent workflow JSON (still supported via workflow runner):
 
@@ -497,6 +581,10 @@ Notes:
   sequence coordinates accordingly.
 - `Import To All Anchored + Track` stores a tracked subscription in project
   metadata and auto-applies it to newly added anchored sequences.
+- Imported BED/BigWig signals are materialized as generated `track` features.
+  They render as dense signal tracks (lane-packed in linear view) and appear in
+  the feature tree under a dedicated `Tracks` category, grouped by experiment
+  (`gentle_track_name`).
 - Prepare/Retrieve dialogs show resolved source types for the selected entry
   (`local`, `ncbi_assembly`, `genbank_accession`, `remote_http`).
 - Retrieval fields are enabled only after the selected genome is prepared.

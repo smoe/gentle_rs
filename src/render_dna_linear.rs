@@ -390,6 +390,7 @@ impl RenderDnaLinear {
             Top,
             Bottom,
             RegulatoryTop,
+            RegulatoryNearBaseline,
         }
 
         let mut seeds: Vec<Seed> = Vec::new();
@@ -458,8 +459,11 @@ impl RenderDnaLinear {
             if from >= self.sequence_length {
                 continue;
             }
-            if to >= self.sequence_length {
-                to = self.sequence_length.saturating_sub(1);
+            if to > self.sequence_length {
+                to = self.sequence_length;
+            }
+            if to <= from {
+                continue;
             }
 
             let label = RenderDna::feature_name(feature);
@@ -471,15 +475,14 @@ impl RenderDnaLinear {
             exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
             let mut exon_segments: Vec<(f32, f32)> = Vec::new();
-            for (exon_start, exon_end_inclusive) in exon_ranges {
+            for (exon_start, exon_end_exclusive) in exon_ranges {
                 if exon_start >= self.sequence_length {
                     continue;
                 }
-                let exon_end_inclusive =
-                    exon_end_inclusive.min(self.sequence_length.saturating_sub(1));
-                let exon_end_exclusive = exon_end_inclusive
-                    .saturating_add(1)
-                    .min(self.sequence_length);
+                let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
+                if exon_end_exclusive <= exon_start {
+                    continue;
+                }
                 let Some((visible_start, visible_end)) = Self::range_overlap(
                     exon_start,
                     exon_end_exclusive,
@@ -573,17 +576,21 @@ impl RenderDnaLinear {
         });
 
         for seed in lane_order {
-            let lane_padding = if seed.is_regulatory { 1.0 } else { 3.0 };
+            let lane_padding = if seed.is_regulatory { 0.0 } else { 3.0 };
             let (lane_side, feature_lane) = if seed.is_regulatory {
-                (
-                    LaneSide::RegulatoryTop,
-                    Self::allocate_lane(
-                        &mut feature_lanes_regulatory_top,
-                        seed.x1,
-                        seed.x2,
-                        lane_padding,
-                    ),
-                )
+                if regulatory_tracks_near_baseline {
+                    (LaneSide::RegulatoryNearBaseline, 0)
+                } else {
+                    (
+                        LaneSide::RegulatoryTop,
+                        Self::allocate_lane(
+                            &mut feature_lanes_regulatory_top,
+                            seed.x1,
+                            seed.x2,
+                            lane_padding,
+                        ),
+                    )
+                }
             } else if seed.is_reverse {
                 (
                     LaneSide::Bottom,
@@ -627,9 +634,7 @@ impl RenderDnaLinear {
             0.0
         };
         let top_natural_extent = if regulatory_tracks_near_baseline {
-            top_regular_natural_extent
-                .max(regulatory_top_natural_extent)
-                .max(BASELINE_SIDE_MIN_EXTENT)
+            top_regular_natural_extent.max(BASELINE_SIDE_MIN_EXTENT)
         } else {
             (top_regular_natural_extent
                 + regulatory_group_gap_natural
@@ -693,6 +698,11 @@ impl RenderDnaLinear {
                 LaneSide::Top => top_style,
                 LaneSide::Bottom => bottom_style,
                 LaneSide::RegulatoryTop => regulatory_top_style,
+                LaneSide::RegulatoryNearBaseline => SideLaneStyle {
+                    margin: REGULATORY_BASELINE_MARGIN,
+                    gap: 0.0,
+                    height: REGULATORY_FEATURE_HEIGHT,
+                },
             };
             let center_y = match item.lane_side {
                 LaneSide::Top => {
@@ -709,6 +719,7 @@ impl RenderDnaLinear {
                     };
                     regulatory_origin - side_style.margin - side_style.gap * feature_lane as f32
                 }
+                LaneSide::RegulatoryNearBaseline => self.baseline_y() - side_style.margin,
             };
             let lane_is_bottom_side = matches!(item.lane_side, LaneSide::Bottom);
             let exon_rects: Vec<Rect> = seed

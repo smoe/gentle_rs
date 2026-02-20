@@ -169,6 +169,7 @@ impl RenderDna {
             "GENE" => Color32::BLUE,
             "MRNA" => Color32::from_rgb(180, 100, 10),
             "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => Color32::from_rgb(35, 120, 35),
+            "TRACK" => Color32::from_rgb(85, 85, 85),
             _ => Color32::GRAY,
         }
     }
@@ -210,9 +211,120 @@ impl RenderDna {
         )
     }
 
+    pub fn is_track_feature(feature: &Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "genome_bed_track" | "genome_bigwig_track" | "blast_hit_track"
+                )
+            })
+    }
+
     pub fn is_regulatory_feature(feature: &Feature) -> bool {
         let kind = feature.kind.to_string().to_ascii_uppercase();
-        Self::is_tfbs_feature(feature) || kind.contains("REGULATORY")
+        Self::is_tfbs_feature(feature)
+            || kind.contains("REGULATORY")
+            || Self::is_track_feature(feature)
+    }
+
+    fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key.into())
+            .map(str::trim)
+            .find(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
+    fn first_nonempty_qualifier(feature: &Feature, keys: &[&str]) -> Option<String> {
+        for key in keys {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    pub fn tfbs_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_tfbs_feature(feature) {
+            return None;
+        }
+        let tf_id = Self::feature_qualifier_text(feature, "tf_id");
+        let tf_name = Self::first_nonempty_qualifier(
+            feature,
+            &["bound_moiety", "standard_name", "gene", "name"],
+        );
+        match (tf_name, tf_id) {
+            (Some(name), Some(id)) => {
+                if name.eq_ignore_ascii_case(&id) {
+                    Some(name)
+                } else {
+                    Some(format!("{name} ({id})"))
+                }
+            }
+            (Some(name), None) => Some(name),
+            (None, Some(id)) => Some(id),
+            (None, None) => {
+                let fallback = Self::feature_name(feature);
+                if fallback.trim().is_empty() {
+                    Some("TFBS".to_string())
+                } else {
+                    Some(fallback)
+                }
+            }
+        }
+    }
+
+    pub fn is_restriction_site_feature(feature: &Feature) -> bool {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if kind == "RESTRICTION_SITE" || kind.contains("RESTRICTION") {
+            return true;
+        }
+        for key in [
+            "enzyme",
+            "restriction_enzyme",
+            "enzyme_name",
+            "rebase_enzyme",
+        ] {
+            if feature.qualifier_values(key.into()).next().is_some() {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn restriction_site_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_restriction_site_feature(feature) {
+            return None;
+        }
+        Self::first_nonempty_qualifier(
+            feature,
+            &[
+                "enzyme",
+                "restriction_enzyme",
+                "enzyme_name",
+                "rebase_enzyme",
+                "label",
+                "name",
+            ],
+        )
+        .or_else(|| {
+            let fallback = Self::feature_name(feature);
+            if fallback.trim().is_empty() {
+                Some("Restriction site".to_string())
+            } else {
+                Some(fallback)
+            }
+        })
+    }
+
+    pub fn track_group_label(feature: &Feature) -> Option<String> {
+        if !Self::is_track_feature(feature) {
+            return None;
+        }
+        Self::first_nonempty_qualifier(feature, &["gentle_track_name", "name", "label"])
+            .or_else(|| Some("Unnamed track".to_string()))
     }
 
     fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
@@ -301,6 +413,18 @@ impl RenderDna {
             Ok((from, to)) => format!("{from}..{to}"),
             Err(_) => String::new(),
         }
+    }
+
+    pub fn feature_range_text(feature: &Feature) -> String {
+        let Ok((from, to_exclusive)) = feature.location.find_bounds() else {
+            return String::new();
+        };
+        if from < 0 || to_exclusive < 0 {
+            return String::new();
+        }
+        let len = to_exclusive.saturating_sub(from);
+        let start_1based = from.saturating_add(1);
+        format!("{start_1based}..{to_exclusive} ({len} bp)")
     }
 }
 

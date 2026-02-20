@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
 
 This document describes how GENtle is intended to work, what is already
 implemented, and what should be built next.
@@ -46,6 +46,17 @@ Strategic aims:
    (compile-time feature gate + explicit runtime opt-in).
 5. Provide context-sensitive hover descriptions for actionable GUI buttons so
    control intent is explicit and shared button references are unambiguous.
+
+Tooltip coverage rule:
+
+- Every actionable GUI button must include a concise, context-sensitive
+  hover description (`on_hover_text`).
+- This includes menu actions, toolbar buttons, dialog primary/secondary
+  actions, shell controls, and strict engine operation triggers.
+- Definition of done for new controls: button label + hover description
+  are both present at implementation time.
+- Maintenance check: scan button call sites and verify coverage before
+  release (for example via `rg` over `.button`/`.small_button` call sites).
 
 ## 2. Core architecture rule
 
@@ -119,6 +130,8 @@ They only translate user input into engine operations and display results.
   - stranded anchor-aware coordinate remapping for genome-anchored sequences
   - generated signal features normalized with shared qualifiers
     (`gentle_track_source`, `gentle_generated`)
+  - generated BED/BigWig/BLAST overlays are stored as `track` features and
+    grouped in GUI feature tree under `Tracks` by `gentle_track_name`
   - GUI track-import dialog supports BED and BigWig with explicit source
     override (`auto|bed|bigwig`) plus extension detection
   - tracked signal-file subscriptions are engine-managed (persisted in
@@ -203,14 +216,15 @@ They only translate user input into engine operations and display results.
   suppressed for unlabeled regulatory features
 - Linear map toolbar provides a placement toggle for regulatory tracks
   (`REG@TOP` / `REG@DNA`) and keeps this setting synchronized into shared
-  display state used by GUI and SVG export
+  display state used by GUI and SVG export (`REG@DNA` renders a single
+  baseline-adjacent regulatory lane)
 - Circular renderer now supports multipart feature locations (`Join`, `Order`,
   nested `Complement`/`External`): exon-like segments are rendered separately
   with intron arches between them
 - Circular intron arches have feature-aware styling (notably emphasized for
   mRNA) with hover/selection accenting for readability
-- Added context-sensitive button tooltips (toolbar + menu actions), with
-  target state of full actionable-button coverage
+- Added context-sensitive button tooltips across actionable controls
+  (toolbar, menu, dialogs, lineage actions, strict engine ops, shell panel)
 - Added linear overlays for ORF/GC/methylation/ticks
 - Main lineage view supports both table/graph and a container list with open
   actions (sequence/pool)
@@ -301,6 +315,7 @@ Legend:
 | `ExtractAnchoredRegion` | Wired | Wired | Exposed | Exposed | Implemented |
 | `SelectCandidate` | Wired | Wired | Exposed | Exposed | Implemented |
 | `FilterByMolecularWeight` | Wired | Wired | Exposed | Exposed | Implemented |
+| `FilterBySequenceQuality` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Reverse` | Wired | Wired | Exposed | Exposed | Implemented |
 | `Complement` | Wired | Wired | Exposed | Exposed | Implemented |
 | `ReverseComplement` | Wired | Wired | Exposed | Exposed | Implemented |
@@ -321,8 +336,9 @@ Notes from current code:
   criteria without mutating sequence annotations.
 - SVG export now honors TFBS display criteria from shared display state.
 - GUI now exposes direct actions for `ExtractRegion`, `RecomputeFeatures`,
-  `SetParameter`, container-first operations, sequence SVG rendering, lineage
-  SVG rendering, and workflow execution through shared engine operations.
+  `SetParameter`, `FilterBySequenceQuality`, container-first operations,
+  sequence SVG rendering, lineage SVG rendering, and workflow execution through
+  shared engine operations.
 - GUI now exposes dedicated controls for `PrepareGenome` and
   `ExtractGenomeRegion` from the main-window menu as separate dialogs:
   `Prepare Reference Genome...` and `Retrieve Genome Sequence...`.
@@ -491,41 +507,41 @@ Practical rule:
 - State import/export and summary
 - Capabilities reporting
 - Shared shell command path (`shell`) aligned with GUI Shell panel
-- Optional screenshot bridge (compile-time + runtime gated):
-  - default behavior: unavailable in default builds (`screenshot-capture`
-    feature disabled)
-  - runtime behavior in screenshot-enabled builds: still disabled until explicit
-    `--allow-screenshots` opt-in
-  - enabled behavior: allow invoking the host system screenshot utility from an
-    explicit screenshot command path
-  - capture scope: active GENtle window only (not full desktop)
-  - window targeting uses native AppKit in-process lookup (no AppleScript
-    automation bridge)
-  - shared command surface:
-    - direct CLI command: `screenshot-window OUTPUT.png`
-    - shared shell command: `screenshot-window OUTPUT.png`
-  - practical runtime scope:
-    - most useful from GUI shell in a running `gentle` process
-    - headless `gentle_cli` processes usually have no eligible active GENtle
-      window and therefore return an explicit error
-  - current operation shape for command result payload:
-    - `schema` (`gentle.screenshot.v1`)
-    - `path` (caller-chosen filename)
-    - `window_title`
-    - `captured_at_unix_ms`
-    - `pixel_width` / `pixel_height`
-    - `backend` (OS utility route used)
-  - current backend availability:
-    - implemented on macOS via `screencapture`
-    - non-macOS platforms currently return unsupported
-  - non-goals for this bridge:
-    - full-screen capture
-    - capture of non-GENtle windows
-    - background/hidden-window capture without explicit future contract
-  - output: caller-provided custom filename/path for saved image artifact
-  - current purpose: explicit/manual screenshot artifact capture for progress
-    communication
-  - explicitly postponed concept: auto-updated documentation with graphics
+- Screenshot bridge status (temporarily disabled by security policy):
+  - historical implementation existed as a compile-time + runtime gated adapter
+    bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)
+  - observed field behavior:
+    - endpoint security (Cortex XDR) flagged related local test/process activity
+      as malware
+    - repeated warnings were seen for targeted test invocations of screenshot
+      paths
+  - current enforced behavior:
+    - `screenshot-window` is rejected with a deterministic
+      "disabled by security policy" message
+    - `--allow-screenshots` is rejected by CLI/GUI startup parsing
+    - screenshot-specific tests/invocation entry points were removed
+    - rendering snapshot tests are now behind opt-in feature flag
+      `snapshot-tests` and are disabled by default
+  - immediate policy:
+    - keep screenshot/image-capture execution disabled by default in this repo
+    - keep auto-updated documentation with graphics postponed
+  - how to re-enable later (intentional opt-in process):
+    - obtain endpoint-security approval/exception first (project path, Rust test
+      binaries, and host screenshot utility execution path)
+    - revert screenshot security-disable gates in:
+      - `src/engine_shell.rs` (`screenshot-window` parse/execute branches)
+      - `src/bin/gentle.rs` and `src/bin/gentle_cli.rs`
+        (`--allow-screenshots` argument handling and help text)
+    - optionally restore screenshot-specific tests only after security exception
+      is confirmed stable
+    - rebuild with feature `screenshot-capture`
+      (example: `cargo run --features screenshot-capture --bin gentle -- --allow-screenshots`)
+    - run with startup flag `--allow-screenshots` for any process that should
+      accept screenshot commands
+    - validate from GUI shell first (active GENtle window only)
+    - if snapshot tests are intentionally desired again, run with explicit
+      feature opt-in (example:
+      `cargo test --features snapshot-tests -q render_export::tests::snapshot_`)
 
 ## 6. Protocol-first direction
 
@@ -608,7 +624,9 @@ Use same view model for GUI and machine consumers.
 - operation provenance metadata (engine version, timestamps, input references)
 - process-protocol export contract (plain-text, technical-assistant-friendly
   step list derived from workflow/operation provenance)
-- harden adapter screenshot bridge (expand backend coverage and automated tests)
+- re-enable and harden adapter screenshot bridge only after endpoint-security
+  exception/approval is explicitly confirmed (then expand backend coverage and
+  automated tests)
 - keep graphics-backed documentation updates manual for now; postpone
   auto-updated documentation with graphics until screenshot backend parity and
   security policy are stabilized
@@ -643,8 +661,11 @@ If work is interrupted, resume in this order:
   engine operation yet)
 - No dedicated engine operation yet for exporting a full run/process as a
   technical-assistant protocol text artifact
-- Screenshot bridge is implemented as an adapter utility, but backend support is
-  currently macOS-only
+- guideRNA operations are not yet fully implemented (guide-candidate model,
+  oligo generation/export, and macro template flow are pending). Draft spec:
+  `docs/rna_guides_spec.md`
+- Screenshot bridge is intentionally disabled by security policy in the current
+  branch; historical implementation was adapter-level and macOS-backed
 - Auto-updated documentation with embedded graphics is intentionally postponed
   (manual update flow remains the active policy)
 
@@ -662,8 +683,9 @@ If work is interrupted, resume in this order:
   accepted and implemented
 - Add opt-in screenshot artifact bridge (`--allow-screenshots`) for
   documentation/progress image generation with active-window-only capture:
-  accepted and implemented (adapter-level command path; macOS backend; default
-  build now keeps screenshot capture unavailable unless feature-enabled)
+  accepted and implemented historically (adapter-level command path; macOS
+  backend), then temporarily disabled in this branch due endpoint-security
+  warnings until explicit exception/approval is in place
 - Postpone auto-updated documentation with graphics:
   accepted and postponed (manual documentation updates remain in effect)
 - Add protocol-grade process export as a strategic requirement:
@@ -691,3 +713,9 @@ If work is interrupted, resume in this order:
   GUI update loop: accepted and implemented
 - Defer for now: `import-pool` engine operation until first-class container
   semantics settle for stable import behavior across adapters.
+- Add guideRNA-design base layer (practical sequence filters + oligo/export
+  + macro-template workflow model): accepted and planned (spec draft in
+  `docs/rna_guides_spec.md`).
+- Add practical sequence-quality filtering operation (`FilterBySequenceQuality`;
+  GC bounds, homopolymer cap, U6 `TTTT` avoidance, forbidden motifs): accepted
+  and implemented.

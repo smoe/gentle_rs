@@ -188,6 +188,8 @@ pub enum ShellCommand {
     },
 }
 
+const SCREENSHOT_DISABLED_MESSAGE: &str = "screenshot-window is disabled by security policy";
+
 #[derive(Debug, Clone)]
 pub struct ShellRunResult {
     pub state_changed: bool,
@@ -212,6 +214,7 @@ impl ShellExecutionOptions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct ScreenshotReport {
     schema: String,
     path: String,
@@ -622,11 +625,7 @@ impl ShellCommand {
 }
 
 pub fn shell_help_text() -> String {
-    let screenshot_line = if cfg!(feature = "screenshot-capture") {
-        "screenshot-window OUTPUT.png\n"
-    } else {
-        "screenshot-window OUTPUT.png (disabled in this build; enable feature 'screenshot-capture')\n"
-    };
+    let screenshot_line = "screenshot-window OUTPUT.png (disabled by security policy)\n";
     format!(
         "GENtle Shell commands:\n\
 help\n\
@@ -855,6 +854,7 @@ fn parse_ladder_molecule(value: &str) -> Result<LadderMolecule, String> {
 }
 
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
+#[allow(dead_code)]
 fn now_unix_ms() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -863,6 +863,7 @@ fn now_unix_ms() -> u128 {
 }
 
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
+#[allow(dead_code)]
 fn ensure_parent_dir(path: &str) -> Result<(), String> {
     let parent = Path::new(path)
         .parent()
@@ -873,6 +874,7 @@ fn ensure_parent_dir(path: &str) -> Result<(), String> {
 }
 
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
+#[allow(dead_code)]
 fn active_window_info_from_appkit() -> Result<(u64, String), String> {
     let Some(mtm) = MainThreadMarker::new() else {
         return Err("Screenshot capture requires the macOS main thread".to_string());
@@ -902,6 +904,7 @@ fn active_window_info_from_appkit() -> Result<(u64, String), String> {
 }
 
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
+#[allow(dead_code)]
 fn capture_active_window_screenshot(output: &str) -> Result<ScreenshotReport, String> {
     ensure_parent_dir(output)?;
     let (window_id, window_title) = active_window_info_from_appkit()?;
@@ -934,6 +937,7 @@ fn capture_active_window_screenshot(output: &str) -> Result<ScreenshotReport, St
 }
 
 #[cfg(any(not(target_os = "macos"), not(feature = "screenshot-capture")))]
+#[allow(dead_code)]
 fn capture_active_window_screenshot(_output: &str) -> Result<ScreenshotReport, String> {
     if !cfg!(feature = "screenshot-capture") {
         Err(
@@ -1448,22 +1452,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
             }
         }
         "screenshot-window" => {
-            if tokens.len() != 2 {
-                return Err(token_error(cmd));
-            }
-            if !cfg!(feature = "screenshot-capture") {
-                return Err(
-                    "screenshot-window is unavailable in this build; enable feature 'screenshot-capture'"
-                        .to_string(),
-                );
-            }
-            let output = tokens[1].trim();
-            if output.is_empty() {
-                return Err("screenshot-window requires OUTPUT path".to_string());
-            }
-            Ok(ShellCommand::ScreenshotWindow {
-                output: output.to_string(),
-            })
+            let _ = tokens;
+            Err(SCREENSHOT_DISABLED_MESSAGE.to_string())
         }
         "render-svg" => {
             if tokens.len() != 4 {
@@ -2179,24 +2169,9 @@ pub fn execute_shell_command_with_options(
                 output: json!({ "message": format!("Saved project to '{path}'") }),
             }
         }
-        ShellCommand::ScreenshotWindow { output } => {
-            if !cfg!(feature = "screenshot-capture") {
-                return Err(
-                    "screenshot capture is unavailable in this build; enable feature 'screenshot-capture'"
-                        .to_string(),
-                );
-            }
-            if !options.allow_screenshots {
-                return Err(
-                    "screenshot capture is disabled; restart with --allow-screenshots".to_string(),
-                );
-            }
-            let report = capture_active_window_screenshot(output)?;
-            ShellRunResult {
-                state_changed: false,
-                output: serde_json::to_value(report)
-                    .map_err(|e| format!("Could not serialize screenshot report: {e}"))?,
-            }
+        ShellCommand::ScreenshotWindow { output: _ } => {
+            let _ = options;
+            return Err(SCREENSHOT_DISABLED_MESSAGE.to_string());
         }
         ShellCommand::RenderSvg {
             seq_id,
@@ -2904,26 +2879,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_screenshot_window() {
-        #[cfg(feature = "screenshot-capture")]
-        {
-            let cmd =
-                parse_shell_line("screenshot-window docs/images/main.png").expect("parse command");
-            match cmd {
-                ShellCommand::ScreenshotWindow { output } => {
-                    assert_eq!(output, "docs/images/main.png".to_string());
-                }
-                other => panic!("unexpected command: {other:?}"),
-            }
-        }
-        #[cfg(not(feature = "screenshot-capture"))]
-        {
-            let err = parse_shell_line("screenshot-window docs/images/main.png").unwrap_err();
-            assert!(err.contains("unavailable in this build"));
-        }
-    }
-
-    #[test]
     fn parse_rna_info() {
         let cmd = parse_shell_line("rna-info rna_seq").expect("parse command");
         match cmd {
@@ -3259,23 +3214,6 @@ mod tests {
             .expect("execute state summary");
         assert!(!out.state_changed);
         assert!(out.output.get("sequence_count").is_some());
-    }
-
-    #[test]
-    fn execute_screenshot_requires_allow_flag() {
-        let mut engine = GentleEngine::from_state(ProjectState::default());
-        let err = execute_shell_command(
-            &mut engine,
-            &ShellCommand::ScreenshotWindow {
-                output: "out.png".to_string(),
-            },
-        )
-        .unwrap_err();
-        if cfg!(feature = "screenshot-capture") {
-            assert!(err.contains("--allow-screenshots"));
-        } else {
-            assert!(err.contains("unavailable in this build"));
-        }
     }
 
     #[test]
