@@ -33,6 +33,7 @@ const RE_SITE_MAX_BP_PER_PX: f32 = 200.0;
 const RE_LABEL_MAX_BP_PER_PX: f32 = 30.0;
 const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
 const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
+const ORF_MAX_BP_PER_PX: f32 = 18.0;
 const FEATURE_LABEL_PADDING_X: f32 = 3.0;
 const FEATURE_LABEL_MAX_EXPANSION_PX: f32 = 120.0;
 const REGULATORY_BASELINE_MARGIN: f32 = 6.0;
@@ -56,6 +57,7 @@ struct LinearDetailLevel {
     show_restriction_sites: bool,
     show_restriction_labels: bool,
     show_methylation_sites: bool,
+    show_open_reading_frames: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -229,6 +231,19 @@ impl RenderDnaLinear {
             show_restriction_sites: bp_per_px <= RE_SITE_MAX_BP_PER_PX,
             show_restriction_labels: bp_per_px <= RE_LABEL_MAX_BP_PER_PX,
             show_methylation_sites: bp_per_px <= METHYLATION_MAX_BP_PER_PX,
+            show_open_reading_frames: bp_per_px <= ORF_MAX_BP_PER_PX,
+        }
+    }
+
+    fn low_value_feature_min_width_px(bp_per_px: f32) -> f32 {
+        if bp_per_px <= 4.0 {
+            1.5
+        } else if bp_per_px <= 10.0 {
+            2.5
+        } else if bp_per_px <= 20.0 {
+            4.0
+        } else {
+            7.0
         }
     }
 
@@ -365,7 +380,9 @@ impl RenderDnaLinear {
         if self.sequence_length == 0 {
             return;
         }
-        let show_feature_labels = self.bp_per_px(viewport) <= FEATURE_LABEL_MAX_BP_PER_PX;
+        let bp_per_px = self.bp_per_px(viewport);
+        let show_feature_labels = bp_per_px <= FEATURE_LABEL_MAX_BP_PER_PX;
+        let low_value_feature_min_width_px = Self::low_value_feature_min_width_px(bp_per_px);
 
         #[derive(Clone)]
         struct Seed {
@@ -551,6 +568,12 @@ impl RenderDnaLinear {
                 .map(|(_, sx2)| *sx2)
                 .fold(f32::NEG_INFINITY, f32::max);
             if !x1.is_finite() || !x2.is_finite() {
+                continue;
+            }
+            let kind = feature.kind.to_string().to_ascii_uppercase();
+            let is_high_priority_feature =
+                matches!(kind.as_str(), "CDS" | "GENE" | "MRNA");
+            if !is_high_priority_feature && (x2 - x1) < low_value_feature_min_width_px {
                 continue;
             }
 
@@ -1010,11 +1033,19 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_open_reading_frames(&self, painter: &egui::Painter, viewport: LinearViewport) {
+    fn draw_open_reading_frames(
+        &self,
+        painter: &egui::Painter,
+        viewport: LinearViewport,
+        detail: LinearDetailLevel,
+    ) {
+        if !detail.show_open_reading_frames {
+            return;
+        }
         let show_orfs = self
             .display
             .read()
-            .map(|display| display.show_open_reading_frames())
+            .map(|display| display.show_open_reading_frames_effective())
             .unwrap_or(false);
         if !show_orfs {
             return;
@@ -1326,7 +1357,7 @@ impl RenderDnaLinear {
         self.draw_methylation_sites(ui.painter(), viewport, detail);
         self.draw_backbone(ui.painter());
         self.draw_bp_ticks(ui.painter(), viewport);
-        self.draw_open_reading_frames(ui.painter(), viewport);
+        self.draw_open_reading_frames(ui.painter(), viewport, detail);
         self.draw_features(ui.painter(), detail);
         self.draw_restriction_enzyme_sites(ui.painter(), viewport, detail);
     }

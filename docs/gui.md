@@ -169,7 +169,7 @@ Supported commands:
 - `genomes validate-catalog [--catalog PATH]`
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
 - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
-- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
 - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -177,7 +177,7 @@ Supported commands:
 - `helpers validate-catalog [--catalog PATH]`
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
-- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -573,6 +573,8 @@ Recommended flow:
    - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes
+   - a running prepare task can be cancelled via `Cancel Prepare`
+   - optional `timeout_sec` can be set in GUI (or `--timeout-secs` in CLI/shell)
    - if a previous attempt already downloaded `sequence.fa` but annotation
      resolution fails (for example wrong GTF path), the next retry reuses the
      local FASTA instead of downloading it again
@@ -654,6 +656,8 @@ Notes:
   non-assembly records). If explicit URLs are absent, GENtle derives NCBI EFetch
   sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
   indexes extracted feature records for search/retrieval.
+- Malformed GTF/GFF lines are now reported as warnings with file/line context
+  while valid gene records continue to be indexed.
 - Genome track import accepts BED (`.bed` / `.bed.gz`) and BigWig (`.bw` / `.bigWig`) inputs.
 - Genome track import also accepts VCF (`.vcf` / `.vcf.gz`) inputs.
 - BigWig import uses `bigWigToBedGraph` and can be overridden via `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`.

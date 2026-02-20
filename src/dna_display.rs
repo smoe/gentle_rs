@@ -172,6 +172,7 @@ pub struct DnaDisplay {
     show_restriction_enzymes: bool,
     show_reverse_complement: bool,
     show_open_reading_frames: bool,
+    suppress_open_reading_frames_for_genome_anchor: bool,
     show_features: bool,
     show_cds_features: bool,
     show_gene_features: bool,
@@ -331,6 +332,18 @@ impl DnaDisplay {
         &self.hidden_feature_kinds
     }
 
+    pub fn set_hidden_feature_kinds(&mut self, mut kinds: BTreeSet<String>) {
+        kinds = kinds
+            .into_iter()
+            .map(|kind| kind.trim().to_ascii_uppercase())
+            .filter(|kind| !kind.is_empty())
+            .collect();
+        if self.hidden_feature_kinds != kinds {
+            self.hidden_feature_kinds = kinds;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn feature_kind_visible(&self, kind: &str) -> bool {
         let normalized = kind.trim().to_ascii_uppercase();
         !self.hidden_feature_kinds.contains(&normalized)
@@ -369,6 +382,21 @@ impl DnaDisplay {
 
     pub fn show_open_reading_frames(&self) -> bool {
         self.show_open_reading_frames
+    }
+
+    pub fn show_open_reading_frames_effective(&self) -> bool {
+        self.show_open_reading_frames && !self.suppress_open_reading_frames_for_genome_anchor
+    }
+
+    pub fn suppress_open_reading_frames_for_genome_anchor(&self) -> bool {
+        self.suppress_open_reading_frames_for_genome_anchor
+    }
+
+    pub fn set_suppress_open_reading_frames_for_genome_anchor(&mut self, value: bool) {
+        if self.suppress_open_reading_frames_for_genome_anchor != value {
+            self.suppress_open_reading_frames_for_genome_anchor = value;
+            self.mark_layout_dirty();
+        }
     }
 
     pub fn toggle_show_open_reading_frames(&mut self) {
@@ -495,6 +523,7 @@ impl Default for DnaDisplay {
             show_restriction_enzymes: true,
             show_reverse_complement: true,
             show_open_reading_frames: false,
+            suppress_open_reading_frames_for_genome_anchor: false,
             show_features: true,
             show_cds_features: true,
             show_gene_features: true,

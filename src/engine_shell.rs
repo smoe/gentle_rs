@@ -2,11 +2,22 @@ use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        Engine, GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
-        Operation, ProjectState, RenderSvgMode, Workflow,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode,
+        CandidateFeatureStrandRelation, Engine, GenomeAnchorSide, GenomeTrackSource,
+        GenomeTrackSubscription, GentleEngine, Operation, ProjectState, RenderSvgMode, Workflow,
     },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
-    resource_sync, tf_motifs,
+    resource_sync,
+    shell_docs::{
+        shell_help_json as render_shell_help_json,
+        shell_help_markdown as render_shell_help_markdown,
+        shell_help_text as render_shell_help_text,
+        shell_topic_help_json as render_shell_topic_help_json,
+        shell_topic_help_markdown as render_shell_topic_help_markdown,
+        shell_topic_help_text as render_shell_topic_help_text,
+        HelpOutputFormat,
+    },
+    tf_motifs,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -19,14 +30,15 @@ use serde_json::{json, Value};
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
-use std::{
-    collections::BTreeSet,
-    fs,
-};
+use std::{collections::BTreeSet, fs};
 
 #[derive(Debug, Clone)]
 pub enum ShellCommand {
-    Help,
+    Help {
+        topic: Vec<String>,
+        format: HelpOutputFormat,
+        interface_filter: Option<String>,
+    },
     Capabilities,
     StateSummary,
     LoadProject {
@@ -114,6 +126,7 @@ pub enum ShellCommand {
         genome_id: String,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        timeout_seconds: Option<u64>,
     },
     ReferenceExtractRegion {
         helper_mode: bool,
@@ -212,6 +225,9 @@ pub enum ShellCommand {
         feature_kinds: Vec<String>,
         feature_label_regex: Option<String>,
         max_distance_bp: Option<usize>,
+        feature_geometry_mode: Option<CandidateFeatureGeometryMode>,
+        feature_boundary_mode: Option<CandidateFeatureBoundaryMode>,
+        feature_strand_relation: Option<CandidateFeatureStrandRelation>,
         limit: usize,
     },
     CandidatesShow {
@@ -232,6 +248,9 @@ pub enum ShellCommand {
         metric: String,
         feature_kinds: Vec<String>,
         feature_label_regex: Option<String>,
+        feature_geometry_mode: Option<CandidateFeatureGeometryMode>,
+        feature_boundary_mode: Option<CandidateFeatureBoundaryMode>,
+        feature_strand_relation: Option<CandidateFeatureStrandRelation>,
     },
     CandidatesFilter {
         input_set: String,
@@ -362,10 +381,73 @@ impl CandidateSetOperator {
     }
 }
 
+fn parse_candidate_feature_geometry_mode(
+    raw: &str,
+) -> Result<CandidateFeatureGeometryMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "feature_span" | "span" => Ok(CandidateFeatureGeometryMode::FeatureSpan),
+        "feature_parts" | "parts" | "segments" => Ok(CandidateFeatureGeometryMode::FeatureParts),
+        "feature_boundaries" | "boundaries" | "boundary" => {
+            Ok(CandidateFeatureGeometryMode::FeatureBoundaries)
+        }
+        other => Err(format!(
+            "Unsupported feature geometry mode '{other}' (expected feature_span|feature_parts|feature_boundaries)"
+        )),
+    }
+}
+
+fn parse_candidate_feature_boundary_mode(
+    raw: &str,
+) -> Result<CandidateFeatureBoundaryMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "any" => Ok(CandidateFeatureBoundaryMode::Any),
+        "five_prime" | "five-prime" | "5p" | "5'" => Ok(CandidateFeatureBoundaryMode::FivePrime),
+        "three_prime" | "three-prime" | "3p" | "3'" => {
+            Ok(CandidateFeatureBoundaryMode::ThreePrime)
+        }
+        "start" => Ok(CandidateFeatureBoundaryMode::Start),
+        "end" => Ok(CandidateFeatureBoundaryMode::End),
+        other => Err(format!(
+            "Unsupported feature boundary mode '{other}' (expected any|five_prime|three_prime|start|end)"
+        )),
+    }
+}
+
+fn parse_candidate_feature_strand_relation(
+    raw: &str,
+) -> Result<CandidateFeatureStrandRelation, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "any" => Ok(CandidateFeatureStrandRelation::Any),
+        "same" => Ok(CandidateFeatureStrandRelation::Same),
+        "opposite" => Ok(CandidateFeatureStrandRelation::Opposite),
+        other => Err(format!(
+            "Unsupported strand relation '{other}' (expected any|same|opposite)"
+        )),
+    }
+}
+
 impl ShellCommand {
     pub fn preview(&self) -> String {
         match self {
-            Self::Help => "show shell command help".to_string(),
+            Self::Help {
+                topic,
+                format,
+                interface_filter,
+            } => {
+                let topic_label = if topic.is_empty() {
+                    "all".to_string()
+                } else {
+                    topic.join(" ")
+                };
+                let interface = interface_filter
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("all");
+                format!(
+                    "show shell command help (topic='{topic_label}', format={}, interface={interface})",
+                    format.as_str()
+                )
+            }
             Self::Capabilities => "inspect engine capabilities".to_string(),
             Self::StateSummary => "show sequence/container state summary".to_string(),
             Self::LoadProject { path } => format!("load project state from '{path}'"),
@@ -527,13 +609,19 @@ impl ShellCommand {
                 genome_id,
                 catalog_path,
                 cache_dir,
+                timeout_seconds,
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
                     .clone()
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
-                format!("prepare {label} '{genome_id}' (catalog='{catalog}', cache='{cache}')")
+                let timeout = timeout_seconds
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "prepare {label} '{genome_id}' (catalog='{catalog}', cache='{cache}', timeout='{timeout}')"
+                )
             }
             Self::ReferenceExtractRegion {
                 helper_mode,
@@ -760,6 +848,9 @@ impl ShellCommand {
                 feature_kinds,
                 feature_label_regex,
                 max_distance_bp,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
                 limit,
             } => {
                 let kinds = if feature_kinds.is_empty() {
@@ -774,8 +865,17 @@ impl ShellCommand {
                 let distance = max_distance_bp
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string());
+                let geometry = feature_geometry_mode
+                    .map(|mode| mode.as_str())
+                    .unwrap_or("-");
+                let boundary = feature_boundary_mode
+                    .map(|mode| mode.as_str())
+                    .unwrap_or("-");
+                let strand_relation = feature_strand_relation
+                    .map(|mode| mode.as_str())
+                    .unwrap_or("-");
                 format!(
-                    "generate candidate set '{set_name}' from '{seq_id}' (length={length_bp}, step={step_bp}, feature_kinds={kinds}, feature_label_regex={label}, max_distance={distance}, limit={limit})"
+                    "generate candidate set '{set_name}' from '{seq_id}' (length={length_bp}, step={step_bp}, feature_kinds={kinds}, feature_label_regex={label}, max_distance={distance}, feature_geometry_mode={geometry}, feature_boundary_mode={boundary}, feature_strand_relation={strand_relation}, limit={limit})"
                 )
             }
             Self::CandidatesShow {
@@ -798,6 +898,9 @@ impl ShellCommand {
                 metric,
                 feature_kinds,
                 feature_label_regex,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
             } => {
                 let kinds = if feature_kinds.is_empty() {
                     "-".to_string()
@@ -808,8 +911,17 @@ impl ShellCommand {
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("-");
+                let geometry = feature_geometry_mode
+                    .map(|mode| mode.as_str())
+                    .unwrap_or("-");
+                let boundary = feature_boundary_mode
+                    .map(|mode| mode.as_str())
+                    .unwrap_or("-");
+                let strand_relation = feature_strand_relation
+                    .map(|mode| mode.as_str())
+                    .unwrap_or("-");
                 format!(
-                    "compute distance metric '{metric}' for candidate set '{set_name}' (feature_kinds={kinds}, feature_label_regex={label})"
+                    "compute distance metric '{metric}' for candidate set '{set_name}' (feature_kinds={kinds}, feature_label_regex={label}, feature_geometry_mode={geometry}, feature_boundary_mode={boundary}, feature_strand_relation={strand_relation})"
                 )
             }
             Self::CandidatesFilter {
@@ -905,70 +1017,7 @@ impl ShellCommand {
 }
 
 pub fn shell_help_text() -> String {
-    let screenshot_line = "screenshot-window OUTPUT.png (disabled by security policy)\n";
-    format!(
-        "GENtle Shell commands:\n\
-help\n\
-capabilities\n\
-state-summary\n\
-load-project PATH\n\
-save-project PATH\n\
-{screenshot_line}\
-render-svg SEQ_ID linear|circular OUTPUT.svg\n\
-render-rna-svg SEQ_ID OUTPUT.svg\n\
-rna-info SEQ_ID\n\
-render-lineage-svg OUTPUT.svg\n\
-render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]\n\
-ladders list [--molecule dna|rna] [--filter TEXT]\n\
-ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\
-export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n\
-import-pool INPUT.pool.gentle.json [PREFIX]\n\
-resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]\n\
-resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]\n\
-genomes list [--catalog PATH]\n\
-genomes validate-catalog [--catalog PATH]\n\
-genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
-genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
-genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n\
-genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n\
-genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\
-genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
-genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
-genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
-helpers list [--catalog PATH]\n\
-helpers validate-catalog [--catalog PATH]\n\
-helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
-helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]\n\
-helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
-helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n\
-helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\
-helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
-helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
-helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
-tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
-tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
-tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
-tracks tracked list\n\
-tracks tracked add PATH [--source auto|bed|bigwig|vcf] [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
-tracks tracked remove INDEX\n\
-tracks tracked clear\n\
-tracks tracked apply [--index N] [--only-new-anchors]\n\
-tracks tracked sync\n\
-candidates list\n\
-candidates delete SET_NAME\n\
-candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]\n\
-candidates show SET_NAME [--limit N] [--offset N]\n\
-candidates metrics SET_NAME\n\
-candidates score SET_NAME METRIC_NAME EXPRESSION\n\
-candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]\n\
-candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n\
-candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n\
-candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]\n\
-set-param NAME JSON_VALUE\n\
-op <operation-json-or-@file>\n\
-workflow <workflow-json-or-@file>\n\
-IDS is comma-separated sequence IDs"
-    )
+    render_shell_help_text(None).unwrap_or_else(|e| format!("Could not render shell help: {e}"))
 }
 
 fn split_ids(input: &str) -> Vec<String> {
@@ -1270,6 +1319,37 @@ fn token_error(command: &str) -> String {
     format!("Invalid '{command}' usage. Try: help")
 }
 
+fn parse_help_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    let mut topic = vec![];
+    let mut format = HelpOutputFormat::Text;
+    let mut interface_filter: Option<String> = None;
+    let mut idx = 1usize;
+    while idx < tokens.len() {
+        match tokens[idx].as_str() {
+            "--format" => {
+                let raw = parse_option_path(tokens, &mut idx, "--format", "help")?;
+                format = HelpOutputFormat::parse(&raw)?;
+            }
+            "--interface" => {
+                let raw = parse_option_path(tokens, &mut idx, "--interface", "help")?;
+                interface_filter = Some(raw);
+            }
+            other if other.starts_with("--") => {
+                return Err(format!("Unknown option '{other}' for help"));
+            }
+            value => {
+                topic.push(value.to_string());
+                idx += 1;
+            }
+        }
+    }
+    Ok(ShellCommand::Help {
+        topic,
+        format,
+        interface_filter,
+    })
+}
+
 fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<ShellCommand, String> {
     let label = if helper_mode { "helpers" } else { "genomes" };
     if tokens.len() < 2 {
@@ -1422,12 +1502,13 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "prepare" => {
             if tokens.len() < 3 {
                 return Err(format!(
-                    "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                    "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
                 ));
             }
             let genome_id = tokens[2].clone();
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut timeout_seconds: Option<u64> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -1443,6 +1524,17 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                             label,
                         )?)
                     }
+                    "--timeout-secs" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--timeout-secs", label)?;
+                        let parsed = raw
+                            .parse::<u64>()
+                            .map_err(|e| format!("Invalid --timeout-secs value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            timeout_seconds = None;
+                        } else {
+                            timeout_seconds = Some(parsed);
+                        }
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for {label} prepare"));
                     }
@@ -1453,6 +1545,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 genome_id,
                 catalog_path,
                 cache_dir,
+                timeout_seconds,
             })
         }
         "blast" => {
@@ -1798,7 +1891,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "generate" => {
             if tokens.len() < 4 {
                 return Err(
-                    "candidates generate requires SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]"
+                    "candidates generate requires SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry MODE] [--feature-boundary MODE] [--strand-relation MODE] [--limit N]"
                         .to_string(),
                 );
             }
@@ -1809,6 +1902,9 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut feature_kinds: Vec<String> = vec![];
             let mut feature_label_regex: Option<String> = None;
             let mut max_distance_bp: Option<usize> = None;
+            let mut feature_geometry_mode: Option<CandidateFeatureGeometryMode> = None;
+            let mut feature_boundary_mode: Option<CandidateFeatureBoundaryMode> = None;
+            let mut feature_strand_relation: Option<CandidateFeatureStrandRelation> = None;
             let mut limit: usize = DEFAULT_CANDIDATE_SET_LIMIT;
             let mut idx = 4usize;
             while idx < tokens.len() {
@@ -1871,6 +1967,34 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                                 .map_err(|e| format!("Invalid --max-distance value '{raw}': {e}"))?,
                         );
                     }
+                    "--feature-geometry" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-geometry",
+                            "candidates generate",
+                        )?;
+                        feature_geometry_mode = Some(parse_candidate_feature_geometry_mode(&raw)?);
+                    }
+                    "--feature-boundary" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-boundary",
+                            "candidates generate",
+                        )?;
+                        feature_boundary_mode = Some(parse_candidate_feature_boundary_mode(&raw)?);
+                    }
+                    "--strand-relation" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--strand-relation",
+                            "candidates generate",
+                        )?;
+                        feature_strand_relation =
+                            Some(parse_candidate_feature_strand_relation(&raw)?);
+                    }
                     "--limit" => {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--limit", "candidates generate")?;
@@ -1899,6 +2023,9 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 feature_kinds,
                 feature_label_regex,
                 max_distance_bp,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
                 limit,
             })
         }
@@ -1966,7 +2093,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "score-distance" => {
             if tokens.len() < 4 {
                 return Err(
-                    "candidates score-distance requires SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]"
+                    "candidates score-distance requires SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry MODE] [--feature-boundary MODE] [--strand-relation MODE]"
                         .to_string(),
                 );
             }
@@ -1974,6 +2101,9 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let metric = tokens[3].clone();
             let mut feature_kinds: Vec<String> = vec![];
             let mut feature_label_regex: Option<String> = None;
+            let mut feature_geometry_mode: Option<CandidateFeatureGeometryMode> = None;
+            let mut feature_boundary_mode: Option<CandidateFeatureBoundaryMode> = None;
+            let mut feature_strand_relation: Option<CandidateFeatureStrandRelation> = None;
             let mut idx = 4usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -1998,6 +2128,34 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?;
                         feature_label_regex = Some(raw);
                     }
+                    "--feature-geometry" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-geometry",
+                            "candidates score-distance",
+                        )?;
+                        feature_geometry_mode = Some(parse_candidate_feature_geometry_mode(&raw)?);
+                    }
+                    "--feature-boundary" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--feature-boundary",
+                            "candidates score-distance",
+                        )?;
+                        feature_boundary_mode = Some(parse_candidate_feature_boundary_mode(&raw)?);
+                    }
+                    "--strand-relation" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--strand-relation",
+                            "candidates score-distance",
+                        )?;
+                        feature_strand_relation =
+                            Some(parse_candidate_feature_strand_relation(&raw)?);
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for candidates score-distance"
@@ -2010,6 +2168,9 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 metric,
                 feature_kinds,
                 feature_label_regex,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
             })
         }
         "filter" => {
@@ -2200,7 +2361,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     }
     let cmd = tokens[0].as_str();
     match cmd {
-        "help" | "-h" | "--help" => Ok(ShellCommand::Help),
+        "help" | "-h" | "--help" => parse_help_command(tokens),
         "capabilities" => {
             if tokens.len() == 1 {
                 Ok(ShellCommand::Capabilities)
@@ -3168,10 +3329,41 @@ pub fn execute_shell_command_with_options(
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let result = match command {
-        ShellCommand::Help => ShellRunResult {
-            state_changed: false,
-            output: json!({ "help": shell_help_text() }),
-        },
+        ShellCommand::Help {
+            topic,
+            format,
+            interface_filter,
+        } => {
+            let help_output = if topic.is_empty() {
+                match format {
+                    HelpOutputFormat::Text => {
+                        json!({ "help": render_shell_help_text(interface_filter.as_deref())? })
+                    }
+                    HelpOutputFormat::Json => render_shell_help_json(interface_filter.as_deref())?,
+                    HelpOutputFormat::Markdown => json!({
+                        "help_markdown": render_shell_help_markdown(interface_filter.as_deref())?
+                    }),
+                }
+            } else {
+                match format {
+                    HelpOutputFormat::Text => json!({
+                        "topic": topic.join(" "),
+                        "help": render_shell_topic_help_text(topic, interface_filter.as_deref())?
+                    }),
+                    HelpOutputFormat::Json => {
+                        render_shell_topic_help_json(topic, interface_filter.as_deref())?
+                    }
+                    HelpOutputFormat::Markdown => json!({
+                        "topic": topic.join(" "),
+                        "help_markdown": render_shell_topic_help_markdown(topic, interface_filter.as_deref())?
+                    }),
+                }
+            };
+            ShellRunResult {
+                state_changed: false,
+                output: help_output,
+            }
+        }
         ShellCommand::Capabilities => ShellRunResult {
             state_changed: false,
             output: serde_json::to_value(GentleEngine::capabilities())
@@ -3539,14 +3731,15 @@ pub fn execute_shell_command_with_options(
             genome_id,
             catalog_path,
             cache_dir,
+            timeout_seconds,
         } => {
-            let op_result = engine
-                .apply(Operation::PrepareGenome {
-                    genome_id: genome_id.clone(),
-                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
-                    cache_dir: cache_dir.clone(),
-                })
-                .map_err(|e| e.to_string())?;
+            let op = Operation::PrepareGenome {
+                genome_id: genome_id.clone(),
+                catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                cache_dir: cache_dir.clone(),
+                timeout_seconds: *timeout_seconds,
+            };
+            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
             ShellRunResult {
                 state_changed: true,
                 output: json!({ "result": op_result }),
@@ -3933,6 +4126,9 @@ pub fn execute_shell_command_with_options(
             feature_kinds,
             feature_label_regex,
             max_distance_bp,
+            feature_geometry_mode,
+            feature_boundary_mode,
+            feature_strand_relation,
             limit,
         } => {
             let before = engine
@@ -3949,6 +4145,9 @@ pub fn execute_shell_command_with_options(
                     feature_kinds: feature_kinds.clone(),
                     feature_label_regex: feature_label_regex.clone(),
                     max_distance_bp: *max_distance_bp,
+                    feature_geometry_mode: *feature_geometry_mode,
+                    feature_boundary_mode: *feature_boundary_mode,
+                    feature_strand_relation: *feature_strand_relation,
                     limit: Some(*limit),
                 })
                 .map_err(|e| e.to_string())?;
@@ -3962,6 +4161,9 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "set_name": set_name,
                     "seq_id": seq_id,
+                    "feature_geometry_mode": feature_geometry_mode.map(|mode| mode.as_str()),
+                    "feature_boundary_mode": feature_boundary_mode.map(|mode| mode.as_str()),
+                    "feature_strand_relation": feature_strand_relation.map(|mode| mode.as_str()),
                     "result": op_result
                 }),
             }
@@ -4045,6 +4247,9 @@ pub fn execute_shell_command_with_options(
             metric,
             feature_kinds,
             feature_label_regex,
+            feature_geometry_mode,
+            feature_boundary_mode,
+            feature_strand_relation,
         } => {
             let before = engine
                 .state()
@@ -4057,6 +4262,9 @@ pub fn execute_shell_command_with_options(
                     metric: metric.clone(),
                     feature_kinds: feature_kinds.clone(),
                     feature_label_regex: feature_label_regex.clone(),
+                    feature_geometry_mode: *feature_geometry_mode,
+                    feature_boundary_mode: *feature_boundary_mode,
+                    feature_strand_relation: *feature_strand_relation,
                 })
                 .map_err(|e| e.to_string())?;
             let after = engine
@@ -4071,6 +4279,9 @@ pub fn execute_shell_command_with_options(
                     "metric": metric,
                     "feature_kind_filter": feature_kinds,
                     "feature_label_regex": feature_label_regex,
+                    "feature_geometry_mode": feature_geometry_mode.map(|mode| mode.as_str()),
+                    "feature_boundary_mode": feature_boundary_mode.map(|mode| mode.as_str()),
+                    "feature_strand_relation": feature_strand_relation.map(|mode| mode.as_str()),
                     "result": op_result
                 }),
             }
@@ -4215,6 +4426,45 @@ mod tests {
     use gb_io::seq::{Feature, FeatureKind, Location};
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn parse_help_with_topic_and_options() {
+        let cmd = parse_shell_line(
+            "help candidates generate --format json --interface cli-shell",
+        )
+        .expect("parse help with topic/options");
+        match cmd {
+            ShellCommand::Help {
+                topic,
+                format,
+                interface_filter,
+            } => {
+                assert_eq!(topic, vec!["candidates".to_string(), "generate".to_string()]);
+                assert_eq!(format, HelpOutputFormat::Json);
+                assert_eq!(interface_filter.as_deref(), Some("cli-shell"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_help_topic_json() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::Help {
+                topic: vec!["candidates".to_string(), "score-distance".to_string()],
+                format: HelpOutputFormat::Json,
+                interface_filter: None,
+            },
+        )
+        .expect("execute help topic json");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["doc"]["path"].as_str(),
+            Some("candidates score-distance")
+        );
+    }
 
     #[test]
     fn parse_workflow_payload_keeps_whitespace() {
@@ -4617,6 +4867,9 @@ mod tests {
                 feature_kinds,
                 feature_label_regex,
                 max_distance_bp,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
                 limit,
             } => {
                 assert_eq!(set_name, "set1");
@@ -4626,7 +4879,114 @@ mod tests {
                 assert_eq!(feature_kinds, vec!["gene".to_string(), "CDS".to_string()]);
                 assert_eq!(feature_label_regex.as_deref(), Some("^TP53$"));
                 assert_eq!(max_distance_bp, Some(100));
+                assert_eq!(feature_geometry_mode, None);
+                assert_eq!(feature_boundary_mode, None);
+                assert_eq!(feature_strand_relation, None);
                 assert_eq!(limit, 50);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_generate_with_strand_relation() {
+        let cmd = parse_shell_line(
+            "candidates generate set1 seqA --length 20 --strand-relation same",
+        )
+        .expect("parse candidates generate with strand relation");
+        match cmd {
+            ShellCommand::CandidatesGenerate {
+                set_name,
+                seq_id,
+                length_bp,
+                step_bp,
+                feature_kinds,
+                feature_label_regex,
+                max_distance_bp,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
+                limit,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(seq_id, "seqA");
+                assert_eq!(length_bp, 20);
+                assert_eq!(step_bp, 1);
+                assert!(feature_kinds.is_empty());
+                assert_eq!(feature_label_regex, None);
+                assert_eq!(max_distance_bp, None);
+                assert_eq!(feature_geometry_mode, None);
+                assert_eq!(feature_boundary_mode, None);
+                assert_eq!(
+                    feature_strand_relation,
+                    Some(CandidateFeatureStrandRelation::Same)
+                );
+                assert_eq!(limit, DEFAULT_CANDIDATE_SET_LIMIT);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_score_distance_with_geometry_and_boundary() {
+        let cmd = parse_shell_line(
+            "candidates score-distance set1 dist --feature-kind exon --feature-geometry feature_boundaries --feature-boundary five_prime",
+        )
+        .expect("parse candidates score-distance");
+        match cmd {
+            ShellCommand::CandidatesScoreDistance {
+                set_name,
+                metric,
+                feature_kinds,
+                feature_label_regex,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(metric, "dist");
+                assert_eq!(feature_kinds, vec!["exon".to_string()]);
+                assert_eq!(feature_label_regex, None);
+                assert_eq!(
+                    feature_geometry_mode,
+                    Some(CandidateFeatureGeometryMode::FeatureBoundaries)
+                );
+                assert_eq!(
+                    feature_boundary_mode,
+                    Some(CandidateFeatureBoundaryMode::FivePrime)
+                );
+                assert_eq!(feature_strand_relation, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_score_distance_with_strand_relation() {
+        let cmd = parse_shell_line(
+            "candidates score-distance set1 dist --feature-kind gene --strand-relation opposite",
+        )
+        .expect("parse candidates score-distance with strand relation");
+        match cmd {
+            ShellCommand::CandidatesScoreDistance {
+                set_name,
+                metric,
+                feature_kinds,
+                feature_label_regex,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
+            } => {
+                assert_eq!(set_name, "set1");
+                assert_eq!(metric, "dist");
+                assert_eq!(feature_kinds, vec!["gene".to_string()]);
+                assert_eq!(feature_label_regex, None);
+                assert_eq!(feature_geometry_mode, None);
+                assert_eq!(feature_boundary_mode, None);
+                assert_eq!(
+                    feature_strand_relation,
+                    Some(CandidateFeatureStrandRelation::Opposite)
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -4654,9 +5014,8 @@ mod tests {
 
     #[test]
     fn parse_candidates_macro_file_reference() {
-        let cmd =
-            parse_shell_line("candidates macro --file test_files/candidates_plan.gsh")
-                .expect("parse candidates macro --file");
+        let cmd = parse_shell_line("candidates macro --file test_files/candidates_plan.gsh")
+            .expect("parse candidates macro --file");
         match cmd {
             ShellCommand::CandidatesMacro {
                 script,
@@ -4725,18 +5084,19 @@ filter set1 set2 --metric score --min 10
                 feature_kinds: vec![],
                 feature_label_regex: None,
                 max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: 10,
             },
         )
         .expect("generate candidates");
         assert!(generated.state_changed);
         assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
-        assert!(
-            generated.output["result"]["messages"]
-                .as_array()
-                .map(|messages| !messages.is_empty())
-                .unwrap_or(false)
-        );
+        assert!(generated.output["result"]["messages"]
+            .as_array()
+            .map(|messages| !messages.is_empty())
+            .unwrap_or(false));
 
         let score_distance = execute_shell_command(
             &mut engine,
@@ -4745,6 +5105,9 @@ filter set1 set2 --metric score --min 10
                 metric: "dist_gene".to_string(),
                 feature_kinds: vec!["gene".to_string()],
                 feature_label_regex: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
             },
         )
         .expect("score distance");
@@ -4798,6 +5161,9 @@ filter set1 set2 --metric score --min 10
                 feature_kinds: vec![],
                 feature_label_regex: None,
                 max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: 10,
             },
         )
@@ -4812,6 +5178,9 @@ filter set1 set2 --metric score --min 10
                 feature_kinds: vec![],
                 feature_label_regex: None,
                 max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: 10,
             },
         )
@@ -5071,6 +5440,30 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn parse_genomes_prepare_with_timeout() {
+        let cmd = parse_shell_line(
+            "genomes prepare ToyGenome --catalog c.json --cache-dir cache --timeout-secs 90",
+        )
+        .expect("parse genomes prepare");
+        match cmd {
+            ShellCommand::ReferencePrepare {
+                helper_mode,
+                genome_id,
+                catalog_path,
+                cache_dir,
+                timeout_seconds,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome".to_string());
+                assert_eq!(catalog_path, Some("c.json".to_string()));
+                assert_eq!(cache_dir, Some("cache".to_string()));
+                assert_eq!(timeout_seconds, Some(90));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_genomes_extend_anchor_five_prime() {
         let cmd = parse_shell_line(
             "genomes extend-anchor tp73 5p 150 --output-id tp73_ext --catalog c.json --cache-dir cache",
@@ -5096,6 +5489,94 @@ filter set1 set2 --metric score --min 10
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn execute_genomes_extend_anchor_creates_sequence() {
+        let td = tempdir().expect("tempdir");
+        let fasta = td.path().join("toy.fa");
+        let gtf = td.path().join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").expect("write fasta");
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .expect("write gtf");
+        let catalog = td.path().join("catalog.json");
+        let cache_dir = td.path().join("cache");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog, catalog_json).expect("write catalog");
+        let catalog_path = catalog.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferencePrepare {
+                helper_mode: false,
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            },
+        )
+        .expect("prepare genome");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceExtractRegion {
+                helper_mode: false,
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("slice".to_string()),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+            },
+        )
+        .expect("extract region");
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceExtendAnchor {
+                helper_mode: false,
+                seq_id: "slice".to_string(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 2,
+                output_id: Some("slice_ext5".to_string()),
+                catalog_path: Some(catalog_path),
+                cache_dir: None,
+            },
+        )
+        .expect("execute extend-anchor");
+
+        assert!(out.state_changed);
+        let created = out
+            .output
+            .get("result")
+            .and_then(|v| v.get("created_seq_ids"))
+            .and_then(|v| v.as_array())
+            .expect("created_seq_ids");
+        assert!(created
+            .iter()
+            .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false)));
+        let seq = engine
+            .state()
+            .sequences
+            .get("slice_ext5")
+            .expect("extended sequence in state");
+        assert_eq!(seq.get_forward_string(), "ACGTACGTAC");
     }
 
     #[test]
@@ -5156,7 +5637,8 @@ filter set1 set2 --metric score --min 10
 
     #[test]
     fn parse_set_param_command() {
-        let cmd = parse_shell_line("set-param vcf_display_pass_only true").expect("parse set-param");
+        let cmd =
+            parse_shell_line("set-param vcf_display_pass_only true").expect("parse set-param");
         match cmd {
             ShellCommand::SetParameter { name, value_json } => {
                 assert_eq!(name, "vcf_display_pass_only");

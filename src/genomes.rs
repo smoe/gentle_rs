@@ -19,6 +19,7 @@ pub const DEFAULT_MAKEBLASTDB_BIN: &str = "makeblastdb";
 pub const DEFAULT_BLASTN_BIN: &str = "blastn";
 pub const MAKEBLASTDB_ENV_BIN: &str = "GENTLE_MAKEBLASTDB_BIN";
 pub const BLASTN_ENV_BIN: &str = "GENTLE_BLASTN_BIN";
+pub const PREPARE_GENOME_TIMEOUT_SECS_ENV: &str = "GENTLE_PREPARE_GENOME_TIMEOUT_SECS";
 const DEFAULT_NCBI_EFETCH_ENDPOINT: &str =
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi";
 const NCBI_EFETCH_ENV_VAR: &str = "GENTLE_NCBI_EFETCH_URL";
@@ -28,6 +29,9 @@ const HTTP_CONNECT_TIMEOUT_SECS: u64 = 20;
 const HTTP_READ_TIMEOUT_SECS: u64 = 120;
 const BLASTN_OUTFMT_FIELDS: &str =
     "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs";
+const PREPARE_CANCELLED_BY_CALLER: &str = "Genome preparation cancelled by caller";
+const ANNOTATION_PARSE_ISSUE_LIMIT: usize = 12;
+const ANNOTATION_PARSE_CONTEXT_CHARS: usize = 140;
 
 #[cfg(test)]
 pub(crate) fn genbank_env_lock() -> &'static std::sync::Mutex<()> {
@@ -100,6 +104,8 @@ pub struct PrepareGenomeReport {
     pub blast_index_executable: Option<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub annotation_parse_report: Option<AnnotationParseReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +173,26 @@ pub struct PrepareGenomeProgress {
     pub bytes_done: u64,
     pub bytes_total: Option<u64>,
     pub percent: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AnnotationParseIssue {
+    pub line: usize,
+    pub reason: String,
+    pub context: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AnnotationParseReport {
+    pub path: String,
+    pub source_format: String,
+    pub total_lines: usize,
+    pub parsed_gene_records: usize,
+    pub skipped_lines: usize,
+    pub malformed_lines: usize,
+    #[serde(default)]
+    pub issue_examples: Vec<AnnotationParseIssue>,
+    pub truncated_issue_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -392,7 +418,7 @@ impl GenomeCatalog {
         genome_id: &str,
         cache_dir_override: Option<&str>,
     ) -> Result<PrepareGenomeReport, String> {
-        let mut noop = |_| {};
+        let mut noop = |_p: PrepareGenomeProgress| true;
         self.prepare_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
     }
 
@@ -400,7 +426,7 @@ impl GenomeCatalog {
         &self,
         genome_id: &str,
         cache_dir_override: Option<&str>,
-        on_progress: &mut dyn FnMut(PrepareGenomeProgress),
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, String> {
         let entry = self.entry(genome_id)?;
         let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
@@ -417,13 +443,14 @@ impl GenomeCatalog {
             Self::validate_manifest_files(&manifest)?;
             let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
             let mut warnings: Vec<String> = vec![];
+            let mut annotation_parse_report: Option<AnnotationParseReport> = None;
             let gene_index_path = manifest
                 .gene_index_path
                 .as_ref()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| install_dir.join("genes.json"));
             if !gene_index_path.exists() {
-                build_gene_index_file(
+                let report = build_gene_index_file(
                     Path::new(&manifest.annotation_path),
                     &gene_index_path,
                     |done, total| {
@@ -440,9 +467,11 @@ impl GenomeCatalog {
                                     Some((done as f64 / t as f64) * 100.0)
                                 }
                             }),
-                        });
+                        })
                     },
                 )?;
+                warnings.extend(summarize_annotation_parse_warnings(&report));
+                annotation_parse_report = Some(report);
                 manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
             }
             let blast_prefix_path = manifest
@@ -450,27 +479,33 @@ impl GenomeCatalog {
                 .as_deref()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| default_blast_db_prefix(&install_dir));
-            on_progress(PrepareGenomeProgress {
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
                 phase: "index_blast".to_string(),
                 item: canonical_or_display(&blast_prefix_path),
                 bytes_done: 0,
                 bytes_total: None,
                 percent: None,
-            });
+                },
+            )?;
             let blast_outcome =
                 ensure_blast_index(Path::new(&manifest.sequence_path), &blast_prefix_path);
             if !blast_outcome.warnings.is_empty() {
                 warnings.extend(blast_outcome.warnings.clone());
             }
-            on_progress(PrepareGenomeProgress {
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
                 phase: "index_blast".to_string(),
                 item: canonical_or_display(&blast_prefix_path),
                 bytes_done: if blast_outcome.ready { 1 } else { 0 },
                 bytes_total: Some(1),
                 percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
-            });
+                },
+            )?;
             let mut manifest_changed = checksum_changed;
             let blast_prefix = canonical_or_display(&blast_prefix_path);
             if manifest.blast_db_prefix.as_deref() != Some(blast_prefix.as_str()) {
@@ -493,14 +528,17 @@ impl GenomeCatalog {
             if manifest_changed {
                 Self::write_manifest(&manifest_path, &manifest)?;
             }
-            on_progress(PrepareGenomeProgress {
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
                 phase: "ready".to_string(),
                 item: "manifest".to_string(),
                 bytes_done: 0,
                 bytes_total: None,
                 percent: Some(100.0),
-            });
+                },
+            )?;
             let sequence_source_type = manifest.sequence_source_type.clone().unwrap_or_else(|| {
                 classify_source_type_label(&manifest.sequence_source).to_string()
             });
@@ -522,6 +560,7 @@ impl GenomeCatalog {
                 blast_index_ready: blast_outcome.ready,
                 blast_index_executable: blast_outcome.executable,
                 warnings,
+                annotation_parse_report,
             });
         }
 
@@ -532,19 +571,9 @@ impl GenomeCatalog {
             entry.sequence_remote.as_ref(),
             entry,
         )?;
-        let annotation_resolution = self.resolve_source_with_type(
-            genome_id,
-            "annotation",
-            entry.annotations_local.as_ref(),
-            entry.annotations_remote.as_ref(),
-            entry,
-        )?;
         let sequence_source = sequence_resolution.source.clone();
-        let annotation_source = annotation_resolution.source.clone();
 
         let sequence_path = install_dir.join("sequence.fa");
-        let annotation_ext = infer_annotation_extension(&annotation_source);
-        let annotation_path = install_dir.join(format!("annotation.{annotation_ext}"));
         let fasta_index_path = install_dir.join("sequence.fa.fai");
         let gene_index_path = install_dir.join("genes.json");
         let blast_prefix_path = default_blast_db_prefix(&install_dir);
@@ -553,14 +582,17 @@ impl GenomeCatalog {
             let bytes = fs::metadata(&sequence_path)
                 .map(|meta| meta.len())
                 .unwrap_or(0);
-            on_progress(PrepareGenomeProgress {
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
                 phase: "reuse_sequence".to_string(),
                 item: canonical_or_display(&sequence_path),
                 bytes_done: bytes,
                 bytes_total: Some(bytes),
                 percent: Some(100.0),
-            });
+                },
+            )?;
         } else {
             materialize_source_with_progress(&sequence_source, &sequence_path, |done, total| {
                 on_progress(PrepareGenomeProgress {
@@ -576,9 +608,19 @@ impl GenomeCatalog {
                             Some((done as f64 / t as f64) * 100.0)
                         }
                     }),
-                });
+                })
             })?;
         }
+        let annotation_resolution = self.resolve_source_with_type(
+            genome_id,
+            "annotation",
+            entry.annotations_local.as_ref(),
+            entry.annotations_remote.as_ref(),
+            entry,
+        )?;
+        let annotation_source = annotation_resolution.source.clone();
+        let annotation_ext = infer_annotation_extension(&annotation_source);
+        let annotation_path = install_dir.join(format!("annotation.{annotation_ext}"));
         materialize_source_with_progress(&annotation_source, &annotation_path, |done, total| {
             on_progress(PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
@@ -593,7 +635,7 @@ impl GenomeCatalog {
                         Some((done as f64 / t as f64) * 100.0)
                     }
                 }),
-            });
+            })
         })?;
         build_fasta_index_with_progress(&sequence_path, &fasta_index_path, |done, total| {
             on_progress(PrepareGenomeProgress {
@@ -609,9 +651,9 @@ impl GenomeCatalog {
                         Some((done as f64 / t as f64) * 100.0)
                     }
                 }),
-            });
+            })
         })?;
-        build_gene_index_file(&annotation_path, &gene_index_path, |done, total| {
+        let annotation_parse_report = build_gene_index_file(&annotation_path, &gene_index_path, |done, total| {
             on_progress(PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
                 phase: "index_genes".to_string(),
@@ -625,25 +667,31 @@ impl GenomeCatalog {
                         Some((done as f64 / t as f64) * 100.0)
                     }
                 }),
-            });
+            })
         })?;
-        on_progress(PrepareGenomeProgress {
+        forward_prepare_progress(
+            on_progress,
+            PrepareGenomeProgress {
             genome_id: genome_id.to_string(),
             phase: "index_blast".to_string(),
             item: canonical_or_display(&blast_prefix_path),
             bytes_done: 0,
             bytes_total: None,
             percent: None,
-        });
+            },
+        )?;
         let blast_outcome = ensure_blast_index(&sequence_path, &blast_prefix_path);
-        on_progress(PrepareGenomeProgress {
+        forward_prepare_progress(
+            on_progress,
+            PrepareGenomeProgress {
             genome_id: genome_id.to_string(),
             phase: "index_blast".to_string(),
             item: canonical_or_display(&blast_prefix_path),
             bytes_done: if blast_outcome.ready { 1 } else { 0 },
             bytes_total: Some(1),
             percent: Some(if blast_outcome.ready { 100.0 } else { 0.0 }),
-        });
+            },
+        )?;
 
         let manifest = GenomeInstallManifest {
             genome_id: genome_id.to_string(),
@@ -668,14 +716,20 @@ impl GenomeCatalog {
         };
         Self::write_manifest(&manifest_path, &manifest)?;
 
-        on_progress(PrepareGenomeProgress {
+        forward_prepare_progress(
+            on_progress,
+            PrepareGenomeProgress {
             genome_id: genome_id.to_string(),
             phase: "ready".to_string(),
             item: "manifest".to_string(),
             bytes_done: 0,
             bytes_total: None,
             percent: Some(100.0),
-        });
+            },
+        )?;
+
+        let mut warnings = blast_outcome.warnings;
+        warnings.extend(summarize_annotation_parse_warnings(&annotation_parse_report));
 
         Ok(PrepareGenomeReport {
             genome_id: genome_id.to_string(),
@@ -690,7 +744,8 @@ impl GenomeCatalog {
             blast_db_prefix: manifest.blast_db_prefix.clone(),
             blast_index_ready: blast_outcome.ready,
             blast_index_executable: blast_outcome.executable,
-            warnings: blast_outcome.warnings,
+            warnings,
+            annotation_parse_report: Some(annotation_parse_report),
         })
     }
 
@@ -791,10 +846,10 @@ impl GenomeCatalog {
             .map(PathBuf::from)
             .unwrap_or_else(|| install_dir.join("genes.json"));
         if !gene_index_path.exists() {
-            build_gene_index_file(
+            let _ = build_gene_index_file(
                 Path::new(&manifest.annotation_path),
                 &gene_index_path,
-                |_done, _total| {},
+                |_done, _total| true,
             )?;
             manifest.gene_index_path = Some(canonical_or_display(&gene_index_path));
             Self::write_manifest(&manifest_path, &manifest)?;
@@ -1093,6 +1148,52 @@ fn canonical_or_display(path: &Path) -> String {
         .unwrap_or_else(|_| path.to_path_buf())
         .to_string_lossy()
         .into_owned()
+}
+
+pub fn is_prepare_cancelled_error(message: &str) -> bool {
+    message.contains(PREPARE_CANCELLED_BY_CALLER)
+}
+
+fn prepare_cancelled_error(context: &str) -> String {
+    format!("{PREPARE_CANCELLED_BY_CALLER}: {context}")
+}
+
+fn forward_prepare_progress(
+    on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
+    progress: PrepareGenomeProgress,
+) -> Result<(), String> {
+    if on_progress(progress) {
+        Ok(())
+    } else {
+        Err(prepare_cancelled_error("progress callback"))
+    }
+}
+
+fn summarize_annotation_parse_warnings(report: &AnnotationParseReport) -> Vec<String> {
+    let mut warnings: Vec<String> = vec![];
+    if report.malformed_lines == 0 {
+        return warnings;
+    }
+    warnings.push(format!(
+        "Annotation parse for '{}' skipped {} malformed line(s) while extracting genes (source={}, total_lines={})",
+        report.path,
+        report.malformed_lines,
+        report.source_format,
+        report.total_lines
+    ));
+    for issue in &report.issue_examples {
+        warnings.push(format!(
+            "Annotation parse issue at line {}: {} | {}",
+            issue.line, issue.reason, issue.context
+        ));
+    }
+    if report.truncated_issue_count > 0 {
+        warnings.push(format!(
+            "{} additional malformed annotation line(s) omitted from warning output",
+            report.truncated_issue_count
+        ));
+    }
+    warnings
 }
 
 fn compute_file_sha1(path: &Path) -> Result<String, String> {
@@ -1676,7 +1777,7 @@ fn download_http_source_with_resume<F>(
     on_progress: &mut F,
 ) -> Result<Option<u64>, String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
     if let Some(parent) = download_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -1815,7 +1916,9 @@ where
                 })?
         };
 
-        on_progress(base_done, overall_total);
+        if !on_progress(base_done, overall_total) {
+            return Err(prepare_cancelled_error("HTTP download progress"));
+        }
         let mut transferred: u64 = 0;
         let mut copy_error: Option<String> = None;
         let mut buf = [0u8; 64 * 1024];
@@ -1831,7 +1934,9 @@ where
                         break;
                     }
                     transferred = transferred.saturating_add(n as u64);
-                    on_progress(base_done.saturating_add(transferred), overall_total);
+                    if !on_progress(base_done.saturating_add(transferred), overall_total) {
+                        return Err(prepare_cancelled_error("HTTP download progress"));
+                    }
                 }
                 Err(e) => {
                     copy_error = Some(format!("Could not read HTTP response body: {e}"));
@@ -1903,11 +2008,15 @@ where
                     source, source_hint, msg
                 ));
             }
-            on_progress(total, Some(total));
+            if !on_progress(total, Some(total)) {
+                return Err(prepare_cancelled_error("HTTP download completion"));
+            }
             return Ok(Some(total));
         }
 
-        on_progress(final_done, Some(final_done));
+        if !on_progress(final_done, Some(final_done)) {
+            return Err(prepare_cancelled_error("HTTP download completion"));
+        }
         return Ok(Some(final_done));
     }
 
@@ -1935,11 +2044,16 @@ impl<R, F> ProgressReader<R, F> {
     }
 }
 
-impl<R: Read, F: FnMut(u64)> Read for ProgressReader<R, F> {
+impl<R: Read, F: FnMut(u64) -> bool> Read for ProgressReader<R, F> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let n = self.inner.read(buf)?;
         self.bytes_done += n as u64;
-        (self.callback)(self.bytes_done);
+        if !(self.callback)(self.bytes_done) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                PREPARE_CANCELLED_BY_CALLER,
+            ));
+        }
         Ok(n)
     }
 }
@@ -1950,7 +2064,7 @@ fn materialize_source_with_progress<F>(
     mut on_progress: F,
 ) -> Result<(), String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -1970,7 +2084,9 @@ where
             let compressed_size = compressed_total
                 .or_else(|| fs::metadata(&compressed_path).ok().map(|m| m.len()))
                 .unwrap_or(0);
-            on_progress(compressed_size, compressed_total.or(Some(compressed_size)));
+            if !on_progress(compressed_size, compressed_total.or(Some(compressed_size))) {
+                return Err(prepare_cancelled_error("annotation/sequence gzip download"));
+            }
             let mut writer = BufWriter::new(
                 File::create(&tmp_path)
                     .map_err(|e| format!("Could not create '{}': {e}", tmp_path.display()))?,
@@ -2007,7 +2123,9 @@ where
         let done = downloaded_total
             .or_else(|| fs::metadata(&tmp_path).ok().map(|m| m.len()))
             .unwrap_or(0);
-        on_progress(done, downloaded_total.or(Some(done)));
+        if !on_progress(done, downloaded_total.or(Some(done))) {
+            return Err(prepare_cancelled_error("annotation/sequence download"));
+        }
         fs::rename(&tmp_path, destination).map_err(|e| {
             format!(
                 "Could not finalize destination '{}': {e}",
@@ -2021,7 +2139,9 @@ where
         reader,
         total_bytes,
     } = open_source_reader(source)?;
-    on_progress(0, total_bytes);
+    if !on_progress(0, total_bytes) {
+        return Err(prepare_cancelled_error("local source copy"));
+    }
     let mut writer = BufWriter::new(
         File::create(&tmp_path)
             .map_err(|e| format!("Could not create '{}': {e}", tmp_path.display()))?,
@@ -2048,7 +2168,9 @@ where
         .flush()
         .map_err(|e| format!("Could not flush '{}': {e}", tmp_path.display()))?;
     let final_done = fs::metadata(&tmp_path).ok().map(|m| m.len()).unwrap_or(0);
-    on_progress(total_bytes.unwrap_or(final_done), total_bytes);
+    if !on_progress(total_bytes.unwrap_or(final_done), total_bytes) {
+        return Err(prepare_cancelled_error("local source copy completion"));
+    }
     fs::rename(&tmp_path, destination).map_err(|e| {
         format!(
             "Could not finalize destination '{}': {e}",
@@ -2319,7 +2441,7 @@ fn build_fasta_index_with_progress<F>(
     mut on_progress: F,
 ) -> Result<(), String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
     let total_bytes = fs::metadata(fasta_path).ok().map(|m| m.len());
     let file = File::open(fasta_path)
@@ -2330,7 +2452,9 @@ where
     let mut entries: Vec<(String, FastaIndexEntry, bool)> = Vec::new();
     // tuple fields: (name, entry, saw_short_line)
     let mut active: Option<(String, FastaIndexEntry, bool)> = None;
-    on_progress(0, total_bytes);
+    if !on_progress(0, total_bytes) {
+        return Err(prepare_cancelled_error("FASTA indexing start"));
+    }
 
     loop {
         line.clear();
@@ -2404,7 +2528,9 @@ where
             }
         }
         byte_offset += bytes_read as u64;
-        on_progress(byte_offset, total_bytes);
+        if !on_progress(byte_offset, total_bytes) {
+            return Err(prepare_cancelled_error("FASTA indexing progress"));
+        }
     }
 
     if let Some((name, entry, _)) = active {
@@ -2457,7 +2583,9 @@ where
             index_path.display()
         )
     })?;
-    on_progress(total_bytes.unwrap_or(byte_offset), total_bytes);
+    if !on_progress(total_bytes.unwrap_or(byte_offset), total_bytes) {
+        return Err(prepare_cancelled_error("FASTA indexing completion"));
+    }
     Ok(())
 }
 
@@ -2593,11 +2721,11 @@ fn build_gene_index_file<F>(
     annotation_path: &Path,
     gene_index_path: &Path,
     on_progress: F,
-) -> Result<(), String>
+) -> Result<AnnotationParseReport, String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
-    let genes = parse_annotation_gene_records_with_progress(annotation_path, on_progress)?;
+    let (genes, report) = parse_annotation_gene_records_with_progress(annotation_path, on_progress)?;
     if let Some(parent) = gene_index_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -2618,7 +2746,7 @@ where
             gene_index_path.display()
         )
     })?;
-    Ok(())
+    Ok(report)
 }
 
 fn load_gene_index_file(gene_index_path: &Path) -> Result<Vec<GenomeGeneRecord>, String> {
@@ -2639,9 +2767,9 @@ fn load_gene_index_file(gene_index_path: &Path) -> Result<Vec<GenomeGeneRecord>,
 fn parse_annotation_gene_records_with_progress<F>(
     path: &Path,
     on_progress: F,
-) -> Result<Vec<GenomeGeneRecord>, String>
+) -> Result<(Vec<GenomeGeneRecord>, AnnotationParseReport), String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
     if is_genbank_annotation_path(path) {
         parse_genbank_gene_records_with_progress(path, on_progress)
@@ -2665,18 +2793,24 @@ fn is_genbank_annotation_path(path: &Path) -> bool {
 fn parse_tabular_annotation_gene_records_with_progress<F>(
     path: &Path,
     mut on_progress: F,
-) -> Result<Vec<GenomeGeneRecord>, String>
+) -> Result<(Vec<GenomeGeneRecord>, AnnotationParseReport), String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
     let total_bytes = fs::metadata(path).ok().map(|m| m.len());
     let file = File::open(path)
         .map_err(|e| format!("Could not open annotation file '{}': {e}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut genes: Vec<GenomeGeneRecord> = vec![];
+    let mut total_lines: usize = 0;
+    let mut skipped_lines: usize = 0;
+    let mut malformed_lines: usize = 0;
+    let mut issue_examples: Vec<AnnotationParseIssue> = vec![];
     let mut bytes_read_total: u64 = 0;
     let mut raw_line: Vec<u8> = vec![];
-    on_progress(0, total_bytes);
+    if !on_progress(0, total_bytes) {
+        return Err(prepare_cancelled_error("annotation parse start"));
+    }
     loop {
         raw_line.clear();
         let line_bytes = reader
@@ -2685,59 +2819,108 @@ where
         if line_bytes == 0 {
             break;
         }
+        total_lines = total_lines.saturating_add(1);
         bytes_read_total = bytes_read_total.saturating_add(line_bytes as u64);
-        on_progress(bytes_read_total, total_bytes);
+        if !on_progress(bytes_read_total, total_bytes) {
+            return Err(prepare_cancelled_error("annotation parse progress"));
+        }
         if raw_line.ends_with(b"\n") {
             raw_line.pop();
         }
         if raw_line.ends_with(b"\r") {
             raw_line.pop();
         }
-        let line = String::from_utf8_lossy(&raw_line);
+        let line = match std::str::from_utf8(&raw_line) {
+            Ok(v) => v.to_string(),
+            Err(_) => {
+                malformed_lines = malformed_lines.saturating_add(1);
+                skipped_lines = skipped_lines.saturating_add(1);
+                push_annotation_parse_issue(
+                    &mut issue_examples,
+                    total_lines,
+                    "line is not valid UTF-8",
+                    &String::from_utf8_lossy(&raw_line),
+                );
+                continue;
+            }
+        };
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
+            skipped_lines = skipped_lines.saturating_add(1);
             continue;
         }
 
-        let mut cols = trimmed.splitn(9, '\t');
-        let chromosome = match cols.next().map(str::trim) {
-            Some(v) if !v.is_empty() => v,
-            _ => continue,
-        };
-        if cols.next().is_none() {
+        let cols: Vec<&str> = trimmed.split('\t').collect();
+        if cols.len() < 9 {
+            malformed_lines = malformed_lines.saturating_add(1);
+            skipped_lines = skipped_lines.saturating_add(1);
+            push_annotation_parse_issue(
+                &mut issue_examples,
+                total_lines,
+                "expected at least 9 tab-separated columns",
+                trimmed,
+            );
             continue;
         }
-        let feature_kind = match cols.next() {
-            Some(v) => v,
-            None => continue,
-        };
-        let start_1based = match cols.next().and_then(parse_annotation_coordinate) {
-            Some(v) => v,
-            None => continue,
-        };
-        let end_1based = match cols.next().and_then(parse_annotation_coordinate) {
-            Some(v) => v,
-            None => continue,
-        };
-        if cols.next().is_none() {
+
+        let chromosome = cols[0].trim();
+        if chromosome.is_empty() {
+            malformed_lines = malformed_lines.saturating_add(1);
+            skipped_lines = skipped_lines.saturating_add(1);
+            push_annotation_parse_issue(
+                &mut issue_examples,
+                total_lines,
+                "chromosome/contig column is empty",
+                trimmed,
+            );
             continue;
         }
-        let strand_raw = match cols.next() {
+
+        let feature_kind = cols[2];
+        let start_1based = match parse_annotation_coordinate(cols[3]) {
             Some(v) => v,
-            None => continue,
+            None => {
+                malformed_lines = malformed_lines.saturating_add(1);
+                skipped_lines = skipped_lines.saturating_add(1);
+                push_annotation_parse_issue(
+                    &mut issue_examples,
+                    total_lines,
+                    "invalid start coordinate",
+                    trimmed,
+                );
+                continue;
+            }
         };
-        if cols.next().is_none() {
-            continue;
-        }
-        let attrs_raw = match cols.next() {
+        let end_1based = match parse_annotation_coordinate(cols[4]) {
             Some(v) => v,
-            None => continue,
+            None => {
+                malformed_lines = malformed_lines.saturating_add(1);
+                skipped_lines = skipped_lines.saturating_add(1);
+                push_annotation_parse_issue(
+                    &mut issue_examples,
+                    total_lines,
+                    "invalid end coordinate",
+                    trimmed,
+                );
+                continue;
+            }
         };
+        let strand_raw = cols[6];
+        let attrs_raw = cols[8];
 
         if !is_gene_feature_kind(feature_kind) {
+            skipped_lines = skipped_lines.saturating_add(1);
             continue;
         }
         if start_1based == 0 || end_1based < start_1based {
+            malformed_lines = malformed_lines.saturating_add(1);
+            skipped_lines = skipped_lines.saturating_add(1);
+            push_annotation_parse_issue(
+                &mut issue_examples,
+                total_lines,
+                "gene interval has start/end inconsistency",
+                trimmed,
+            );
             continue;
         }
         let attrs = parse_annotation_attributes(attrs_raw);
@@ -2778,19 +2961,34 @@ where
             .then(a.start_1based.cmp(&b.start_1based))
             .then(a.end_1based.cmp(&b.end_1based))
     });
-    on_progress(total_bytes.unwrap_or(bytes_read_total), total_bytes);
-    Ok(genes)
+    if !on_progress(total_bytes.unwrap_or(bytes_read_total), total_bytes) {
+        return Err(prepare_cancelled_error("annotation parse completion"));
+    }
+    let issue_examples_len = issue_examples.len();
+    let report = AnnotationParseReport {
+        path: canonical_or_display(path),
+        source_format: "tabular".to_string(),
+        total_lines,
+        parsed_gene_records: genes.len(),
+        skipped_lines,
+        malformed_lines,
+        issue_examples,
+        truncated_issue_count: malformed_lines.saturating_sub(issue_examples_len),
+    };
+    Ok((genes, report))
 }
 
 fn parse_genbank_gene_records_with_progress<F>(
     path: &Path,
     mut on_progress: F,
-) -> Result<Vec<GenomeGeneRecord>, String>
+) -> Result<(Vec<GenomeGeneRecord>, AnnotationParseReport), String>
 where
-    F: FnMut(u64, Option<u64>),
+    F: FnMut(u64, Option<u64>) -> bool,
 {
     let total_bytes = fs::metadata(path).ok().map(|m| m.len());
-    on_progress(0, total_bytes);
+    if !on_progress(0, total_bytes) {
+        return Err(prepare_cancelled_error("GenBank annotation parse start"));
+    }
     let parsed = gb_io::reader::parse_file(path.to_string_lossy().as_ref()).map_err(|e| {
         format!(
             "Could not parse GenBank annotation file '{}': {e}",
@@ -2876,8 +3074,47 @@ where
             .then(a.end_1based.cmp(&b.end_1based))
     });
     let total_done = total_bytes.unwrap_or(0);
-    on_progress(total_done, total_bytes);
-    Ok(records)
+    if !on_progress(total_done, total_bytes) {
+        return Err(prepare_cancelled_error("GenBank annotation parse completion"));
+    }
+    let report = AnnotationParseReport {
+        path: canonical_or_display(path),
+        source_format: "genbank".to_string(),
+        total_lines: 0,
+        parsed_gene_records: records.len(),
+        skipped_lines: 0,
+        malformed_lines: 0,
+        issue_examples: vec![],
+        truncated_issue_count: 0,
+    };
+    Ok((records, report))
+}
+
+fn push_annotation_parse_issue(
+    issue_examples: &mut Vec<AnnotationParseIssue>,
+    line: usize,
+    reason: &str,
+    context: &str,
+) {
+    if issue_examples.len() >= ANNOTATION_PARSE_ISSUE_LIMIT {
+        return;
+    }
+    let mut normalized = context.replace('\t', " ");
+    normalized = normalized.trim().to_string();
+    let context = if normalized.chars().count() > ANNOTATION_PARSE_CONTEXT_CHARS {
+        let clipped: String = normalized
+            .chars()
+            .take(ANNOTATION_PARSE_CONTEXT_CHARS)
+            .collect();
+        format!("{clipped}...")
+    } else {
+        normalized
+    };
+    issue_examples.push(AnnotationParseIssue {
+        line,
+        reason: reason.to_string(),
+        context,
+    });
 }
 
 fn genbank_record_chromosome(seq: &gb_io::seq::Seq, record_idx: usize) -> String {
@@ -3387,6 +3624,7 @@ mod tests {
         let first_err = catalog
             .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
                 first_phases.push(progress.phase);
+                true
             })
             .unwrap_err();
         assert!(first_err.contains("missing_annotation.gtf"));
@@ -3401,6 +3639,7 @@ mod tests {
         let second_err = catalog
             .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
                 second_phases.push(progress.phase);
+                true
             })
             .unwrap_err();
         assert!(second_err.contains("missing_annotation.gtf"));
@@ -3450,6 +3689,7 @@ mod tests {
         let first = catalog
             .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
                 first_phases.push(progress.phase);
+                true
             })
             .unwrap();
         assert!(!first.reused_existing);
@@ -3464,6 +3704,7 @@ mod tests {
         let second = catalog
             .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
                 second_phases.push(progress.phase);
+                true
             })
             .unwrap();
         assert!(second.reused_existing);
@@ -3475,6 +3716,44 @@ mod tests {
             .any(|phase| phase == "download_annotation"));
         assert!(second_phases.iter().any(|phase| phase == "index_blast"));
         assert!(second_phases.iter().any(|phase| phase == "ready"));
+    }
+
+    #[test]
+    fn test_prepare_genome_progress_callback_can_cancel() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGT\nACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let err = catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |_progress| false)
+            .unwrap_err();
+        assert!(is_prepare_cancelled_error(&err));
     }
 
     #[test]
@@ -3562,8 +3841,13 @@ mod tests {
         bytes.extend_from_slice(&[0xff, 0xfe, 0x00, b'\n']);
         fs::write(&path, bytes).unwrap();
 
-        let genes = parse_annotation_gene_records_with_progress(&path, |_done, _total| {}).unwrap();
+        let (genes, report) =
+            parse_annotation_gene_records_with_progress(&path, |_done, _total| true)
+                .unwrap();
         assert_eq!(genes.len(), 5);
+        assert_eq!(report.parsed_gene_records, 5);
+        assert_eq!(report.malformed_lines, 3);
+        assert!(!report.issue_examples.is_empty());
         assert!(genes.iter().any(|g| g.gene_id.as_deref() == Some("GENE1")
             && g.gene_name.as_deref() == Some("Gene One")
             && g.biotype.as_deref() == Some("protein_coding")));
@@ -3598,9 +3882,12 @@ mod tests {
         bytes.extend_from_slice(b"chr1\tsrc\texon\t41\t50\t.\t-\t.\tID=exon:E1\n");
         fs::write(&path, bytes).unwrap();
 
-        let genes =
-            parse_annotation_gene_records_with_progress(&path, |_done, _total| {}).unwrap();
+        let (genes, report) =
+            parse_annotation_gene_records_with_progress(&path, |_done, _total| true)
+                .unwrap();
         assert_eq!(genes.len(), 3);
+        assert_eq!(report.malformed_lines, 3);
+        assert!(!report.issue_examples.is_empty());
         assert!(genes.iter().any(|g| {
             g.gene_id.as_deref() == Some("G1")
                 && g.gene_name.as_deref() == Some("Good One")
@@ -3815,12 +4102,13 @@ mod tests {
 
     #[test]
     fn test_parse_genbank_annotation_records_pgex() {
-        let genes = parse_annotation_gene_records_with_progress(
+        let (genes, report) = parse_annotation_gene_records_with_progress(
             Path::new("test_files/pGEX-3X.gb"),
-            |_done, _total| {},
+            |_done, _total| true,
         )
         .unwrap();
         assert!(!genes.is_empty());
+        assert_eq!(report.source_format, "genbank");
         assert!(genes
             .iter()
             .any(|g| g.biotype.as_deref() == Some("promoter")));
@@ -3927,7 +4215,7 @@ mod tests {
             "Mouse GRCm39 Ensembl 116",
             "Rat GRCr8 Ensembl 116",
             "Saccharomyces cerevisiae S288c Ensembl 113",
-            "Saccharomyces cerevisiae S288c Ensembl 116",
+            "Saccharomyces cerevisiae S288c Ensembl 115",
             "LocalProject",
         ] {
             assert!(

@@ -678,6 +678,7 @@ impl LuaInterface {
                             genome_id,
                             catalog_path,
                             cache_dir,
+                            timeout_seconds: None,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]
@@ -1088,5 +1089,105 @@ impl FromLuaMulti for DNAsequence {
         let table = json!(table);
         let ret: DNAsequence = serde_json::from_value(table).unwrap();
         Ok(ret)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn lua_sync_rebase_wrapper_writes_snapshot() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("rebase.withrefm");
+        let output_path = td.path().join("rebase.json");
+        fs::write(
+            &input_path,
+            "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n",
+        )
+        .expect("write rebase input");
+        let report = LuaInterface::sync_rebase(
+            input_path.to_string_lossy().to_string(),
+            Some(output_path.to_string_lossy().to_string()),
+            Some(true),
+        )
+        .expect("sync rebase");
+        assert_eq!(report.resource, "rebase-commercial");
+        assert_eq!(report.item_count, 1);
+        assert!(output_path.exists());
+    }
+
+    #[test]
+    fn lua_sync_jaspar_wrapper_writes_snapshot() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("motifs.pfm");
+        let output_path = td.path().join("motifs.json");
+        fs::write(
+            &input_path,
+            ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n",
+        )
+        .expect("write jaspar input");
+        let report = LuaInterface::sync_jaspar(
+            input_path.to_string_lossy().to_string(),
+            Some(output_path.to_string_lossy().to_string()),
+        )
+        .expect("sync jaspar");
+        assert_eq!(report.resource, "jaspar");
+        assert_eq!(report.item_count, 1);
+        assert!(output_path.exists());
+    }
+
+    #[test]
+    fn lua_import_pool_wrapper_loads_member_into_state() {
+        let td = tempdir().expect("tempdir");
+        let pool_path = td.path().join("demo.pool.gentle.json");
+        let pool_json = json!({
+            "schema": "gentle.pool.v1",
+            "pool_id": "demo_pool",
+            "human_id": "demo",
+            "member_count": 1,
+            "members": [
+                {
+                    "seq_id": "member_1",
+                    "human_id": "member_1",
+                    "name": "Member One",
+                    "sequence": "ATGCATGC",
+                    "length_bp": 8,
+                    "topology": "linear",
+                    "ends": {
+                        "end_type": "blunt",
+                        "forward_5": "",
+                        "forward_3": "",
+                        "reverse_5": "",
+                        "reverse_3": ""
+                    }
+                }
+            ]
+        });
+        fs::write(
+            &pool_path,
+            serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
+        )
+        .expect("write pool json");
+        let out = LuaInterface::import_pool(
+            ProjectState::default(),
+            pool_path.to_string_lossy().to_string(),
+            Some("lua_pool".to_string()),
+        )
+        .expect("import pool");
+        assert!(out.state_changed);
+        assert_eq!(out.output["pool_id"].as_str(), Some("demo_pool"));
+        assert_eq!(out.output["member_count"].as_u64(), Some(1));
+        let imported_ids = out
+            .output
+            .get("imported_ids")
+            .and_then(|v| v.as_array())
+            .expect("imported_ids array");
+        assert_eq!(imported_ids.len(), 1);
+        let imported_id = imported_ids[0].as_str().expect("imported id string");
+        assert!(out.state.sequences.contains_key(imported_id));
     }
 }

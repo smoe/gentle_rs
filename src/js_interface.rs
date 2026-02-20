@@ -57,6 +57,60 @@ fn sync_report_from_shell_output(
     })
 }
 
+fn sync_rebase_resource_impl(
+    input: &str,
+    output: &str,
+    commercial_only: bool,
+) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::ResourcesSyncRebase {
+        input: input.to_string(),
+        output: empty_to_none(output).map(str::to_string),
+        commercial_only,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("resources sync-rebase failed: {e}"))?;
+    sync_report_from_shell_output(run.output, "resources sync-rebase")
+}
+
+fn sync_jaspar_resource_impl(
+    input: &str,
+    output: &str,
+) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::ResourcesSyncJaspar {
+        input: input.to_string(),
+        output: empty_to_none(output).map(str::to_string),
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("resources sync-jaspar failed: {e}"))?;
+    sync_report_from_shell_output(run.output, "resources sync-jaspar")
+}
+
+fn import_pool_impl(
+    state: ProjectState,
+    input: &str,
+    prefix: &str,
+) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+    let mut engine = GentleEngine::from_state(state);
+    let prefix = if prefix.trim().is_empty() {
+        "pool".to_string()
+    } else {
+        prefix.trim().to_string()
+    };
+    let command = ShellCommand::ImportPool {
+        input: input.to_string(),
+        prefix,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("import-pool failed: {e}"))?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
+}
+
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, deno_core::anyhow::Error> {
@@ -77,16 +131,7 @@ fn sync_rebase_resource(
     #[string] output: &str,
     commercial_only: bool,
 ) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
-    let mut engine = GentleEngine::from_state(ProjectState::default());
-    let command = ShellCommand::ResourcesSyncRebase {
-        input: input.to_string(),
-        output: empty_to_none(output).map(str::to_string),
-        commercial_only,
-    };
-    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
-        deno_core::anyhow::anyhow!("resources sync-rebase failed: {e}")
-    })?;
-    sync_report_from_shell_output(run.output, "resources sync-rebase")
+    sync_rebase_resource_impl(input, output, commercial_only)
 }
 
 #[op2]
@@ -95,15 +140,7 @@ fn sync_jaspar_resource(
     #[string] input: &str,
     #[string] output: &str,
 ) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
-    let mut engine = GentleEngine::from_state(ProjectState::default());
-    let command = ShellCommand::ResourcesSyncJaspar {
-        input: input.to_string(),
-        output: empty_to_none(output).map(str::to_string),
-    };
-    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
-        deno_core::anyhow::anyhow!("resources sync-jaspar failed: {e}")
-    })?;
-    sync_report_from_shell_output(run.output, "resources sync-jaspar")
+    sync_jaspar_resource_impl(input, output)
 }
 
 #[op2]
@@ -113,23 +150,7 @@ fn import_pool(
     #[string] input: &str,
     #[string] prefix: &str,
 ) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
-    let mut engine = GentleEngine::from_state(state);
-    let prefix = if prefix.trim().is_empty() {
-        "pool".to_string()
-    } else {
-        prefix.trim().to_string()
-    };
-    let command = ShellCommand::ImportPool {
-        input: input.to_string(),
-        prefix,
-    };
-    let run = execute_shell_command(&mut engine, &command)
-        .map_err(|e| deno_core::anyhow::anyhow!("import-pool failed: {e}"))?;
-    Ok(ShellUtilityApplyResponse {
-        state: engine.state().clone(),
-        state_changed: run.state_changed,
-        output: run.output,
-    })
+    import_pool_impl(state, input, prefix)
 }
 
 #[op2]
@@ -630,5 +651,106 @@ impl JavaScriptInterface {
 impl Default for JavaScriptInterface {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn js_sync_rebase_resource_wrapper_writes_snapshot() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("rebase.withrefm");
+        let output_path = td.path().join("rebase.json");
+        fs::write(
+            &input_path,
+            "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n",
+        )
+        .expect("write rebase input");
+        let report = sync_rebase_resource_impl(
+            input_path.to_string_lossy().as_ref(),
+            output_path.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("sync rebase");
+        assert_eq!(report.resource, "rebase-commercial");
+        assert_eq!(report.item_count, 1);
+        assert!(output_path.exists());
+    }
+
+    #[test]
+    fn js_sync_jaspar_resource_wrapper_writes_snapshot() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("motifs.pfm");
+        let output_path = td.path().join("motifs.json");
+        fs::write(
+            &input_path,
+            ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n",
+        )
+        .expect("write jaspar input");
+        let report = sync_jaspar_resource_impl(
+            input_path.to_string_lossy().as_ref(),
+            output_path.to_string_lossy().as_ref(),
+        )
+        .expect("sync jaspar");
+        assert_eq!(report.resource, "jaspar");
+        assert_eq!(report.item_count, 1);
+        assert!(output_path.exists());
+    }
+
+    #[test]
+    fn js_import_pool_wrapper_loads_member_into_state() {
+        let td = tempdir().expect("tempdir");
+        let pool_path = td.path().join("demo.pool.gentle.json");
+        let pool_json = json!({
+            "schema": "gentle.pool.v1",
+            "pool_id": "demo_pool",
+            "human_id": "demo",
+            "member_count": 1,
+            "members": [
+                {
+                    "seq_id": "member_1",
+                    "human_id": "member_1",
+                    "name": "Member One",
+                    "sequence": "ATGCATGC",
+                    "length_bp": 8,
+                    "topology": "linear",
+                    "ends": {
+                        "end_type": "blunt",
+                        "forward_5": "",
+                        "forward_3": "",
+                        "reverse_5": "",
+                        "reverse_3": ""
+                    }
+                }
+            ]
+        });
+        fs::write(
+            &pool_path,
+            serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
+        )
+        .expect("write pool json");
+        let state = ProjectState::default();
+        let out = import_pool_impl(
+            state,
+            pool_path.to_string_lossy().as_ref(),
+            "js_pool",
+        )
+        .expect("import pool");
+        assert!(out.state_changed);
+        assert_eq!(out.output["pool_id"].as_str(), Some("demo_pool"));
+        assert_eq!(out.output["member_count"].as_u64(), Some(1));
+        let imported_ids = out
+            .output
+            .get("imported_ids")
+            .and_then(|v| v.as_array())
+            .expect("imported_ids array");
+        assert_eq!(imported_ids.len(), 1);
+        let imported_id = imported_ids[0].as_str().expect("imported id string");
+        assert!(out.state.sequences.contains_key(imported_id));
     }
 }
