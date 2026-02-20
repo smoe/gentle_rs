@@ -1,14 +1,14 @@
 use crate::{
-    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
+    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     engine::{
-        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, DisplayTarget, Engine, EngineError,
-        ErrorCode, ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation,
-        OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
-        TfbsProgress, Workflow,
+        AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateRecord,
+        CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode, ExportFormat,
+        GentleEngine, LigationProtocol, OpResult, Operation, OperationProgress, PcrPrimerSpec,
+        RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
-        execute_shell_command_with_options, parse_shell_line, shell_help_text,
+        execute_shell_command_with_options, parse_shell_line, shell_help_text, ShellCommand,
         ShellExecutionOptions,
     },
     icons::*,
@@ -20,7 +20,9 @@ use crate::{
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{
+    cmp::Ordering,
     collections::{BTreeSet, HashMap},
+    fs,
     path::PathBuf,
     sync::{
         mpsc::{self, Receiver, TryRecvError},
@@ -120,6 +122,66 @@ struct EngineOpsUiState {
     #[serde(default)]
     anchored_max_candidates: String,
     #[serde(default)]
+    candidate_set_name: String,
+    #[serde(default)]
+    candidate_source_seq_id: String,
+    #[serde(default)]
+    candidate_length_bp: String,
+    #[serde(default)]
+    candidate_step_bp: String,
+    #[serde(default)]
+    candidate_feature_kinds: String,
+    #[serde(default)]
+    candidate_feature_label_regex: String,
+    #[serde(default)]
+    candidate_max_distance_bp: String,
+    #[serde(default)]
+    candidate_limit: String,
+    #[serde(default)]
+    candidate_selected_set: String,
+    #[serde(default)]
+    candidate_page_limit: String,
+    #[serde(default)]
+    candidate_page_offset: String,
+    #[serde(default)]
+    candidate_sort_key: String,
+    #[serde(default)]
+    candidate_sort_desc: bool,
+    #[serde(default)]
+    candidate_score_metric: String,
+    #[serde(default)]
+    candidate_score_expression: String,
+    #[serde(default)]
+    candidate_distance_metric: String,
+    #[serde(default)]
+    candidate_distance_feature_kinds: String,
+    #[serde(default)]
+    candidate_distance_feature_label_regex: String,
+    #[serde(default)]
+    candidate_filter_input_set: String,
+    #[serde(default)]
+    candidate_filter_output_set: String,
+    #[serde(default)]
+    candidate_filter_metric: String,
+    #[serde(default)]
+    candidate_filter_min: String,
+    #[serde(default)]
+    candidate_filter_max: String,
+    #[serde(default)]
+    candidate_filter_min_quantile: String,
+    #[serde(default)]
+    candidate_filter_max_quantile: String,
+    #[serde(default)]
+    candidate_setop_mode: String,
+    #[serde(default)]
+    candidate_setop_left: String,
+    #[serde(default)]
+    candidate_setop_right: String,
+    #[serde(default)]
+    candidate_setop_output: String,
+    #[serde(default)]
+    candidate_macro_script: String,
+    #[serde(default)]
     tfbs_motifs: String,
     #[serde(default)]
     tfbs_use_all_motifs: bool,
@@ -151,6 +213,28 @@ struct EngineOpsUiState {
     tfbs_display_use_true_log_odds_quantile: bool,
     #[serde(default = "default_tfbs_quantile")]
     tfbs_display_min_true_log_odds_quantile: f64,
+    #[serde(default = "default_true")]
+    vcf_display_show_snp: bool,
+    #[serde(default = "default_true")]
+    vcf_display_show_ins: bool,
+    #[serde(default = "default_true")]
+    vcf_display_show_del: bool,
+    #[serde(default = "default_true")]
+    vcf_display_show_sv: bool,
+    #[serde(default = "default_true")]
+    vcf_display_show_other: bool,
+    #[serde(default)]
+    vcf_display_pass_only: bool,
+    #[serde(default)]
+    vcf_display_use_min_qual: bool,
+    #[serde(default = "default_zero_f64")]
+    vcf_display_min_qual: f64,
+    #[serde(default)]
+    vcf_display_use_max_qual: bool,
+    #[serde(default = "default_zero_f64")]
+    vcf_display_max_qual: f64,
+    #[serde(default)]
+    vcf_display_required_info_keys: String,
     #[serde(default)]
     container_digest_id: String,
     #[serde(default)]
@@ -305,6 +389,36 @@ pub struct MainAreaDna {
     anchored_output_prefix: String,
     anchored_unique: bool,
     anchored_max_candidates: String,
+    candidate_set_name: String,
+    candidate_source_seq_id: String,
+    candidate_length_bp: String,
+    candidate_step_bp: String,
+    candidate_feature_kinds: String,
+    candidate_feature_label_regex: String,
+    candidate_max_distance_bp: String,
+    candidate_limit: String,
+    candidate_selected_set: String,
+    candidate_page_limit: String,
+    candidate_page_offset: String,
+    candidate_sort_key: String,
+    candidate_sort_desc: bool,
+    candidate_score_metric: String,
+    candidate_score_expression: String,
+    candidate_distance_metric: String,
+    candidate_distance_feature_kinds: String,
+    candidate_distance_feature_label_regex: String,
+    candidate_filter_input_set: String,
+    candidate_filter_output_set: String,
+    candidate_filter_metric: String,
+    candidate_filter_min: String,
+    candidate_filter_max: String,
+    candidate_filter_min_quantile: String,
+    candidate_filter_max_quantile: String,
+    candidate_setop_mode: String,
+    candidate_setop_left: String,
+    candidate_setop_right: String,
+    candidate_setop_output: String,
+    candidate_macro_script: String,
     tfbs_motifs: String,
     tfbs_use_all_motifs: bool,
     tfbs_catalog_filter: String,
@@ -315,6 +429,7 @@ pub struct MainAreaDna {
     tfbs_clear_existing: bool,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
+    vcf_display_required_info_keys: String,
     op_status: String,
     op_error_popup: Option<String>,
     last_created_seq_ids: Vec<String>,
@@ -461,6 +576,37 @@ impl MainAreaDna {
             anchored_output_prefix: "anchored".to_string(),
             anchored_unique: false,
             anchored_max_candidates: "20".to_string(),
+            candidate_set_name: "candidates".to_string(),
+            candidate_source_seq_id: seq_id_for_defaults.clone().unwrap_or_default(),
+            candidate_length_bp: "20".to_string(),
+            candidate_step_bp: "1".to_string(),
+            candidate_feature_kinds: String::new(),
+            candidate_feature_label_regex: String::new(),
+            candidate_max_distance_bp: String::new(),
+            candidate_limit: "5000".to_string(),
+            candidate_selected_set: String::new(),
+            candidate_page_limit: "50".to_string(),
+            candidate_page_offset: "0".to_string(),
+            candidate_sort_key: "start".to_string(),
+            candidate_sort_desc: false,
+            candidate_score_metric: "score".to_string(),
+            candidate_score_expression: "gc_fraction".to_string(),
+            candidate_distance_metric: "distance_to_gene_bp".to_string(),
+            candidate_distance_feature_kinds: "gene".to_string(),
+            candidate_distance_feature_label_regex: String::new(),
+            candidate_filter_input_set: String::new(),
+            candidate_filter_output_set: "filtered".to_string(),
+            candidate_filter_metric: "gc_fraction".to_string(),
+            candidate_filter_min: String::new(),
+            candidate_filter_max: String::new(),
+            candidate_filter_min_quantile: String::new(),
+            candidate_filter_max_quantile: String::new(),
+            candidate_setop_mode: "intersect".to_string(),
+            candidate_setop_left: String::new(),
+            candidate_setop_right: String::new(),
+            candidate_setop_output: "set_op".to_string(),
+            candidate_macro_script: "generate my_set seq_1 --length 20 --step 1 --limit 1000"
+                .to_string(),
             tfbs_motifs: String::new(),
             tfbs_use_all_motifs: false,
             tfbs_catalog_filter: String::new(),
@@ -471,6 +617,7 @@ impl MainAreaDna {
             tfbs_clear_existing: true,
             tfbs_task: None,
             tfbs_progress: None,
+            vcf_display_required_info_keys: String::new(),
             op_status: String::new(),
             op_error_popup: None,
             last_created_seq_ids: vec![],
@@ -1499,6 +1646,12 @@ impl MainAreaDna {
                 });
                     });
 
+                egui::CollapsingHeader::new("Candidate sets (scoring/filtering)")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        self.render_candidate_sets_ops(ui);
+                    });
+
                 egui::CollapsingHeader::new("Container-first ops, workflow, and pool export")
                     .default_open(false)
                     .show(ui, |ui| {
@@ -2084,6 +2237,64 @@ impl MainAreaDna {
                     self.sync_tfbs_display_criteria_to_engine(tfbs_display);
                     self.save_engine_ops_state();
                 }
+                ui.separator();
+                ui.label("VCF display filter (applies to GUI + SVG export)");
+                let mut vcf_display = self
+                    .dna_display
+                    .read()
+                    .expect("DNA display lock poisoned")
+                    .vcf_display_criteria();
+                let before_vcf = vcf_display.clone();
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut vcf_display.show_snp, "SNP");
+                    ui.checkbox(&mut vcf_display.show_ins, "INS");
+                    ui.checkbox(&mut vcf_display.show_del, "DEL");
+                    ui.checkbox(&mut vcf_display.show_sv, "SV");
+                    ui.checkbox(&mut vcf_display.show_other, "OTHER");
+                });
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut vcf_display.pass_only, "PASS only");
+                    ui.small("Hide non-PASS calls when enabled.");
+                });
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut vcf_display.use_min_qual, "min QUAL");
+                    ui.add_enabled(
+                        vcf_display.use_min_qual,
+                        egui::DragValue::new(&mut vcf_display.min_qual).speed(0.5),
+                    );
+                    ui.checkbox(&mut vcf_display.use_max_qual, "max QUAL");
+                    ui.add_enabled(
+                        vcf_display.use_max_qual,
+                        egui::DragValue::new(&mut vcf_display.max_qual).speed(0.5),
+                    );
+                });
+                let mut vcf_keys_changed = false;
+                ui.horizontal(|ui| {
+                    ui.label("required INFO keys (comma-separated)");
+                    if ui
+                        .text_edit_singleline(&mut self.vcf_display_required_info_keys)
+                        .changed()
+                    {
+                        vcf_keys_changed = true;
+                    }
+                });
+                vcf_display.required_info_keys = Self::parse_ids(&self.vcf_display_required_info_keys);
+                if !vcf_display.show_snp
+                    && !vcf_display.show_ins
+                    && !vcf_display.show_del
+                    && !vcf_display.show_sv
+                    && !vcf_display.show_other
+                {
+                    ui.small("No VCF class enabled: all VCF overlays are hidden.");
+                }
+                if vcf_display != before_vcf || vcf_keys_changed {
+                    self.dna_display
+                        .write()
+                        .expect("DNA display lock poisoned")
+                        .set_vcf_display_criteria(vcf_display.clone());
+                    self.sync_vcf_display_criteria_to_engine(&vcf_display);
+                    self.save_engine_ops_state();
+                }
                 if let Some(task) = &self.tfbs_task {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
@@ -2394,6 +2605,25 @@ impl MainAreaDna {
         display.tfbs_display_min_true_log_odds_quantile = criteria.min_true_log_odds_quantile;
     }
 
+    fn sync_vcf_display_criteria_to_engine(&self, criteria: &VcfDisplayCriteria) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        let display = &mut guard.state_mut().display;
+        display.vcf_display_show_snp = criteria.show_snp;
+        display.vcf_display_show_ins = criteria.show_ins;
+        display.vcf_display_show_del = criteria.show_del;
+        display.vcf_display_show_sv = criteria.show_sv;
+        display.vcf_display_show_other = criteria.show_other;
+        display.vcf_display_pass_only = criteria.pass_only;
+        display.vcf_display_use_min_qual = criteria.use_min_qual;
+        display.vcf_display_min_qual = criteria.min_qual;
+        display.vcf_display_use_max_qual = criteria.use_max_qual;
+        display.vcf_display_max_qual = criteria.max_qual;
+        display.vcf_display_required_info_keys = criteria.required_info_keys.clone();
+    }
+
     fn sync_regulatory_track_placement_to_engine(&self, near_baseline: bool) {
         let Some(engine) = &self.engine else {
             return;
@@ -2444,6 +2674,20 @@ impl MainAreaDna {
             use_true_log_odds_quantile: settings.tfbs_display_use_true_log_odds_quantile,
             min_true_log_odds_quantile: settings.tfbs_display_min_true_log_odds_quantile,
         });
+        display.set_vcf_display_criteria(VcfDisplayCriteria {
+            show_snp: settings.vcf_display_show_snp,
+            show_ins: settings.vcf_display_show_ins,
+            show_del: settings.vcf_display_show_del,
+            show_sv: settings.vcf_display_show_sv,
+            show_other: settings.vcf_display_show_other,
+            pass_only: settings.vcf_display_pass_only,
+            use_min_qual: settings.vcf_display_use_min_qual,
+            min_qual: settings.vcf_display_min_qual,
+            use_max_qual: settings.vcf_display_use_max_qual,
+            max_qual: settings.vcf_display_max_qual,
+            required_info_keys: settings.vcf_display_required_info_keys.clone(),
+        });
+        self.vcf_display_required_info_keys = settings.vcf_display_required_info_keys.join(",");
         display.set_show_restriction_enzyme_sites(settings.show_restriction_enzymes);
         display.set_show_gc_contents(settings.show_gc_contents);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);
@@ -2754,7 +2998,7 @@ impl MainAreaDna {
                     let mut last_total_tenths: Option<i64> = None;
                     guard.apply_with_progress(op, move |progress| {
                         let OperationProgress::Tfbs(p) = progress else {
-                            return;
+                            return true;
                         };
                         let total_tenths = (p.total_percent * 10.0).floor() as i64;
                         let motif_changed = last_motif_index != Some(p.motif_index);
@@ -2767,6 +3011,7 @@ impl MainAreaDna {
                             last_total_tenths = Some(total_tenths);
                             let _ = tx_progress.send(TfbsTaskMessage::Progress(p));
                         }
+                        true
                     })
                 }
                 Err(_) => Err(EngineError {
@@ -3278,6 +3523,710 @@ impl MainAreaDna {
         });
     }
 
+    fn parse_optional_usize_text(raw: &str, field_name: &str) -> Result<Option<usize>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            Ok(None)
+        } else {
+            trimmed
+                .parse::<usize>()
+                .map(Some)
+                .map_err(|_| format!("Invalid {field_name}: expected an integer"))
+        }
+    }
+
+    fn parse_optional_f64_text(raw: &str, field_name: &str) -> Result<Option<f64>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            Ok(None)
+        } else {
+            trimmed
+                .parse::<f64>()
+                .map(Some)
+                .map_err(|_| format!("Invalid {field_name}: expected a number"))
+        }
+    }
+
+    fn candidate_metric_lookup(record: &CandidateRecord, key: &str) -> Option<f64> {
+        if let Some(value) = record.metrics.get(key).copied() {
+            return Some(value);
+        }
+        let lower = key.to_ascii_lowercase();
+        if lower == key {
+            None
+        } else {
+            record.metrics.get(&lower).copied()
+        }
+    }
+
+    fn compare_candidate_records(a: &CandidateRecord, b: &CandidateRecord, sort_key: &str) -> Ordering {
+        let key = sort_key.trim().to_ascii_lowercase();
+        match key.as_str() {
+            "seq_id" => a
+                .seq_id
+                .cmp(&b.seq_id)
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.end_0based.cmp(&b.end_0based)),
+            "start" | "start_0based" => a
+                .start_0based
+                .cmp(&b.start_0based)
+                .then(a.end_0based.cmp(&b.end_0based))
+                .then(a.seq_id.cmp(&b.seq_id)),
+            "end" | "end_0based" => a
+                .end_0based
+                .cmp(&b.end_0based)
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.seq_id.cmp(&b.seq_id)),
+            "length" | "length_bp" => a
+                .end_0based
+                .saturating_sub(a.start_0based)
+                .cmp(&b.end_0based.saturating_sub(b.start_0based))
+                .then(a.start_0based.cmp(&b.start_0based))
+                .then(a.seq_id.cmp(&b.seq_id)),
+            "sequence" => a
+                .sequence
+                .cmp(&b.sequence)
+                .then(a.seq_id.cmp(&b.seq_id))
+                .then(a.start_0based.cmp(&b.start_0based)),
+            _ => {
+                let a_value = Self::candidate_metric_lookup(a, sort_key).unwrap_or(f64::NEG_INFINITY);
+                let b_value = Self::candidate_metric_lookup(b, sort_key).unwrap_or(f64::NEG_INFINITY);
+                a_value
+                    .partial_cmp(&b_value)
+                    .unwrap_or(Ordering::Equal)
+                    .then(a.seq_id.cmp(&b.seq_id))
+                    .then(a.start_0based.cmp(&b.start_0based))
+                    .then(a.end_0based.cmp(&b.end_0based))
+            }
+        }
+    }
+
+    fn sort_candidate_records(rows: &mut [CandidateRecord], sort_key: &str, descending: bool) {
+        rows.sort_by(|a, b| Self::compare_candidate_records(a, b, sort_key));
+        if descending {
+            rows.reverse();
+        }
+    }
+
+    fn render_candidate_sets_ops(&mut self, ui: &mut egui::Ui) {
+        let Some(engine) = self.engine.clone() else {
+            ui.label("No engine attached.");
+            return;
+        };
+        if self.candidate_source_seq_id.trim().is_empty() {
+            self.candidate_source_seq_id = self.seq_id.clone().unwrap_or_default();
+        }
+
+        let (set_summaries, sequence_ids) = {
+            let guard = engine.read().expect("Engine lock poisoned");
+            let mut set_summaries = guard.list_candidate_sets();
+            set_summaries.sort_by(|a, b| a.name.cmp(&b.name));
+            let mut sequence_ids = guard.state().sequences.keys().cloned().collect::<Vec<_>>();
+            sequence_ids.sort_unstable();
+            (set_summaries, sequence_ids)
+        };
+        let set_names: Vec<String> = set_summaries.iter().map(|s| s.name.clone()).collect();
+
+        if !set_names.is_empty() {
+            if self.candidate_selected_set.trim().is_empty()
+                || !set_names.iter().any(|n| n == &self.candidate_selected_set)
+            {
+                self.candidate_selected_set = set_names[0].clone();
+            }
+        } else {
+            self.candidate_selected_set.clear();
+        }
+        if self.candidate_filter_input_set.trim().is_empty() && !self.candidate_selected_set.is_empty()
+        {
+            self.candidate_filter_input_set = self.candidate_selected_set.clone();
+        }
+
+        ui.small(
+            "Generate, score, filter, combine, inspect, export, and macro-run candidate sets.",
+        );
+
+        ui.separator();
+        ui.label("Generate set");
+        ui.horizontal(|ui| {
+            ui.label("set");
+            ui.text_edit_singleline(&mut self.candidate_set_name);
+            ui.label("seq");
+            ui.text_edit_singleline(&mut self.candidate_source_seq_id);
+            if ui
+                .small_button("Use active")
+                .on_hover_text("Use currently active sequence ID as candidate source")
+                .clicked()
+            {
+                self.candidate_source_seq_id = self.seq_id.clone().unwrap_or_default();
+            }
+        });
+        if !sequence_ids.is_empty() {
+            egui::ComboBox::from_id_salt(format!(
+                "candidate_source_seq_combo_{}",
+                self.seq_id.as_deref().unwrap_or("_global")
+            ))
+            .selected_text(if self.candidate_source_seq_id.trim().is_empty() {
+                "choose source sequence"
+            } else {
+                self.candidate_source_seq_id.as_str()
+            })
+            .show_ui(ui, |ui| {
+                for seq_id in &sequence_ids {
+                    if ui
+                        .selectable_label(self.candidate_source_seq_id == *seq_id, seq_id)
+                        .clicked()
+                    {
+                        self.candidate_source_seq_id = seq_id.clone();
+                    }
+                }
+            });
+        }
+        ui.horizontal(|ui| {
+            ui.label("length");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_length_bp).desired_width(64.0));
+            ui.label("step");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_step_bp).desired_width(64.0));
+            ui.label("limit");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_limit).desired_width(96.0));
+            ui.label("max dist");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.candidate_max_distance_bp).desired_width(96.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("feature kinds");
+            ui.text_edit_singleline(&mut self.candidate_feature_kinds);
+        });
+        ui.horizontal(|ui| {
+            ui.label("feature label regex");
+            ui.text_edit_singleline(&mut self.candidate_feature_label_regex);
+            if ui
+                .button("Generate")
+                .on_hover_text("Run GenerateCandidateSet")
+                .clicked()
+            {
+                let set_name = self.candidate_set_name.trim().to_string();
+                let seq_id = self.candidate_source_seq_id.trim().to_string();
+                let length = self.candidate_length_bp.trim().parse::<usize>();
+                let step = self.candidate_step_bp.trim().parse::<usize>();
+                let limit = Self::parse_optional_usize_text(&self.candidate_limit, "candidate limit");
+                let max_distance = Self::parse_optional_usize_text(
+                    &self.candidate_max_distance_bp,
+                    "candidate max distance",
+                );
+                if set_name.is_empty() {
+                    self.op_status = "Candidate set name cannot be empty".to_string();
+                } else if seq_id.is_empty() {
+                    self.op_status = "Candidate source sequence ID cannot be empty".to_string();
+                } else if let (Ok(length_bp), Ok(step_bp), Ok(limit), Ok(max_distance_bp)) =
+                    (length, step, limit, max_distance)
+                {
+                    self.apply_operation_with_feedback(Operation::GenerateCandidateSet {
+                        set_name: set_name.clone(),
+                        seq_id,
+                        length_bp,
+                        step_bp,
+                        feature_kinds: Self::parse_ids(&self.candidate_feature_kinds),
+                        feature_label_regex: if self.candidate_feature_label_regex.trim().is_empty() {
+                            None
+                        } else {
+                            Some(self.candidate_feature_label_regex.trim().to_string())
+                        },
+                        max_distance_bp,
+                        limit,
+                    });
+                    self.candidate_selected_set = set_name.clone();
+                    self.candidate_filter_input_set = set_name.clone();
+                    if self.candidate_setop_left.trim().is_empty() {
+                        self.candidate_setop_left = set_name;
+                    }
+                } else {
+                    self.op_status = "Invalid candidate generation parameters".to_string();
+                }
+            }
+        });
+
+        ui.separator();
+        ui.label("Score and transform sets");
+        ui.horizontal(|ui| {
+            ui.label("selected set");
+            egui::ComboBox::from_id_salt(format!(
+                "candidate_selected_set_combo_{}",
+                self.seq_id.as_deref().unwrap_or("_global")
+            ))
+            .selected_text(if self.candidate_selected_set.trim().is_empty() {
+                "none"
+            } else {
+                self.candidate_selected_set.as_str()
+            })
+            .show_ui(ui, |ui| {
+                for name in &set_names {
+                    if ui
+                        .selectable_label(self.candidate_selected_set == *name, name)
+                        .clicked()
+                    {
+                        self.candidate_selected_set = name.clone();
+                    }
+                }
+            });
+            if ui
+                .button("Delete selected")
+                .on_hover_text("Run DeleteCandidateSet for selected set")
+                .clicked()
+            {
+                if self.candidate_selected_set.trim().is_empty() {
+                    self.op_status = "Select a candidate set to delete".to_string();
+                } else {
+                    self.apply_operation_with_feedback(Operation::DeleteCandidateSet {
+                        set_name: self.candidate_selected_set.trim().to_string(),
+                    });
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("metric");
+            ui.text_edit_singleline(&mut self.candidate_score_metric);
+            ui.label("expr");
+            ui.text_edit_singleline(&mut self.candidate_score_expression);
+            if ui
+                .button("Score expr")
+                .on_hover_text("Run ScoreCandidateSetExpression on selected set")
+                .clicked()
+            {
+                if self.candidate_selected_set.trim().is_empty() {
+                    self.op_status = "Select a candidate set first".to_string();
+                } else if self.candidate_score_metric.trim().is_empty() {
+                    self.op_status = "Metric name cannot be empty".to_string();
+                } else if self.candidate_score_expression.trim().is_empty() {
+                    self.op_status = "Expression cannot be empty".to_string();
+                } else {
+                    self.apply_operation_with_feedback(Operation::ScoreCandidateSetExpression {
+                        set_name: self.candidate_selected_set.trim().to_string(),
+                        metric: self.candidate_score_metric.trim().to_string(),
+                        expression: self.candidate_score_expression.trim().to_string(),
+                    });
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("distance metric");
+            ui.text_edit_singleline(&mut self.candidate_distance_metric);
+            ui.label("feature kinds");
+            ui.text_edit_singleline(&mut self.candidate_distance_feature_kinds);
+        });
+        ui.horizontal(|ui| {
+            ui.label("feature label regex");
+            ui.text_edit_singleline(&mut self.candidate_distance_feature_label_regex);
+            if ui
+                .button("Score distance")
+                .on_hover_text("Run ScoreCandidateSetDistance on selected set")
+                .clicked()
+            {
+                if self.candidate_selected_set.trim().is_empty() {
+                    self.op_status = "Select a candidate set first".to_string();
+                } else if self.candidate_distance_metric.trim().is_empty() {
+                    self.op_status = "Distance metric name cannot be empty".to_string();
+                } else {
+                    self.apply_operation_with_feedback(Operation::ScoreCandidateSetDistance {
+                        set_name: self.candidate_selected_set.trim().to_string(),
+                        metric: self.candidate_distance_metric.trim().to_string(),
+                        feature_kinds: Self::parse_ids(&self.candidate_distance_feature_kinds),
+                        feature_label_regex: if self
+                            .candidate_distance_feature_label_regex
+                            .trim()
+                            .is_empty()
+                        {
+                            None
+                        } else {
+                            Some(self.candidate_distance_feature_label_regex.trim().to_string())
+                        },
+                    });
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("filter input");
+            ui.text_edit_singleline(&mut self.candidate_filter_input_set);
+            ui.label("output");
+            ui.text_edit_singleline(&mut self.candidate_filter_output_set);
+            ui.label("metric");
+            ui.text_edit_singleline(&mut self.candidate_filter_metric);
+        });
+        ui.horizontal(|ui| {
+            ui.label("min");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_filter_min).desired_width(72.0));
+            ui.label("max");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_filter_max).desired_width(72.0));
+            ui.label("min q");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.candidate_filter_min_quantile)
+                    .desired_width(72.0),
+            );
+            ui.label("max q");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.candidate_filter_max_quantile)
+                    .desired_width(72.0),
+            );
+            if ui
+                .button("Filter")
+                .on_hover_text("Run FilterCandidateSet")
+                .clicked()
+            {
+                let min = Self::parse_optional_f64_text(&self.candidate_filter_min, "filter min");
+                let max = Self::parse_optional_f64_text(&self.candidate_filter_max, "filter max");
+                let min_q = Self::parse_optional_f64_text(
+                    &self.candidate_filter_min_quantile,
+                    "filter min quantile",
+                );
+                let max_q = Self::parse_optional_f64_text(
+                    &self.candidate_filter_max_quantile,
+                    "filter max quantile",
+                );
+                if self.candidate_filter_input_set.trim().is_empty() {
+                    self.op_status = "Filter input set cannot be empty".to_string();
+                } else if self.candidate_filter_output_set.trim().is_empty() {
+                    self.op_status = "Filter output set cannot be empty".to_string();
+                } else if self.candidate_filter_metric.trim().is_empty() {
+                    self.op_status = "Filter metric cannot be empty".to_string();
+                } else if let (Ok(min), Ok(max), Ok(min_quantile), Ok(max_quantile)) =
+                    (min, max, min_q, max_q)
+                {
+                    self.apply_operation_with_feedback(Operation::FilterCandidateSet {
+                        input_set: self.candidate_filter_input_set.trim().to_string(),
+                        output_set: self.candidate_filter_output_set.trim().to_string(),
+                        metric: self.candidate_filter_metric.trim().to_string(),
+                        min,
+                        max,
+                        min_quantile,
+                        max_quantile,
+                    });
+                    self.candidate_selected_set = self.candidate_filter_output_set.trim().to_string();
+                } else {
+                    self.op_status = "Invalid numeric filter threshold".to_string();
+                }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("set-op");
+            egui::ComboBox::from_id_salt(format!(
+                "candidate_setop_mode_combo_{}",
+                self.seq_id.as_deref().unwrap_or("_global")
+            ))
+            .selected_text(if self.candidate_setop_mode.trim().is_empty() {
+                "intersect"
+            } else {
+                self.candidate_setop_mode.as_str()
+            })
+            .show_ui(ui, |ui| {
+                for mode in ["union", "intersect", "subtract"] {
+                    if ui
+                        .selectable_label(self.candidate_setop_mode == mode, mode)
+                        .clicked()
+                    {
+                        self.candidate_setop_mode = mode.to_string();
+                    }
+                }
+            });
+            ui.label("left");
+            ui.text_edit_singleline(&mut self.candidate_setop_left);
+            ui.label("right");
+            ui.text_edit_singleline(&mut self.candidate_setop_right);
+            ui.label("output");
+            ui.text_edit_singleline(&mut self.candidate_setop_output);
+            if ui
+                .button("Apply set-op")
+                .on_hover_text("Run CandidateSetOp")
+                .clicked()
+            {
+                let op = match self.candidate_setop_mode.trim().to_ascii_lowercase().as_str() {
+                    "union" => Some(CandidateSetOperator::Union),
+                    "intersect" => Some(CandidateSetOperator::Intersect),
+                    "subtract" => Some(CandidateSetOperator::Subtract),
+                    _ => None,
+                };
+                if let Some(op) = op {
+                    if self.candidate_setop_left.trim().is_empty()
+                        || self.candidate_setop_right.trim().is_empty()
+                        || self.candidate_setop_output.trim().is_empty()
+                    {
+                        self.op_status =
+                            "Set operation requires left, right, and output set names".to_string();
+                    } else {
+                        self.apply_operation_with_feedback(Operation::CandidateSetOp {
+                            op,
+                            left_set: self.candidate_setop_left.trim().to_string(),
+                            right_set: self.candidate_setop_right.trim().to_string(),
+                            output_set: self.candidate_setop_output.trim().to_string(),
+                        });
+                        self.candidate_selected_set = self.candidate_setop_output.trim().to_string();
+                    }
+                } else {
+                    self.op_status = "Set operation mode must be union/intersect/subtract".to_string();
+                }
+            }
+        });
+
+        ui.separator();
+        ui.label("Inspect and export");
+        ui.horizontal(|ui| {
+            ui.label("page limit");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_page_limit).desired_width(72.0));
+            ui.label("offset");
+            ui.add(egui::TextEdit::singleline(&mut self.candidate_page_offset).desired_width(96.0));
+            ui.label("sort");
+            ui.text_edit_singleline(&mut self.candidate_sort_key);
+            ui.checkbox(&mut self.candidate_sort_desc, "descending");
+        });
+
+        if !self.candidate_selected_set.trim().is_empty() {
+            let requested_limit = self
+                .candidate_page_limit
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .filter(|v| *v > 0)
+                .unwrap_or(50);
+            let requested_offset = self
+                .candidate_page_offset
+                .trim()
+                .parse::<usize>()
+                .ok()
+                .unwrap_or(0);
+
+            let page_result = {
+                let guard = engine.read().expect("Engine lock poisoned");
+                guard.inspect_candidate_set_page(
+                    &self.candidate_selected_set,
+                    requested_limit,
+                    requested_offset,
+                )
+            };
+
+            match page_result {
+                Ok((mut page, total, clamped_offset)) => {
+                    if self.candidate_page_offset.trim() != clamped_offset.to_string() {
+                        self.candidate_page_offset = clamped_offset.to_string();
+                    }
+                    Self::sort_candidate_records(
+                        &mut page.candidates,
+                        &self.candidate_sort_key,
+                        self.candidate_sort_desc,
+                    );
+
+                    let end_exclusive = clamped_offset.saturating_add(page.candidates.len());
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button("Prev")
+                            .on_hover_text("Show previous candidate page")
+                            .clicked()
+                        {
+                            let new_offset = clamped_offset.saturating_sub(requested_limit);
+                            self.candidate_page_offset = new_offset.to_string();
+                        }
+                        if ui
+                            .button("Next")
+                            .on_hover_text("Show next candidate page")
+                            .clicked()
+                        {
+                            let next = clamped_offset.saturating_add(requested_limit);
+                            self.candidate_page_offset = next.min(total).to_string();
+                        }
+                        ui.monospace(format!(
+                            "set '{}' rows {}..{} of {}",
+                            self.candidate_selected_set,
+                            if total == 0 {
+                                0
+                            } else {
+                                clamped_offset.saturating_add(1)
+                            },
+                            end_exclusive,
+                            total
+                        ));
+                    });
+
+                    let mut metric_names = set_summaries
+                        .iter()
+                        .find(|s| s.name == self.candidate_selected_set)
+                        .map(|s| s.metrics.clone())
+                        .unwrap_or_default();
+                    metric_names.sort();
+                    if !metric_names.is_empty() {
+                        ui.small(format!("metrics: {}", metric_names.join(", ")));
+                    }
+
+                    egui::ScrollArea::vertical()
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            egui::Grid::new(format!(
+                                "candidate_rows_grid_{}",
+                                self.seq_id.as_deref().unwrap_or("_global")
+                            ))
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("seq_id");
+                                ui.strong("start");
+                                ui.strong("end");
+                                ui.strong("len");
+                                ui.strong("sort value");
+                                ui.end_row();
+                                for row in &page.candidates {
+                                    let length_bp =
+                                        row.end_0based.saturating_sub(row.start_0based);
+                                    let sort_value = match self
+                                        .candidate_sort_key
+                                        .trim()
+                                        .to_ascii_lowercase()
+                                        .as_str()
+                                    {
+                                        "seq_id" => row.seq_id.clone(),
+                                        "sequence" => row.sequence.clone(),
+                                        "start" | "start_0based" => row.start_0based.to_string(),
+                                        "end" | "end_0based" => row.end_0based.to_string(),
+                                        "length" | "length_bp" => length_bp.to_string(),
+                                        _ => Self::candidate_metric_lookup(
+                                            row,
+                                            self.candidate_sort_key.trim(),
+                                        )
+                                        .map(|v| format!("{v:.6}"))
+                                        .unwrap_or_else(|| "-".to_string()),
+                                    };
+                                    ui.monospace(&row.seq_id);
+                                    ui.monospace(row.start_0based.to_string());
+                                    ui.monospace(row.end_0based.to_string());
+                                    ui.monospace(length_bp.to_string());
+                                    ui.monospace(sort_value);
+                                    ui.end_row();
+                                }
+                            });
+                        });
+
+                    if ui
+                        .button("Export selected set as JSON")
+                        .on_hover_text("Export all rows from selected set to a JSON file")
+                        .clicked()
+                    {
+                        let total_rows = set_summaries
+                            .iter()
+                            .find(|s| s.name == self.candidate_selected_set)
+                            .map(|s| s.candidate_count)
+                            .unwrap_or(total);
+                        let export_result = {
+                            let guard = engine.read().expect("Engine lock poisoned");
+                            guard.inspect_candidate_set_page(
+                                &self.candidate_selected_set,
+                                total_rows.max(1),
+                                0,
+                            )
+                        };
+                        match export_result {
+                            Ok((set, _, _)) => {
+                                let path = rfd::FileDialog::new()
+                                    .set_file_name(&format!(
+                                        "{}.candidate_set.json",
+                                        self.candidate_selected_set.replace(' ', "_")
+                                    ))
+                                    .add_filter("JSON", &["json"])
+                                    .save_file();
+                                if let Some(path) = path {
+                                    let payload = serde_json::json!({
+                                        "schema": "gentle.candidate_set.export.v1",
+                                        "exported_at_unix_ms": std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map(|d| d.as_millis())
+                                            .unwrap_or(0),
+                                        "set": set
+                                    });
+                                    match serde_json::to_string_pretty(&payload) {
+                                        Ok(text) => {
+                                            if let Err(e) = fs::write(&path, text) {
+                                                self.op_status = format!(
+                                                    "Could not export candidate set to '{}': {e}",
+                                                    path.display()
+                                                );
+                                            } else {
+                                                self.op_status = format!(
+                                                    "Exported candidate set '{}' to '{}'",
+                                                    self.candidate_selected_set,
+                                                    path.display()
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            self.op_status = format!(
+                                                "Could not serialize candidate set export: {e}"
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.op_status = format!("Could not load selected set for export: {e}");
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    ui.colored_label(egui::Color32::LIGHT_RED, format!("inspect failed: {}", e.message));
+                }
+            }
+        } else {
+            ui.small("No candidate sets available yet.");
+        }
+
+        ui.separator();
+        ui.label("Macro");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.candidate_macro_script)
+                .desired_rows(3)
+                .hint_text("generate setA seq_1 --length 20 --step 1; score setA gc_score gc_fraction"),
+        );
+        if ui
+            .button("Run candidates macro")
+            .on_hover_text("Execute candidates macro statements (same behavior as CLI/shell)")
+            .clicked()
+        {
+            let script = self.candidate_macro_script.trim().to_string();
+            if script.is_empty() {
+                self.op_status = "Candidates macro script is empty".to_string();
+            } else {
+                let command = ShellCommand::CandidatesMacro {
+                    script: script.clone(),
+                };
+                let outcome = {
+                    let mut guard = engine.write().expect("Engine lock poisoned");
+                    let options = ShellExecutionOptions::from_env();
+                    execute_shell_command_with_options(&mut guard, &command, &options)
+                };
+                match outcome {
+                    Ok(run) => {
+                        let output = serde_json::to_string_pretty(&run.output).unwrap_or_else(|e| {
+                            format!("{{\"error\":\"Could not format macro output: {e}\"}}")
+                        });
+                        if !self.shell_output_text.is_empty() {
+                            self.shell_output_text.push('\n');
+                        }
+                        self.shell_output_text.push_str(&format!(
+                            "$ candidates macro {script}\n{output}\n"
+                        ));
+                        self.op_status = format!("Candidates macro executed ({} statement(s))", run
+                            .output
+                            .get("executed")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0));
+                        self.sync_from_engine_display();
+                    }
+                    Err(e) => {
+                        self.op_status = format!("Candidates macro failed: {e}");
+                    }
+                }
+            }
+        }
+    }
+
     fn parse_ids(text: &str) -> Vec<String> {
         text.split(',')
             .map(|s| s.trim())
@@ -3362,11 +4311,10 @@ impl MainAreaDna {
     }
 
     fn current_engine_ops_state(&self) -> EngineOpsUiState {
-        let tfbs_display = self
-            .dna_display
-            .read()
-            .expect("DNA display lock poisoned")
-            .tfbs_display_criteria();
+        let (tfbs_display, vcf_display) = {
+            let display = self.dna_display.read().expect("DNA display lock poisoned");
+            (display.tfbs_display_criteria(), display.vcf_display_criteria())
+        };
         EngineOpsUiState {
             show_engine_ops: self.show_engine_ops,
             show_shell: self.show_shell,
@@ -3424,6 +4372,38 @@ impl MainAreaDna {
             anchored_output_prefix: self.anchored_output_prefix.clone(),
             anchored_unique: self.anchored_unique,
             anchored_max_candidates: self.anchored_max_candidates.clone(),
+            candidate_set_name: self.candidate_set_name.clone(),
+            candidate_source_seq_id: self.candidate_source_seq_id.clone(),
+            candidate_length_bp: self.candidate_length_bp.clone(),
+            candidate_step_bp: self.candidate_step_bp.clone(),
+            candidate_feature_kinds: self.candidate_feature_kinds.clone(),
+            candidate_feature_label_regex: self.candidate_feature_label_regex.clone(),
+            candidate_max_distance_bp: self.candidate_max_distance_bp.clone(),
+            candidate_limit: self.candidate_limit.clone(),
+            candidate_selected_set: self.candidate_selected_set.clone(),
+            candidate_page_limit: self.candidate_page_limit.clone(),
+            candidate_page_offset: self.candidate_page_offset.clone(),
+            candidate_sort_key: self.candidate_sort_key.clone(),
+            candidate_sort_desc: self.candidate_sort_desc,
+            candidate_score_metric: self.candidate_score_metric.clone(),
+            candidate_score_expression: self.candidate_score_expression.clone(),
+            candidate_distance_metric: self.candidate_distance_metric.clone(),
+            candidate_distance_feature_kinds: self.candidate_distance_feature_kinds.clone(),
+            candidate_distance_feature_label_regex: self
+                .candidate_distance_feature_label_regex
+                .clone(),
+            candidate_filter_input_set: self.candidate_filter_input_set.clone(),
+            candidate_filter_output_set: self.candidate_filter_output_set.clone(),
+            candidate_filter_metric: self.candidate_filter_metric.clone(),
+            candidate_filter_min: self.candidate_filter_min.clone(),
+            candidate_filter_max: self.candidate_filter_max.clone(),
+            candidate_filter_min_quantile: self.candidate_filter_min_quantile.clone(),
+            candidate_filter_max_quantile: self.candidate_filter_max_quantile.clone(),
+            candidate_setop_mode: self.candidate_setop_mode.clone(),
+            candidate_setop_left: self.candidate_setop_left.clone(),
+            candidate_setop_right: self.candidate_setop_right.clone(),
+            candidate_setop_output: self.candidate_setop_output.clone(),
+            candidate_macro_script: self.candidate_macro_script.clone(),
             tfbs_motifs: self.tfbs_motifs.clone(),
             tfbs_use_all_motifs: self.tfbs_use_all_motifs,
             tfbs_catalog_filter: self.tfbs_catalog_filter.clone(),
@@ -3440,6 +4420,17 @@ impl MainAreaDna {
             tfbs_display_min_true_log_odds_bits: tfbs_display.min_true_log_odds_bits,
             tfbs_display_use_true_log_odds_quantile: tfbs_display.use_true_log_odds_quantile,
             tfbs_display_min_true_log_odds_quantile: tfbs_display.min_true_log_odds_quantile,
+            vcf_display_show_snp: vcf_display.show_snp,
+            vcf_display_show_ins: vcf_display.show_ins,
+            vcf_display_show_del: vcf_display.show_del,
+            vcf_display_show_sv: vcf_display.show_sv,
+            vcf_display_show_other: vcf_display.show_other,
+            vcf_display_pass_only: vcf_display.pass_only,
+            vcf_display_use_min_qual: vcf_display.use_min_qual,
+            vcf_display_min_qual: vcf_display.min_qual,
+            vcf_display_use_max_qual: vcf_display.use_max_qual,
+            vcf_display_max_qual: vcf_display.max_qual,
+            vcf_display_required_info_keys: vcf_display.required_info_keys.join(","),
             container_digest_id: self.container_digest_id.clone(),
             container_merge_ids: self.container_merge_ids.clone(),
             container_ligation_id: self.container_ligation_id.clone(),
@@ -3519,6 +4510,36 @@ impl MainAreaDna {
         self.anchored_output_prefix = s.anchored_output_prefix;
         self.anchored_unique = s.anchored_unique;
         self.anchored_max_candidates = s.anchored_max_candidates;
+        self.candidate_set_name = s.candidate_set_name;
+        self.candidate_source_seq_id = s.candidate_source_seq_id;
+        self.candidate_length_bp = s.candidate_length_bp;
+        self.candidate_step_bp = s.candidate_step_bp;
+        self.candidate_feature_kinds = s.candidate_feature_kinds;
+        self.candidate_feature_label_regex = s.candidate_feature_label_regex;
+        self.candidate_max_distance_bp = s.candidate_max_distance_bp;
+        self.candidate_limit = s.candidate_limit;
+        self.candidate_selected_set = s.candidate_selected_set;
+        self.candidate_page_limit = s.candidate_page_limit;
+        self.candidate_page_offset = s.candidate_page_offset;
+        self.candidate_sort_key = s.candidate_sort_key;
+        self.candidate_sort_desc = s.candidate_sort_desc;
+        self.candidate_score_metric = s.candidate_score_metric;
+        self.candidate_score_expression = s.candidate_score_expression;
+        self.candidate_distance_metric = s.candidate_distance_metric;
+        self.candidate_distance_feature_kinds = s.candidate_distance_feature_kinds;
+        self.candidate_distance_feature_label_regex = s.candidate_distance_feature_label_regex;
+        self.candidate_filter_input_set = s.candidate_filter_input_set;
+        self.candidate_filter_output_set = s.candidate_filter_output_set;
+        self.candidate_filter_metric = s.candidate_filter_metric;
+        self.candidate_filter_min = s.candidate_filter_min;
+        self.candidate_filter_max = s.candidate_filter_max;
+        self.candidate_filter_min_quantile = s.candidate_filter_min_quantile;
+        self.candidate_filter_max_quantile = s.candidate_filter_max_quantile;
+        self.candidate_setop_mode = s.candidate_setop_mode;
+        self.candidate_setop_left = s.candidate_setop_left;
+        self.candidate_setop_right = s.candidate_setop_right;
+        self.candidate_setop_output = s.candidate_setop_output;
+        self.candidate_macro_script = s.candidate_macro_script;
         self.tfbs_motifs = s.tfbs_motifs;
         self.tfbs_use_all_motifs = s.tfbs_use_all_motifs;
         self.tfbs_catalog_filter = s.tfbs_catalog_filter;
@@ -3527,6 +4548,7 @@ impl MainAreaDna {
         self.tfbs_per_tf_min_llr_bits = s.tfbs_per_tf_min_llr_bits;
         self.tfbs_per_tf_min_llr_quantile = s.tfbs_per_tf_min_llr_quantile;
         self.tfbs_clear_existing = s.tfbs_clear_existing;
+        self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
         self.container_digest_id = s.container_digest_id;
         self.container_merge_ids = s.container_merge_ids;
         self.container_ligation_id = s.container_ligation_id;
@@ -3546,20 +4568,7 @@ impl MainAreaDna {
         self.export_pool_id = s.export_pool_id;
         self.export_pool_human_id = s.export_pool_human_id;
         self.pool_gel_ladders = s.pool_gel_ladders;
-        self.dna_display
-            .write()
-            .expect("DNA display lock poisoned")
-            .set_tfbs_display_criteria(TfbsDisplayCriteria {
-                use_llr_bits: s.tfbs_display_use_llr_bits,
-                min_llr_bits: s.tfbs_display_min_llr_bits,
-                use_llr_quantile: s.tfbs_display_use_llr_quantile,
-                min_llr_quantile: s.tfbs_display_min_llr_quantile,
-                use_true_log_odds_bits: s.tfbs_display_use_true_log_odds_bits,
-                min_true_log_odds_bits: s.tfbs_display_min_true_log_odds_bits,
-                use_true_log_odds_quantile: s.tfbs_display_use_true_log_odds_quantile,
-                min_true_log_odds_quantile: s.tfbs_display_min_true_log_odds_quantile,
-            });
-        self.sync_tfbs_display_criteria_to_engine(TfbsDisplayCriteria {
+        let tfbs_criteria = TfbsDisplayCriteria {
             use_llr_bits: s.tfbs_display_use_llr_bits,
             min_llr_bits: s.tfbs_display_min_llr_bits,
             use_llr_quantile: s.tfbs_display_use_llr_quantile,
@@ -3568,7 +4577,26 @@ impl MainAreaDna {
             min_true_log_odds_bits: s.tfbs_display_min_true_log_odds_bits,
             use_true_log_odds_quantile: s.tfbs_display_use_true_log_odds_quantile,
             min_true_log_odds_quantile: s.tfbs_display_min_true_log_odds_quantile,
-        });
+        };
+        let vcf_criteria = VcfDisplayCriteria {
+            show_snp: s.vcf_display_show_snp,
+            show_ins: s.vcf_display_show_ins,
+            show_del: s.vcf_display_show_del,
+            show_sv: s.vcf_display_show_sv,
+            show_other: s.vcf_display_show_other,
+            pass_only: s.vcf_display_pass_only,
+            use_min_qual: s.vcf_display_use_min_qual,
+            min_qual: s.vcf_display_min_qual,
+            use_max_qual: s.vcf_display_use_max_qual,
+            max_qual: s.vcf_display_max_qual,
+            required_info_keys: Self::parse_ids(&self.vcf_display_required_info_keys),
+        };
+        let mut display = self.dna_display.write().expect("DNA display lock poisoned");
+        display.set_tfbs_display_criteria(tfbs_criteria);
+        display.set_vcf_display_criteria(vcf_criteria.clone());
+        drop(display);
+        self.sync_tfbs_display_criteria_to_engine(tfbs_criteria);
+        self.sync_vcf_display_criteria_to_engine(&vcf_criteria);
     }
 
     fn save_engine_ops_state(&self) {
@@ -3871,6 +4899,7 @@ impl MainAreaDna {
             show_mrna_features,
             show_tfbs,
             tfbs_display_criteria,
+            vcf_display_criteria,
             hidden_feature_kinds,
             feature_details_font_size,
         ) = {
@@ -3881,6 +4910,7 @@ impl MainAreaDna {
                 display.show_mrna_features(),
                 display.show_tfbs(),
                 display.tfbs_display_criteria(),
+                display.vcf_display_criteria(),
                 display.hidden_feature_kinds().clone(),
                 display.feature_details_font_size(),
             )
@@ -3917,6 +4947,11 @@ impl MainAreaDna {
                     ) {
                         return None;
                     }
+                }
+                if RenderDna::is_vcf_track_feature(feature)
+                    && !RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria)
+                {
+                    return None;
                 }
                 let (from, to) = feature.location.find_bounds().ok()?;
                 if from < 0 || to < 0 {

@@ -3,7 +3,7 @@ use crate::{
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use gb_io::seq::Feature;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use svg::node::element::path::Data;
 use svg::node::element::{Circle, Line, Path, Rectangle, Text};
 use svg::Document;
@@ -59,6 +59,18 @@ fn feature_name(feature: &Feature) -> String {
 }
 
 fn feature_color(feature: &Feature) -> &'static str {
+    if is_vcf_track_feature(feature) {
+        let class = vcf_variant_class(feature)
+            .unwrap_or_else(|| "OTHER".to_string())
+            .to_ascii_uppercase();
+        return match class.as_str() {
+            "SNP" => "#e17f0f",
+            "INS" => "#238c64",
+            "DEL" => "#b42d2d",
+            "SV" => "#5a5a1e",
+            _ => "#5a5a5a",
+        };
+    }
     match feature.kind.to_string().to_ascii_uppercase().as_str() {
         "CDS" => "#cc1f1f",
         "GENE" => "#1f4fcc",
@@ -82,9 +94,26 @@ fn is_tfbs_feature(feature: &Feature) -> bool {
     )
 }
 
+fn is_track_feature(feature: &Feature) -> bool {
+    feature
+        .qualifier_values("gentle_generated".into())
+        .any(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "genome_bed_track" | "genome_bigwig_track" | "genome_vcf_track" | "blast_hit_track"
+            )
+        })
+}
+
+fn is_vcf_track_feature(feature: &Feature) -> bool {
+    feature
+        .qualifier_values("gentle_generated".into())
+        .any(|value| value.trim().eq_ignore_ascii_case("genome_vcf_track"))
+}
+
 fn is_regulatory_feature(feature: &Feature) -> bool {
     let kind = feature.kind.to_string().to_ascii_uppercase();
-    is_tfbs_feature(feature) || kind.contains("REGULATORY")
+    is_tfbs_feature(feature) || kind.contains("REGULATORY") || is_track_feature(feature)
 }
 
 fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
@@ -92,6 +121,44 @@ fn feature_qualifier_f64(feature: &Feature, key: &str) -> Option<f64> {
         .qualifier_values(key.into())
         .next()
         .and_then(|v| v.trim().parse::<f64>().ok())
+}
+
+fn feature_qualifier_text(feature: &Feature, key: &str) -> Option<String> {
+    feature
+        .qualifier_values(key.into())
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn vcf_variant_class(feature: &Feature) -> Option<String> {
+    if !is_vcf_track_feature(feature) {
+        return None;
+    }
+    feature_qualifier_text(feature, "vcf_variant_class").or_else(|| {
+        let reference = feature_qualifier_text(feature, "vcf_ref")?;
+        let alt = feature_qualifier_text(feature, "vcf_alt")?;
+        let ref_len = reference.trim().len().max(1);
+        let alt_trimmed = alt.trim();
+        if alt_trimmed.starts_with('<')
+            || alt_trimmed.ends_with('>')
+            || alt_trimmed.contains('[')
+            || alt_trimmed.contains(']')
+            || alt_trimmed == "*"
+        {
+            return Some("SV".to_string());
+        }
+        let alt_len = alt_trimmed.len().max(1);
+        if ref_len == 1 && alt_len == 1 {
+            Some("SNP".to_string())
+        } else if alt_len > ref_len {
+            Some("INS".to_string())
+        } else if alt_len < ref_len {
+            Some("DEL".to_string())
+        } else {
+            Some("OTHER".to_string())
+        }
+    })
 }
 
 fn tfbs_feature_passes_display_filter(feature: &Feature, display: &DisplaySettings) -> bool {
@@ -137,6 +204,70 @@ fn tfbs_feature_passes_display_filter(feature: &Feature, display: &DisplaySettin
     true
 }
 
+fn vcf_feature_passes_display_filter(feature: &Feature, display: &DisplaySettings) -> bool {
+    if !is_vcf_track_feature(feature) {
+        return true;
+    }
+    let class = vcf_variant_class(feature)
+        .unwrap_or_else(|| "OTHER".to_string())
+        .to_ascii_uppercase();
+    let class_ok = match class.as_str() {
+        "SNP" => display.vcf_display_show_snp,
+        "INS" => display.vcf_display_show_ins,
+        "DEL" => display.vcf_display_show_del,
+        "SV" => display.vcf_display_show_sv,
+        _ => display.vcf_display_show_other,
+    };
+    if !class_ok {
+        return false;
+    }
+    if display.vcf_display_pass_only {
+        let filter = feature_qualifier_text(feature, "vcf_filter")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_uppercase();
+        if filter != "PASS" {
+            return false;
+        }
+    }
+    if display.vcf_display_use_min_qual || display.vcf_display_use_max_qual {
+        let qual =
+            feature_qualifier_f64(feature, "vcf_qual").or_else(|| feature_qualifier_f64(feature, "score"));
+        let Some(qual) = qual else {
+            return false;
+        };
+        if display.vcf_display_use_min_qual && qual < display.vcf_display_min_qual {
+            return false;
+        }
+        if display.vcf_display_use_max_qual && qual > display.vcf_display_max_qual {
+            return false;
+        }
+    }
+    if !display.vcf_display_required_info_keys.is_empty() {
+        let info = feature_qualifier_text(feature, "vcf_info").unwrap_or_default();
+        let info_keys = info
+            .split(';')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| {
+                entry
+                    .split_once('=')
+                    .map(|(key, _)| key.trim().to_ascii_uppercase())
+                    .unwrap_or_else(|| entry.to_ascii_uppercase())
+            })
+            .collect::<HashSet<_>>();
+        if display
+            .vcf_display_required_info_keys
+            .iter()
+            .map(|key| key.trim().to_ascii_uppercase())
+            .any(|key| !info_keys.contains(&key))
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn collect_features(dna: &DNAsequence, display: &DisplaySettings) -> Vec<FeatureVm> {
     let mut ret = Vec::new();
     for feature in dna.features() {
@@ -160,6 +291,9 @@ fn collect_features(dna: &DNAsequence, display: &DisplaySettings) -> Vec<Feature
             if !tfbs_feature_passes_display_filter(feature, display) {
                 continue;
             }
+        }
+        if is_vcf_track_feature(feature) && !vcf_feature_passes_display_filter(feature, display) {
+            continue;
         }
         let Ok((from, to)) = feature.location.find_bounds() else {
             continue;
@@ -889,6 +1023,30 @@ mod tests {
         });
     }
 
+    fn push_vcf_track_feature(
+        dna: &mut DNAsequence,
+        label: &str,
+        start: usize,
+        end: usize,
+        class: &str,
+        filter: &str,
+        qual: f64,
+        info: &str,
+    ) {
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: FeatureKind::from("track"),
+            location: Location::simple_range(start as i64, end as i64),
+            qualifiers: vec![
+                ("label".into(), Some(label.to_string())),
+                ("gentle_generated".into(), Some("genome_vcf_track".to_string())),
+                ("vcf_variant_class".into(), Some(class.to_string())),
+                ("vcf_filter".into(), Some(filter.to_string())),
+                ("vcf_qual".into(), Some(format!("{qual:.3}"))),
+                ("vcf_info".into(), Some(info.to_string())),
+            ],
+        });
+    }
+
     #[test]
     #[cfg(feature = "snapshot-tests")]
     fn snapshot_linear_svg() {
@@ -934,6 +1092,54 @@ mod tests {
         let circular_svg = export_circular_svg(&dna_circular, &display);
         assert!(circular_svg.contains("TFBS high"));
         assert!(!circular_svg.contains("TFBS low"));
+    }
+
+    #[test]
+    fn vcf_display_filter_applies_to_svg_export() {
+        let mut dna_linear = DNAsequence::from_sequence(&"ATGC".repeat(80)).unwrap();
+        dna_linear.update_computed_features();
+        push_vcf_track_feature(
+            &mut dna_linear,
+            "VCF keep",
+            10,
+            20,
+            "SNP",
+            "PASS",
+            40.0,
+            "AC=1;AN=2",
+        );
+        push_vcf_track_feature(
+            &mut dna_linear,
+            "VCF drop",
+            30,
+            40,
+            "DEL",
+            "q10",
+            10.0,
+            "AN=2",
+        );
+
+        let mut display = DisplaySettings::default();
+        display.vcf_display_show_snp = true;
+        display.vcf_display_show_ins = false;
+        display.vcf_display_show_del = false;
+        display.vcf_display_show_sv = false;
+        display.vcf_display_show_other = false;
+        display.vcf_display_pass_only = true;
+        display.vcf_display_use_min_qual = true;
+        display.vcf_display_min_qual = 20.0;
+        display.vcf_display_required_info_keys = vec!["AC".to_string()];
+
+        let linear_svg = export_linear_svg(&dna_linear, &display);
+        assert!(linear_svg.contains("VCF keep"));
+        assert!(!linear_svg.contains("VCF drop"));
+        assert!(linear_svg.contains("#e17f0f"));
+
+        let mut dna_circular = dna_linear.clone();
+        dna_circular.set_circular(true);
+        let circular_svg = export_circular_svg(&dna_circular, &display);
+        assert!(circular_svg.contains("VCF keep"));
+        assert!(!circular_svg.contains("VCF drop"));
     }
 
     #[test]

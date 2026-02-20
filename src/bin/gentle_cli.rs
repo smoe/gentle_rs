@@ -1,12 +1,12 @@
 use gentle::{
     about,
     engine::{
-        Engine, EngineStateSummary, GentleEngine, Operation, OperationProgress, ProjectState,
-        RenderSvgMode, TfbsProgress, Workflow,
+        Engine, EngineStateSummary, GenomeTrackImportProgress, GentleEngine, Operation,
+        OperationProgress, ProjectState, RenderSvgMode, TfbsProgress, Workflow,
     },
     engine_shell::{
         execute_shell_command_with_options, parse_shell_line, parse_shell_tokens, shell_help_text,
-        ShellExecutionOptions,
+        ShellCommand, ShellExecutionOptions,
     },
     genomes::{
         GenomeGeneRecord, PrepareGenomeProgress, DEFAULT_GENOME_CATALOG_PATH,
@@ -466,6 +466,16 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
+  gentle_cli [--state PATH|--project PATH] candidates list\n  \
+  gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
+  gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates show SET_NAME [--limit N] [--offset N]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME\n  \
+  gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION\n  \
+  gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n  \
+  gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -671,10 +681,26 @@ impl ProgressPrinter {
         }
     }
 
+    fn on_genome_track_import_progress(&mut self, p: GenomeTrackImportProgress) {
+        if p.done || p.parsed_records % 1_000 == 0 {
+            self.print_line(&format!(
+                "progress track-import seq={} source={} parsed={} imported={} skipped={} done={} path={}",
+                p.seq_id,
+                p.source,
+                p.parsed_records,
+                p.imported_features,
+                p.skipped_records,
+                p.done,
+                p.path
+            ));
+        }
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
+            OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
         }
     }
 }
@@ -1146,14 +1172,17 @@ fn run() -> Result<(), String> {
                         catalog_path: op_catalog_path,
                         cache_dir,
                     };
-                    let result = if let Some(sink) = global.progress_sink {
-                        let mut printer = ProgressPrinter::new(sink);
-                        engine
-                            .apply_with_progress(op, |p| printer.on_progress(p))
-                            .map_err(|e| e.to_string())?
-                    } else {
-                        engine.apply(op).map_err(|e| e.to_string())?
-                    };
+                        let result = if let Some(sink) = global.progress_sink {
+                            let mut printer = ProgressPrinter::new(sink);
+                            engine
+                                .apply_with_progress(op, |p| {
+                                    printer.on_progress(p);
+                                    true
+                                })
+                                .map_err(|e| e.to_string())?
+                        } else {
+                            engine.apply(op).map_err(|e| e.to_string())?
+                        };
                     engine
                         .state()
                         .save_to_path(&state_path)
@@ -1449,6 +1478,39 @@ fn run() -> Result<(), String> {
             }
             print_json(&run.output)
         }
+        "candidates" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err("candidates requires a subcommand".to_string());
+            }
+            let tokens = args[cmd_idx..].to_vec();
+            let shell_command = parse_shell_tokens(&tokens)?;
+            let is_candidates_command = matches!(
+                shell_command,
+                ShellCommand::CandidatesList
+                    | ShellCommand::CandidatesDelete { .. }
+                    | ShellCommand::CandidatesGenerate { .. }
+                    | ShellCommand::CandidatesShow { .. }
+                    | ShellCommand::CandidatesMetrics { .. }
+                    | ShellCommand::CandidatesScoreExpression { .. }
+                    | ShellCommand::CandidatesScoreDistance { .. }
+                    | ShellCommand::CandidatesFilter { .. }
+                    | ShellCommand::CandidatesSetOp { .. }
+                    | ShellCommand::CandidatesMacro { .. }
+            );
+            if !is_candidates_command {
+                return Err("Expected a candidates subcommand".to_string());
+            }
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let run = execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
+            if run.state_changed {
+                engine
+                    .state()
+                    .save_to_path(&state_path)
+                    .map_err(|e| e.to_string())?;
+            }
+            print_json(&run.output)
+        }
         "capabilities" => {
             print_json(&GentleEngine::capabilities())?;
             Ok(())
@@ -1729,7 +1791,10 @@ fn run() -> Result<(), String> {
             let result = if let Some(sink) = global.progress_sink {
                 let mut printer = ProgressPrinter::new(sink);
                 engine
-                    .apply_with_progress(op, |p| printer.on_progress(p))
+                    .apply_with_progress(op, |p| {
+                        printer.on_progress(p);
+                        true
+                    })
                     .map_err(|e| e.to_string())?
             } else {
                 engine.apply(op).map_err(|e| e.to_string())?
@@ -1753,7 +1818,10 @@ fn run() -> Result<(), String> {
             let results = if let Some(sink) = global.progress_sink {
                 let mut printer = ProgressPrinter::new(sink);
                 engine
-                    .apply_workflow_with_progress(workflow, |p| printer.on_progress(p))
+                    .apply_workflow_with_progress(workflow, |p| {
+                        printer.on_progress(p);
+                        true
+                    })
                     .map_err(|e| e.to_string())?
             } else {
                 engine.apply_workflow(workflow).map_err(|e| e.to_string())?

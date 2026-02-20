@@ -1,5 +1,5 @@
 use crate::{
-    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria},
+    dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     feature_location::{feature_ranges_sorted_i64, normalize_range, unwrap_ranges_monotonic},
     gc_contents::GcRegion,
@@ -556,6 +556,7 @@ impl RenderDnaCircular {
             show_mrna_features,
             show_tfbs,
             tfbs_display_criteria,
+            vcf_display_criteria,
             hidden_feature_kinds,
         ) = {
             let display = self.display.read().expect("Display lock poisoned");
@@ -565,6 +566,7 @@ impl RenderDnaCircular {
                 display.show_mrna_features(),
                 display.show_tfbs(),
                 display.tfbs_display_criteria(),
+                display.vcf_display_criteria(),
                 display.hidden_feature_kinds().clone(),
             )
         };
@@ -582,6 +584,7 @@ impl RenderDnaCircular {
                 show_mrna_features,
                 show_tfbs,
                 tfbs_display_criteria,
+                vcf_display_criteria.clone(),
                 &hidden_feature_kinds,
             );
             if let Some(mut fp) = fp_opt {
@@ -685,6 +688,7 @@ impl RenderDnaCircular {
         show_mrna_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
+        vcf_display_criteria: VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> Option<FeaturePosition> {
         if !Self::draw_feature(
@@ -694,6 +698,7 @@ impl RenderDnaCircular {
             show_mrna_features,
             show_tfbs,
             tfbs_display_criteria,
+            vcf_display_criteria,
             hidden_feature_kinds,
         ) {
             return None;
@@ -1098,6 +1103,7 @@ impl RenderDnaCircular {
         show_mrna_features: bool,
         show_tfbs: bool,
         tfbs_display_criteria: TfbsDisplayCriteria,
+        vcf_display_criteria: VcfDisplayCriteria,
         hidden_feature_kinds: &BTreeSet<String>,
     ) -> bool {
         if RenderDna::is_source_feature(feature) {
@@ -1120,6 +1126,9 @@ impl RenderDnaCircular {
                 return false;
             }
             return RenderDna::tfbs_feature_passes_display_filter(feature, tfbs_display_criteria);
+        }
+        if RenderDna::is_vcf_track_feature(feature) {
+            return RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria);
         }
         true
     }

@@ -29,8 +29,8 @@ use std::{
     fmt,
     fs::File,
     hash::{Hash, Hasher},
-    io::{BufRead, BufReader, Write},
-    path::Path,
+    io::{BufRead, BufReader, BufWriter, Write},
+    path::{Path, PathBuf},
     process::Command,
     time::Instant,
 };
@@ -47,6 +47,8 @@ pub const GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY: &str = "genome_bed_track_subs
 const GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY: &str = "genome_track_autosync_known_anchors";
 pub const CANDIDATE_SETS_METADATA_KEY: &str = "candidate_sets";
 const CANDIDATE_SETS_SCHEMA: &str = "gentle.candidate_sets.v1";
+const CANDIDATE_SETS_REF_SCHEMA: &str = "gentle.candidate_sets.ref.v1";
+const CANDIDATE_SETS_DISK_INDEX_SCHEMA: &str = "gentle.candidate_sets.disk_index.v1";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
@@ -89,6 +91,18 @@ pub struct DisplaySettings {
     pub tfbs_display_min_true_log_odds_bits: f64,
     pub tfbs_display_use_true_log_odds_quantile: bool,
     pub tfbs_display_min_true_log_odds_quantile: f64,
+    pub vcf_display_show_snp: bool,
+    pub vcf_display_show_ins: bool,
+    pub vcf_display_show_del: bool,
+    pub vcf_display_show_sv: bool,
+    pub vcf_display_show_other: bool,
+    pub vcf_display_pass_only: bool,
+    pub vcf_display_use_min_qual: bool,
+    pub vcf_display_min_qual: f64,
+    pub vcf_display_use_max_qual: bool,
+    pub vcf_display_max_qual: f64,
+    #[serde(default)]
+    pub vcf_display_required_info_keys: Vec<String>,
     pub show_restriction_enzymes: bool,
     pub show_gc_contents: bool,
     pub show_open_reading_frames: bool,
@@ -117,6 +131,17 @@ impl Default for DisplaySettings {
             tfbs_display_min_true_log_odds_bits: 0.0,
             tfbs_display_use_true_log_odds_quantile: false,
             tfbs_display_min_true_log_odds_quantile: 0.95,
+            vcf_display_show_snp: true,
+            vcf_display_show_ins: true,
+            vcf_display_show_del: true,
+            vcf_display_show_sv: true,
+            vcf_display_show_other: true,
+            vcf_display_pass_only: false,
+            vcf_display_use_min_qual: false,
+            vcf_display_min_qual: 0.0,
+            vcf_display_use_max_qual: false,
+            vcf_display_max_qual: 0.0,
+            vcf_display_required_info_keys: vec![],
             show_restriction_enzymes: true,
             show_gc_contents: true,
             show_open_reading_frames: false,
@@ -224,14 +249,18 @@ impl ProjectState {
             code: ErrorCode::Io,
             message: format!("Could not read state file '{path}': {e}"),
         })?;
-        serde_json::from_str(&text).map_err(|e| EngineError {
+        let mut state: Self = serde_json::from_str(&text).map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse state JSON '{path}': {e}"),
-        })
+        })?;
+        state.hydrate_candidate_store_from_external_ref(path)?;
+        Ok(state)
     }
 
     pub fn save_to_path(&self, path: &str) -> Result<(), EngineError> {
-        let text = serde_json::to_string_pretty(self).map_err(|e| EngineError {
+        let mut state_for_disk = self.clone();
+        state_for_disk.externalize_candidate_store_to_sidecar(path)?;
+        let text = serde_json::to_string_pretty(&state_for_disk).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize state: {e}"),
         })?;
@@ -239,6 +268,351 @@ impl ProjectState {
             code: ErrorCode::Io,
             message: format!("Could not write state file '{path}': {e}"),
         })
+    }
+
+    fn candidate_store_sidecar_basename(project_path: &Path) -> String {
+        let fallback = "project.gentle.json".to_string();
+        let base = project_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&fallback);
+        format!("{base}.candidates")
+    }
+
+    fn candidate_store_sidecar_dir(project_path: &Path) -> PathBuf {
+        let parent = project_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        parent.join(Self::candidate_store_sidecar_basename(project_path))
+    }
+
+    fn candidate_store_sidecar_index_abs(project_path: &Path) -> PathBuf {
+        Self::candidate_store_sidecar_dir(project_path).join("index.json")
+    }
+
+    fn candidate_store_sidecar_index_rel(project_path: &Path) -> PathBuf {
+        PathBuf::from(Self::candidate_store_sidecar_basename(project_path)).join("index.json")
+    }
+
+    fn sanitize_candidate_set_file_stem(name: &str) -> String {
+        let mut out = String::with_capacity(name.len());
+        for ch in name.chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+            } else if ch.is_whitespace() || matches!(ch, '-' | '_' | '.') {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "set".to_string()
+        } else {
+            trimmed.chars().take(48).collect()
+        }
+    }
+
+    fn parse_inline_candidate_store_value(value: &serde_json::Value) -> Option<CandidateStore> {
+        let schema = value
+            .get("schema")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let has_sets = value.get("sets").map(|v| v.is_object()).unwrap_or(false);
+        if schema == CANDIDATE_SETS_REF_SCHEMA {
+            return None;
+        }
+        if !has_sets && schema != CANDIDATE_SETS_SCHEMA {
+            return None;
+        }
+        let mut store: CandidateStore = serde_json::from_value(value.clone()).ok()?;
+        if store.schema.trim().is_empty() {
+            store.schema = CANDIDATE_SETS_SCHEMA.to_string();
+        }
+        Some(store)
+    }
+
+    fn candidate_set_metrics_for_disk(set: &CandidateSet) -> Vec<String> {
+        let mut names = BTreeSet::new();
+        for candidate in &set.candidates {
+            for metric in candidate.metrics.keys() {
+                names.insert(metric.to_string());
+            }
+        }
+        names.into_iter().collect()
+    }
+
+    fn load_candidate_store_from_ref(
+        project_path: &Path,
+        reference: &CandidateStoreReference,
+    ) -> Result<CandidateStore, EngineError> {
+        let index_path = if Path::new(&reference.index_path).is_absolute() {
+            PathBuf::from(&reference.index_path)
+        } else {
+            project_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(&reference.index_path)
+        };
+        let index_text = std::fs::read_to_string(&index_path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read candidate-store index '{}': {e}",
+                index_path.display()
+            ),
+        })?;
+        let index: CandidateStoreDiskIndex =
+            serde_json::from_str(&index_text).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse candidate-store index '{}': {e}",
+                    index_path.display()
+                ),
+            })?;
+        if !index.schema.trim().is_empty() && index.schema != CANDIDATE_SETS_DISK_INDEX_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported candidate-store index schema '{}' in '{}'",
+                    index.schema,
+                    index_path.display()
+                ),
+            });
+        }
+        let index_dir = index_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let mut sets: HashMap<String, CandidateSet> = HashMap::new();
+        for entry in index.sets {
+            let records_path = if Path::new(&entry.records_path).is_absolute() {
+                PathBuf::from(&entry.records_path)
+            } else {
+                index_dir.join(&entry.records_path)
+            };
+            let file = File::open(&records_path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read candidate records '{}' for set '{}': {e}",
+                    records_path.display(),
+                    entry.name
+                ),
+            })?;
+            let reader = BufReader::new(file);
+            let mut candidates: Vec<CandidateRecord> = vec![];
+            for (line_no, line_result) in reader.lines().enumerate() {
+                let line = line_result.map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not read candidate record line {} from '{}': {e}",
+                        line_no + 1,
+                        records_path.display()
+                    ),
+                })?;
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let candidate = serde_json::from_str::<CandidateRecord>(trimmed).map_err(|e| {
+                    EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Invalid candidate record JSON at '{}':{}: {}",
+                            records_path.display(),
+                            line_no + 1,
+                            e
+                        ),
+                    }
+                })?;
+                candidates.push(candidate);
+            }
+            sets.insert(
+                entry.name.clone(),
+                CandidateSet {
+                    name: entry.name,
+                    created_at_unix_ms: entry.created_at_unix_ms,
+                    source_seq_ids: entry.source_seq_ids,
+                    candidates,
+                },
+            );
+        }
+        Ok(CandidateStore {
+            schema: CANDIDATE_SETS_SCHEMA.to_string(),
+            updated_at_unix_ms: index.updated_at_unix_ms,
+            sets,
+        })
+    }
+
+    fn hydrate_candidate_store_from_external_ref(
+        &mut self,
+        project_path: &str,
+    ) -> Result<(), EngineError> {
+        let Some(value) = self
+            .metadata
+            .get(CANDIDATE_SETS_METADATA_KEY)
+            .cloned()
+        else {
+            return Ok(());
+        };
+        if Self::parse_inline_candidate_store_value(&value).is_some() {
+            return Ok(());
+        }
+        let reference: CandidateStoreReference =
+            serde_json::from_value(value.clone()).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse candidate-store reference metadata '{}': {e}",
+                    CANDIDATE_SETS_METADATA_KEY
+                ),
+            })?;
+        if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
+            return Ok(());
+        }
+        let store = Self::load_candidate_store_from_ref(Path::new(project_path), &reference)?;
+        let store_value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not hydrate candidate-store metadata: {e}"),
+        })?;
+        self.metadata
+            .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), store_value);
+        Ok(())
+    }
+
+    fn externalize_candidate_store_to_sidecar(
+        &mut self,
+        project_path: &str,
+    ) -> Result<(), EngineError> {
+        let Some(value) = self
+            .metadata
+            .get(CANDIDATE_SETS_METADATA_KEY)
+            .cloned()
+        else {
+            return Ok(());
+        };
+        let project_path = Path::new(project_path);
+        let mut store = if let Some(store) = Self::parse_inline_candidate_store_value(&value) {
+            store
+        } else {
+            let reference: CandidateStoreReference = serde_json::from_value(value).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse candidate-store reference metadata '{}': {e}",
+                        CANDIDATE_SETS_METADATA_KEY
+                    ),
+                }
+            })?;
+            if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
+                return Ok(());
+            }
+            Self::load_candidate_store_from_ref(project_path, &reference)?
+        };
+        if store.sets.is_empty() {
+            self.metadata.remove(CANDIDATE_SETS_METADATA_KEY);
+            return Ok(());
+        }
+        if store.schema.trim().is_empty() {
+            store.schema = CANDIDATE_SETS_SCHEMA.to_string();
+        }
+
+        let sidecar_dir = Self::candidate_store_sidecar_dir(project_path);
+        std::fs::create_dir_all(&sidecar_dir).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create candidate-store directory '{}': {e}",
+                sidecar_dir.display()
+            ),
+        })?;
+
+        let mut set_names: Vec<String> = store.sets.keys().cloned().collect();
+        set_names.sort_unstable();
+        let mut index_entries: Vec<CandidateStoreDiskSetIndexEntry> = vec![];
+        for (idx, set_name) in set_names.iter().enumerate() {
+            let Some(set) = store.sets.get(set_name) else {
+                continue;
+            };
+            let mut hasher = DefaultHasher::new();
+            set_name.hash(&mut hasher);
+            let stem = Self::sanitize_candidate_set_file_stem(set_name);
+            let records_filename = format!("{:03}_{}_{}.jsonl", idx + 1, stem, hasher.finish());
+            let records_path = sidecar_dir.join(&records_filename);
+            let records_file = File::create(&records_path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not create candidate-set records file '{}': {e}",
+                    records_path.display()
+                ),
+            })?;
+            let mut writer = BufWriter::new(records_file);
+            for candidate in &set.candidates {
+                serde_json::to_writer(&mut writer, candidate).map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not serialize candidate record for set '{}': {e}",
+                        set_name
+                    ),
+                })?;
+                writer.write_all(b"\n").map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write candidate record for set '{}': {e}",
+                        set_name
+                    ),
+                })?;
+            }
+            writer.flush().map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not flush candidate-set records file '{}': {e}",
+                    records_path.display()
+                ),
+            })?;
+
+            index_entries.push(CandidateStoreDiskSetIndexEntry {
+                name: set.name.clone(),
+                created_at_unix_ms: set.created_at_unix_ms,
+                source_seq_ids: set.source_seq_ids.clone(),
+                candidate_count: set.candidates.len(),
+                metrics: Self::candidate_set_metrics_for_disk(set),
+                records_path: records_filename,
+            });
+        }
+
+        let index = CandidateStoreDiskIndex {
+            schema: CANDIDATE_SETS_DISK_INDEX_SCHEMA.to_string(),
+            updated_at_unix_ms: store.updated_at_unix_ms,
+            set_count: index_entries.len(),
+            sets: index_entries,
+        };
+        let index_path = Self::candidate_store_sidecar_index_abs(project_path);
+        let index_text = serde_json::to_string_pretty(&index).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize candidate-store index: {e}"),
+        })?;
+        std::fs::write(&index_path, index_text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write candidate-store index '{}': {e}",
+                index_path.display()
+            ),
+        })?;
+
+        let reference = CandidateStoreReference {
+            schema: CANDIDATE_SETS_REF_SCHEMA.to_string(),
+            storage: "jsonl_indexed".to_string(),
+            index_path: Self::candidate_store_sidecar_index_rel(project_path)
+                .to_string_lossy()
+                .to_string(),
+            set_count: index.set_count,
+            updated_at_unix_ms: index.updated_at_unix_ms,
+        };
+        let reference_value = serde_json::to_value(reference).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize candidate-store reference metadata: {e}"),
+        })?;
+        self.metadata
+            .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), reference_value);
+        Ok(())
     }
 }
 
@@ -386,6 +760,36 @@ struct CandidateStore {
     schema: String,
     updated_at_unix_ms: u128,
     sets: HashMap<String, CandidateSet>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CandidateStoreReference {
+    schema: String,
+    storage: String,
+    index_path: String,
+    set_count: usize,
+    updated_at_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CandidateStoreDiskIndex {
+    schema: String,
+    updated_at_unix_ms: u128,
+    set_count: usize,
+    sets: Vec<CandidateStoreDiskSetIndexEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CandidateStoreDiskSetIndexEntry {
+    name: String,
+    created_at_unix_ms: u128,
+    source_seq_ids: Vec<String>,
+    candidate_count: usize,
+    metrics: Vec<String>,
+    records_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -899,6 +1303,8 @@ struct VcfRecord {
     qual: Option<f64>,
     filter: Option<String>,
     info: Option<String>,
+    format: Option<String>,
+    sample_columns: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -913,7 +1319,42 @@ struct GenomeBedTrackImportReport {
     skipped_missing_score: usize,
     skipped_outside_score_range: usize,
     truncated_at_limit: bool,
+    cancelled: bool,
     warnings: Vec<String>,
+    skipped_wrong_chromosome_examples: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VcfVariantClass {
+    Snp,
+    Ins,
+    Del,
+    Sv,
+    Other,
+}
+
+impl VcfVariantClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Snp => "SNP",
+            Self::Ins => "INS",
+            Self::Del => "DEL",
+            Self::Sv => "SV",
+            Self::Other => "OTHER",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct VcfAltGenotypeSummary {
+    carriers: usize,
+    het: usize,
+    hom_alt: usize,
+    mixed_alt: usize,
+    haploid_alt: usize,
+    phased_carriers: usize,
+    unphased_carriers: usize,
+    carrier_samples: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1102,9 +1543,21 @@ pub struct TfbsProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeTrackImportProgress {
+    pub seq_id: String,
+    pub source: String,
+    pub path: String,
+    pub parsed_records: usize,
+    pub imported_features: usize,
+    pub skipped_records: usize,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OperationProgress {
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),
+    GenomeTrackImport(GenomeTrackImportProgress),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1875,7 +2328,7 @@ impl GentleEngine {
         mut on_progress: F,
     ) -> Result<OpResult, EngineError>
     where
-        F: FnMut(OperationProgress),
+        F: FnMut(OperationProgress) -> bool,
     {
         let run_id = "interactive".to_string();
         let result = self.apply_internal(op.clone(), &run_id, &mut on_progress)?;
@@ -1893,7 +2346,7 @@ impl GentleEngine {
         mut on_progress: F,
     ) -> Result<Vec<OpResult>, EngineError>
     where
-        F: FnMut(OperationProgress),
+        F: FnMut(OperationProgress) -> bool,
     {
         let mut results = Vec::new();
         for op in &wf.ops {
@@ -3606,16 +4059,68 @@ impl GentleEngine {
         })
     }
 
+    fn normalize_chromosome_alias(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let core = lower.strip_prefix("chr").unwrap_or(&lower);
+        if core.is_empty() {
+            return String::new();
+        }
+        if matches!(core, "m" | "mt" | "mitochondria" | "mitochondrion") {
+            return "mt".to_string();
+        }
+        if core.chars().all(|ch| ch.is_ascii_digit()) {
+            let normalized = core.trim_start_matches('0');
+            if normalized.is_empty() {
+                return "0".to_string();
+            }
+            return normalized.to_string();
+        }
+        if core.len() == 1 && matches!(core, "x" | "y" | "w" | "z") {
+            return core.to_ascii_uppercase();
+        }
+        core.to_string()
+    }
+
     fn chromosomes_match(left: &str, right: &str) -> bool {
-        let normalize = |raw: &str| -> String {
-            let trimmed = raw.trim();
-            let lower = trimmed.to_ascii_lowercase();
-            lower
-                .strip_prefix("chr")
-                .map(|v| v.to_string())
-                .unwrap_or(lower)
-        };
-        normalize(left) == normalize(right)
+        Self::normalize_chromosome_alias(left) == Self::normalize_chromosome_alias(right)
+    }
+
+    fn append_chromosome_mismatch_warning(
+        report: &mut GenomeBedTrackImportReport,
+        anchor_chromosome: &str,
+        source_label: &str,
+        mismatch_counts: &HashMap<String, usize>,
+    ) {
+        if mismatch_counts.is_empty() {
+            return;
+        }
+        let mut sorted = mismatch_counts
+            .iter()
+            .map(|(chrom, count)| (chrom.clone(), *count))
+            .collect::<Vec<_>>();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        report.skipped_wrong_chromosome_examples = sorted
+            .iter()
+            .take(6)
+            .map(|(chrom, count)| format!("{chrom} ({count})"))
+            .collect();
+        let seen = sorted
+            .iter()
+            .take(3)
+            .map(|(chrom, count)| format!("{chrom} ({count})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        report.warnings.push(format!(
+            "{} record(s) in {} input did not match anchor chromosome '{}' (examples: {})",
+            report.skipped_wrong_chromosome,
+            source_label,
+            anchor_chromosome,
+            seen
+        ));
     }
 
     fn is_generated_genome_bed_feature(feature: &gb_io::seq::Feature) -> bool {
@@ -3844,6 +4349,19 @@ impl GentleEngine {
             .map(|v| v.trim())
             .filter(|v| !v.is_empty() && *v != ".")
             .map(|v| v.to_string());
+        let format = fields
+            .get(8)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty() && *v != ".")
+            .map(|v| v.to_string());
+        let sample_columns = if fields.len() > 9 {
+            fields[9..]
+                .iter()
+                .map(|value| value.trim().to_string())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
 
         Ok(VcfRecord {
             chromosome: chromosome.to_string(),
@@ -3854,7 +4372,111 @@ impl GentleEngine {
             qual,
             filter,
             info,
+            format,
+            sample_columns,
         })
+    }
+
+    fn classify_vcf_alt(reference: &str, alt: &str) -> VcfVariantClass {
+        let ref_u = reference.trim().to_ascii_uppercase();
+        let alt_u = alt.trim().to_ascii_uppercase();
+        if alt_u.is_empty() || alt_u == "." {
+            return VcfVariantClass::Other;
+        }
+        if alt_u.starts_with('<')
+            || alt_u.ends_with('>')
+            || alt_u.contains('[')
+            || alt_u.contains(']')
+            || alt_u == "*"
+        {
+            return VcfVariantClass::Sv;
+        }
+        let ref_len = ref_u.len().max(1);
+        let alt_len = alt_u.len().max(1);
+        if ref_len == 1 && alt_len == 1 {
+            return VcfVariantClass::Snp;
+        }
+        if alt_len > ref_len {
+            return VcfVariantClass::Ins;
+        }
+        if alt_len < ref_len {
+            return VcfVariantClass::Del;
+        }
+        VcfVariantClass::Other
+    }
+
+    fn summarize_vcf_alt_genotype(
+        record: &VcfRecord,
+        alt_allele_index_1based: usize,
+        sample_names: &[String],
+    ) -> Option<VcfAltGenotypeSummary> {
+        let format = record.format.as_deref()?;
+        let format_fields = format.split(':').collect::<Vec<_>>();
+        let gt_idx = format_fields
+            .iter()
+            .position(|field| field.eq_ignore_ascii_case("GT"))?;
+        let mut summary = VcfAltGenotypeSummary::default();
+        for (sample_idx, sample_column) in record.sample_columns.iter().enumerate() {
+            let value_fields = sample_column.split(':').collect::<Vec<_>>();
+            let Some(raw_gt) = value_fields.get(gt_idx).map(|v| v.trim()) else {
+                continue;
+            };
+            if raw_gt.is_empty() || raw_gt == "." {
+                continue;
+            }
+            let (tokens, phased) = if raw_gt.contains('|') {
+                (raw_gt.split('|').collect::<Vec<_>>(), true)
+            } else if raw_gt.contains('/') {
+                (raw_gt.split('/').collect::<Vec<_>>(), false)
+            } else {
+                (vec![raw_gt], false)
+            };
+            let mut parsed = vec![];
+            for token in tokens {
+                let trimmed = token.trim();
+                if trimmed.is_empty() || trimmed == "." {
+                    continue;
+                }
+                if let Ok(index) = trimmed.parse::<usize>() {
+                    parsed.push(index);
+                }
+            }
+            if parsed.is_empty() {
+                continue;
+            }
+            if !parsed.iter().any(|index| *index == alt_allele_index_1based) {
+                continue;
+            }
+            summary.carriers += 1;
+            if phased {
+                summary.phased_carriers += 1;
+            } else {
+                summary.unphased_carriers += 1;
+            }
+            let has_ref = parsed.contains(&0);
+            let has_other_alt = parsed
+                .iter()
+                .any(|idx| *idx > 0 && *idx != alt_allele_index_1based);
+            let all_target_alt = parsed.iter().all(|idx| *idx == alt_allele_index_1based);
+            if parsed.len() == 1 && all_target_alt {
+                summary.haploid_alt += 1;
+            } else if all_target_alt {
+                summary.hom_alt += 1;
+            } else if has_ref {
+                summary.het += 1;
+            } else if has_other_alt {
+                summary.mixed_alt += 1;
+            } else {
+                summary.het += 1;
+            }
+            let sample_label = sample_names
+                .get(sample_idx)
+                .filter(|v| !v.trim().is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("sample_{}", sample_idx + 1));
+            summary.carrier_samples.push(sample_label);
+        }
+        Some(summary)
     }
 
     fn build_genome_signal_feature(
@@ -3953,11 +4575,14 @@ impl GentleEngine {
     fn build_genome_vcf_feature(
         record: &VcfRecord,
         alt: &str,
+        alt_allele_index_1based: usize,
+        sample_names: &[String],
         track_name: &str,
         path: &str,
         local_start_0based: usize,
         local_end_0based_exclusive: usize,
     ) -> gb_io::seq::Feature {
+        let variant_class = Self::classify_vcf_alt(&record.reference, alt);
         let label = record.id.clone().unwrap_or_else(|| {
             format!(
                 "{}:{}:{} {}>{}",
@@ -3984,6 +4609,14 @@ impl GentleEngine {
             ("vcf_pos_1based".into(), Some(record.pos_1based.to_string())),
             ("vcf_ref".into(), Some(record.reference.clone())),
             ("vcf_alt".into(), Some(alt.to_string())),
+            (
+                "vcf_alt_allele_index".into(),
+                Some(alt_allele_index_1based.to_string()),
+            ),
+            (
+                "vcf_variant_class".into(),
+                Some(variant_class.as_str().to_string()),
+            ),
         ];
         if let Some(id) = &record.id {
             qualifiers.push(("vcf_id".into(), Some(id.clone())));
@@ -3997,6 +4630,86 @@ impl GentleEngine {
         }
         if let Some(info) = &record.info {
             qualifiers.push(("vcf_info".into(), Some(info.clone())));
+        }
+        if let Some(format) = &record.format {
+            qualifiers.push(("vcf_format".into(), Some(format.clone())));
+        }
+        if !record.sample_columns.is_empty() {
+            qualifiers.push((
+                "vcf_sample_count".into(),
+                Some(record.sample_columns.len().to_string()),
+            ));
+        }
+        if let Some(genotype) =
+            Self::summarize_vcf_alt_genotype(record, alt_allele_index_1based, sample_names)
+        {
+            qualifiers.push(("vcf_alt_carriers".into(), Some(genotype.carriers.to_string())));
+            qualifiers.push((
+                "vcf_alt_carrier_phased".into(),
+                Some(genotype.phased_carriers.to_string()),
+            ));
+            qualifiers.push((
+                "vcf_alt_carrier_unphased".into(),
+                Some(genotype.unphased_carriers.to_string()),
+            ));
+            qualifiers.push(("vcf_gt_het".into(), Some(genotype.het.to_string())));
+            qualifiers.push(("vcf_gt_hom_alt".into(), Some(genotype.hom_alt.to_string())));
+            qualifiers.push((
+                "vcf_gt_mixed_alt".into(),
+                Some(genotype.mixed_alt.to_string()),
+            ));
+            qualifiers.push((
+                "vcf_gt_haploid_alt".into(),
+                Some(genotype.haploid_alt.to_string()),
+            ));
+            let zygosity = if genotype.hom_alt > 0
+                && genotype.het == 0
+                && genotype.mixed_alt == 0
+                && genotype.haploid_alt == 0
+            {
+                "hom_alt"
+            } else if genotype.het > 0
+                && genotype.hom_alt == 0
+                && genotype.mixed_alt == 0
+                && genotype.haploid_alt == 0
+            {
+                "het"
+            } else if genotype.haploid_alt > 0
+                && genotype.hom_alt == 0
+                && genotype.het == 0
+                && genotype.mixed_alt == 0
+            {
+                "haploid_alt"
+            } else if genotype.carriers > 0 {
+                "mixed"
+            } else {
+                "none"
+            };
+            qualifiers.push(("vcf_zygosity".into(), Some(zygosity.to_string())));
+            let phase = if genotype.phased_carriers > 0 && genotype.unphased_carriers == 0 {
+                "phased"
+            } else if genotype.unphased_carriers > 0 && genotype.phased_carriers == 0 {
+                "unphased"
+            } else if genotype.phased_carriers > 0 && genotype.unphased_carriers > 0 {
+                "mixed"
+            } else {
+                "unknown"
+            };
+            qualifiers.push(("vcf_phase".into(), Some(phase.to_string())));
+            if !genotype.carrier_samples.is_empty() {
+                qualifiers.push((
+                    "vcf_alt_carrier_samples".into(),
+                    Some(
+                        genotype
+                            .carrier_samples
+                            .iter()
+                            .take(20)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    ),
+                ));
+            }
         }
 
         gb_io::seq::Feature {
@@ -4102,6 +4815,7 @@ impl GentleEngine {
         min_score: Option<f64>,
         max_score: Option<f64>,
         clear_existing: bool,
+        mut progress_cb: Option<&mut dyn FnMut(usize, usize, usize, bool) -> bool>,
     ) -> Result<GenomeBedTrackImportReport, EngineError> {
         let selected_track_name = track_name
             .map(str::trim)
@@ -4117,9 +4831,11 @@ impl GentleEngine {
             track_name: selected_track_name.clone(),
             ..Default::default()
         };
+        let progress_stride = 250usize;
         let mut reader = Self::open_text_reader(path)?;
         let mut line = String::new();
         let mut line_no = 0usize;
+        let mut mismatch_counts: HashMap<String, usize> = HashMap::new();
 
         while {
             line.clear();
@@ -4140,6 +4856,20 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
+            if report.parsed_records % progress_stride == 0 {
+                if let Some(cb) = progress_cb.as_mut() {
+                    let should_continue = (**cb)(
+                        report.parsed_records,
+                        report.imported_features,
+                        report.skipped_records,
+                        false,
+                    );
+                    if !should_continue {
+                        report.cancelled = true;
+                        break;
+                    }
+                }
+            }
 
             let record = match Self::parse_bed_record(trimmed) {
                 Ok(v) => v,
@@ -4158,6 +4888,7 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 report.skipped_records += 1;
                 report.skipped_wrong_chromosome += 1;
+                *mismatch_counts.entry(record.chromosome.clone()).or_insert(0) += 1;
                 continue;
             }
 
@@ -4223,6 +4954,26 @@ impl GentleEngine {
             dna.features_mut().push(feature);
             report.imported_features += 1;
         }
+        Self::append_chromosome_mismatch_warning(
+            &mut report,
+            &anchor.chromosome,
+            "BED",
+            &mismatch_counts,
+        );
+        if report.cancelled {
+            report.warnings.push(format!(
+                "BED import cancelled after parsed={}, imported={}, skipped={}",
+                report.parsed_records, report.imported_features, report.skipped_records
+            ));
+        }
+        if let Some(cb) = progress_cb.as_mut() {
+            let _ = (**cb)(
+                report.parsed_records,
+                report.imported_features,
+                report.skipped_records,
+                true,
+            );
+        }
 
         Ok(report)
     }
@@ -4286,6 +5037,7 @@ impl GentleEngine {
         min_score: Option<f64>,
         max_score: Option<f64>,
         clear_existing: bool,
+        mut progress_cb: Option<&mut dyn FnMut(usize, usize, usize, bool) -> bool>,
     ) -> Result<GenomeBedTrackImportReport, EngineError> {
         let selected_track_name = track_name
             .map(str::trim)
@@ -4301,11 +5053,13 @@ impl GentleEngine {
             track_name: selected_track_name.clone(),
             ..Default::default()
         };
+        let progress_stride = 250usize;
         let bedgraph_file = Self::convert_bigwig_to_bedgraph(path)?;
         let bedgraph_path = bedgraph_file.path().to_string_lossy().to_string();
         let mut reader = Self::open_text_reader(&bedgraph_path)?;
         let mut line = String::new();
         let mut line_no = 0usize;
+        let mut mismatch_counts: HashMap<String, usize> = HashMap::new();
 
         while {
             line.clear();
@@ -4326,6 +5080,20 @@ impl GentleEngine {
                 continue;
             }
             report.parsed_records += 1;
+            if report.parsed_records % progress_stride == 0 {
+                if let Some(cb) = progress_cb.as_mut() {
+                    let should_continue = (**cb)(
+                        report.parsed_records,
+                        report.imported_features,
+                        report.skipped_records,
+                        false,
+                    );
+                    if !should_continue {
+                        report.cancelled = true;
+                        break;
+                    }
+                }
+            }
 
             let record = match Self::parse_bedgraph_record(trimmed) {
                 Ok(v) => v,
@@ -4344,6 +5112,7 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 report.skipped_records += 1;
                 report.skipped_wrong_chromosome += 1;
+                *mismatch_counts.entry(record.chromosome.clone()).or_insert(0) += 1;
                 continue;
             }
 
@@ -4405,6 +5174,26 @@ impl GentleEngine {
             dna.features_mut().push(feature);
             report.imported_features += 1;
         }
+        Self::append_chromosome_mismatch_warning(
+            &mut report,
+            &anchor.chromosome,
+            "BigWig",
+            &mismatch_counts,
+        );
+        if report.cancelled {
+            report.warnings.push(format!(
+                "BigWig import cancelled after parsed={}, imported={}, skipped={}",
+                report.parsed_records, report.imported_features, report.skipped_records
+            ));
+        }
+        if let Some(cb) = progress_cb.as_mut() {
+            let _ = (**cb)(
+                report.parsed_records,
+                report.imported_features,
+                report.skipped_records,
+                true,
+            );
+        }
 
         Ok(report)
     }
@@ -4417,6 +5206,7 @@ impl GentleEngine {
         min_score: Option<f64>,
         max_score: Option<f64>,
         clear_existing: bool,
+        mut progress_cb: Option<&mut dyn FnMut(usize, usize, usize, bool) -> bool>,
     ) -> Result<GenomeBedTrackImportReport, EngineError> {
         let selected_track_name = track_name
             .map(str::trim)
@@ -4432,9 +5222,12 @@ impl GentleEngine {
             track_name: selected_track_name.clone(),
             ..Default::default()
         };
+        let progress_stride = 250usize;
         let mut reader = Self::open_text_reader(path)?;
         let mut line = String::new();
         let mut line_no = 0usize;
+        let mut sample_names: Vec<String> = vec![];
+        let mut mismatch_counts: HashMap<String, usize> = HashMap::new();
 
         while {
             line.clear();
@@ -4445,10 +5238,42 @@ impl GentleEngine {
         } {
             line_no += 1;
             let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
+            if trimmed.is_empty() {
+                continue;
+            }
+            if trimmed.starts_with("##") {
+                continue;
+            }
+            if trimmed.starts_with("#CHROM") {
+                let fields = trimmed.split('\t').collect::<Vec<_>>();
+                sample_names = if fields.len() > 9 {
+                    fields[9..]
+                        .iter()
+                        .map(|value| value.trim().to_string())
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                continue;
+            }
+            if trimmed.starts_with('#') {
                 continue;
             }
             report.parsed_records += 1;
+            if report.parsed_records % progress_stride == 0 {
+                if let Some(cb) = progress_cb.as_mut() {
+                    let should_continue = (**cb)(
+                        report.parsed_records,
+                        report.imported_features,
+                        report.skipped_records,
+                        false,
+                    );
+                    if !should_continue {
+                        report.cancelled = true;
+                        break;
+                    }
+                }
+            }
 
             let record = match Self::parse_vcf_record(trimmed) {
                 Ok(v) => v,
@@ -4467,6 +5292,7 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 report.skipped_records += 1;
                 report.skipped_wrong_chromosome += 1;
+                *mismatch_counts.entry(record.chromosome.clone()).or_insert(0) += 1;
                 continue;
             }
 
@@ -4516,7 +5342,7 @@ impl GentleEngine {
             };
 
             let mut stop = false;
-            for alt in &record.alternates {
+            for (alt_idx, alt) in record.alternates.iter().enumerate() {
                 if report.imported_features >= MAX_IMPORTED_SIGNAL_FEATURES {
                     report.truncated_at_limit = true;
                     stop = true;
@@ -4525,6 +5351,8 @@ impl GentleEngine {
                 let feature = Self::build_genome_vcf_feature(
                     &record,
                     alt,
+                    alt_idx + 1,
+                    &sample_names,
                     &selected_track_name,
                     path,
                     local_start_0based,
@@ -4536,6 +5364,26 @@ impl GentleEngine {
             if stop {
                 break;
             }
+        }
+        Self::append_chromosome_mismatch_warning(
+            &mut report,
+            &anchor.chromosome,
+            "VCF",
+            &mismatch_counts,
+        );
+        if report.cancelled {
+            report.warnings.push(format!(
+                "VCF import cancelled after parsed={}, imported={}, skipped={}",
+                report.parsed_records, report.imported_features, report.skipped_records
+            ));
+        }
+        if let Some(cb) = progress_cb.as_mut() {
+            let _ = (**cb)(
+                report.parsed_records,
+                report.imported_features,
+                report.skipped_records,
+                true,
+            );
         }
 
         Ok(report)
@@ -6293,7 +7141,7 @@ impl GentleEngine {
         &mut self,
         op: Operation,
         run_id: &str,
-        on_progress: &mut dyn FnMut(OperationProgress),
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<OpResult, EngineError> {
         self.reconcile_lineage_nodes();
         self.reconcile_containers();
@@ -6581,7 +7429,9 @@ impl GentleEngine {
                     &genome_id,
                     catalog_path.as_deref(),
                     cache_dir.as_deref(),
-                    &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
+                    &mut |p| {
+                        let _ = on_progress(OperationProgress::GenomePrepare(p));
+                    },
                 )?;
                 result.messages.push(Self::format_prepare_genome_message(
                     &genome_id,
@@ -6867,6 +7717,24 @@ impl GentleEngine {
                         code: ErrorCode::NotFound,
                         message: format!("Sequence '{seq_id}' not found"),
                     })?;
+                let seq_id_for_progress = seq_id.clone();
+                let path_for_progress = path.clone();
+                let mut progress_cb = |parsed_records: usize,
+                                       imported_features: usize,
+                                       skipped_records: usize,
+                                       done: bool| {
+                    on_progress(OperationProgress::GenomeTrackImport(
+                        GenomeTrackImportProgress {
+                            seq_id: seq_id_for_progress.clone(),
+                            source: "BED".to_string(),
+                            path: path_for_progress.clone(),
+                            parsed_records,
+                            imported_features,
+                            skipped_records,
+                            done,
+                        },
+                    ))
+                };
 
                 let report = Self::import_genome_bed_track(
                     dna,
@@ -6876,6 +7744,7 @@ impl GentleEngine {
                     min_score,
                     max_score,
                     clear_existing.unwrap_or(false),
+                    Some(&mut progress_cb),
                 )?;
 
                 result.changed_seq_ids.push(seq_id.clone());
@@ -6951,6 +7820,24 @@ impl GentleEngine {
                         code: ErrorCode::NotFound,
                         message: format!("Sequence '{seq_id}' not found"),
                     })?;
+                let seq_id_for_progress = seq_id.clone();
+                let path_for_progress = path.clone();
+                let mut progress_cb = |parsed_records: usize,
+                                       imported_features: usize,
+                                       skipped_records: usize,
+                                       done: bool| {
+                    on_progress(OperationProgress::GenomeTrackImport(
+                        GenomeTrackImportProgress {
+                            seq_id: seq_id_for_progress.clone(),
+                            source: "BigWig".to_string(),
+                            path: path_for_progress.clone(),
+                            parsed_records,
+                            imported_features,
+                            skipped_records,
+                            done,
+                        },
+                    ))
+                };
 
                 let report = Self::import_genome_bigwig_track(
                     dna,
@@ -6960,6 +7847,7 @@ impl GentleEngine {
                     min_score,
                     max_score,
                     clear_existing.unwrap_or(false),
+                    Some(&mut progress_cb),
                 )?;
 
                 result.changed_seq_ids.push(seq_id.clone());
@@ -7033,6 +7921,24 @@ impl GentleEngine {
                         code: ErrorCode::NotFound,
                         message: format!("Sequence '{seq_id}' not found"),
                     })?;
+                let seq_id_for_progress = seq_id.clone();
+                let path_for_progress = path.clone();
+                let mut progress_cb = |parsed_records: usize,
+                                       imported_features: usize,
+                                       skipped_records: usize,
+                                       done: bool| {
+                    on_progress(OperationProgress::GenomeTrackImport(
+                        GenomeTrackImportProgress {
+                            seq_id: seq_id_for_progress.clone(),
+                            source: "VCF".to_string(),
+                            path: path_for_progress.clone(),
+                            parsed_records,
+                            imported_features,
+                            skipped_records,
+                            done,
+                        },
+                    ))
+                };
 
                 let report = Self::import_genome_vcf_track(
                     dna,
@@ -7042,6 +7948,7 @@ impl GentleEngine {
                     min_score,
                     max_score,
                     clear_existing.unwrap_or(false),
+                    Some(&mut progress_cb),
                 )?;
 
                 result.changed_seq_ids.push(seq_id.clone());
@@ -9175,6 +10082,98 @@ impl GentleEngine {
                             self.state.display.feature_details_font_size
                         ));
                     }
+                    "vcf_display_show_snp"
+                    | "vcf_display_show_ins"
+                    | "vcf_display_show_del"
+                    | "vcf_display_show_sv"
+                    | "vcf_display_show_other"
+                    | "vcf_display_pass_only"
+                    | "vcf_display_use_min_qual"
+                    | "vcf_display_use_max_qual" => {
+                        let raw = value.as_bool().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {} requires a boolean", name),
+                        })?;
+                        match name.as_str() {
+                            "vcf_display_show_snp" => self.state.display.vcf_display_show_snp = raw,
+                            "vcf_display_show_ins" => self.state.display.vcf_display_show_ins = raw,
+                            "vcf_display_show_del" => self.state.display.vcf_display_show_del = raw,
+                            "vcf_display_show_sv" => self.state.display.vcf_display_show_sv = raw,
+                            "vcf_display_show_other" => {
+                                self.state.display.vcf_display_show_other = raw
+                            }
+                            "vcf_display_pass_only" => self.state.display.vcf_display_pass_only = raw,
+                            "vcf_display_use_min_qual" => {
+                                self.state.display.vcf_display_use_min_qual = raw
+                            }
+                            "vcf_display_use_max_qual" => {
+                                self.state.display.vcf_display_use_max_qual = raw
+                            }
+                            _ => unreachable!(),
+                        }
+                        result
+                            .messages
+                            .push(format!("Set parameter '{}' to {}", name, raw));
+                    }
+                    "vcf_display_min_qual" | "vcf_display_max_qual" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("SetParameter {} requires a number", name),
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!("{} must be a finite number", name),
+                            });
+                        }
+                        if name == "vcf_display_min_qual" {
+                            self.state.display.vcf_display_min_qual = raw;
+                        } else {
+                            self.state.display.vcf_display_max_qual = raw;
+                        }
+                        result
+                            .messages
+                            .push(format!("Set parameter '{}' to {:.6}", name, raw));
+                    }
+                    "vcf_display_required_info_keys"
+                    | "vcf_display_required_info_keys_csv"
+                    | "vcf_display_required_info" => {
+                        let mut keys = if let Some(array) = value.as_array() {
+                            let mut values = Vec::with_capacity(array.len());
+                            for entry in array {
+                                let Some(raw) = entry.as_str() else {
+                                    return Err(EngineError {
+                                        code: ErrorCode::InvalidInput,
+                                        message: "vcf_display_required_info_keys array entries must be strings".to_string(),
+                                    });
+                                };
+                                values.push(raw.to_string());
+                            }
+                            values
+                        } else if let Some(raw) = value.as_str() {
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|v| !v.is_empty())
+                                .map(|v| v.to_string())
+                                .collect::<Vec<_>>()
+                        } else {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "SetParameter vcf_display_required_info_keys requires a string (CSV) or string array".to_string(),
+                            });
+                        };
+                        for key in &mut keys {
+                            *key = key.trim().to_ascii_uppercase();
+                        }
+                        keys.retain(|key| !key.is_empty());
+                        keys.sort();
+                        keys.dedup();
+                        self.state.display.vcf_display_required_info_keys = keys.clone();
+                        result.messages.push(format!(
+                            "Set parameter 'vcf_display_required_info_keys' to [{}]",
+                            keys.join(",")
+                        ));
+                    }
                     _ => {
                         return Err(EngineError {
                             code: ErrorCode::Unsupported,
@@ -9200,7 +10199,7 @@ impl GentleEngine {
 impl Engine for GentleEngine {
     fn apply(&mut self, op: Operation) -> Result<OpResult, EngineError> {
         let run_id = "interactive".to_string();
-        let mut noop = |_p: OperationProgress| {};
+        let mut noop = |_p: OperationProgress| true;
         let result = self.apply_internal(op.clone(), &run_id, &mut noop)?;
         self.journal.push(OperationRecord {
             run_id,
@@ -9213,7 +10212,7 @@ impl Engine for GentleEngine {
     fn apply_workflow(&mut self, wf: Workflow) -> Result<Vec<OpResult>, EngineError> {
         let mut results = Vec::new();
         for op in &wf.ops {
-            let mut noop = |_p: OperationProgress| {};
+            let mut noop = |_p: OperationProgress| true;
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut noop)?;
             self.journal.push(OperationRecord {
                 run_id: wf.run_id.clone(),
@@ -9905,6 +10904,51 @@ exit 2
             .iter()
             .any(|m| m.contains("feature_details_font_size")));
         assert!((engine.state().display.feature_details_font_size - 9.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_set_parameter_vcf_display_controls() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "vcf_display_show_snp".to_string(),
+                value: serde_json::json!(false),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "vcf_display_pass_only".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "vcf_display_use_min_qual".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "vcf_display_min_qual".to_string(),
+                value: serde_json::json!(42.5),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "vcf_display_required_info_keys".to_string(),
+                value: serde_json::json!("ac,ann"),
+            })
+            .unwrap();
+
+        let display = &engine.state().display;
+        assert!(!display.vcf_display_show_snp);
+        assert!(display.vcf_display_pass_only);
+        assert!(display.vcf_display_use_min_qual);
+        assert!((display.vcf_display_min_qual - 42.5).abs() < f64::EPSILON);
+        assert_eq!(
+            display.vcf_display_required_info_keys,
+            vec!["AC".to_string(), "ANN".to_string()]
+        );
     }
 
     #[test]
@@ -11930,6 +12974,11 @@ ORIGIN
             .unwrap();
         assert!(plain.changed_seq_ids.contains(&"toy_slice".to_string()));
         assert!(plain.warnings.iter().any(|w| w.contains("VCF line")));
+        assert!(plain
+            .warnings
+            .iter()
+            .any(|w| w.contains("did not match anchor chromosome")));
+        assert!(plain.warnings.iter().any(|w| w.contains("chr2")));
 
         let dna_plain = engine.state().sequences.get("toy_slice").unwrap();
         let plain_features: Vec<_> = dna_plain
@@ -11977,6 +13026,203 @@ ORIGIN
                 .unwrap_or_default(),
             "rs3"
         );
+    }
+
+    #[test]
+    fn test_import_genome_vcf_track_chrom_alias_and_genotype_summary() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("toy_slice".to_string(), seq("ACGTACGTACGTACGTACGT"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "toy_slice",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "ExtractGenomeRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": "synthetic",
+                        "cache_dir": null,
+                        "chromosome": "1",
+                        "start_1based": 100,
+                        "end_1based": 119,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "+",
+                        "sequence_source_type": "synthetic",
+                        "annotation_source_type": "synthetic",
+                        "sequence_source": "synthetic",
+                        "annotation_source": "synthetic",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let td = tempdir().unwrap();
+        let vcf_path = td.path().join("genotype_variants.vcf");
+        fs::write(
+            &vcf_path,
+            "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample_a\tsample_b\nchr01\t101\trsGT\tA\tG,TT\t51\tPASS\tAC=2;AN=4\tGT:DP\t0/1:12\t1|1:20\n",
+        )
+        .unwrap();
+        let result = engine
+            .apply(Operation::ImportGenomeVcfTrack {
+                seq_id: "toy_slice".to_string(),
+                path: vcf_path.to_string_lossy().to_string(),
+                track_name: Some("gt_track".to_string()),
+                min_score: None,
+                max_score: None,
+                clear_existing: Some(true),
+            })
+            .unwrap();
+        assert!(result.changed_seq_ids.contains(&"toy_slice".to_string()));
+        let dna = engine.state().sequences.get("toy_slice").unwrap();
+        let features: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_vcf_feature(f))
+            .collect();
+        assert_eq!(features.len(), 2);
+        let alt1 = features
+            .iter()
+            .find(|f| f.qualifier_values("vcf_alt".into()).any(|v| v == "G"))
+            .expect("ALT=G feature");
+        assert_eq!(
+            alt1.qualifier_values("vcf_variant_class".into())
+                .next()
+                .unwrap_or_default(),
+            "SNP"
+        );
+        assert_eq!(
+            alt1.qualifier_values("vcf_alt_allele_index".into())
+                .next()
+                .unwrap_or_default(),
+            "1"
+        );
+        assert_eq!(
+            alt1.qualifier_values("vcf_alt_carriers".into())
+                .next()
+                .unwrap_or_default(),
+            "2"
+        );
+        assert_eq!(
+            alt1.qualifier_values("vcf_gt_het".into())
+                .next()
+                .unwrap_or_default(),
+            "1"
+        );
+        assert_eq!(
+            alt1.qualifier_values("vcf_gt_hom_alt".into())
+                .next()
+                .unwrap_or_default(),
+            "1"
+        );
+        assert_eq!(
+            alt1.qualifier_values("vcf_phase".into())
+                .next()
+                .unwrap_or_default(),
+            "mixed"
+        );
+        assert_eq!(
+            alt1.qualifier_values("vcf_alt_carrier_samples".into())
+                .next()
+                .unwrap_or_default(),
+            "sample_a,sample_b"
+        );
+    }
+
+    #[test]
+    fn test_import_genome_vcf_track_can_cancel_via_progress_callback() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("toy_slice".to_string(), seq("ACGTACGTACGTACGTACGT"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "toy_slice",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "ExtractGenomeRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": "synthetic",
+                        "cache_dir": null,
+                        "chromosome": "chr1",
+                        "start_1based": 100,
+                        "end_1based": 119,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "+",
+                        "sequence_source_type": "synthetic",
+                        "annotation_source_type": "synthetic",
+                        "sequence_source": "synthetic",
+                        "annotation_source": "synthetic",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let td = tempdir().unwrap();
+        let vcf_path = td.path().join("many_variants.vcf");
+        let mut payload = String::from("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
+        for i in 0..600usize {
+            payload.push_str(&format!(
+                "chr1\t{}\trs{}\tA\tG\t50\tPASS\tAC=1\n",
+                100 + (i % 20),
+                i + 1
+            ));
+        }
+        fs::write(&vcf_path, payload).unwrap();
+
+        let mut cancelled = false;
+        let result = engine
+            .apply_with_progress(
+                Operation::ImportGenomeVcfTrack {
+                    seq_id: "toy_slice".to_string(),
+                    path: vcf_path.to_string_lossy().to_string(),
+                    track_name: Some("many".to_string()),
+                    min_score: None,
+                    max_score: None,
+                    clear_existing: Some(true),
+                },
+                |progress| match progress {
+                    OperationProgress::GenomeTrackImport(p) => {
+                        if !p.done && p.parsed_records >= 250 {
+                            cancelled = true;
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    _ => true,
+                },
+            )
+            .unwrap();
+        assert!(cancelled);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.contains("import cancelled")));
+        let dna = engine.state().sequences.get("toy_slice").unwrap();
+        let features: Vec<_> = dna
+            .features()
+            .iter()
+            .filter(|f| GentleEngine::is_generated_genome_vcf_feature(f))
+            .collect();
+        assert!(features.len() < 600);
     }
 
     #[test]
@@ -12325,5 +13571,268 @@ ORIGIN
                 .unwrap_or_default(),
             "chr3"
         );
+    }
+
+    #[test]
+    fn test_candidate_store_save_externalizes_and_load_hydrates() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seqA".to_string(), seq("ACGTACGTACGT"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 4,
+                step_bp: 4,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                limit: Some(32),
+            })
+            .expect("generate candidates");
+
+        let td = tempdir().expect("tempdir");
+        let project_path = td.path().join("demo.gentle.json");
+        engine
+            .state()
+            .save_to_path(project_path.to_string_lossy().as_ref())
+            .expect("save project");
+
+        let project_text = std::fs::read_to_string(&project_path).expect("read project");
+        let project_json: serde_json::Value =
+            serde_json::from_str(&project_text).expect("parse project");
+        let candidate_meta = project_json
+            .get("metadata")
+            .and_then(|m| m.get(CANDIDATE_SETS_METADATA_KEY))
+            .expect("candidate metadata present");
+        assert_eq!(
+            candidate_meta
+                .get("schema")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+            CANDIDATE_SETS_REF_SCHEMA
+        );
+
+        let index_rel = candidate_meta
+            .get("index_path")
+            .and_then(|v| v.as_str())
+            .expect("index path present");
+        let index_abs = project_path
+            .parent()
+            .expect("project parent")
+            .join(index_rel);
+        assert!(index_abs.exists(), "candidate index file should exist");
+
+        let loaded =
+            ProjectState::load_from_path(project_path.to_string_lossy().as_ref()).expect("load");
+        let loaded_meta = loaded
+            .metadata
+            .get(CANDIDATE_SETS_METADATA_KEY)
+            .expect("hydrated candidate metadata");
+        assert_eq!(
+            loaded_meta
+                .get("schema")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+            CANDIDATE_SETS_SCHEMA
+        );
+        let loaded_engine = GentleEngine::from_state(loaded);
+        let summaries = loaded_engine.list_candidate_sets();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].name, "windows");
+        assert_eq!(summaries[0].candidate_count, 3);
+    }
+
+    #[test]
+    fn test_project_state_load_errors_when_candidate_sidecar_is_missing() {
+        let td = tempdir().expect("tempdir");
+        let project_path = td.path().join("broken.gentle.json");
+        let project_json = serde_json::json!({
+            "sequences": {},
+            "metadata": {
+                CANDIDATE_SETS_METADATA_KEY: {
+                    "schema": CANDIDATE_SETS_REF_SCHEMA,
+                    "storage": "jsonl_indexed",
+                    "index_path": "missing_sidecar/index.json",
+                    "set_count": 1,
+                    "updated_at_unix_ms": 0
+                }
+            }
+        });
+        std::fs::write(
+            &project_path,
+            serde_json::to_string_pretty(&project_json).expect("serialize project"),
+        )
+        .expect("write project");
+        let err =
+            ProjectState::load_from_path(project_path.to_string_lossy().as_ref()).unwrap_err();
+        assert!(err.message.contains("candidate-store index"));
+    }
+
+    #[test]
+    fn test_candidate_generation_regex_anchor_and_filter_quantile_edges() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(0, 0),
+            qualifiers: vec![("label".into(), Some("TP53".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(11, 11),
+            qualifiers: vec![("label".into(), Some("TP53-AS1".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "gene_all".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                max_distance_bp: Some(0),
+                limit: Some(64),
+            })
+            .expect("generate all gene-anchored candidates");
+        let gene_all_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "gene_all")
+            .map(|s| s.candidate_count)
+            .expect("gene_all set exists");
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "tp53_only".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: Some("^TP53$".to_string()),
+                max_distance_bp: Some(0),
+                limit: Some(64),
+            })
+            .expect("generate regex-anchored candidates");
+        let regex_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "tp53_only")
+            .map(|s| s.candidate_count)
+            .expect("regex set exists");
+        assert!(regex_count >= 1);
+        assert!(regex_count < gene_all_count);
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 4,
+                step_bp: 2,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                limit: Some(64),
+            })
+            .expect("generate windows");
+        let windows_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "windows")
+            .map(|s| s.candidate_count)
+            .expect("windows set exists");
+
+        engine
+            .apply(Operation::FilterCandidateSet {
+                input_set: "windows".to_string(),
+                output_set: "windows_all_q".to_string(),
+                metric: "gc_fraction".to_string(),
+                min: None,
+                max: None,
+                min_quantile: Some(0.0),
+                max_quantile: Some(1.0),
+            })
+            .expect("quantile full-range filter");
+        let windows_all_q_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "windows_all_q")
+            .map(|s| s.candidate_count)
+            .expect("windows_all_q exists");
+        assert_eq!(windows_all_q_count, windows_count);
+
+        engine
+            .apply(Operation::FilterCandidateSet {
+                input_set: "windows".to_string(),
+                output_set: "windows_top_q".to_string(),
+                metric: "gc_fraction".to_string(),
+                min: None,
+                max: None,
+                min_quantile: Some(1.0),
+                max_quantile: Some(1.0),
+            })
+            .expect("top quantile filter");
+        let top_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "windows_top_q")
+            .map(|s| s.candidate_count)
+            .expect("windows_top_q exists");
+        assert!(top_count >= 1);
+        assert!(top_count <= windows_count);
+
+        let err = engine
+            .apply(Operation::FilterCandidateSet {
+                input_set: "windows".to_string(),
+                output_set: "bad_q".to_string(),
+                metric: "gc_fraction".to_string(),
+                min: None,
+                max: None,
+                min_quantile: Some(1.1),
+                max_quantile: None,
+            })
+            .unwrap_err();
+        assert!(err.message.contains("between 0 and 1"));
+    }
+
+    #[test]
+    fn test_candidate_metric_expression_fuzz_smoke_does_not_panic() {
+        let metrics = HashMap::from([
+            ("gc_fraction".to_string(), 0.5),
+            ("at_fraction".to_string(), 0.5),
+            ("length_bp".to_string(), 20.0),
+            ("candidate_index".to_string(), 3.0),
+            ("distance_to_feature_start_bp".to_string(), 7.0),
+        ]);
+        let atoms = [
+            "gc_fraction",
+            "at_fraction",
+            "length_bp",
+            "candidate_index",
+            "distance_to_feature_start_bp",
+            "1",
+            "2.5",
+        ];
+        let ops = ["+", "-", "*", "/"];
+
+        for i in 0..512usize {
+            let left = atoms[i % atoms.len()];
+            let mid = atoms[(i / 7) % atoms.len()];
+            let right = atoms[(i / 29) % atoms.len()];
+            let op_a = ops[i % ops.len()];
+            let op_b = ops[(i / 11) % ops.len()];
+            let expr = format!("({left} {op_a} ({mid} {op_b} {right}))");
+            let run = std::panic::catch_unwind(|| {
+                if let Ok(parsed) = GentleEngine::parse_metric_expression(&expr) {
+                    let _ = GentleEngine::evaluate_metric_expression(&parsed, &metrics);
+                }
+            });
+            assert!(run.is_ok(), "expression caused panic: {expr}");
+        }
     }
 }

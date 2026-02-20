@@ -1,9 +1,10 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{Engine, GentleEngine, Operation, ProjectState, Workflow};
+use crate::engine_shell::{execute_shell_command, ShellCommand};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
-use crate::{resource_sync, tf_motifs};
+use crate::resource_sync;
 use mlua::prelude::*;
 use mlua::{Error, Value};
 use mlua::{IntoLuaMulti, Lua, MultiValue, Result as LuaResult};
@@ -13,6 +14,13 @@ use serde_json::json;
 #[derive(Clone, Debug, Default)]
 pub struct LuaInterface {
     lua: Lua,
+}
+
+#[derive(Serialize)]
+struct ShellUtilityResponse {
+    state: ProjectState,
+    state_changed: bool,
+    output: serde_json::Value,
 }
 
 impl LuaInterface {
@@ -40,6 +48,19 @@ impl LuaInterface {
         Error::RuntimeError(s.to_string())
     }
 
+    fn sync_report_from_shell_output(
+        output: serde_json::Value,
+        context: &str,
+    ) -> LuaResult<resource_sync::SyncReport> {
+        let Some(report_value) = output.get("report").cloned() else {
+            return Err(Self::err(&format!(
+                "{context}: missing 'report' field in shell output"
+            )));
+        };
+        serde_json::from_value(report_value)
+            .map_err(|e| Self::err(&format!("{context}: invalid sync report output: {e}")))
+    }
+
     pub fn help_main() {
         println!("Interactive Lua Shell (type 'exit' to quit)");
         println!("Available Rust functions:");
@@ -57,6 +78,12 @@ impl LuaInterface {
         );
         println!(
             "  - apply_operation(project, op): Applies an operation (Lua table or JSON string)"
+        );
+        println!(
+            "  - set_parameter(project, name, value): Helper for Operation::SetParameter"
+        );
+        println!(
+            "  - set_vcf_display_filter(project, opts): Convenience helper for VCF display criteria updates"
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
         println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
@@ -81,6 +108,9 @@ impl LuaInterface {
         println!("  - import_genome_bigwig_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BigWig overlay helper");
         println!("  - import_genome_vcf_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): VCF/VCF.GZ variant overlay helper");
         println!("  - render_pool_gel_svg(project, ids_csv, output_svg, [ladders_csv]): Engine op helper");
+        println!(
+            "  - import_pool(project, input_pool_json, [prefix]): Shared adapter helper (returns updated state + report)"
+        );
         println!("  - sync_rebase(input, [output], [commercial_only]): Sync REBASE data");
         println!("  - sync_jaspar(input, [output]): Sync JASPAR motif data");
         println!("A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites");
@@ -98,16 +128,57 @@ impl LuaInterface {
         output: Option<String>,
         commercial_only: Option<bool>,
     ) -> LuaResult<resource_sync::SyncReport> {
-        let output = output.as_deref().map(str::trim).filter(|s| !s.is_empty());
-        resource_sync::sync_rebase(&input, output, commercial_only.unwrap_or(false))
-            .map_err(|e| Self::err(&e))
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let output = output
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let command = ShellCommand::ResourcesSyncRebase {
+            input,
+            output,
+            commercial_only: commercial_only.unwrap_or(false),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("resources sync-rebase failed: {e}")))?;
+        Self::sync_report_from_shell_output(run.output, "resources sync-rebase")
     }
 
     fn sync_jaspar(input: String, output: Option<String>) -> LuaResult<resource_sync::SyncReport> {
-        let output = output.as_deref().map(str::trim).filter(|s| !s.is_empty());
-        let report = resource_sync::sync_jaspar(&input, output).map_err(|e| Self::err(&e))?;
-        tf_motifs::reload();
-        Ok(report)
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let output = output
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let command = ShellCommand::ResourcesSyncJaspar { input, output };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("resources sync-jaspar failed: {e}")))?;
+        Self::sync_report_from_shell_output(run.output, "resources sync-jaspar")
+    }
+
+    fn import_pool(
+        state: ProjectState,
+        input: String,
+        prefix: Option<String>,
+    ) -> LuaResult<ShellUtilityResponse> {
+        let mut engine = GentleEngine::from_state(state);
+        let command = ShellCommand::ImportPool {
+            input,
+            prefix: prefix
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or("pool")
+                .to_string(),
+        };
+        let run = execute_shell_command(&mut engine, &command)
+            .map_err(|e| Self::err(&format!("import-pool failed: {e}")))?;
+        Ok(ShellUtilityResponse {
+            state: engine.state().clone(),
+            state_changed: run.state_changed,
+            output: run.output,
+        })
     }
 
     fn list_reference_genomes(catalog_path: Option<String>) -> LuaResult<Vec<String>> {
@@ -488,6 +559,106 @@ impl LuaInterface {
         )?;
 
         self.lua.globals().set(
+            "set_parameter",
+            self.lua
+                .create_function(|lua, (state, name, value): (Value, String, Value)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let value: serde_json::Value = lua
+                        .from_value(value)
+                        .map_err(|e| Self::err(&format!("Invalid parameter value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::SetParameter { name, value })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "set_vcf_display_filter",
+            self.lua
+                .create_function(|lua, (state, options): (Value, Value)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let options: serde_json::Value = lua
+                        .from_value(options)
+                        .map_err(|e| Self::err(&format!("Invalid options table: {e}")))?;
+                    let obj = options.as_object().ok_or_else(|| {
+                        Self::err(
+                            "set_vcf_display_filter expects a Lua table/object with optional fields",
+                        )
+                    })?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let mut results: Vec<crate::engine::OpResult> = vec![];
+                    let mut apply_one = |name: &str, value: serde_json::Value| -> LuaResult<()> {
+                        let result = engine
+                            .apply(Operation::SetParameter {
+                                name: name.to_string(),
+                                value,
+                            })
+                            .map_err(|e| Self::err(&e.to_string()))?;
+                        results.push(result);
+                        Ok(())
+                    };
+                    if let Some(v) = obj.get("show_snp") {
+                        apply_one("vcf_display_show_snp", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("show_ins") {
+                        apply_one("vcf_display_show_ins", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("show_del") {
+                        apply_one("vcf_display_show_del", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("show_sv") {
+                        apply_one("vcf_display_show_sv", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("show_other") {
+                        apply_one("vcf_display_show_other", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("pass_only") {
+                        apply_one("vcf_display_pass_only", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("use_min_qual") {
+                        apply_one("vcf_display_use_min_qual", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("min_qual") {
+                        apply_one("vcf_display_min_qual", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("use_max_qual") {
+                        apply_one("vcf_display_use_max_qual", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("max_qual") {
+                        apply_one("vcf_display_max_qual", v.clone())?;
+                    }
+                    if let Some(v) = obj.get("required_info_keys") {
+                        apply_one("vcf_display_required_info_keys", v.clone())?;
+                    }
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        applied: usize,
+                        results: Vec<crate::engine::OpResult>,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        applied: results.len(),
+                        results,
+                    })
+                })?,
+        )?;
+
+        self.lua.globals().set(
             "prepare_genome",
             self.lua.create_function(
                 |lua,
@@ -819,6 +990,18 @@ impl LuaInterface {
                 .create_function(|lua, (input, output): (String, Option<String>)| {
                     let report = Self::sync_jaspar(input, output)?;
                     lua.to_value(&report)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "import_pool",
+            self.lua
+                .create_function(|lua, (state, input, prefix): (Value, String, Option<String>)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let response = Self::import_pool(state, input, prefix)?;
+                    lua.to_value(&response)
                 })?,
         )?;
 

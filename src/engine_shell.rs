@@ -6,7 +6,7 @@ use crate::{
         RenderSvgMode, Workflow,
     },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
-    resource_sync,
+    resource_sync, tf_motifs,
 };
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
@@ -238,6 +238,13 @@ pub enum ShellCommand {
         left_set: String,
         right_set: String,
         output_set: String,
+    },
+    CandidatesMacro {
+        script: String,
+    },
+    SetParameter {
+        name: String,
+        value_json: String,
     },
     Op {
         payload: String,
@@ -803,6 +810,23 @@ impl ShellCommand {
                 right_set,
                 output_set
             ),
+            Self::CandidatesMacro { script } => {
+                let trimmed = script.trim();
+                let preview = if trimmed.starts_with('@') {
+                    trimmed.to_string()
+                } else {
+                    let single_line = trimmed.replace('\n', " ");
+                    if single_line.len() > 80 {
+                        format!("{}...", &single_line[..80])
+                    } else {
+                        single_line
+                    }
+                };
+                format!("run candidates macro '{preview}'")
+            }
+            Self::SetParameter { name, value_json } => {
+                format!("set parameter '{}' to {}", name, value_json)
+            }
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -830,6 +854,8 @@ impl ShellCommand {
                 | Self::CandidatesScoreDistance { .. }
                 | Self::CandidatesFilter { .. }
                 | Self::CandidatesSetOp { .. }
+                | Self::CandidatesMacro { .. }
+                | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
         )
@@ -893,6 +919,8 @@ candidates score SET_NAME METRIC_NAME EXPRESSION\n\
 candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]\n\
 candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n\
 candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n\
+candidates macro SCRIPT_OR_@FILE\n\
+set-param NAME JSON_VALUE\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
 IDS is comma-separated sequence IDs"
@@ -1637,7 +1665,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
 fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "candidates requires a subcommand: list, delete, generate, show, metrics, score, score-distance, filter, set-op"
+            "candidates requires a subcommand: list, delete, generate, show, metrics, score, score-distance, filter, set-op, macro"
                 .to_string(),
         );
     }
@@ -1996,8 +2024,27 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 output_set: tokens[5].clone(),
             })
         }
+        "macro" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "candidates macro requires SCRIPT_OR_@FILE (or --file PATH)".to_string(),
+                );
+            }
+            let script = if tokens[2] == "--file" {
+                if tokens.len() != 4 {
+                    return Err("candidates macro --file requires PATH".to_string());
+                }
+                format!("@{}", tokens[3].trim())
+            } else {
+                tokens[2..].join(" ")
+            };
+            if script.trim().is_empty() {
+                return Err("candidates macro requires non-empty script".to_string());
+            }
+            Ok(ShellCommand::CandidatesMacro { script })
+        }
         other => Err(format!(
-            "Unknown candidates subcommand '{other}' (expected list, delete, generate, show, metrics, score, score-distance, filter, set-op)"
+            "Unknown candidates subcommand '{other}' (expected list, delete, generate, show, metrics, score, score-distance, filter, set-op, macro)"
         )),
     }
 }
@@ -2701,6 +2748,20 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
         "candidates" => parse_candidates_command(tokens),
+        "set-param" => {
+            if tokens.len() < 3 {
+                return Err("set-param requires NAME JSON_VALUE".to_string());
+            }
+            let name = tokens[1].trim().to_string();
+            if name.is_empty() {
+                return Err("set-param NAME must not be empty".to_string());
+            }
+            let value_json = tokens[2..].join(" ");
+            if value_json.trim().is_empty() {
+                return Err("set-param JSON_VALUE must not be empty".to_string());
+            }
+            Ok(ShellCommand::SetParameter { name, value_json })
+        }
         "op" => {
             let payload = tokens[1..].join(" ");
             if payload.trim().is_empty() {
@@ -2786,6 +2847,141 @@ pub fn split_shell_words(line: &str) -> Result<Vec<String>, String> {
         return Err("Empty shell command".to_string());
     }
     Ok(out)
+}
+
+fn load_candidates_macro_script(script_or_ref: &str) -> Result<String, String> {
+    let trimmed = script_or_ref.trim();
+    if let Some(path) = trimmed.strip_prefix('@') {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err("candidates macro @FILE requires a non-empty file path".to_string());
+        }
+        fs::read_to_string(path)
+            .map_err(|e| format!("Could not read candidates macro file '{path}': {e}"))
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn split_candidates_macro_statements(script: &str) -> Result<Vec<String>, String> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Mode {
+        Normal,
+        SingleQuoted,
+        DoubleQuoted,
+    }
+    let mut out: Vec<String> = vec![];
+    let mut current = String::new();
+    let mut mode = Mode::Normal;
+    let mut chars = script.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match mode {
+            Mode::Normal => match ch {
+                '\'' => {
+                    mode = Mode::SingleQuoted;
+                    current.push(ch);
+                }
+                '"' => {
+                    mode = Mode::DoubleQuoted;
+                    current.push(ch);
+                }
+                ';' | '\n' | '\r' => {
+                    let stmt = current.trim();
+                    if !stmt.is_empty() {
+                        out.push(stmt.to_string());
+                    }
+                    current.clear();
+                }
+                '#' if current.trim().is_empty() => {
+                    for next in chars.by_ref() {
+                        if next == '\n' {
+                            break;
+                        }
+                    }
+                    let stmt = current.trim();
+                    if !stmt.is_empty() {
+                        out.push(stmt.to_string());
+                    }
+                    current.clear();
+                }
+                _ => current.push(ch),
+            },
+            Mode::SingleQuoted => {
+                current.push(ch);
+                if ch == '\'' {
+                    mode = Mode::Normal;
+                }
+            }
+            Mode::DoubleQuoted => {
+                current.push(ch);
+                if ch == '\\' {
+                    if let Some(next) = chars.next() {
+                        current.push(next);
+                    }
+                } else if ch == '"' {
+                    mode = Mode::Normal;
+                }
+            }
+        }
+    }
+    if mode != Mode::Normal {
+        return Err("Unterminated quoted string in candidates macro script".to_string());
+    }
+    let tail = current.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+    Ok(out)
+}
+
+fn run_candidates_macro(
+    engine: &mut GentleEngine,
+    script_or_ref: &str,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let script = load_candidates_macro_script(script_or_ref)?;
+    let statements = split_candidates_macro_statements(&script)?;
+    if statements.is_empty() {
+        return Err("candidates macro script is empty".to_string());
+    }
+    let mut executed = 0usize;
+    let mut changed = false;
+    let mut rows: Vec<Value> = vec![];
+    for statement in statements {
+        let statement = statement.trim();
+        if statement.is_empty() {
+            continue;
+        }
+        let prefixed = if statement.starts_with("candidates ") {
+            statement.to_string()
+        } else {
+            format!("candidates {statement}")
+        };
+        let tokens = split_shell_words(&prefixed)?;
+        let cmd = parse_candidates_command(&tokens)?;
+        if matches!(cmd, ShellCommand::CandidatesMacro { .. }) {
+            return Err("Nested candidates macro calls are not allowed".to_string());
+        }
+        let run = execute_shell_command_with_options(engine, &cmd, options)?;
+        executed = executed.saturating_add(1);
+        changed |= run.state_changed;
+        rows.push(json!({
+            "statement": statement,
+            "state_changed": run.state_changed,
+            "output": run.output
+        }));
+    }
+    if executed == 0 {
+        return Err("candidates macro script has no executable statements".to_string());
+    }
+    Ok(ShellRunResult {
+        state_changed: changed,
+        output: json!({
+            "executed": executed,
+            "state_changed": changed,
+            "results": rows
+        }),
+    })
 }
 
 pub fn execute_shell_command(
@@ -3031,6 +3227,7 @@ pub fn execute_shell_command_with_options(
         }
         ShellCommand::ResourcesSyncJaspar { input, output } => {
             let report = resource_sync::sync_jaspar(input, output.as_deref())?;
+            tf_motifs::reload();
             ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -3766,6 +3963,22 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::CandidatesMacro { script } => run_candidates_macro(engine, script, options)?,
+        ShellCommand::SetParameter { name, value_json } => {
+            let raw = parse_json_payload(value_json)?;
+            let value: serde_json::Value = serde_json::from_str(&raw)
+                .map_err(|e| format!("Invalid JSON value for set-param '{}': {e}", name))?;
+            let op_result = engine
+                .apply(Operation::SetParameter {
+                    name: name.clone(),
+                    value,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::Op { payload } => {
             let json_text = parse_json_payload(payload)?;
             let op: Operation = serde_json::from_str(&json_text)
@@ -4240,6 +4453,35 @@ mod tests {
     }
 
     #[test]
+    fn parse_candidates_macro_file_reference() {
+        let cmd =
+            parse_shell_line("candidates macro --file test_files/candidates_plan.gsh")
+                .expect("parse candidates macro --file");
+        match cmd {
+            ShellCommand::CandidatesMacro { script } => {
+                assert_eq!(script, "@test_files/candidates_plan.gsh");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn split_candidates_macro_statements_handles_quotes_and_comments() {
+        let script = r#"
+# comment line
+generate set1 seqA --length 4 --step 2;
+score set1 score "(gc_fraction*100)+1";
+filter set1 set2 --metric score --min 10
+"#;
+        let statements =
+            split_candidates_macro_statements(script).expect("split candidates macro statements");
+        assert_eq!(statements.len(), 3);
+        assert_eq!(statements[0], "generate set1 seqA --length 4 --step 2");
+        assert_eq!(statements[1], "score set1 score \"(gc_fraction*100)+1\"");
+        assert_eq!(statements[2], "filter set1 set2 --metric score --min 10");
+    }
+
+    #[test]
     fn execute_candidates_generate_score_distance_and_filter() {
         let mut state = ProjectState::default();
         let mut dna = DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence");
@@ -4369,6 +4611,41 @@ mod tests {
     }
 
     #[test]
+    fn execute_candidates_macro_runs_multiple_statements() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesMacro {
+                script: "generate win seqA --length 4 --step 2; score win x '(gc_fraction+1)'; filter win win_top --metric x --min-quantile 1.0".to_string(),
+            },
+        )
+        .expect("execute candidates macro");
+        assert!(out.state_changed);
+        assert_eq!(out.output["executed"].as_u64(), Some(3));
+        let sets = engine.list_candidate_sets();
+        assert!(sets.iter().any(|s| s.name == "win"));
+        assert!(sets.iter().any(|s| s.name == "win_top"));
+    }
+
+    #[test]
+    fn execute_candidates_macro_rejects_nested_macro() {
+        let mut engine = GentleEngine::new();
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesMacro {
+                script: "macro x".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("Nested candidates macro"));
+    }
+
+    #[test]
     fn execute_tracks_tracked_add_and_list() {
         let mut engine = GentleEngine::from_state(ProjectState::default());
         let subscription = GenomeTrackSubscription {
@@ -4423,6 +4700,94 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_resources_sync_jaspar_with_output() {
+        let cmd = parse_shell_line("resources sync-jaspar motifs.pfm out.motifs.json")
+            .expect("parse resources sync-jaspar");
+        match cmd {
+            ShellCommand::ResourcesSyncJaspar { input, output } => {
+                assert_eq!(input, "motifs.pfm".to_string());
+                assert_eq!(output, Some("out.motifs.json".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_import_pool_with_prefix() {
+        let cmd = parse_shell_line("import-pool test_files/demo.pool.gentle.json imported")
+            .expect("parse import-pool");
+        match cmd {
+            ShellCommand::ImportPool { input, prefix } => {
+                assert_eq!(input, "test_files/demo.pool.gentle.json".to_string());
+                assert_eq!(prefix, "imported".to_string());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_import_pool_loads_members_into_engine_state() {
+        let td = tempdir().expect("tempdir");
+        let pool_path = td.path().join("demo.pool.gentle.json");
+        let pool_json = json!({
+            "schema": "gentle.pool.v1",
+            "pool_id": "demo_pool",
+            "human_id": "demo",
+            "member_count": 1,
+            "members": [
+                {
+                    "seq_id": "member_1",
+                    "human_id": "member_1",
+                    "name": "Member One",
+                    "sequence": "ATGCATGC",
+                    "length_bp": 8,
+                    "topology": "linear",
+                    "ends": {
+                        "end_type": "blunt",
+                        "forward_5": "",
+                        "forward_3": "",
+                        "reverse_5": "",
+                        "reverse_3": ""
+                    }
+                }
+            ]
+        });
+        fs::write(
+            &pool_path,
+            serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
+        )
+        .expect("write pool json");
+
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "imported_1".to_string(),
+            DNAsequence::from_sequence("AAAA").expect("seed sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ImportPool {
+                input: pool_path.to_string_lossy().to_string(),
+                prefix: "imported".to_string(),
+            },
+        )
+        .expect("execute import-pool");
+
+        assert!(out.state_changed);
+        assert_eq!(out.output["pool_id"].as_str(), Some("demo_pool"));
+        assert_eq!(out.output["member_count"].as_u64(), Some(1));
+        let imported_ids = out
+            .output
+            .get("imported_ids")
+            .and_then(|v| v.as_array())
+            .expect("imported_ids array");
+        assert_eq!(imported_ids.len(), 1);
+        let imported_id = imported_ids[0].as_str().expect("imported id string");
+        assert_eq!(imported_id, "imported_2");
+        assert!(engine.state().sequences.contains_key(imported_id));
     }
 
     #[test]
@@ -4506,5 +4871,35 @@ mod tests {
         assert!(!out.state_changed);
         assert_eq!(out.output["valid"].as_bool(), Some(true));
         assert_eq!(out.output["genome_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn parse_set_param_command() {
+        let cmd = parse_shell_line("set-param vcf_display_pass_only true").expect("parse set-param");
+        match cmd {
+            ShellCommand::SetParameter { name, value_json } => {
+                assert_eq!(name, "vcf_display_pass_only");
+                assert_eq!(value_json, "true");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_set_param_updates_display_state() {
+        let mut engine = GentleEngine::new();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::SetParameter {
+                name: "vcf_display_min_qual".to_string(),
+                value_json: "33.5".to_string(),
+            },
+        )
+        .expect("execute set-param");
+        assert!(out.state_changed);
+        assert!(
+            (engine.state().display.vcf_display_min_qual - 33.5).abs() < f64::EPSILON,
+            "vcf_display_min_qual should be updated by set-param"
+        );
     }
 }

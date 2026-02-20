@@ -2,9 +2,10 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     engine::{Engine, EngineStateSummary, GentleEngine, Operation, ProjectState, Workflow},
+    engine_shell::{execute_shell_command, ShellCommand},
     enzymes::active_restriction_enzymes,
     methylation_sites::MethylationMode,
-    resource_sync, tf_motifs,
+    resource_sync,
 };
 use deno_core::*;
 use serde::Serialize;
@@ -35,6 +36,27 @@ struct GenomePreparedResponse {
     prepared: bool,
 }
 
+#[derive(Serialize)]
+struct ShellUtilityApplyResponse {
+    state: ProjectState,
+    state_changed: bool,
+    output: serde_json::Value,
+}
+
+fn sync_report_from_shell_output(
+    output: serde_json::Value,
+    context: &str,
+) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+    let Some(report_value) = output.get("report").cloned() else {
+        return Err(deno_core::anyhow::anyhow!(
+            "{context}: missing 'report' field in shell output"
+        ));
+    };
+    serde_json::from_value(report_value).map_err(|e| {
+        deno_core::anyhow::anyhow!("{context}: could not parse sync report from shell output: {e}")
+    })
+}
+
 #[op2]
 #[serde]
 fn load_dna(#[string] path: &str) -> Result<DNAsequence, deno_core::anyhow::Error> {
@@ -55,16 +77,16 @@ fn sync_rebase_resource(
     #[string] output: &str,
     commercial_only: bool,
 ) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
-    resource_sync::sync_rebase(
-        input,
-        if output.trim().is_empty() {
-            None
-        } else {
-            Some(output)
-        },
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::ResourcesSyncRebase {
+        input: input.to_string(),
+        output: empty_to_none(output).map(str::to_string),
         commercial_only,
-    )
-    .map_err(|e| deno_core::anyhow::anyhow!(e))
+    };
+    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+        deno_core::anyhow::anyhow!("resources sync-rebase failed: {e}")
+    })?;
+    sync_report_from_shell_output(run.output, "resources sync-rebase")
 }
 
 #[op2]
@@ -73,17 +95,41 @@ fn sync_jaspar_resource(
     #[string] input: &str,
     #[string] output: &str,
 ) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
-    let report = resource_sync::sync_jaspar(
-        input,
-        if output.trim().is_empty() {
-            None
-        } else {
-            Some(output)
-        },
-    )
-    .map_err(|e| deno_core::anyhow::anyhow!(e))?;
-    tf_motifs::reload();
-    Ok(report)
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let command = ShellCommand::ResourcesSyncJaspar {
+        input: input.to_string(),
+        output: empty_to_none(output).map(str::to_string),
+    };
+    let run = execute_shell_command(&mut engine, &command).map_err(|e| {
+        deno_core::anyhow::anyhow!("resources sync-jaspar failed: {e}")
+    })?;
+    sync_report_from_shell_output(run.output, "resources sync-jaspar")
+}
+
+#[op2]
+#[serde]
+fn import_pool(
+    #[serde] state: ProjectState,
+    #[string] input: &str,
+    #[string] prefix: &str,
+) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+    let mut engine = GentleEngine::from_state(state);
+    let prefix = if prefix.trim().is_empty() {
+        "pool".to_string()
+    } else {
+        prefix.trim().to_string()
+    };
+    let command = ShellCommand::ImportPool {
+        input: input.to_string(),
+        prefix,
+    };
+    let run = execute_shell_command(&mut engine, &command)
+        .map_err(|e| deno_core::anyhow::anyhow!("import-pool failed: {e}"))?;
+    Ok(ShellUtilityApplyResponse {
+        state: engine.state().clone(),
+        state_changed: run.state_changed,
+        output: run.output,
+    })
 }
 
 #[op2]
@@ -304,6 +350,7 @@ impl JavaScriptInterface {
         const APPLY_WORKFLOW: OpDecl = apply_workflow();
         const SYNC_REBASE_RESOURCE: OpDecl = sync_rebase_resource();
         const SYNC_JASPAR_RESOURCE: OpDecl = sync_jaspar_resource();
+        const IMPORT_POOL: OpDecl = import_pool();
         let ext = Extension {
             name: "my_ext",
             ops: std::borrow::Cow::Borrowed(&[
@@ -326,6 +373,7 @@ impl JavaScriptInterface {
                 APPLY_WORKFLOW,
                 SYNC_REBASE_RESOURCE,
                 SYNC_JASPAR_RESOURCE,
+                IMPORT_POOL,
             ]),
             ..Default::default()
         };
@@ -391,19 +439,54 @@ impl JavaScriptInterface {
           			cache_dir ?? ""
           		);
           	}
-          	function apply_operation(state, op) {
-          		const payload = (typeof op === "string") ? op : JSON.stringify(op);
-          		return Deno.core.ops.apply_operation(state, payload);
-          	}
-          	function apply_workflow(state, workflow) {
-          		const payload = (typeof workflow === "string") ? workflow : JSON.stringify(workflow);
-          		return Deno.core.ops.apply_workflow(state, payload);
-          	}
+	          	function apply_operation(state, op) {
+	          		const payload = (typeof op === "string") ? op : JSON.stringify(op);
+	          		return Deno.core.ops.apply_operation(state, payload);
+	          	}
+	          	function set_parameter(state, name, value) {
+	          		return apply_operation(state, {
+	          			SetParameter: {
+	          				name: name,
+	          				value: value
+	          			}
+	          		});
+	          	}
+	          	function set_vcf_display_filter(state, options) {
+	          		const opts = options ?? {};
+	          		let currentState = state;
+	          		let lastResult = null;
+	          		const applyOne = (name, value) => {
+	          			const applied = set_parameter(currentState, name, value);
+	          			currentState = applied.state;
+	          			lastResult = applied.result;
+	          		};
+	          		if (opts.show_snp !== undefined) applyOne("vcf_display_show_snp", !!opts.show_snp);
+	          		if (opts.show_ins !== undefined) applyOne("vcf_display_show_ins", !!opts.show_ins);
+	          		if (opts.show_del !== undefined) applyOne("vcf_display_show_del", !!opts.show_del);
+	          		if (opts.show_sv !== undefined) applyOne("vcf_display_show_sv", !!opts.show_sv);
+	          		if (opts.show_other !== undefined) applyOne("vcf_display_show_other", !!opts.show_other);
+	          		if (opts.pass_only !== undefined) applyOne("vcf_display_pass_only", !!opts.pass_only);
+	          		if (opts.use_min_qual !== undefined) applyOne("vcf_display_use_min_qual", !!opts.use_min_qual);
+	          		if (opts.min_qual !== undefined) applyOne("vcf_display_min_qual", Number(opts.min_qual));
+	          		if (opts.use_max_qual !== undefined) applyOne("vcf_display_use_max_qual", !!opts.use_max_qual);
+	          		if (opts.max_qual !== undefined) applyOne("vcf_display_max_qual", Number(opts.max_qual));
+	          		if (opts.required_info_keys !== undefined) {
+	          			applyOne("vcf_display_required_info_keys", opts.required_info_keys);
+	          		}
+	          		return { state: currentState, result: lastResult };
+	          	}
+	          	function apply_workflow(state, workflow) {
+	          		const payload = (typeof workflow === "string") ? workflow : JSON.stringify(workflow);
+	          		return Deno.core.ops.apply_workflow(state, payload);
+	          	}
           	function sync_rebase(input, output, commercial_only) {
           		return Deno.core.ops.sync_rebase_resource(input, output ?? "", commercial_only ?? false);
           	}
           	function sync_jaspar(input, output) {
           		return Deno.core.ops.sync_jaspar_resource(input, output ?? "");
+          	}
+          	function import_pool(state, input, prefix) {
+          		return Deno.core.ops.import_pool(state, input, prefix ?? "pool");
           	}
           	function digest(state, input, enzymes, output_id) {
           		const op = {
