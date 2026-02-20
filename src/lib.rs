@@ -39,6 +39,7 @@ pub mod sequence_rows;
 pub mod sequence_rows_blank;
 pub mod sequence_rows_dna;
 pub mod sequence_rows_restriction_enzymes;
+pub mod shell_docs;
 pub mod tf_motifs;
 pub mod translations;
 pub mod window;

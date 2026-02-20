@@ -441,7 +441,12 @@ impl RenderDnaCircular {
 
     /// Draws Open Reading Frames (ORFs) on the circular DNA
     fn draw_open_reading_frames(&self, painter: &egui::Painter) {
-        if !self.display.read().unwrap().show_open_reading_frames() {
+        if !self
+            .display
+            .read()
+            .unwrap()
+            .show_open_reading_frames_effective()
+        {
             return;
         }
         let orfs = self.dna.read().unwrap().open_reading_frames().to_owned();

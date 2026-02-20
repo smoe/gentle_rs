@@ -3,7 +3,8 @@ use crate::{
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
     genomes::{
-        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan,
+        is_prepare_cancelled_error, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
+        GenomeSourcePlan,
         PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
@@ -32,7 +33,7 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     process::Command,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tempfile::NamedTempFile;
 
@@ -304,7 +305,8 @@ impl ProjectState {
     pub fn save_to_path(&self, path: &str) -> Result<(), EngineError> {
         let mut state_for_disk = self.clone();
         let project_path = Path::new(path);
-        let sidecar_tx = state_for_disk.prepare_candidate_store_sidecar_transaction(project_path)?;
+        let sidecar_tx =
+            state_for_disk.prepare_candidate_store_sidecar_transaction(project_path)?;
         let text = serde_json::to_string_pretty(&state_for_disk).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize state: {e}"),
@@ -378,11 +380,17 @@ impl ProjectState {
         })?;
         tmp.write_all(text.as_bytes()).map_err(|e| EngineError {
             code: ErrorCode::Io,
-            message: format!("Could not write temporary state file for '{}': {e}", path.display()),
+            message: format!(
+                "Could not write temporary state file for '{}': {e}",
+                path.display()
+            ),
         })?;
         tmp.flush().map_err(|e| EngineError {
             code: ErrorCode::Io,
-            message: format!("Could not flush temporary state file for '{}': {e}", path.display()),
+            message: format!(
+                "Could not flush temporary state file for '{}': {e}",
+                path.display()
+            ),
         })?;
         tmp.as_file().sync_all().map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -393,7 +401,11 @@ impl ProjectState {
         })?;
         tmp.persist(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
-            message: format!("Could not replace state file '{}': {}", path.display(), e.error),
+            message: format!(
+                "Could not replace state file '{}': {}",
+                path.display(),
+                e.error
+            ),
         })?;
         Ok(())
     }
@@ -586,8 +598,8 @@ impl ProjectState {
                 if trimmed.is_empty() {
                     continue;
                 }
-                let candidate = serde_json::from_str::<CandidateRecord>(trimmed).map_err(|e| {
-                    EngineError {
+                let candidate =
+                    serde_json::from_str::<CandidateRecord>(trimmed).map_err(|e| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!(
                             "Invalid candidate record JSON at '{}':{}: {}",
@@ -595,8 +607,7 @@ impl ProjectState {
                             line_no + 1,
                             e
                         ),
-                    }
-                })?;
+                    })?;
                 candidates.push(candidate);
             }
             sets.insert(
@@ -620,11 +631,7 @@ impl ProjectState {
         &mut self,
         project_path: &str,
     ) -> Result<(), EngineError> {
-        let Some(value) = self
-            .metadata
-            .get(CANDIDATE_SETS_METADATA_KEY)
-            .cloned()
-        else {
+        let Some(value) = self.metadata.get(CANDIDATE_SETS_METADATA_KEY).cloned() else {
             return Ok(());
         };
         if Self::parse_inline_candidate_store_value(&value).is_some() {
@@ -659,15 +666,14 @@ impl ProjectState {
         if let Some(store) = Self::parse_inline_candidate_store_value(&value) {
             return Ok(Some(store));
         }
-        let reference: CandidateStoreReference = serde_json::from_value(value).map_err(|e| {
-            EngineError {
+        let reference: CandidateStoreReference =
+            serde_json::from_value(value).map_err(|e| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Could not parse candidate-store reference metadata '{}': {e}",
                     CANDIDATE_SETS_METADATA_KEY
                 ),
-            }
-        })?;
+            })?;
         if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
             return Ok(None);
         }
@@ -680,11 +686,7 @@ impl ProjectState {
         project_path: &Path,
     ) -> Result<CandidateSidecarTransaction, EngineError> {
         let sidecar_dir = Self::candidate_store_sidecar_dir(project_path);
-        let Some(value) = self
-            .metadata
-            .get(CANDIDATE_SETS_METADATA_KEY)
-            .cloned()
-        else {
+        let Some(value) = self.metadata.get(CANDIDATE_SETS_METADATA_KEY).cloned() else {
             if sidecar_dir.exists() {
                 return Ok(CandidateSidecarTransaction::Remove {
                     final_dir: sidecar_dir,
@@ -1156,6 +1158,67 @@ pub struct CandidateMetricSummary {
     pub missing_in_candidates: usize,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateFeatureGeometryMode {
+    #[default]
+    FeatureSpan,
+    FeatureParts,
+    FeatureBoundaries,
+}
+
+impl CandidateFeatureGeometryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FeatureSpan => "feature_span",
+            Self::FeatureParts => "feature_parts",
+            Self::FeatureBoundaries => "feature_boundaries",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateFeatureBoundaryMode {
+    #[default]
+    Any,
+    FivePrime,
+    ThreePrime,
+    Start,
+    End,
+}
+
+impl CandidateFeatureBoundaryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Any => "any",
+            Self::FivePrime => "five_prime",
+            Self::ThreePrime => "three_prime",
+            Self::Start => "start",
+            Self::End => "end",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CandidateFeatureStrandRelation {
+    #[default]
+    Any,
+    Same,
+    Opposite,
+}
+
+impl CandidateFeatureStrandRelation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Any => "any",
+            Self::Same => "same",
+            Self::Opposite => "opposite",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CandidateSetOperator {
@@ -1251,6 +1314,8 @@ pub enum Operation {
         genome_id: String,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        #[serde(default)]
+        timeout_seconds: Option<u64>,
     },
     ExtractGenomeRegion {
         genome_id: String,
@@ -1427,6 +1492,12 @@ pub enum Operation {
         feature_kinds: Vec<String>,
         feature_label_regex: Option<String>,
         max_distance_bp: Option<usize>,
+        #[serde(default)]
+        feature_geometry_mode: Option<CandidateFeatureGeometryMode>,
+        #[serde(default)]
+        feature_boundary_mode: Option<CandidateFeatureBoundaryMode>,
+        #[serde(default)]
+        feature_strand_relation: Option<CandidateFeatureStrandRelation>,
         limit: Option<usize>,
     },
     DeleteCandidateSet {
@@ -1443,6 +1514,12 @@ pub enum Operation {
         #[serde(default)]
         feature_kinds: Vec<String>,
         feature_label_regex: Option<String>,
+        #[serde(default)]
+        feature_geometry_mode: Option<CandidateFeatureGeometryMode>,
+        #[serde(default)]
+        feature_boundary_mode: Option<CandidateFeatureBoundaryMode>,
+        #[serde(default)]
+        feature_strand_relation: Option<CandidateFeatureStrandRelation>,
     },
     FilterCandidateSet {
         input_set: String,
@@ -1713,11 +1790,20 @@ struct VcfAltGenotypeSummary {
 }
 
 #[derive(Debug, Clone)]
-struct FeatureInterval {
+struct FeatureDistanceTarget {
+    feature_index: usize,
     kind_upper: String,
     labels_upper: Vec<String>,
     start_0based: usize,
     end_0based: usize,
+    strand: Option<char>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FeatureLocationSegment {
+    start_0based: usize,
+    end_0based: usize,
+    strand: Option<char>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2605,18 +2691,42 @@ impl GentleEngine {
         genome_id: &str,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
-        on_progress: &mut dyn FnMut(PrepareGenomeProgress),
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, EngineError> {
         let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        let timeout = timeout_seconds.map(Duration::from_secs);
+        let started = Instant::now();
+        let mut timed_out = false;
+        let mut guarded_progress = |progress: PrepareGenomeProgress| -> bool {
+            if let Some(limit) = timeout {
+                if started.elapsed() >= limit {
+                    timed_out = true;
+                    return false;
+                }
+            }
+            on_progress(progress)
+        };
         catalog
             .prepare_genome_once_with_progress(
                 genome_id,
                 cache_dir.map(str::trim).filter(|v| !v.is_empty()),
-                on_progress,
+                &mut guarded_progress,
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
-                message: format!("Could not prepare genome '{genome_id}': {e}"),
+                message: if is_prepare_cancelled_error(&e) {
+                    if timed_out {
+                        format!(
+                            "Genome preparation timed out for '{genome_id}' after {} second(s)",
+                            timeout_seconds.unwrap_or(0)
+                        )
+                    } else {
+                        format!("Genome preparation cancelled for '{genome_id}'")
+                    }
+                } else {
+                    format!("Could not prepare genome '{genome_id}': {e}")
+                },
             })
     }
 
@@ -2624,13 +2734,20 @@ impl GentleEngine {
         genome_id: &str,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
-        on_progress: &mut dyn FnMut(PrepareGenomeProgress),
+        timeout_seconds: Option<u64>,
+        on_progress: &mut dyn FnMut(PrepareGenomeProgress) -> bool,
     ) -> Result<PrepareGenomeReport, EngineError> {
         let chosen = catalog_path
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::prepare_reference_genome_once(genome_id, Some(chosen), cache_dir, on_progress)
+        Self::prepare_reference_genome_once(
+            genome_id,
+            Some(chosen),
+            cache_dir,
+            timeout_seconds,
+            on_progress,
+        )
     }
 
     pub fn format_prepare_genome_message(
@@ -3271,33 +3388,231 @@ impl GentleEngine {
         labels
     }
 
-    fn collect_feature_intervals(dna: &DNAsequence) -> Vec<FeatureInterval> {
+    fn collect_location_segments(
+        location: &gb_io::seq::Location,
+        seq_len: usize,
+        reverse: bool,
+        out: &mut Vec<FeatureLocationSegment>,
+    ) {
+        use gb_io::seq::Location;
+        match location {
+            Location::Range((a, _), (b, _)) => {
+                let raw_start = (*a).min(*b);
+                let raw_end = (*a).max(*b);
+                let raw_end_exclusive = if raw_end == raw_start {
+                    raw_end.saturating_add(1)
+                } else {
+                    raw_end
+                };
+                if raw_end_exclusive <= 0 || raw_start >= seq_len as i64 {
+                    return;
+                }
+                let start = raw_start.max(0).min(seq_len as i64) as usize;
+                let end_0based = raw_end_exclusive.max(0).min(seq_len as i64) as usize;
+                if end_0based <= start {
+                    return;
+                }
+                out.push(FeatureLocationSegment {
+                    start_0based: start,
+                    end_0based,
+                    strand: Some(if reverse { '-' } else { '+' }),
+                });
+            }
+            Location::Between(a, b) => {
+                let raw_start = (*a).min(*b);
+                let raw_end_exclusive = (*a).max(*b).saturating_add(1);
+                if raw_end_exclusive <= 0 || raw_start >= seq_len as i64 {
+                    return;
+                }
+                let start = raw_start.max(0).min(seq_len as i64) as usize;
+                let end_0based = raw_end_exclusive.max(0).min(seq_len as i64) as usize;
+                if end_0based <= start {
+                    return;
+                }
+                out.push(FeatureLocationSegment {
+                    start_0based: start,
+                    end_0based,
+                    strand: Some(if reverse { '-' } else { '+' }),
+                });
+            }
+            Location::Complement(inner) => {
+                Self::collect_location_segments(inner, seq_len, !reverse, out);
+            }
+            Location::Join(parts)
+            | Location::Order(parts)
+            | Location::Bond(parts)
+            | Location::OneOf(parts) => {
+                for part in parts {
+                    Self::collect_location_segments(part, seq_len, reverse, out);
+                }
+            }
+            Location::External(_, maybe_inner) => {
+                if let Some(inner) = maybe_inner.as_deref() {
+                    Self::collect_location_segments(inner, seq_len, reverse, out);
+                }
+            }
+            Location::Gap(_) => {}
+        }
+    }
+
+    fn feature_segment_boundary_positions(
+        segment: &FeatureLocationSegment,
+        boundary_mode: CandidateFeatureBoundaryMode,
+    ) -> Vec<usize> {
+        if segment.end_0based <= segment.start_0based {
+            return vec![];
+        }
+        let start = segment.start_0based;
+        let end = segment.end_0based.saturating_sub(1);
         let mut out = vec![];
-        for feature in dna.features() {
+        match boundary_mode {
+            CandidateFeatureBoundaryMode::Any => {
+                out.push(start);
+                out.push(end);
+            }
+            CandidateFeatureBoundaryMode::Start => out.push(start),
+            CandidateFeatureBoundaryMode::End => out.push(end),
+            CandidateFeatureBoundaryMode::FivePrime => match segment.strand {
+                Some('+') => out.push(start),
+                Some('-') => out.push(end),
+                _ => {
+                    out.push(start);
+                    out.push(end);
+                }
+            },
+            CandidateFeatureBoundaryMode::ThreePrime => match segment.strand {
+                Some('+') => out.push(end),
+                Some('-') => out.push(start),
+                _ => {
+                    out.push(start);
+                    out.push(end);
+                }
+            },
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    fn collect_feature_distance_targets(
+        dna: &DNAsequence,
+        geometry_mode: CandidateFeatureGeometryMode,
+        boundary_mode: CandidateFeatureBoundaryMode,
+    ) -> Vec<FeatureDistanceTarget> {
+        let mut out = vec![];
+        for (feature_index, feature) in dna.features().iter().enumerate() {
             if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
                 continue;
             }
-            let Ok((from, to)) = feature.location.find_bounds() else {
+            let kind_upper = feature.kind.to_string().to_ascii_uppercase();
+            let labels_upper = Self::feature_labels_upper(feature);
+            let mut segments = vec![];
+            Self::collect_location_segments(&feature.location, dna.len(), false, &mut segments);
+            if segments.is_empty() {
+                let Ok((from, to)) = feature.location.find_bounds() else {
+                    continue;
+                };
+                if from < 0 || to <= 0 {
+                    continue;
+                }
+                let start = from.min(to).max(0).min(dna.len() as i64) as usize;
+                let raw_end = from.max(to);
+                let raw_end_exclusive = if raw_end == from.min(to) {
+                    raw_end.saturating_add(1)
+                } else {
+                    raw_end
+                };
+                let end_0based = raw_end_exclusive.max(0).min(dna.len() as i64) as usize;
+                if end_0based <= start {
+                    continue;
+                }
+                segments.push(FeatureLocationSegment {
+                    start_0based: start,
+                    end_0based,
+                    strand: None,
+                });
+            }
+            if segments.is_empty() {
                 continue;
+            }
+            let feature_strand = {
+                let mut strand = None;
+                let mut ambiguous = false;
+                for segment in &segments {
+                    match (strand, segment.strand) {
+                        (_, None) => {
+                            ambiguous = true;
+                            break;
+                        }
+                        (None, Some(s)) => strand = Some(s),
+                        (Some(prev), Some(s)) if prev == s => {}
+                        (Some(_), Some(_)) => {
+                            ambiguous = true;
+                            break;
+                        }
+                    }
+                }
+                if ambiguous { None } else { strand }
             };
-            if from < 0 || to < 0 {
-                continue;
+            match geometry_mode {
+                CandidateFeatureGeometryMode::FeatureSpan => {
+                    let start = segments
+                        .iter()
+                        .map(|segment| segment.start_0based)
+                        .min()
+                        .unwrap_or(0);
+                    let end_0based = segments
+                        .iter()
+                        .map(|segment| segment.end_0based)
+                        .max()
+                        .unwrap_or(start);
+                    if end_0based <= start {
+                        continue;
+                    }
+                    out.push(FeatureDistanceTarget {
+                        feature_index,
+                        kind_upper: kind_upper.clone(),
+                        labels_upper: labels_upper.clone(),
+                        start_0based: start,
+                        end_0based,
+                        strand: feature_strand,
+                    });
+                }
+                CandidateFeatureGeometryMode::FeatureParts => {
+                    for segment in segments {
+                        if segment.end_0based <= segment.start_0based {
+                            continue;
+                        }
+                        out.push(FeatureDistanceTarget {
+                            feature_index,
+                            kind_upper: kind_upper.clone(),
+                            labels_upper: labels_upper.clone(),
+                            start_0based: segment.start_0based,
+                            end_0based: segment.end_0based,
+                            strand: segment.strand,
+                        });
+                    }
+                }
+                CandidateFeatureGeometryMode::FeatureBoundaries => {
+                    for segment in &segments {
+                        for point in
+                            Self::feature_segment_boundary_positions(segment, boundary_mode)
+                        {
+                            if point >= dna.len() {
+                                continue;
+                            }
+                            out.push(FeatureDistanceTarget {
+                                feature_index,
+                                kind_upper: kind_upper.clone(),
+                                labels_upper: labels_upper.clone(),
+                                start_0based: point,
+                                end_0based: point.saturating_add(1).min(dna.len()),
+                                strand: segment.strand,
+                            });
+                        }
+                    }
+                }
             }
-            let start = from.min(to) as usize;
-            let end_inclusive = from.max(to) as usize;
-            if dna.is_empty() || start >= dna.len() {
-                continue;
-            }
-            let end_0based = end_inclusive.saturating_add(1).min(dna.len());
-            if end_0based <= start {
-                continue;
-            }
-            out.push(FeatureInterval {
-                kind_upper: feature.kind.to_string().to_ascii_uppercase(),
-                labels_upper: Self::feature_labels_upper(feature),
-                start_0based: start,
-                end_0based,
-            });
         }
         out
     }
@@ -3324,7 +3639,7 @@ impl GentleEngine {
     }
 
     fn feature_matches_filter(
-        feature: &FeatureInterval,
+        feature: &FeatureDistanceTarget,
         kind_filter_upper: &[String],
         label_regex: Option<&Regex>,
     ) -> bool {
@@ -3342,6 +3657,17 @@ impl GentleEngine {
                 .any(|label| regex.is_match(label))
         } else {
             true
+        }
+    }
+
+    fn feature_matches_strand_relation(
+        feature: &FeatureDistanceTarget,
+        strand_relation: CandidateFeatureStrandRelation,
+    ) -> bool {
+        match strand_relation {
+            CandidateFeatureStrandRelation::Any => true,
+            CandidateFeatureStrandRelation::Same => feature.strand == Some('+'),
+            CandidateFeatureStrandRelation::Opposite => feature.strand == Some('-'),
         }
     }
 
@@ -3363,13 +3689,15 @@ impl GentleEngine {
     fn nearest_feature_distance(
         candidate_start: usize,
         candidate_end: usize,
-        features: &[FeatureInterval],
+        features: &[FeatureDistanceTarget],
         kind_filter_upper: &[String],
         label_regex: Option<&Regex>,
+        strand_relation: CandidateFeatureStrandRelation,
     ) -> Option<usize> {
         features
             .iter()
             .filter(|feature| Self::feature_matches_filter(feature, kind_filter_upper, label_regex))
+            .filter(|feature| Self::feature_matches_strand_relation(feature, strand_relation))
             .map(|feature| {
                 Self::interval_distance(
                     candidate_start,
@@ -3379,6 +3707,21 @@ impl GentleEngine {
                 )
             })
             .min()
+    }
+
+    fn matching_feature_count(
+        features: &[FeatureDistanceTarget],
+        kind_filter_upper: &[String],
+        label_regex: Option<&Regex>,
+        strand_relation: CandidateFeatureStrandRelation,
+    ) -> usize {
+        features
+            .iter()
+            .filter(|feature| Self::feature_matches_filter(feature, kind_filter_upper, label_regex))
+            .filter(|feature| Self::feature_matches_strand_relation(feature, strand_relation))
+            .map(|feature| feature.feature_index)
+            .collect::<HashSet<_>>()
+            .len()
     }
 
     fn compute_candidate_metrics(
@@ -3724,6 +4067,9 @@ impl GentleEngine {
         feature_kinds: Vec<String>,
         feature_label_regex: Option<String>,
         max_distance_bp: Option<usize>,
+        feature_geometry_mode: Option<CandidateFeatureGeometryMode>,
+        feature_boundary_mode: Option<CandidateFeatureBoundaryMode>,
+        feature_strand_relation: Option<CandidateFeatureStrandRelation>,
         limit: Option<usize>,
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
@@ -3775,14 +4121,39 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         kind_filter_upper.sort();
         kind_filter_upper.dedup();
-        let feature_intervals = Self::collect_feature_intervals(dna);
-        let matching_feature_count = feature_intervals
-            .iter()
-            .filter(|feature| {
-                Self::feature_matches_filter(feature, &kind_filter_upper, label_regex.as_ref())
-            })
-            .count();
-        if (!kind_filter_upper.is_empty() || label_regex.is_some() || max_distance_bp.is_some())
+        let feature_geometry_mode = feature_geometry_mode.unwrap_or_default();
+        let requested_boundary_mode = feature_boundary_mode.unwrap_or_default();
+        let feature_strand_relation = feature_strand_relation.unwrap_or_default();
+        let effective_boundary_mode =
+            if feature_geometry_mode == CandidateFeatureGeometryMode::FeatureBoundaries {
+                requested_boundary_mode
+            } else {
+                CandidateFeatureBoundaryMode::Any
+            };
+        if feature_geometry_mode != CandidateFeatureGeometryMode::FeatureBoundaries
+            && feature_boundary_mode.is_some()
+        {
+            result.warnings.push(
+                "feature_boundary_mode is ignored unless feature_geometry_mode=feature_boundaries"
+                    .to_string(),
+            );
+        }
+        let feature_targets = Self::collect_feature_distance_targets(
+            dna,
+            feature_geometry_mode,
+            effective_boundary_mode,
+        );
+        let matching_feature_count = Self::matching_feature_count(
+            &feature_targets,
+            &kind_filter_upper,
+            label_regex.as_ref(),
+            feature_strand_relation,
+        );
+        let has_feature_filter = !kind_filter_upper.is_empty()
+            || label_regex.is_some()
+            || max_distance_bp.is_some()
+            || feature_strand_relation != CandidateFeatureStrandRelation::Any;
+        if has_feature_filter
             && matching_feature_count == 0
         {
             return Err(EngineError {
@@ -3800,16 +4171,26 @@ impl GentleEngine {
         while start <= upper {
             let end = start + length_bp;
             considered += 1;
-            let distance_any =
-                Self::nearest_feature_distance(start, end, &feature_intervals, &[], None);
+            let distance_any = Self::nearest_feature_distance(
+                start,
+                end,
+                &feature_targets,
+                &[],
+                None,
+                CandidateFeatureStrandRelation::Any,
+            );
             let distance_filtered = Self::nearest_feature_distance(
                 start,
                 end,
-                &feature_intervals,
+                &feature_targets,
                 &kind_filter_upper,
                 label_regex.as_ref(),
+                feature_strand_relation,
             );
-            let selected_distance = if !kind_filter_upper.is_empty() || label_regex.is_some() {
+            let selected_distance = if !kind_filter_upper.is_empty()
+                || label_regex.is_some()
+                || feature_strand_relation != CandidateFeatureStrandRelation::Any
+            {
                 distance_filtered
             } else {
                 distance_any
@@ -3906,6 +4287,15 @@ impl GentleEngine {
                 set_name, matching_feature_count
             ));
         }
+        if !feature_targets.is_empty() {
+            result.messages.push(format!(
+                "Candidate set '{}' feature distance mode: geometry='{}', boundary='{}', strand_relation='{}'",
+                set_name,
+                feature_geometry_mode.as_str(),
+                effective_boundary_mode.as_str(),
+                feature_strand_relation.as_str()
+            ));
+        }
         Ok(())
     }
 
@@ -3988,6 +4378,9 @@ impl GentleEngine {
         metric: String,
         feature_kinds: Vec<String>,
         feature_label_regex: Option<String>,
+        feature_geometry_mode: Option<CandidateFeatureGeometryMode>,
+        feature_boundary_mode: Option<CandidateFeatureBoundaryMode>,
+        feature_strand_relation: Option<CandidateFeatureStrandRelation>,
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
         let set_name = Self::normalize_candidate_set_name(&set_name)?;
@@ -4001,6 +4394,23 @@ impl GentleEngine {
             .collect::<Vec<_>>();
         kind_filter_upper.sort();
         kind_filter_upper.dedup();
+        let feature_geometry_mode = feature_geometry_mode.unwrap_or_default();
+        let requested_boundary_mode = feature_boundary_mode.unwrap_or_default();
+        let feature_strand_relation = feature_strand_relation.unwrap_or_default();
+        let effective_boundary_mode =
+            if feature_geometry_mode == CandidateFeatureGeometryMode::FeatureBoundaries {
+                requested_boundary_mode
+            } else {
+                CandidateFeatureBoundaryMode::Any
+            };
+        if feature_geometry_mode != CandidateFeatureGeometryMode::FeatureBoundaries
+            && feature_boundary_mode.is_some()
+        {
+            result.warnings.push(
+                "feature_boundary_mode is ignored unless feature_geometry_mode=feature_boundaries"
+                    .to_string(),
+            );
+        }
 
         let mut store = self.read_candidate_store();
         let set = store.sets.get_mut(&set_name).ok_or_else(|| EngineError {
@@ -4014,7 +4424,7 @@ impl GentleEngine {
             });
         }
 
-        let mut feature_cache: HashMap<String, Vec<FeatureInterval>> = HashMap::new();
+        let mut feature_cache: HashMap<String, Vec<FeatureDistanceTarget>> = HashMap::new();
         for seq_id in set
             .candidates
             .iter()
@@ -4030,7 +4440,14 @@ impl GentleEngine {
                     ),
                 });
             };
-            feature_cache.insert(seq_id.clone(), Self::collect_feature_intervals(dna));
+            feature_cache.insert(
+                seq_id.clone(),
+                Self::collect_feature_distance_targets(
+                    dna,
+                    feature_geometry_mode,
+                    effective_boundary_mode,
+                ),
+            );
         }
 
         let mut values = Vec::with_capacity(set.candidates.len());
@@ -4050,6 +4467,7 @@ impl GentleEngine {
                 features,
                 &kind_filter_upper,
                 label_regex.as_ref(),
+                feature_strand_relation,
             )
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
@@ -4074,6 +4492,13 @@ impl GentleEngine {
         result.messages.push(format!(
             "Metric '{}' range in '{}': [{:.6}, {:.6}]",
             metric_name, set_name, min_value, max_value
+        ));
+        result.messages.push(format!(
+            "Distance scoring mode for '{}': geometry='{}', boundary='{}', strand_relation='{}'",
+            set_name,
+            feature_geometry_mode.as_str(),
+            effective_boundary_mode.as_str(),
+            feature_strand_relation.as_str()
         ));
         Ok(())
     }
@@ -4486,10 +4911,7 @@ impl GentleEngine {
             .join(", ");
         report.warnings.push(format!(
             "{} record(s) in {} input did not match anchor chromosome '{}' (examples: {})",
-            report.skipped_wrong_chromosome,
-            source_label,
-            anchor_chromosome,
-            seen
+            report.skipped_wrong_chromosome, source_label, anchor_chromosome, seen
         ));
     }
 
@@ -5013,7 +5435,10 @@ impl GentleEngine {
         if let Some(genotype) =
             Self::summarize_vcf_alt_genotype(record, alt_allele_index_1based, sample_names)
         {
-            qualifiers.push(("vcf_alt_carriers".into(), Some(genotype.carriers.to_string())));
+            qualifiers.push((
+                "vcf_alt_carriers".into(),
+                Some(genotype.carriers.to_string()),
+            ));
             qualifiers.push((
                 "vcf_alt_carrier_phased".into(),
                 Some(genotype.phased_carriers.to_string()),
@@ -5258,7 +5683,9 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 report.skipped_records += 1;
                 report.skipped_wrong_chromosome += 1;
-                *mismatch_counts.entry(record.chromosome.clone()).or_insert(0) += 1;
+                *mismatch_counts
+                    .entry(record.chromosome.clone())
+                    .or_insert(0) += 1;
                 continue;
             }
 
@@ -5482,7 +5909,9 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 report.skipped_records += 1;
                 report.skipped_wrong_chromosome += 1;
-                *mismatch_counts.entry(record.chromosome.clone()).or_insert(0) += 1;
+                *mismatch_counts
+                    .entry(record.chromosome.clone())
+                    .or_insert(0) += 1;
                 continue;
             }
 
@@ -5662,7 +6091,9 @@ impl GentleEngine {
             if !Self::chromosomes_match(&record.chromosome, &anchor.chromosome) {
                 report.skipped_records += 1;
                 report.skipped_wrong_chromosome += 1;
-                *mismatch_counts.entry(record.chromosome.clone()).or_insert(0) += 1;
+                *mismatch_counts
+                    .entry(record.chromosome.clone())
+                    .or_insert(0) += 1;
                 continue;
             }
 
@@ -7797,14 +8228,14 @@ impl GentleEngine {
                 genome_id,
                 catalog_path,
                 cache_dir,
+                timeout_seconds,
             } => {
                 let report = Self::prepare_reference_genome_once(
                     &genome_id,
                     catalog_path.as_deref(),
                     cache_dir.as_deref(),
-                    &mut |p| {
-                        let _ = on_progress(OperationProgress::GenomePrepare(p));
-                    },
+                    timeout_seconds,
+                    &mut |p| on_progress(OperationProgress::GenomePrepare(p)),
                 )?;
                 result.messages.push(Self::format_prepare_genome_message(
                     &genome_id,
@@ -8080,15 +8511,16 @@ impl GentleEngine {
                     .or(anchor.catalog_path.clone())
                     .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
                 let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
-                let catalog = GenomeCatalog::from_json_file(&resolved_catalog_path).map_err(|e| {
-                    EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Could not open genome catalog '{}': {}",
-                            resolved_catalog_path, e
-                        ),
-                    }
-                })?;
+                let catalog =
+                    GenomeCatalog::from_json_file(&resolved_catalog_path).map_err(|e| {
+                        EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Could not open genome catalog '{}': {}",
+                                resolved_catalog_path, e
+                            ),
+                        }
+                    })?;
 
                 let anchor_is_reverse = anchor.strand == Some('-');
                 let (new_start_1based, new_end_1based) = match (anchor_is_reverse, side) {
@@ -8121,7 +8553,11 @@ impl GentleEngine {
                         code: ErrorCode::NotFound,
                         message: format!(
                             "Could not load extended genome region {}:{}-{} from '{}': {}",
-                            anchor.chromosome, new_start_1based, new_end_1based, anchor.genome_id, e
+                            anchor.chromosome,
+                            new_start_1based,
+                            new_end_1based,
+                            anchor.genome_id,
+                            e
                         ),
                     })?;
                 if anchor_is_reverse {
@@ -10096,6 +10532,9 @@ impl GentleEngine {
                 feature_kinds,
                 feature_label_regex,
                 max_distance_bp,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
                 limit,
             } => {
                 self.op_generate_candidate_set(
@@ -10106,6 +10545,9 @@ impl GentleEngine {
                     feature_kinds,
                     feature_label_regex,
                     max_distance_bp,
+                    feature_geometry_mode,
+                    feature_boundary_mode,
+                    feature_strand_relation,
                     limit,
                     &mut result,
                 )?;
@@ -10125,12 +10567,18 @@ impl GentleEngine {
                 metric,
                 feature_kinds,
                 feature_label_regex,
+                feature_geometry_mode,
+                feature_boundary_mode,
+                feature_strand_relation,
             } => {
                 self.op_score_candidate_set_distance(
                     set_name,
                     metric,
                     feature_kinds,
                     feature_label_regex,
+                    feature_geometry_mode,
+                    feature_boundary_mode,
+                    feature_strand_relation,
                     &mut result,
                 )?;
             }
@@ -10567,151 +11015,149 @@ impl GentleEngine {
                     added, seq_id
                 ));
             }
-            Operation::SetParameter { name, value } => {
-                match name.as_str() {
-                    "max_fragments_per_container" => {
-                        let raw = value.as_u64().ok_or_else(|| EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "SetParameter max_fragments_per_container requires a positive integer".to_string(),
-                        })?;
-                        if raw == 0 {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: "max_fragments_per_container must be >= 1".to_string(),
-                            });
-                        }
-                        self.state.parameters.max_fragments_per_container = raw as usize;
-                        result.messages.push(format!(
-                            "Set parameter '{}' to {}",
-                            name, self.state.parameters.max_fragments_per_container
-                        ));
-                    }
-                    "feature_details_font_size" | "feature_detail_font_size" => {
-                        let raw = value.as_f64().ok_or_else(|| EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: "SetParameter feature_details_font_size requires a number"
+            Operation::SetParameter { name, value } => match name.as_str() {
+                "max_fragments_per_container" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "SetParameter max_fragments_per_container requires a positive integer"
                                 .to_string(),
-                        })?;
-                        if !raw.is_finite() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: "feature_details_font_size must be a finite number"
-                                    .to_string(),
-                            });
-                        }
-                        if !(8.0..=24.0).contains(&raw) {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: "feature_details_font_size must be between 8.0 and 24.0"
-                                    .to_string(),
-                            });
-                        }
-                        self.state.display.feature_details_font_size = raw as f32;
-                        result.messages.push(format!(
-                            "Set parameter 'feature_details_font_size' to {:.2}",
-                            self.state.display.feature_details_font_size
-                        ));
-                    }
-                    "vcf_display_show_snp"
-                    | "vcf_display_show_ins"
-                    | "vcf_display_show_del"
-                    | "vcf_display_show_sv"
-                    | "vcf_display_show_other"
-                    | "vcf_display_pass_only"
-                    | "vcf_display_use_min_qual"
-                    | "vcf_display_use_max_qual" => {
-                        let raw = value.as_bool().ok_or_else(|| EngineError {
+                    })?;
+                    if raw == 0 {
+                        return Err(EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!("SetParameter {} requires a boolean", name),
-                        })?;
-                        match name.as_str() {
-                            "vcf_display_show_snp" => self.state.display.vcf_display_show_snp = raw,
-                            "vcf_display_show_ins" => self.state.display.vcf_display_show_ins = raw,
-                            "vcf_display_show_del" => self.state.display.vcf_display_show_del = raw,
-                            "vcf_display_show_sv" => self.state.display.vcf_display_show_sv = raw,
-                            "vcf_display_show_other" => {
-                                self.state.display.vcf_display_show_other = raw
-                            }
-                            "vcf_display_pass_only" => self.state.display.vcf_display_pass_only = raw,
-                            "vcf_display_use_min_qual" => {
-                                self.state.display.vcf_display_use_min_qual = raw
-                            }
-                            "vcf_display_use_max_qual" => {
-                                self.state.display.vcf_display_use_max_qual = raw
-                            }
-                            _ => unreachable!(),
-                        }
-                        result
-                            .messages
-                            .push(format!("Set parameter '{}' to {}", name, raw));
+                            message: "max_fragments_per_container must be >= 1".to_string(),
+                        });
                     }
-                    "vcf_display_min_qual" | "vcf_display_max_qual" => {
-                        let raw = value.as_f64().ok_or_else(|| EngineError {
+                    self.state.parameters.max_fragments_per_container = raw as usize;
+                    result.messages.push(format!(
+                        "Set parameter '{}' to {}",
+                        name, self.state.parameters.max_fragments_per_container
+                    ));
+                }
+                "feature_details_font_size" | "feature_detail_font_size" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "SetParameter feature_details_font_size requires a number"
+                            .to_string(),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!("SetParameter {} requires a number", name),
-                        })?;
-                        if !raw.is_finite() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: format!("{} must be a finite number", name),
-                            });
-                        }
-                        if name == "vcf_display_min_qual" {
-                            self.state.display.vcf_display_min_qual = raw;
-                        } else {
-                            self.state.display.vcf_display_max_qual = raw;
-                        }
-                        result
-                            .messages
-                            .push(format!("Set parameter '{}' to {:.6}", name, raw));
+                            message: "feature_details_font_size must be a finite number"
+                                .to_string(),
+                        });
                     }
-                    "vcf_display_required_info_keys"
-                    | "vcf_display_required_info_keys_csv"
-                    | "vcf_display_required_info" => {
-                        let mut keys = if let Some(array) = value.as_array() {
-                            let mut values = Vec::with_capacity(array.len());
-                            for entry in array {
-                                let Some(raw) = entry.as_str() else {
-                                    return Err(EngineError {
+                    if !(8.0..=24.0).contains(&raw) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "feature_details_font_size must be between 8.0 and 24.0"
+                                .to_string(),
+                        });
+                    }
+                    self.state.display.feature_details_font_size = raw as f32;
+                    result.messages.push(format!(
+                        "Set parameter 'feature_details_font_size' to {:.2}",
+                        self.state.display.feature_details_font_size
+                    ));
+                }
+                "vcf_display_show_snp"
+                | "vcf_display_show_ins"
+                | "vcf_display_show_del"
+                | "vcf_display_show_sv"
+                | "vcf_display_show_other"
+                | "vcf_display_pass_only"
+                | "vcf_display_use_min_qual"
+                | "vcf_display_use_max_qual" => {
+                    let raw = value.as_bool().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {} requires a boolean", name),
+                    })?;
+                    match name.as_str() {
+                        "vcf_display_show_snp" => self.state.display.vcf_display_show_snp = raw,
+                        "vcf_display_show_ins" => self.state.display.vcf_display_show_ins = raw,
+                        "vcf_display_show_del" => self.state.display.vcf_display_show_del = raw,
+                        "vcf_display_show_sv" => self.state.display.vcf_display_show_sv = raw,
+                        "vcf_display_show_other" => self.state.display.vcf_display_show_other = raw,
+                        "vcf_display_pass_only" => self.state.display.vcf_display_pass_only = raw,
+                        "vcf_display_use_min_qual" => {
+                            self.state.display.vcf_display_use_min_qual = raw
+                        }
+                        "vcf_display_use_max_qual" => {
+                            self.state.display.vcf_display_use_max_qual = raw
+                        }
+                        _ => unreachable!(),
+                    }
+                    result
+                        .messages
+                        .push(format!("Set parameter '{}' to {}", name, raw));
+                }
+                "vcf_display_min_qual" | "vcf_display_max_qual" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {} requires a number", name),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("{} must be a finite number", name),
+                        });
+                    }
+                    if name == "vcf_display_min_qual" {
+                        self.state.display.vcf_display_min_qual = raw;
+                    } else {
+                        self.state.display.vcf_display_max_qual = raw;
+                    }
+                    result
+                        .messages
+                        .push(format!("Set parameter '{}' to {:.6}", name, raw));
+                }
+                "vcf_display_required_info_keys"
+                | "vcf_display_required_info_keys_csv"
+                | "vcf_display_required_info" => {
+                    let mut keys = if let Some(array) = value.as_array() {
+                        let mut values = Vec::with_capacity(array.len());
+                        for entry in array {
+                            let Some(raw) = entry.as_str() else {
+                                return Err(EngineError {
                                         code: ErrorCode::InvalidInput,
                                         message: "vcf_display_required_info_keys array entries must be strings".to_string(),
                                     });
-                                };
-                                values.push(raw.to_string());
-                            }
-                            values
-                        } else if let Some(raw) = value.as_str() {
-                            raw.split(',')
-                                .map(str::trim)
-                                .filter(|v| !v.is_empty())
-                                .map(|v| v.to_string())
-                                .collect::<Vec<_>>()
-                        } else {
-                            return Err(EngineError {
+                            };
+                            values.push(raw.to_string());
+                        }
+                        values
+                    } else if let Some(raw) = value.as_str() {
+                        raw.split(',')
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                    } else {
+                        return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "SetParameter vcf_display_required_info_keys requires a string (CSV) or string array".to_string(),
                             });
-                        };
-                        for key in &mut keys {
-                            *key = key.trim().to_ascii_uppercase();
-                        }
-                        keys.retain(|key| !key.is_empty());
-                        keys.sort();
-                        keys.dedup();
-                        self.state.display.vcf_display_required_info_keys = keys.clone();
-                        result.messages.push(format!(
-                            "Set parameter 'vcf_display_required_info_keys' to [{}]",
-                            keys.join(",")
-                        ));
+                    };
+                    for key in &mut keys {
+                        *key = key.trim().to_ascii_uppercase();
                     }
-                    _ => {
-                        return Err(EngineError {
-                            code: ErrorCode::Unsupported,
-                            message: format!("Unknown parameter '{}'", name),
-                        });
-                    }
+                    keys.retain(|key| !key.is_empty());
+                    keys.sort();
+                    keys.dedup();
+                    self.state.display.vcf_display_required_info_keys = keys.clone();
+                    result.messages.push(format!(
+                        "Set parameter 'vcf_display_required_info_keys' to [{}]",
+                        keys.join(",")
+                    ));
                 }
-            }
+                _ => {
+                    return Err(EngineError {
+                        code: ErrorCode::Unsupported,
+                        message: format!("Unknown parameter '{}'", name),
+                    });
+                }
+            },
         }
 
         self.add_lineage_edges(
@@ -10879,6 +11325,12 @@ exit 2
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<String>,
+    }
+
+    fn candidate_store_env_lock() -> &'static std::sync::Mutex<()> {
+        use std::sync::{Mutex, OnceLock};
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     impl EnvVarGuard {
@@ -13127,6 +13579,7 @@ ORIGIN
                 genome_id: "ToyGenome".to_string(),
                 catalog_path: Some(catalog_path.to_string_lossy().to_string()),
                 cache_dir: None,
+                timeout_seconds: None,
             })
             .unwrap();
         assert!(prep
@@ -13216,6 +13669,46 @@ ORIGIN
     }
 
     #[test]
+    fn test_prepare_genome_operation_supports_timeout_seconds() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGT\nACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: Some(0),
+            })
+            .unwrap_err();
+        assert!(err.message.to_ascii_lowercase().contains("timed out"));
+    }
+
+    #[test]
     fn test_extend_genome_anchor_plus_strand_adds_lineage_and_provenance() {
         let td = tempdir().unwrap();
         let root = td.path();
@@ -13250,6 +13743,7 @@ ORIGIN
                 genome_id: "ToyGenome".to_string(),
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
+                timeout_seconds: None,
             })
             .unwrap();
         engine
@@ -13322,7 +13816,10 @@ ORIGIN
         );
         assert_eq!(entry.get("start_1based").and_then(|v| v.as_u64()), Some(1));
         assert_eq!(entry.get("end_1based").and_then(|v| v.as_u64()), Some(10));
-        assert_eq!(entry.get("anchor_strand").and_then(|v| v.as_str()), Some("+"));
+        assert_eq!(
+            entry.get("anchor_strand").and_then(|v| v.as_str()),
+            Some("+")
+        );
     }
 
     #[test]
@@ -13394,6 +13891,7 @@ ORIGIN
                 genome_id: "ToyGenome".to_string(),
                 catalog_path: Some(catalog_path.to_string_lossy().to_string()),
                 cache_dir: None,
+                timeout_seconds: None,
             })
             .unwrap();
 
@@ -13460,9 +13958,18 @@ ORIGIN
                     .unwrap_or(false)
             })
             .expect("rev_ext5 provenance");
-        assert_eq!(ext5_entry.get("start_1based").and_then(|v| v.as_u64()), Some(5));
-        assert_eq!(ext5_entry.get("end_1based").and_then(|v| v.as_u64()), Some(13));
-        assert_eq!(ext5_entry.get("anchor_strand").and_then(|v| v.as_str()), Some("-"));
+        assert_eq!(
+            ext5_entry.get("start_1based").and_then(|v| v.as_u64()),
+            Some(5)
+        );
+        assert_eq!(
+            ext5_entry.get("end_1based").and_then(|v| v.as_u64()),
+            Some(13)
+        );
+        assert_eq!(
+            ext5_entry.get("anchor_strand").and_then(|v| v.as_str()),
+            Some("-")
+        );
 
         let ext3_entry = extractions
             .iter()
@@ -13474,9 +13981,142 @@ ORIGIN
                     .unwrap_or(false)
             })
             .expect("rev_ext3 provenance");
-        assert_eq!(ext3_entry.get("start_1based").and_then(|v| v.as_u64()), Some(3));
-        assert_eq!(ext3_entry.get("end_1based").and_then(|v| v.as_u64()), Some(10));
-        assert_eq!(ext3_entry.get("anchor_strand").and_then(|v| v.as_str()), Some("-"));
+        assert_eq!(
+            ext3_entry.get("start_1based").and_then(|v| v.as_u64()),
+            Some(3)
+        );
+        assert_eq!(
+            ext3_entry.get("end_1based").and_then(|v| v.as_u64()),
+            Some(10)
+        );
+        assert_eq!(
+            ext3_entry.get("anchor_strand").and_then(|v| v.as_str()),
+            Some("-")
+        );
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_rejects_zero_length() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "missing".to_string(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 0,
+                output_id: None,
+                catalog_path: None,
+                cache_dir: None,
+            })
+            .unwrap_err();
+        assert!(matches!(err.code, ErrorCode::InvalidInput));
+        assert!(err.message.contains("length_bp >= 1"));
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_requires_genome_anchor_provenance() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("plain".to_string(), seq("ACGTACGT"));
+        let mut engine = GentleEngine::from_state(state);
+        let err = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "plain".to_string(),
+                side: GenomeAnchorSide::ThreePrime,
+                length_bp: 10,
+                output_id: None,
+                catalog_path: None,
+                cache_dir: None,
+            })
+            .unwrap_err();
+        assert!(matches!(err.code, ErrorCode::NotFound));
+        assert!(err.message.contains("no genome anchor provenance"));
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_warns_when_clipped_at_chromosome_start() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let gtf = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+        let catalog_path = root.join("catalog.json");
+        let cache_dir = root.join("cache");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut state = ProjectState::default();
+        state.sequences.insert("anch".to_string(), seq("CGTAC"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "anch",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "ExtractGenomeRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": catalog_path_str,
+                        "cache_dir": null,
+                        "chromosome": "chr1",
+                        "start_1based": 2,
+                        "end_1based": 6,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "+",
+                        "sequence_source_type": "local",
+                        "annotation_source_type": "local",
+                        "sequence_source": "local",
+                        "annotation_source": "local",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+
+        let result = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "anch".to_string(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 10,
+                output_id: Some("anch_ext".to_string()),
+                catalog_path: None,
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(result.created_seq_ids, vec!["anch_ext".to_string()]);
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.contains("clipped at chromosome start position 1")));
     }
 
     #[test]
@@ -13514,6 +14154,7 @@ ORIGIN
                 genome_id: "ToyGenome".to_string(),
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
+                timeout_seconds: None,
             })
             .unwrap();
         engine
@@ -13635,6 +14276,7 @@ ORIGIN
                 genome_id: "ToyGenome".to_string(),
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
+                timeout_seconds: None,
             })
             .unwrap();
         engine
@@ -13972,7 +14614,8 @@ ORIGIN
         let mut engine = GentleEngine::from_state(state);
         let td = tempdir().unwrap();
         let vcf_path = td.path().join("many_variants.vcf");
-        let mut payload = String::from("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
+        let mut payload =
+            String::from("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n");
         for i in 0..600usize {
             payload.push_str(&format!(
                 "chr1\t{}\trs{}\tA\tG\t50\tPASS\tAC=1\n",
@@ -14055,6 +14698,7 @@ ORIGIN
                 genome_id: "Helper pUC19".to_string(),
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
+                timeout_seconds: None,
             })
             .unwrap();
         assert!(prep
@@ -14384,6 +15028,9 @@ ORIGIN
                 feature_kinds: vec![],
                 feature_label_regex: None,
                 max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: Some(32),
             })
             .expect("generate candidates");
@@ -14442,6 +15089,8 @@ ORIGIN
 
     #[test]
     fn test_project_state_load_degrades_when_candidate_sidecar_is_missing() {
+        let _lock = candidate_store_env_lock().lock().unwrap();
+        let _guard = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "0");
         let td = tempdir().expect("tempdir");
         let project_path = td.path().join("broken.gentle.json");
         let project_json = serde_json::json!({
@@ -14477,6 +15126,7 @@ ORIGIN
 
     #[test]
     fn test_project_state_load_strict_mode_errors_when_candidate_sidecar_is_missing() {
+        let _lock = candidate_store_env_lock().lock().unwrap();
         let _guard = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "1");
         let td = tempdir().expect("tempdir");
         let project_path = td.path().join("broken_strict.gentle.json");
@@ -14518,6 +15168,9 @@ ORIGIN
                 feature_kinds: vec![],
                 feature_label_regex: None,
                 max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: Some(16),
             })
             .expect("generate candidates");
@@ -14532,7 +15185,10 @@ ORIGIN
         let sidecar_dir = ProjectState::candidate_store_sidecar_dir(&project_path);
         let stale_path = sidecar_dir.join("stale.jsonl");
         std::fs::write(&stale_path, "{\"stale\":true}\n").expect("write stale sidecar file");
-        assert!(stale_path.exists(), "stale file should exist before re-save");
+        assert!(
+            stale_path.exists(),
+            "stale file should exist before re-save"
+        );
 
         engine
             .state()
@@ -14571,6 +15227,9 @@ ORIGIN
                 feature_kinds: vec!["gene".to_string()],
                 feature_label_regex: None,
                 max_distance_bp: Some(0),
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: Some(64),
             })
             .expect("generate all gene-anchored candidates");
@@ -14590,6 +15249,9 @@ ORIGIN
                 feature_kinds: vec!["gene".to_string()],
                 feature_label_regex: Some("^TP53$".to_string()),
                 max_distance_bp: Some(0),
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: Some(64),
             })
             .expect("generate regex-anchored candidates");
@@ -14611,6 +15273,9 @@ ORIGIN
                 feature_kinds: vec![],
                 feature_label_regex: None,
                 max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
                 limit: Some(64),
             })
             .expect("generate windows");
@@ -14672,6 +15337,210 @@ ORIGIN
             })
             .unwrap_err();
         assert!(err.message.contains("between 0 and 1"));
+    }
+
+    #[test]
+    fn test_candidate_generation_feature_parts_ignores_multipart_gaps() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("exon"),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(2, 4),
+                gb_io::seq::Location::simple_range(10, 12),
+            ]),
+            qualifiers: vec![("label".into(), Some("EXON_JOIN".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "span_mode".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec!["exon".to_string()],
+                feature_label_regex: Some("^EXON_JOIN$".to_string()),
+                max_distance_bp: Some(0),
+                feature_geometry_mode: Some(CandidateFeatureGeometryMode::FeatureSpan),
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: Some(256),
+            })
+            .expect("generate span-mode candidates");
+
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "parts_mode".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec!["exon".to_string()],
+                feature_label_regex: Some("^EXON_JOIN$".to_string()),
+                max_distance_bp: Some(0),
+                feature_geometry_mode: Some(CandidateFeatureGeometryMode::FeatureParts),
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: Some(256),
+            })
+            .expect("generate parts-mode candidates");
+
+        let span_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "span_mode")
+            .map(|s| s.candidate_count)
+            .expect("span_mode exists");
+        let parts_count = engine
+            .list_candidate_sets()
+            .into_iter()
+            .find(|s| s.name == "parts_mode")
+            .map(|s| s.candidate_count)
+            .expect("parts_mode exists");
+        assert!(
+            parts_count < span_count,
+            "feature_parts should not fill multipart feature gaps"
+        );
+    }
+
+    #[test]
+    fn test_candidate_distance_feature_boundaries_respects_five_prime_and_three_prime() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(5, 8),
+            qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::Complement(Box::new(
+                gb_io::seq::Location::simple_range(12, 15),
+            )),
+            qualifiers: vec![("label".into(), Some("MINUS_GENE".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 1,
+                step_bp: 1,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                feature_geometry_mode: None,
+                feature_boundary_mode: None,
+                feature_strand_relation: None,
+                limit: Some(512),
+            })
+            .expect("generate windows");
+
+        engine
+            .apply(Operation::ScoreCandidateSetDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_5p".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: Some(CandidateFeatureGeometryMode::FeatureBoundaries),
+                feature_boundary_mode: Some(CandidateFeatureBoundaryMode::FivePrime),
+                feature_strand_relation: None,
+            })
+            .expect("score five-prime distance");
+        engine
+            .apply(Operation::ScoreCandidateSetDistance {
+                set_name: "windows".to_string(),
+                metric: "dist_3p".to_string(),
+                feature_kinds: vec!["gene".to_string()],
+                feature_label_regex: None,
+                feature_geometry_mode: Some(CandidateFeatureGeometryMode::FeatureBoundaries),
+                feature_boundary_mode: Some(CandidateFeatureBoundaryMode::ThreePrime),
+                feature_strand_relation: None,
+            })
+            .expect("score three-prime distance");
+
+        let (page, _, _) = engine
+            .inspect_candidate_set_page("windows", 2048, 0)
+            .expect("inspect windows");
+        let at_pos = |pos: usize, metric: &str| -> f64 {
+            page.candidates
+                .iter()
+                .find(|candidate| candidate.start_0based == pos)
+                .and_then(|candidate| candidate.metrics.get(metric).copied())
+                .unwrap_or(f64::NAN)
+        };
+        let plus_start_dist_5p = at_pos(5, "dist_5p");
+        let plus_end_dist_5p = at_pos(7, "dist_5p");
+        let plus_start_dist_3p = at_pos(5, "dist_3p");
+        let plus_end_dist_3p = at_pos(7, "dist_3p");
+        assert!(plus_start_dist_5p < plus_end_dist_5p);
+        assert!(plus_end_dist_3p < plus_start_dist_3p);
+
+        let minus_end_dist_5p = at_pos(14, "dist_5p");
+        let minus_start_dist_5p = at_pos(12, "dist_5p");
+        let minus_end_dist_3p = at_pos(14, "dist_3p");
+        let minus_start_dist_3p = at_pos(12, "dist_3p");
+        assert!(minus_end_dist_5p < minus_start_dist_5p);
+        assert!(minus_start_dist_3p < minus_end_dist_3p);
+    }
+
+    #[test]
+    fn test_candidate_generation_feature_strand_relation_filters_plus_and_minus() {
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(2, 5),
+            qualifiers: vec![("label".into(), Some("PLUS_GENE".to_string()))],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::Complement(Box::new(
+                gb_io::seq::Location::simple_range(12, 15),
+            )),
+            qualifiers: vec![("label".into(), Some("MINUS_GENE".to_string()))],
+        });
+        state.sequences.insert("seqA".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        for (name, strand_relation) in [
+            ("any", CandidateFeatureStrandRelation::Any),
+            ("same", CandidateFeatureStrandRelation::Same),
+            ("opposite", CandidateFeatureStrandRelation::Opposite),
+        ] {
+            engine
+                .apply(Operation::GenerateCandidateSet {
+                    set_name: format!("gene_{name}"),
+                    seq_id: "seqA".to_string(),
+                    length_bp: 1,
+                    step_bp: 1,
+                    feature_kinds: vec!["gene".to_string()],
+                    feature_label_regex: None,
+                    max_distance_bp: Some(0),
+                    feature_geometry_mode: None,
+                    feature_boundary_mode: None,
+                    feature_strand_relation: Some(strand_relation),
+                    limit: Some(256),
+                })
+                .expect("generate gene candidates with strand relation");
+        }
+
+        let count_for = |set_name: &str| -> usize {
+            engine
+                .list_candidate_sets()
+                .into_iter()
+                .find(|set| set.name == set_name)
+                .map(|set| set.candidate_count)
+                .expect("candidate set exists")
+        };
+        let any_count = count_for("gene_any");
+        let same_count = count_for("gene_same");
+        let opposite_count = count_for("gene_opposite");
+        assert!(same_count > 0);
+        assert!(opposite_count > 0);
+        assert_eq!(same_count + opposite_count, any_count);
     }
 
     #[test]

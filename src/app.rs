@@ -27,7 +27,7 @@ use crate::{
         GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan,
         PrepareGenomeProgress, PreparedGenomeInspection, BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN,
         DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
-        DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN,
+        DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs,
@@ -49,6 +49,14 @@ const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace"
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+fn default_prepare_timeout_secs_string() -> String {
+    env::var(PREPARE_GENOME_TIMEOUT_SECS_ENV)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
 
 pub fn request_open_help_from_native_menu() {
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
@@ -179,6 +187,7 @@ pub struct GENtleApp {
     genome_prepare_task: Option<GenomePrepareTask>,
     genome_prepare_progress: Option<PrepareGenomeProgress>,
     genome_prepare_status: String,
+    genome_prepare_timeout_secs: String,
     genome_gene_filter: String,
     genome_gene_filter_limit: usize,
     genome_gene_filter_page: usize,
@@ -250,6 +259,8 @@ enum ConfigurationTab {
 
 struct GenomePrepareTask {
     started: Instant,
+    cancel_requested: Arc<AtomicBool>,
+    timeout_seconds: Option<u64>,
     receiver: mpsc::Receiver<GenomePrepareTaskMessage>,
 }
 
@@ -429,6 +440,7 @@ impl Default for GENtleApp {
             genome_prepare_task: None,
             genome_prepare_progress: None,
             genome_prepare_status: String::new(),
+            genome_prepare_timeout_secs: default_prepare_timeout_secs_string(),
             genome_gene_filter: String::new(),
             genome_gene_filter_limit: 5000,
             genome_gene_filter_page: 0,
@@ -2243,6 +2255,20 @@ impl GENtleApp {
             .unwrap_or_else(|| "-".to_string())
     }
 
+    fn parse_prepare_timeout_seconds(&self) -> Result<Option<u64>, String> {
+        let raw = self.genome_prepare_timeout_secs.trim();
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let parsed = raw
+            .parse::<u64>()
+            .map_err(|e| format!("Invalid timeout seconds '{}': {}", raw, e))?;
+        if parsed == 0 {
+            return Ok(None);
+        }
+        Ok(Some(parsed))
+    }
+
     fn start_prepare_reference_genome(&mut self) {
         if self.genome_prepare_task.is_some() {
             self.genome_prepare_status = "Genome preparation is already running".to_string();
@@ -2253,22 +2279,48 @@ impl GENtleApp {
             self.genome_prepare_status = "Select a genome first".to_string();
             return;
         }
+        let timeout_seconds = match self.parse_prepare_timeout_seconds() {
+            Ok(value) => value,
+            Err(e) => {
+                self.genome_prepare_status = e;
+                return;
+            }
+        };
         let catalog_path = self.genome_catalog_path_opt();
         let cache_dir = self.genome_cache_dir_opt();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
         self.genome_prepare_progress = None;
-        self.genome_prepare_status =
-            format!("Preparing genome '{genome_id}' in background. You can keep using the UI.");
+        self.genome_prepare_status = if let Some(timeout) = timeout_seconds {
+            format!(
+                "Preparing genome '{genome_id}' in background (timeout: {} s). You can keep using the UI.",
+                timeout
+            )
+        } else {
+            format!("Preparing genome '{genome_id}' in background. You can keep using the UI.")
+        };
         self.genome_prepare_task = Some(GenomePrepareTask {
             started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
+            timeout_seconds,
             receiver: rx,
         });
         std::thread::spawn(move || {
             let tx_progress = tx.clone();
+            let cancel_flag = cancel_requested.clone();
+            let started = Instant::now();
             let mut last_phase = String::new();
             let mut last_percent_tenths: Option<i64> = None;
             let mut last_bytes_bucket: u64 = 0;
-            let mut progress_forwarder = move |p: PrepareGenomeProgress| {
+            let mut progress_forwarder = move |p: PrepareGenomeProgress| -> bool {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    return false;
+                }
+                if let Some(limit) = timeout_seconds {
+                    if started.elapsed() >= Duration::from_secs(limit) {
+                        return false;
+                    }
+                }
                 let phase_changed = p.phase != last_phase;
                 let percent_tenths = p.percent.map(|v| (v * 10.0).floor() as i64);
                 let percent_progressed = percent_tenths
@@ -2288,18 +2340,20 @@ impl GENtleApp {
                     last_bytes_bucket = bytes_bucket;
                     let _ = tx_progress.send(GenomePrepareTaskMessage::Progress(p));
                 }
+                true
             };
             let outcome = GentleEngine::prepare_reference_genome_once(
                 &genome_id,
                 catalog_path.as_deref(),
                 cache_dir.as_deref(),
+                timeout_seconds,
                 &mut progress_forwarder,
             )
             .map(|report| OpResult {
                 op_id: "background-prepare-genome".to_string(),
                 created_seq_ids: vec![],
                 changed_seq_ids: vec![],
-                warnings: vec![],
+                warnings: report.warnings.clone(),
                 messages: vec![GentleEngine::format_prepare_genome_message(
                     &genome_id,
                     cache_dir.as_deref(),
@@ -2364,8 +2418,17 @@ impl GENtleApp {
                     self.invalidate_genome_genes();
                 }
                 Err(e) => {
-                    self.genome_prepare_status =
-                        format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
+                    let lower = e.message.to_ascii_lowercase();
+                    if lower.contains("timed out") {
+                        self.genome_prepare_status =
+                            format!("Prepare genome timed out after {:.1}s: {}", elapsed, e.message);
+                    } else if lower.contains("cancelled") || lower.contains("canceled") {
+                        self.genome_prepare_status =
+                            format!("Prepare genome cancelled after {:.1}s: {}", elapsed, e.message);
+                    } else {
+                        self.genome_prepare_status =
+                            format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
+                    }
                 }
             }
         }
@@ -3074,6 +3137,14 @@ impl GENtleApp {
                 }
             }
         });
+        ui.horizontal(|ui| {
+            ui.label("timeout_sec");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.genome_prepare_timeout_secs)
+                    .desired_width(90.0),
+            );
+            ui.small("optional; empty or 0 means no timebox");
+        });
         if !self.genome_catalog_error.is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
@@ -3118,6 +3189,19 @@ impl GENtleApp {
             ui.label("Selected genome is already prepared and cannot be selected here.");
         }
         let running = self.genome_prepare_task.is_some();
+        if let Some(task) = &self.genome_prepare_task {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                let mut status = format!("Prepare task running ({:.1}s)", task.started.elapsed().as_secs_f32());
+                if let Some(timeout) = task.timeout_seconds {
+                    status.push_str(&format!(", timeout={}s", timeout));
+                }
+                if task.cancel_requested.load(Ordering::Relaxed) {
+                    status.push_str(", cancellation requested");
+                }
+                ui.label(status);
+            });
+        }
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(
@@ -3135,6 +3219,17 @@ impl GENtleApp {
                 .clicked()
             {
                 self.show_reference_genome_prepare_dialog = false;
+            }
+            if let Some(task) = &self.genome_prepare_task {
+                if ui
+                    .button("Cancel Prepare")
+                    .on_hover_text("Request cancellation of the running prepare task.")
+                    .clicked()
+                {
+                    task.cancel_requested.store(true, Ordering::Relaxed);
+                    self.genome_prepare_status =
+                        "Cancellation requested for running genome preparation".to_string();
+                }
             }
         });
         if let Some(progress) = &self.genome_prepare_progress {
@@ -7287,11 +7382,15 @@ impl GENtleApp {
                 genome_id,
                 catalog_path,
                 cache_dir,
+                timeout_seconds,
             } => format!(
-                "Prepare genome: genome_id={}, catalog_path={}, cache_dir={}",
+                "Prepare genome: genome_id={}, catalog_path={}, cache_dir={}, timeout_seconds={}",
                 genome_id,
                 catalog_path.clone().unwrap_or_else(|| "-".to_string()),
-                cache_dir.clone().unwrap_or_else(|| "-".to_string())
+                cache_dir.clone().unwrap_or_else(|| "-".to_string()),
+                timeout_seconds
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string())
             ),
             Operation::ExtractGenomeRegion {
                 genome_id,

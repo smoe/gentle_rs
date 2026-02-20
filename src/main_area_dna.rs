@@ -1,17 +1,20 @@
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
+    feature_location::collect_location_ranges_usize,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateRecord,
-        CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode, ExportFormat,
-        GentleEngine, LigationProtocol, OpResult, Operation, OperationProgress, PcrPrimerSpec,
-        RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
+        CandidateFeatureStrandRelation, CandidateSetOperator, DisplayTarget, Engine, EngineError,
+        ErrorCode, ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation,
+        OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
+        TfbsProgress, Workflow,
     },
     engine_shell::{
         execute_shell_command_with_options, parse_shell_line, shell_help_text, ShellCommand,
         ShellExecutionOptions,
     },
     icons::*,
+    open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
     render_dna::RenderDna,
     render_sequence::RenderSequence,
@@ -134,6 +137,8 @@ struct EngineOpsUiState {
     #[serde(default)]
     candidate_feature_label_regex: String,
     #[serde(default)]
+    candidate_feature_strand_relation: CandidateFeatureStrandRelation,
+    #[serde(default)]
     candidate_max_distance_bp: String,
     #[serde(default)]
     candidate_limit: String,
@@ -157,6 +162,8 @@ struct EngineOpsUiState {
     candidate_distance_feature_kinds: String,
     #[serde(default)]
     candidate_distance_feature_label_regex: String,
+    #[serde(default)]
+    candidate_distance_feature_strand_relation: CandidateFeatureStrandRelation,
     #[serde(default)]
     candidate_filter_input_set: String,
     #[serde(default)]
@@ -290,6 +297,8 @@ fn default_tfbs_quantile() -> f64 {
 const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
 const UI_SIZE_MIN_PX: f32 = 1.0;
 const UI_SIZE_MAX_PX: f32 = 4096.0;
+const DECLUTTER_NOISE_SCORE_THRESHOLD: usize = 100;
+const DECLUTTER_VISIBLE_FEATURE_THRESHOLD: usize = 70;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
     ("NEB 100bp + 1kb", "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"),
@@ -303,6 +312,82 @@ const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
         "GeneRuler 100bp DNA Ladder Plus,GeneRuler Mix",
     ),
 ];
+
+#[derive(Clone, Copy, Debug)]
+enum MapViewPreset {
+    Anchored,
+    Cloning,
+    Annotation,
+    Signal,
+}
+
+impl MapViewPreset {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Anchored => "Anchored",
+            Self::Cloning => "Cloning",
+            Self::Annotation => "Annotation",
+            Self::Signal => "Signal",
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::Anchored => {
+                "Prioritize anchored-gene readability (core annotation lanes, low clutter overlays)"
+            }
+            Self::Cloning => {
+                "Prioritize cloning context (core features + restriction/GC overlays)"
+            }
+            Self::Annotation => {
+                "Prioritize annotation review (core features + TFBS, minimal auxiliary overlays)"
+            }
+            Self::Signal => {
+                "Prioritize signal tracks and regulatory context with reduced coding-feature noise"
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct LayerVisibilityCounts {
+    feature_kind_counts: HashMap<String, usize>,
+    regulatory_feature_count: usize,
+    restriction_site_count: usize,
+    gc_region_count: usize,
+    orf_count: usize,
+    methylation_site_count: usize,
+}
+
+impl LayerVisibilityCounts {
+    fn kind_count(&self, kind: &str) -> usize {
+        self.feature_kind_counts
+            .get(&kind.trim().to_ascii_uppercase())
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn tfbs_count(&self) -> usize {
+        self.kind_count("TFBS")
+            + self.kind_count("TF_BINDING_SITE")
+            + self.kind_count("PROTEIN_BIND")
+    }
+
+    fn total_feature_count(&self) -> usize {
+        self.feature_kind_counts.values().sum()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DeclutterSnapshot {
+    show_tfbs: bool,
+    show_restriction_enzymes: bool,
+    show_gc_contents: bool,
+    show_open_reading_frames: bool,
+    show_methylation_sites: bool,
+    regulatory_tracks_near_baseline: bool,
+    hidden_feature_kinds: BTreeSet<String>,
+}
 
 #[derive(Clone, Debug)]
 enum TfbsTaskMessage {
@@ -395,6 +480,7 @@ pub struct MainAreaDna {
     candidate_step_bp: String,
     candidate_feature_kinds: String,
     candidate_feature_label_regex: String,
+    candidate_feature_strand_relation: CandidateFeatureStrandRelation,
     candidate_max_distance_bp: String,
     candidate_limit: String,
     candidate_selected_set: String,
@@ -407,6 +493,7 @@ pub struct MainAreaDna {
     candidate_distance_metric: String,
     candidate_distance_feature_kinds: String,
     candidate_distance_feature_label_regex: String,
+    candidate_distance_feature_strand_relation: CandidateFeatureStrandRelation,
     candidate_filter_input_set: String,
     candidate_filter_output_set: String,
     candidate_filter_metric: String,
@@ -430,6 +517,7 @@ pub struct MainAreaDna {
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
     vcf_display_required_info_keys: String,
+    declutter_snapshot: Option<DeclutterSnapshot>,
     op_status: String,
     op_error_popup: Option<String>,
     last_created_seq_ids: Vec<String>,
@@ -582,6 +670,7 @@ impl MainAreaDna {
             candidate_step_bp: "1".to_string(),
             candidate_feature_kinds: String::new(),
             candidate_feature_label_regex: String::new(),
+            candidate_feature_strand_relation: CandidateFeatureStrandRelation::Any,
             candidate_max_distance_bp: String::new(),
             candidate_limit: "5000".to_string(),
             candidate_selected_set: String::new(),
@@ -594,6 +683,7 @@ impl MainAreaDna {
             candidate_distance_metric: "distance_to_gene_bp".to_string(),
             candidate_distance_feature_kinds: "gene".to_string(),
             candidate_distance_feature_label_regex: String::new(),
+            candidate_distance_feature_strand_relation: CandidateFeatureStrandRelation::Any,
             candidate_filter_input_set: String::new(),
             candidate_filter_output_set: "filtered".to_string(),
             candidate_filter_metric: "gc_fraction".to_string(),
@@ -618,6 +708,7 @@ impl MainAreaDna {
             tfbs_task: None,
             tfbs_progress: None,
             vcf_display_required_info_keys: String::new(),
+            declutter_snapshot: None,
             op_status: String::new(),
             op_error_popup: None,
             last_created_seq_ids: vec![],
@@ -668,6 +759,501 @@ impl MainAreaDna {
     pub fn refresh_from_engine_settings(&mut self) {
         self.sync_from_engine_display();
         self.update_dna_map();
+    }
+
+    fn active_sequence_is_genome_anchored(&self, engine: &GentleEngine) -> bool {
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return false;
+        };
+        engine.describe_sequence_genome_anchor(seq_id).is_ok()
+    }
+
+    fn active_linear_viewport_range(&self) -> Option<(usize, usize)> {
+        if self.is_circular() {
+            return None;
+        }
+        let (start, span, sequence_length) = self.current_linear_viewport();
+        if sequence_length == 0 || span == 0 {
+            return None;
+        }
+        let end = start.saturating_add(span).min(sequence_length);
+        Some((start, end))
+    }
+
+    fn ranges_overlap(
+        a_start: usize,
+        a_end_exclusive: usize,
+        b_start: usize,
+        b_end_exclusive: usize,
+    ) -> bool {
+        a_start < b_end_exclusive && a_end_exclusive > b_start
+    }
+
+    fn feature_overlaps_linear_viewport(
+        feature: &gb_io::seq::Feature,
+        sequence_length: usize,
+        viewport_start: usize,
+        viewport_end: usize,
+    ) -> bool {
+        let mut ranges: Vec<(usize, usize)> = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        if ranges.is_empty() {
+            if let Ok((raw_from, raw_to)) = feature.location.find_bounds() {
+                if raw_from >= 0 && raw_to >= 0 {
+                    let mut from = raw_from as usize;
+                    let mut to = raw_to as usize;
+                    if to < from {
+                        std::mem::swap(&mut from, &mut to);
+                    }
+                    ranges.push((from, to));
+                }
+            }
+        }
+        ranges.into_iter().any(|(mut from, mut to)| {
+            if to < from {
+                std::mem::swap(&mut from, &mut to);
+            }
+            if from >= sequence_length {
+                return false;
+            }
+            to = to.min(sequence_length);
+            if to <= from {
+                return false;
+            }
+            Self::ranges_overlap(from, to, viewport_start, viewport_end)
+        })
+    }
+
+    fn orf_overlaps_linear_viewport(
+        orf: &OpenReadingFrame,
+        sequence_length: usize,
+        viewport_start: usize,
+        viewport_end: usize,
+    ) -> bool {
+        if sequence_length == 0 {
+            return false;
+        }
+        let from = orf.from().max(0) as usize;
+        let to = orf.to().max(0) as usize;
+        if to >= from {
+            let from = from.min(sequence_length);
+            let to = to.min(sequence_length);
+            if to <= from {
+                return false;
+            }
+            return Self::ranges_overlap(from, to, viewport_start, viewport_end);
+        }
+        let wrapped_left = from.min(sequence_length);
+        let wrapped_right = to.min(sequence_length);
+        Self::ranges_overlap(wrapped_left, sequence_length, viewport_start, viewport_end)
+            || Self::ranges_overlap(0, wrapped_right, viewport_start, viewport_end)
+    }
+
+    fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
+        let viewport = self.active_linear_viewport_range();
+        let (tfbs_display_criteria, vcf_display_criteria) = self
+            .dna_display
+            .read()
+            .map(|display| {
+                (
+                    display.tfbs_display_criteria(),
+                    display.vcf_display_criteria(),
+                )
+            })
+            .unwrap_or((TfbsDisplayCriteria::default(), VcfDisplayCriteria::default()));
+
+        let mut counts = LayerVisibilityCounts::default();
+        if let Ok(dna) = self.dna.read() {
+            let sequence_length = dna.len();
+            for feature in dna.features() {
+                if RenderDna::is_source_feature(feature) {
+                    continue;
+                }
+                if let Some((start, end)) = viewport {
+                    if !Self::feature_overlaps_linear_viewport(feature, sequence_length, start, end)
+                    {
+                        continue;
+                    }
+                }
+                let kind = feature.kind.to_string().trim().to_ascii_uppercase();
+                if kind.is_empty() {
+                    continue;
+                }
+                if RenderDna::is_tfbs_feature(feature)
+                    && !RenderDna::tfbs_feature_passes_display_filter(
+                        feature,
+                        tfbs_display_criteria,
+                    )
+                {
+                    continue;
+                }
+                if RenderDna::is_vcf_track_feature(feature)
+                    && !RenderDna::vcf_feature_passes_display_filter(
+                        feature,
+                        &vcf_display_criteria,
+                    )
+                {
+                    continue;
+                }
+                *counts.feature_kind_counts.entry(kind).or_insert(0) += 1;
+                if RenderDna::is_regulatory_feature(feature) {
+                    counts.regulatory_feature_count += 1;
+                }
+            }
+
+            counts.restriction_site_count = dna
+                .restriction_enzyme_sites()
+                .iter()
+                .filter(|site| {
+                    let offset = match usize::try_from(site.offset.max(0)) {
+                        Ok(v) => v,
+                        Err(_) => return false,
+                    };
+                    match viewport {
+                        Some((start, end)) => offset >= start && offset < end,
+                        None => true,
+                    }
+                })
+                .count();
+            counts.gc_region_count = dna
+                .gc_content()
+                .regions()
+                .iter()
+                .filter(|region| match viewport {
+                    Some((start, end)) => Self::ranges_overlap(region.from(), region.to(), start, end),
+                    None => true,
+                })
+                .count();
+            counts.orf_count = dna
+                .open_reading_frames()
+                .iter()
+                .filter(|orf| match viewport {
+                    Some((start, end)) => {
+                        Self::orf_overlaps_linear_viewport(orf, sequence_length, start, end)
+                    }
+                    None => true,
+                })
+                .count();
+            counts.methylation_site_count = dna
+                .methylation_sites()
+                .sites()
+                .iter()
+                .filter(|site| match viewport {
+                    Some((start, end)) => **site >= start && **site < end,
+                    None => true,
+                })
+                .count();
+        }
+        counts
+    }
+
+    fn apply_display_preset_visibility(
+        &mut self,
+        show_features: bool,
+        show_cds_features: bool,
+        show_gene_features: bool,
+        show_mrna_features: bool,
+        show_tfbs: bool,
+        show_restriction_enzymes: bool,
+        show_gc_contents: bool,
+        show_open_reading_frames: bool,
+        show_methylation_sites: bool,
+        regulatory_tracks_near_baseline: bool,
+        hidden_feature_kinds: BTreeSet<String>,
+    ) {
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_show_features(show_features);
+            display.set_show_cds_features(show_cds_features);
+            display.set_show_gene_features(show_gene_features);
+            display.set_show_mrna_features(show_mrna_features);
+            display.set_show_tfbs(show_tfbs);
+            display.set_show_restriction_enzyme_sites(show_restriction_enzymes);
+            display.set_show_gc_contents(show_gc_contents);
+            display.set_show_open_reading_frames(show_open_reading_frames);
+            display.set_show_methylation_sites(show_methylation_sites);
+            display.set_regulatory_tracks_near_baseline(regulatory_tracks_near_baseline);
+            display.set_hidden_feature_kinds(hidden_feature_kinds);
+        }
+        self.set_display_visibility(DisplayTarget::Features, show_features);
+        self.set_display_visibility(DisplayTarget::CdsFeatures, show_cds_features);
+        self.set_display_visibility(DisplayTarget::GeneFeatures, show_gene_features);
+        self.set_display_visibility(DisplayTarget::MrnaFeatures, show_mrna_features);
+        self.set_display_visibility(DisplayTarget::Tfbs, show_tfbs);
+        self.set_display_visibility(DisplayTarget::RestrictionEnzymes, show_restriction_enzymes);
+        self.set_display_visibility(DisplayTarget::GcContents, show_gc_contents);
+        self.set_display_visibility(DisplayTarget::OpenReadingFrames, show_open_reading_frames);
+        self.set_display_visibility(DisplayTarget::MethylationSites, show_methylation_sites);
+        self.sync_regulatory_track_placement_to_engine(regulatory_tracks_near_baseline);
+    }
+
+    fn preset_keeps_feature_kind(preset: MapViewPreset, kind: &str) -> bool {
+        let kind = kind.trim().to_ascii_uppercase();
+        if kind.is_empty() {
+            return true;
+        }
+        match preset {
+            MapViewPreset::Anchored => {
+                matches!(kind.as_str(), "CDS" | "GENE" | "MRNA")
+                    || kind.contains("REGULATORY")
+                    || matches!(kind.as_str(), "TRACK" | "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND")
+            }
+            MapViewPreset::Cloning | MapViewPreset::Annotation => true,
+            MapViewPreset::Signal => {
+                kind == "GENE"
+                    || kind.contains("REGULATORY")
+                    || matches!(kind.as_str(), "TRACK" | "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND")
+            }
+        }
+    }
+
+    fn hidden_feature_kinds_for_preset(&self, preset: MapViewPreset) -> BTreeSet<String> {
+        self.feature_kinds_for_toggle_buttons()
+            .into_iter()
+            .filter(|kind| !Self::preset_keeps_feature_kind(preset, kind))
+            .collect()
+    }
+
+    fn apply_map_view_preset(&mut self, preset: MapViewPreset) {
+        let hidden_feature_kinds = self.hidden_feature_kinds_for_preset(preset);
+        match preset {
+            MapViewPreset::Anchored => self.apply_display_preset_visibility(
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                hidden_feature_kinds,
+            ),
+            MapViewPreset::Cloning => self.apply_display_preset_visibility(
+                true,
+                true,
+                true,
+                true,
+                false,
+                true,
+                true,
+                false,
+                false,
+                false,
+                hidden_feature_kinds,
+            ),
+            MapViewPreset::Annotation => self.apply_display_preset_visibility(
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                hidden_feature_kinds,
+            ),
+            MapViewPreset::Signal => self.apply_display_preset_visibility(
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                true,
+                hidden_feature_kinds,
+            ),
+        }
+        self.declutter_snapshot = None;
+        self.op_status = format!("Applied {} view preset", preset.label());
+    }
+
+    fn is_low_value_feature_kind(kind: &str) -> bool {
+        !matches!(kind, "CDS" | "GENE" | "MRNA")
+    }
+
+    fn visible_feature_noise_metrics(
+        &self,
+        counts: &LayerVisibilityCounts,
+    ) -> (usize, usize, BTreeSet<String>) {
+        let (
+            show_features,
+            show_cds,
+            show_gene,
+            show_mrna,
+            show_tfbs,
+            show_restriction_enzymes,
+            show_open_reading_frames,
+            show_methylation_sites,
+            show_gc_contents,
+            suppress_orfs_for_anchor,
+            hidden_feature_kinds,
+        ) = self
+            .dna_display
+            .read()
+            .map(|display| {
+                (
+                    display.show_features(),
+                    display.show_cds_features(),
+                    display.show_gene_features(),
+                    display.show_mrna_features(),
+                    display.show_tfbs(),
+                    display.show_restriction_enzyme_sites(),
+                    display.show_open_reading_frames(),
+                    display.show_methylation_sites(),
+                    display.show_gc_contents(),
+                    display.suppress_open_reading_frames_for_genome_anchor(),
+                    display.hidden_feature_kinds().clone(),
+                )
+            })
+            .unwrap_or((
+                true,
+                true,
+                true,
+                true,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                BTreeSet::new(),
+            ));
+        if !show_features {
+            return (0, 0, hidden_feature_kinds);
+        }
+
+        let mut visible_feature_count = 0usize;
+        let mut low_value_visible_count = 0usize;
+        for (kind, count) in &counts.feature_kind_counts {
+            if hidden_feature_kinds.contains(kind) {
+                continue;
+            }
+            let visible = match kind.as_str() {
+                "CDS" => show_cds,
+                "GENE" => show_gene,
+                "MRNA" => show_mrna,
+                "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND" => show_tfbs,
+                _ => true,
+            };
+            if !visible {
+                continue;
+            }
+            visible_feature_count = visible_feature_count.saturating_add(*count);
+            if Self::is_low_value_feature_kind(kind) {
+                low_value_visible_count = low_value_visible_count.saturating_add(*count);
+            }
+        }
+
+        let mut noise_score = low_value_visible_count;
+        if show_tfbs {
+            noise_score = noise_score.saturating_add(counts.tfbs_count());
+        }
+        if show_restriction_enzymes {
+            noise_score = noise_score.saturating_add(counts.restriction_site_count / 2);
+        }
+        if show_methylation_sites {
+            noise_score = noise_score.saturating_add(counts.methylation_site_count / 3);
+        }
+        if show_open_reading_frames && !suppress_orfs_for_anchor {
+            noise_score = noise_score.saturating_add(counts.orf_count / 2);
+        }
+        if show_gc_contents {
+            noise_score = noise_score.saturating_add(counts.gc_region_count / 8);
+        }
+        (visible_feature_count, noise_score, hidden_feature_kinds)
+    }
+
+    fn apply_declutter_action(&mut self, counts: &LayerVisibilityCounts) {
+        if let Some(snapshot) = self.declutter_snapshot.take() {
+            if let Ok(mut display) = self.dna_display.write() {
+                display.set_show_tfbs(snapshot.show_tfbs);
+                display.set_show_restriction_enzyme_sites(snapshot.show_restriction_enzymes);
+                display.set_show_gc_contents(snapshot.show_gc_contents);
+                display.set_show_open_reading_frames(snapshot.show_open_reading_frames);
+                display.set_show_methylation_sites(snapshot.show_methylation_sites);
+                display
+                    .set_regulatory_tracks_near_baseline(snapshot.regulatory_tracks_near_baseline);
+                display.set_hidden_feature_kinds(snapshot.hidden_feature_kinds);
+            }
+            self.set_display_visibility(DisplayTarget::Tfbs, snapshot.show_tfbs);
+            self.set_display_visibility(
+                DisplayTarget::RestrictionEnzymes,
+                snapshot.show_restriction_enzymes,
+            );
+            self.set_display_visibility(DisplayTarget::GcContents, snapshot.show_gc_contents);
+            self.set_display_visibility(
+                DisplayTarget::OpenReadingFrames,
+                snapshot.show_open_reading_frames,
+            );
+            self.set_display_visibility(
+                DisplayTarget::MethylationSites,
+                snapshot.show_methylation_sites,
+            );
+            self.sync_regulatory_track_placement_to_engine(snapshot.regulatory_tracks_near_baseline);
+            self.op_status = "Restored view after declutter".to_string();
+            return;
+        }
+
+        let (visible_feature_count, noise_score, current_hidden_feature_kinds) =
+            self.visible_feature_noise_metrics(counts);
+        let should_declutter = visible_feature_count >= DECLUTTER_VISIBLE_FEATURE_THRESHOLD
+            || noise_score >= DECLUTTER_NOISE_SCORE_THRESHOLD;
+        if !should_declutter {
+            self.op_status = format!(
+                "Declutter skipped: visible features={} noise score={} (below thresholds)",
+                visible_feature_count, noise_score
+            );
+            return;
+        }
+
+        let snapshot = self
+            .dna_display
+            .read()
+            .ok()
+            .map(|display| DeclutterSnapshot {
+                show_tfbs: display.show_tfbs(),
+                show_restriction_enzymes: display.show_restriction_enzyme_sites(),
+                show_gc_contents: display.show_gc_contents(),
+                show_open_reading_frames: display.show_open_reading_frames(),
+                show_methylation_sites: display.show_methylation_sites(),
+                regulatory_tracks_near_baseline: display.regulatory_tracks_near_baseline(),
+                hidden_feature_kinds: display.hidden_feature_kinds().clone(),
+            });
+        let Some(snapshot) = snapshot else {
+            self.op_status = "Declutter unavailable: could not read display state".to_string();
+            return;
+        };
+
+        let mut hidden_feature_kinds = current_hidden_feature_kinds;
+        for kind in counts.feature_kind_counts.keys() {
+            if Self::is_low_value_feature_kind(kind) {
+                hidden_feature_kinds.insert(kind.clone());
+            }
+        }
+        if let Ok(mut display) = self.dna_display.write() {
+            display.set_show_tfbs(false);
+            display.set_show_restriction_enzyme_sites(false);
+            display.set_show_open_reading_frames(false);
+            display.set_show_methylation_sites(false);
+            display.set_regulatory_tracks_near_baseline(false);
+            display.set_hidden_feature_kinds(hidden_feature_kinds);
+        }
+        self.set_display_visibility(DisplayTarget::Tfbs, false);
+        self.set_display_visibility(DisplayTarget::RestrictionEnzymes, false);
+        self.set_display_visibility(DisplayTarget::OpenReadingFrames, false);
+        self.set_display_visibility(DisplayTarget::MethylationSites, false);
+        self.sync_regulatory_track_placement_to_engine(false);
+        self.declutter_snapshot = Some(snapshot);
+        self.op_status = format!(
+            "Declutter applied: visible features={} noise score={}",
+            visible_feature_count, noise_score
+        );
     }
 
     fn latest_container_for_active_seq(&self) -> Option<String> {
@@ -738,6 +1324,7 @@ impl MainAreaDna {
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             let icon_size = Self::top_panel_icon_size(ui);
+            let layer_counts = self.compute_layer_visibility_counts();
             let button = egui::ImageButton::new(
                 ICON_CIRCULAR_LINEAR
                     .clone()
@@ -861,14 +1448,55 @@ impl MainAreaDna {
                 }
             }
 
+            ui.separator();
+            for preset in [
+                MapViewPreset::Anchored,
+                MapViewPreset::Cloning,
+                MapViewPreset::Annotation,
+                MapViewPreset::Signal,
+            ] {
+                if ui
+                    .small_button(preset.label())
+                    .on_hover_text(preset.hover_text())
+                    .clicked()
+                {
+                    self.apply_map_view_preset(preset);
+                }
+            }
+            let declutter_label = if self.declutter_snapshot.is_some() {
+                "Restore View"
+            } else {
+                "Declutter"
+            };
+            let visible_layer_total = layer_counts.total_feature_count();
+            let declutter_hover = if self.declutter_snapshot.is_some() {
+                "Restore the layer visibility state captured before the last declutter action"
+                    .to_string()
+            } else {
+                format!(
+                    "Temporarily hide low-value overlays/kinds when map noise is high ({} feature glyphs currently in view)",
+                    visible_layer_total
+                )
+            };
+            if ui
+                .small_button(declutter_label)
+                .on_hover_text(declutter_hover)
+                .clicked()
+            {
+                self.apply_declutter_action(&layer_counts);
+            }
+
             let cds_active = self
                 .dna_display
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_cds_features();
+            let cds_count = layer_counts.kind_count("CDS");
             let cds_response = ui
-                .selectable_label(cds_active, "CDS")
-                .on_hover_text("Show or hide CDS features");
+                .selectable_label(cds_active, format!("CDS ({cds_count})"))
+                .on_hover_text(format!(
+                    "Show or hide CDS features ({cds_count} in current view)"
+                ));
             if cds_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -886,9 +1514,12 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_gene_features();
+            let gene_count = layer_counts.kind_count("GENE");
             let gene_response = ui
-                .selectable_label(gene_active, "Gene")
-                .on_hover_text("Show or hide gene features");
+                .selectable_label(gene_active, format!("Gene ({gene_count})"))
+                .on_hover_text(format!(
+                    "Show or hide gene features ({gene_count} in current view)"
+                ));
             if gene_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -906,9 +1537,12 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_mrna_features();
+            let mrna_count = layer_counts.kind_count("MRNA");
             let mrna_response = ui
-                .selectable_label(mrna_active, "mRNA")
-                .on_hover_text("Show or hide mRNA features");
+                .selectable_label(mrna_active, format!("mRNA ({mrna_count})"))
+                .on_hover_text(format!(
+                    "Show or hide mRNA features ({mrna_count} in current view)"
+                ));
             if mrna_response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -926,9 +1560,12 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_tfbs();
+            let tfbs_count = layer_counts.tfbs_count();
             let response = ui
-                .selectable_label(tfbs_active, "TFBS")
-                .on_hover_text("Show or hide computed TFBS features");
+                .selectable_label(tfbs_active, format!("TFBS ({tfbs_count})"))
+                .on_hover_text(format!(
+                    "Show or hide computed TFBS features ({tfbs_count} in current view)"
+                ));
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -951,14 +1588,18 @@ impl MainAreaDna {
             } else {
                 "REG@TOP"
             };
+            let regulatory_count = layer_counts.regulatory_feature_count;
             let regulatory_tooltip = if regulatory_near_baseline {
                 "Regulatory features are placed near the DNA/GC strip. Click to move them to dedicated top lanes."
             } else {
                 "Regulatory features are placed in dedicated top lanes. Click to move them near the DNA/GC strip."
             };
             let response = ui
-                .button(regulatory_label)
-                .on_hover_text(regulatory_tooltip);
+                .button(format!("{regulatory_label} ({regulatory_count})"))
+                .on_hover_text(format!(
+                    "{} ({} regulatory features in current view)",
+                    regulatory_tooltip, regulatory_count
+                ));
             if response.clicked() {
                 let new_value = !regulatory_near_baseline;
                 self.dna_display
@@ -978,9 +1619,12 @@ impl MainAreaDna {
                     .read()
                     .map(|display| display.feature_kind_visible(&kind))
                     .unwrap_or(true);
+                let kind_count = layer_counts.kind_count(&kind);
                 let response = ui
-                    .selectable_label(visible, &kind)
-                    .on_hover_text(format!("Show or hide {kind} features"));
+                    .selectable_label(visible, format!("{kind} ({kind_count})"))
+                    .on_hover_text(format!(
+                        "Show or hide {kind} features ({kind_count} in current view)"
+                    ));
                 if response.clicked() {
                     if let Ok(mut display) = self.dna_display.write() {
                         display.set_feature_kind_visible(&kind, !visible);
@@ -993,6 +1637,7 @@ impl MainAreaDna {
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_restriction_enzyme_sites();
+            let re_count = layer_counts.restriction_site_count;
             let button = egui::ImageButton::new(
                 ICON_RESTRICTION_ENZYMES
                     .clone()
@@ -1002,7 +1647,9 @@ impl MainAreaDna {
             .selected(re_active);
             let response = ui
                 .add(button)
-                .on_hover_text("Show or hide restriction enzyme cut sites");
+                .on_hover_text(format!(
+                    "Show or hide restriction enzyme cut sites ({re_count} in current view)"
+                ));
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -1014,12 +1661,14 @@ impl MainAreaDna {
                     .set_show_restriction_enzyme_sites(visible);
                 self.set_display_visibility(DisplayTarget::RestrictionEnzymes, visible);
             };
+            ui.small(format!("{re_count}"));
 
             let gc_active = self
                 .dna_display
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_gc_contents();
+            let gc_count = layer_counts.gc_region_count;
             let button = egui::ImageButton::new(
                 ICON_GC_CONTENT
                     .clone()
@@ -1029,7 +1678,9 @@ impl MainAreaDna {
             .selected(gc_active);
             let response = ui
                 .add(button)
-                .on_hover_text("Show or hide GC-content visualization");
+                .on_hover_text(format!(
+                    "Show or hide GC-content visualization ({gc_count} GC windows in current view)"
+                ));
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -1041,12 +1692,16 @@ impl MainAreaDna {
                     .set_show_gc_contents(visible);
                 self.set_display_visibility(DisplayTarget::GcContents, visible);
             };
+            ui.small(format!("{gc_count}"));
 
-            let orf_active = self
-                .dna_display
-                .read()
-                .expect("DNA display lock poisoned")
-                .show_open_reading_frames();
+            let (orf_active, orf_suppressed_for_anchor) = {
+                let display = self.dna_display.read().expect("DNA display lock poisoned");
+                (
+                    display.show_open_reading_frames_effective(),
+                    display.suppress_open_reading_frames_for_genome_anchor(),
+                )
+            };
+            let orf_count = layer_counts.orf_count;
             let button = egui::ImageButton::new(
                 ICON_OPEN_READING_FRAMES
                     .clone()
@@ -1054,9 +1709,17 @@ impl MainAreaDna {
                     .rounding(5.0),
             )
             .selected(orf_active);
-            let response = ui
-                .add(button)
-                .on_hover_text("Show or hide predicted open reading frames (ORFs)");
+            let response = ui.add_enabled(!orf_suppressed_for_anchor, button).on_hover_text(
+                if orf_suppressed_for_anchor {
+                    format!(
+                        "Predicted ORF overlays are hidden for genome-anchored sequences to keep gene tracks readable ({orf_count} predicted ORFs in current view)"
+                    )
+                } else {
+                    format!(
+                        "Show or hide predicted open reading frames (ORFs) ({orf_count} in current view)"
+                    )
+                },
+            );
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -1068,12 +1731,14 @@ impl MainAreaDna {
                     .set_show_open_reading_frames(visible);
                 self.set_display_visibility(DisplayTarget::OpenReadingFrames, visible);
             };
+            ui.small(format!("{orf_count}"));
 
             let methylation_active = self
                 .dna_display
                 .read()
                 .expect("DNA display lock poisoned")
                 .show_methylation_sites();
+            let methylation_count = layer_counts.methylation_site_count;
             let button = egui::ImageButton::new(
                 ICON_METHYLATION_SITES
                     .clone()
@@ -1083,7 +1748,9 @@ impl MainAreaDna {
             .selected(methylation_active);
             let response = ui
                 .add(button)
-                .on_hover_text("Show or hide methylation-site markers");
+                .on_hover_text(format!(
+                    "Show or hide methylation-site markers ({methylation_count} in current view)"
+                ));
             if response.clicked() {
                 let visible = {
                     let display = self.dna_display.read().expect("DNA display lock poisoned");
@@ -1095,6 +1762,7 @@ impl MainAreaDna {
                     .set_show_methylation_sites(visible);
                 self.set_display_visibility(DisplayTarget::MethylationSites, visible);
             };
+            ui.small(format!("{methylation_count}"));
 
             ui.separator();
             if ui
@@ -2655,6 +3323,7 @@ impl MainAreaDna {
             return;
         };
         let settings = guard.state().display.clone();
+        let suppress_orf_for_anchor = self.active_sequence_is_genome_anchored(&guard);
         drop(guard);
         self.show_sequence = settings.show_sequence_panel;
         self.show_map = settings.show_map_panel;
@@ -2691,6 +3360,7 @@ impl MainAreaDna {
         display.set_show_restriction_enzyme_sites(settings.show_restriction_enzymes);
         display.set_show_gc_contents(settings.show_gc_contents);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);
+        display.set_suppress_open_reading_frames_for_genome_anchor(suppress_orf_for_anchor);
         display.set_show_methylation_sites(settings.show_methylation_sites);
         display.set_regulatory_tracks_near_baseline(settings.regulatory_tracks_near_baseline);
         display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
@@ -3559,7 +4229,11 @@ impl MainAreaDna {
         }
     }
 
-    fn compare_candidate_records(a: &CandidateRecord, b: &CandidateRecord, sort_key: &str) -> Ordering {
+    fn compare_candidate_records(
+        a: &CandidateRecord,
+        b: &CandidateRecord,
+        sort_key: &str,
+    ) -> Ordering {
         let key = sort_key.trim().to_ascii_lowercase();
         match key.as_str() {
             "seq_id" => a
@@ -3589,8 +4263,10 @@ impl MainAreaDna {
                 .then(a.seq_id.cmp(&b.seq_id))
                 .then(a.start_0based.cmp(&b.start_0based)),
             _ => {
-                let a_value = Self::candidate_metric_lookup(a, sort_key).unwrap_or(f64::NEG_INFINITY);
-                let b_value = Self::candidate_metric_lookup(b, sort_key).unwrap_or(f64::NEG_INFINITY);
+                let a_value =
+                    Self::candidate_metric_lookup(a, sort_key).unwrap_or(f64::NEG_INFINITY);
+                let b_value =
+                    Self::candidate_metric_lookup(b, sort_key).unwrap_or(f64::NEG_INFINITY);
                 a_value
                     .partial_cmp(&b_value)
                     .unwrap_or(Ordering::Equal)
@@ -3636,7 +4312,8 @@ impl MainAreaDna {
         } else {
             self.candidate_selected_set.clear();
         }
-        if self.candidate_filter_input_set.trim().is_empty() && !self.candidate_selected_set.is_empty()
+        if self.candidate_filter_input_set.trim().is_empty()
+            && !self.candidate_selected_set.is_empty()
         {
             self.candidate_filter_input_set = self.candidate_selected_set.clone();
         }
@@ -3700,6 +4377,29 @@ impl MainAreaDna {
         ui.horizontal(|ui| {
             ui.label("feature label regex");
             ui.text_edit_singleline(&mut self.candidate_feature_label_regex);
+            ui.label("strand");
+            egui::ComboBox::from_id_salt(format!(
+                "candidate_generate_strand_relation_{}",
+                self.seq_id.as_deref().unwrap_or("_global")
+            ))
+            .selected_text(self.candidate_feature_strand_relation.as_str())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut self.candidate_feature_strand_relation,
+                    CandidateFeatureStrandRelation::Any,
+                    "any",
+                );
+                ui.selectable_value(
+                    &mut self.candidate_feature_strand_relation,
+                    CandidateFeatureStrandRelation::Same,
+                    "same (+)",
+                );
+                ui.selectable_value(
+                    &mut self.candidate_feature_strand_relation,
+                    CandidateFeatureStrandRelation::Opposite,
+                    "opposite (-)",
+                );
+            });
             if ui
                 .button("Generate")
                 .on_hover_text("Run GenerateCandidateSet")
@@ -3709,7 +4409,8 @@ impl MainAreaDna {
                 let seq_id = self.candidate_source_seq_id.trim().to_string();
                 let length = self.candidate_length_bp.trim().parse::<usize>();
                 let step = self.candidate_step_bp.trim().parse::<usize>();
-                let limit = Self::parse_optional_usize_text(&self.candidate_limit, "candidate limit");
+                let limit =
+                    Self::parse_optional_usize_text(&self.candidate_limit, "candidate limit");
                 let max_distance = Self::parse_optional_usize_text(
                     &self.candidate_max_distance_bp,
                     "candidate max distance",
@@ -3727,12 +4428,16 @@ impl MainAreaDna {
                         length_bp,
                         step_bp,
                         feature_kinds: Self::parse_ids(&self.candidate_feature_kinds),
-                        feature_label_regex: if self.candidate_feature_label_regex.trim().is_empty() {
+                        feature_label_regex: if self.candidate_feature_label_regex.trim().is_empty()
+                        {
                             None
                         } else {
                             Some(self.candidate_feature_label_regex.trim().to_string())
                         },
                         max_distance_bp,
+                        feature_geometry_mode: None,
+                        feature_boundary_mode: None,
+                        feature_strand_relation: Some(self.candidate_feature_strand_relation),
                         limit,
                     });
                     self.candidate_selected_set = set_name.clone();
@@ -3819,6 +4524,29 @@ impl MainAreaDna {
         ui.horizontal(|ui| {
             ui.label("feature label regex");
             ui.text_edit_singleline(&mut self.candidate_distance_feature_label_regex);
+            ui.label("strand");
+            egui::ComboBox::from_id_salt(format!(
+                "candidate_distance_strand_relation_{}",
+                self.seq_id.as_deref().unwrap_or("_global")
+            ))
+            .selected_text(self.candidate_distance_feature_strand_relation.as_str())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut self.candidate_distance_feature_strand_relation,
+                    CandidateFeatureStrandRelation::Any,
+                    "any",
+                );
+                ui.selectable_value(
+                    &mut self.candidate_distance_feature_strand_relation,
+                    CandidateFeatureStrandRelation::Same,
+                    "same (+)",
+                );
+                ui.selectable_value(
+                    &mut self.candidate_distance_feature_strand_relation,
+                    CandidateFeatureStrandRelation::Opposite,
+                    "opposite (-)",
+                );
+            });
             if ui
                 .button("Score distance")
                 .on_hover_text("Run ScoreCandidateSetDistance on selected set")
@@ -3840,8 +4568,17 @@ impl MainAreaDna {
                         {
                             None
                         } else {
-                            Some(self.candidate_distance_feature_label_regex.trim().to_string())
+                            Some(
+                                self.candidate_distance_feature_label_regex
+                                    .trim()
+                                    .to_string(),
+                            )
                         },
+                        feature_geometry_mode: None,
+                        feature_boundary_mode: None,
+                        feature_strand_relation: Some(
+                            self.candidate_distance_feature_strand_relation,
+                        ),
                     });
                 }
             }
@@ -3903,7 +4640,8 @@ impl MainAreaDna {
                         min_quantile,
                         max_quantile,
                     });
-                    self.candidate_selected_set = self.candidate_filter_output_set.trim().to_string();
+                    self.candidate_selected_set =
+                        self.candidate_filter_output_set.trim().to_string();
                 } else {
                     self.op_status = "Invalid numeric filter threshold".to_string();
                 }
@@ -3942,7 +4680,12 @@ impl MainAreaDna {
                 .on_hover_text("Run CandidateSetOp")
                 .clicked()
             {
-                let op = match self.candidate_setop_mode.trim().to_ascii_lowercase().as_str() {
+                let op = match self
+                    .candidate_setop_mode
+                    .trim()
+                    .to_ascii_lowercase()
+                    .as_str()
+                {
                     "union" => Some(CandidateSetOperator::Union),
                     "intersect" => Some(CandidateSetOperator::Intersect),
                     "subtract" => Some(CandidateSetOperator::Subtract),
@@ -3962,10 +4705,12 @@ impl MainAreaDna {
                             right_set: self.candidate_setop_right.trim().to_string(),
                             output_set: self.candidate_setop_output.trim().to_string(),
                         });
-                        self.candidate_selected_set = self.candidate_setop_output.trim().to_string();
+                        self.candidate_selected_set =
+                            self.candidate_setop_output.trim().to_string();
                     }
                 } else {
-                    self.op_status = "Set operation mode must be union/intersect/subtract".to_string();
+                    self.op_status =
+                        "Set operation mode must be union/intersect/subtract".to_string();
                 }
             }
         });
@@ -4074,8 +4819,7 @@ impl MainAreaDna {
                                 ui.strong("sort value");
                                 ui.end_row();
                                 for row in &page.candidates {
-                                    let length_bp =
-                                        row.end_0based.saturating_sub(row.start_0based);
+                                    let length_bp = row.end_0based.saturating_sub(row.start_0based);
                                     let sort_value = match self
                                         .candidate_sort_key
                                         .trim()
@@ -4164,13 +4908,17 @@ impl MainAreaDna {
                                 }
                             }
                             Err(e) => {
-                                self.op_status = format!("Could not load selected set for export: {e}");
+                                self.op_status =
+                                    format!("Could not load selected set for export: {e}");
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("inspect failed: {}", e.message));
+                    ui.colored_label(
+                        egui::Color32::LIGHT_RED,
+                        format!("inspect failed: {}", e.message),
+                    );
                 }
             }
         } else {
@@ -4182,7 +4930,9 @@ impl MainAreaDna {
         ui.add(
             egui::TextEdit::multiline(&mut self.candidate_macro_script)
                 .desired_rows(3)
-                .hint_text("generate setA seq_1 --length 20 --step 1; score setA gc_score gc_fraction"),
+                .hint_text(
+                    "generate setA seq_1 --length 20 --step 1; score setA gc_score gc_fraction",
+                ),
         );
         if ui
             .button("Run candidates macro")
@@ -4204,20 +4954,22 @@ impl MainAreaDna {
                 };
                 match outcome {
                     Ok(run) => {
-                        let output = serde_json::to_string_pretty(&run.output).unwrap_or_else(|e| {
-                            format!("{{\"error\":\"Could not format macro output: {e}\"}}")
-                        });
+                        let output =
+                            serde_json::to_string_pretty(&run.output).unwrap_or_else(|e| {
+                                format!("{{\"error\":\"Could not format macro output: {e}\"}}")
+                            });
                         if !self.shell_output_text.is_empty() {
                             self.shell_output_text.push('\n');
                         }
-                        self.shell_output_text.push_str(&format!(
-                            "$ candidates macro {script}\n{output}\n"
-                        ));
-                        self.op_status = format!("Candidates macro executed ({} statement(s))", run
-                            .output
-                            .get("executed")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0));
+                        self.shell_output_text
+                            .push_str(&format!("$ candidates macro {script}\n{output}\n"));
+                        self.op_status = format!(
+                            "Candidates macro executed ({} statement(s))",
+                            run.output
+                                .get("executed")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0)
+                        );
                         self.sync_from_engine_display();
                     }
                     Err(e) => {
@@ -4314,7 +5066,10 @@ impl MainAreaDna {
     fn current_engine_ops_state(&self) -> EngineOpsUiState {
         let (tfbs_display, vcf_display) = {
             let display = self.dna_display.read().expect("DNA display lock poisoned");
-            (display.tfbs_display_criteria(), display.vcf_display_criteria())
+            (
+                display.tfbs_display_criteria(),
+                display.vcf_display_criteria(),
+            )
         };
         EngineOpsUiState {
             show_engine_ops: self.show_engine_ops,
@@ -4379,6 +5134,7 @@ impl MainAreaDna {
             candidate_step_bp: self.candidate_step_bp.clone(),
             candidate_feature_kinds: self.candidate_feature_kinds.clone(),
             candidate_feature_label_regex: self.candidate_feature_label_regex.clone(),
+            candidate_feature_strand_relation: self.candidate_feature_strand_relation,
             candidate_max_distance_bp: self.candidate_max_distance_bp.clone(),
             candidate_limit: self.candidate_limit.clone(),
             candidate_selected_set: self.candidate_selected_set.clone(),
@@ -4393,6 +5149,8 @@ impl MainAreaDna {
             candidate_distance_feature_label_regex: self
                 .candidate_distance_feature_label_regex
                 .clone(),
+            candidate_distance_feature_strand_relation: self
+                .candidate_distance_feature_strand_relation,
             candidate_filter_input_set: self.candidate_filter_input_set.clone(),
             candidate_filter_output_set: self.candidate_filter_output_set.clone(),
             candidate_filter_metric: self.candidate_filter_metric.clone(),
@@ -4517,6 +5275,7 @@ impl MainAreaDna {
         self.candidate_step_bp = s.candidate_step_bp;
         self.candidate_feature_kinds = s.candidate_feature_kinds;
         self.candidate_feature_label_regex = s.candidate_feature_label_regex;
+        self.candidate_feature_strand_relation = s.candidate_feature_strand_relation;
         self.candidate_max_distance_bp = s.candidate_max_distance_bp;
         self.candidate_limit = s.candidate_limit;
         self.candidate_selected_set = s.candidate_selected_set;
@@ -4529,6 +5288,8 @@ impl MainAreaDna {
         self.candidate_distance_metric = s.candidate_distance_metric;
         self.candidate_distance_feature_kinds = s.candidate_distance_feature_kinds;
         self.candidate_distance_feature_label_regex = s.candidate_distance_feature_label_regex;
+        self.candidate_distance_feature_strand_relation =
+            s.candidate_distance_feature_strand_relation;
         self.candidate_filter_input_set = s.candidate_filter_input_set;
         self.candidate_filter_output_set = s.candidate_filter_output_set;
         self.candidate_filter_metric = s.candidate_filter_metric;

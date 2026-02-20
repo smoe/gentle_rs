@@ -24,14 +24,16 @@ order. Durable architecture constraints and decisions remain in
 - Container-first model in engine state (`ProjectState.container_state`) with
   container-aware digest/merge/ligation/filter operations.
 - Reference-genome preparation and extraction (`PrepareGenome`,
-  `ExtractGenomeRegion`, `ExtractGenomeGene`) including catalog-backed helper
-  flows and BLAST integration.
+  `ExtractGenomeRegion`, `ExtractGenomeGene`, `ExtendGenomeAnchor`) including
+  catalog-backed helper flows and BLAST integration.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
   with anchor-aware coordinate remapping.
 - Resource ingestion/update path for REBASE and JASPAR snapshots across GUI/CLI
   and scripting adapters.
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
+- VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
+  display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)
   with persistent storage model.
 - Ladder-aware virtual gel rendering and SVG export routes.
@@ -56,6 +58,7 @@ order. Durable architecture constraints and decisions remain in
 | Export/render operations (sequence/lineage/pool gel) | Done |
 | Reference genome + track import surfaces | Done |
 | Shared shell parity across GUI/CLI | Done |
+| Candidate strand-relation controls across adapters | Done |
 | Shared operation protocol usage | Partial |
 
 Notes:
@@ -80,14 +83,33 @@ Notes:
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
 
+### UX declutter and readability improvements (planned)
+
+- Add one-click map view presets (`Anchored`, `Cloning`, `Annotation`,
+  `Signal`) that apply curated layer visibility bundles.
+- Add zoom-aware rendering policy that suppresses tiny low-value glyphs at wide
+  zoom and progressively reveals detail when zoomed in.
+- Add a one-click declutter action that temporarily disables low-value overlays
+  when feature overlap/noise is high.
+- Add per-layer counts in visibility controls (for example `ORF (N)`) so users
+  can predict visual noise before enabling a layer.
+- Separate visual lanes more strictly (annotation rectangles vs predictive
+  overlays vs signal tracks) to avoid overlap collisions.
+
+### Current branch blockers (must clear first)
+
+- Full `cargo test -q` currently has known red tests:
+  - `genomes::tests::test_prepare_reuses_downloaded_sequence_when_annotation_path_is_invalid`
+  - `genomes::tests::test_repo_assets_genome_catalog_is_valid`
+
 ### Stability TODO (queued, items 5-7)
 
 - Add malformed-annotation reporting that summarizes non-fatal GTF/GFF parse
   issues and exposes file/line context in engine/CLI/GUI.
 - Add external-binary preflight diagnostics (BLAST and related tools) with
   explicit "found/missing/version/path" reporting before long jobs start.
-- Add cancellation/timebox controls for long-running background jobs so users
-  can stop/recover cleanly without restarting the app.
+- Extend cancellation/timebox controls beyond current genome-track import flow
+  so long-running genome-prepare/BLAST jobs can be stopped cleanly.
 
 ### Missing test coverage (current priority list)
 
@@ -136,7 +158,9 @@ Notes:
 2. Read `docs/protocol.md`.
 3. Read this file (`docs/roadmap.md`).
 4. Run quick sanity:
-   - `cargo check -q`
-   - `cargo run --bin gentle_cli -- capabilities`
-   - `cargo run --bin gentle_cli -- state-summary`
+   - `cargo check -q` (expected green)
+   - `cargo run --bin gentle_cli -- capabilities` (run after `cargo check`
+     is green)
+   - `cargo run --bin gentle_cli -- state-summary` (run after `cargo check`
+     is green)
 5. Continue with highest-priority item from Section 2.

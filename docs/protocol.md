@@ -67,6 +67,12 @@ Current draft operations:
 - `ExtractRegion { input, from, to, output_id? }`
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
 - `SelectCandidate { input, criterion, output_id? }`
+- `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
+- `DeleteCandidateSet { set_name }`
+- `ScoreCandidateSetExpression { set_name, metric, expression }`
+- `ScoreCandidateSetDistance { set_name, metric, feature_kinds[], feature_label_regex?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation? }`
+- `FilterCandidateSet { input_set, output_set, metric, min?, max?, min_quantile?, max_quantile? }`
+- `CandidateSetOp { op: union|intersect|subtract, left_set, right_set, output_set }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
 - `FilterByDesignConstraints { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
 - `Reverse { input, output_id? }`
@@ -88,12 +94,11 @@ Current draft operations:
 Adapter utility contracts (current, non-engine operations):
 
 - `screenshot-window OUTPUT.png`
-  - gated by startup opt-in flag `--allow-screenshots`
-  - adapter-level action (CLI/shared shell/GUI bridge), intentionally outside
-    deterministic biology operations
-  - capture target: active/topmost GENtle window only
-  - caller must provide output path/filename
-  - full-screen and non-GENtle-window capture are rejected by contract
+  - currently disabled by security policy
+  - returns deterministic disabled message from shared shell/CLI/GUI command
+    paths
+  - kept as reserved adapter contract for future re-enable after explicit
+    endpoint-security approval
 
 Planned operation refinements:
 
@@ -115,6 +120,18 @@ Current parameter support:
   - also serves as ligation product-count limit guard
 - `feature_details_font_size` (default `11.0`, range `8.0..24.0`)
   - controls GUI font size for the feature tree entries and feature range details
+- VCF display filter parameters (shared GUI/SVG state):
+  - `vcf_display_show_snp`
+  - `vcf_display_show_ins`
+  - `vcf_display_show_del`
+  - `vcf_display_show_sv`
+  - `vcf_display_show_other`
+  - `vcf_display_pass_only`
+  - `vcf_display_use_min_qual`
+  - `vcf_display_min_qual`
+  - `vcf_display_use_max_qual`
+  - `vcf_display_max_qual`
+  - `vcf_display_required_info_keys` (CSV string or string array)
 
 Current ligation protocol behavior:
 
@@ -149,6 +166,39 @@ Current ligation protocol behavior:
 - Optional `forbidden_motifs`:
   - IUPAC motifs; reject when motif appears on either strand
 - `unique = true` requires exactly one match, otherwise the operation fails.
+
+Candidate-set semantics:
+
+- `GenerateCandidateSet` creates a persisted candidate window set over one source
+  sequence and computes baseline metrics for each candidate.
+- `ScoreCandidateSetExpression` computes a derived metric from an arithmetic
+  expression over existing metrics.
+- `ScoreCandidateSetDistance` computes feature-distance metrics against filtered
+  feature targets.
+- `FilterCandidateSet` keeps/drops candidates by absolute bounds and/or quantile
+  bounds for a named metric.
+- `CandidateSetOp` supports set algebra (`union`, `intersect`, `subtract`) over
+  candidate identity (`seq_id`, `start_0based`, `end_0based`).
+
+Feature-distance geometry controls (candidate generation and distance scoring):
+
+- `feature_geometry_mode` (optional, default `feature_span`):
+  - `feature_span`: one interval per feature using whole-feature bounds
+  - `feature_parts`: one interval per explicit location part (ignores intronic
+    gaps for multipart features)
+  - `feature_boundaries`: boundary points of explicit location parts
+- `feature_boundary_mode` (optional, default `any`):
+  - `any`, `five_prime`, `three_prime`, `start`, `end`
+  - only meaningful when `feature_geometry_mode = feature_boundaries`
+- `feature_strand_relation` (optional, default `any`):
+  - `any`, `same`, `opposite`
+  - current engine interpretation is sequence-forward relative
+    (`same = '+'`, `opposite = '-'` feature strand)
+- Directed-boundary interpretation:
+  - on `+` strand: `five_prime = start`, `three_prime = end`
+  - on `-` strand: `five_prime = end`, `three_prime = start`
+  - for unknown strand, `five_prime`/`three_prime` conservatively include both
+    boundaries.
 
 `RenderPoolGelSvg` semantics:
 
@@ -202,12 +252,13 @@ RNA ladder catalog semantics:
   - Writes the same structured payload to JSON at `path`.
   - Optional `name_filter` applies case-insensitive name matching before export.
 
-Screenshot artifact semantics (adapter contract):
+Historical screenshot artifact contract (currently disabled):
 
 - Guardrail:
-  - command is rejected unless process was started with `--allow-screenshots`.
+  - command is currently rejected by security policy even when
+    `--allow-screenshots` is provided.
 - Command surface:
-  - direct CLI: `gentle_cli --allow-screenshots screenshot-window OUTPUT.png`
+  - direct CLI: `gentle_cli screenshot-window OUTPUT.png`
   - shared shell (CLI and GUI shell panel): `screenshot-window OUTPUT.png`
 - Scope and safety:
   - captures only the active/topmost GENtle window
@@ -234,6 +285,21 @@ Screenshot artifact semantics (adapter contract):
   "backend": "macos.screencapture"
 }
 ```
+
+Operation progress/cancellation semantics:
+
+- `apply_with_progress` and workflow progress callbacks receive
+  `OperationProgress` updates.
+- Callback return value:
+  - `true`: continue
+  - `false`: request cancellation
+- Current event families:
+  - `Tfbs`
+  - `GenomePrepare`
+  - `GenomeTrackImport`
+- Current cancellation support:
+  - genome-track imports support cooperative cancellation and return partial
+    import warnings.
 
 `Pcr` semantics (current):
 

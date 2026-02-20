@@ -4,12 +4,18 @@ This page documents command-line entry points for GENtle.
 
 ## Overview
 
-GENtle currently provides three binaries:
+GENtle currently provides four binaries:
 
-- `gentle`: graphical desktop app
+- `gentle`: graphical desktop app (GUI)
+- `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
 - `gentle_js`: interactive JavaScript shell
 - `gentle_lua`: interactive Lua shell
-- `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
+
+In addition, the GUI includes an embedded `Shell` panel that uses the same
+shared shell parser/executor as `gentle_cli shell`.
+
+Architecture invariant: all adapters/frontends above route cloning/business
+behavior through the same shared engine.
 
 Resource update capability status:
 
@@ -313,7 +319,7 @@ cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
 cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
-cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
 cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
@@ -323,7 +329,7 @@ cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
-cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes
+cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes --timeout-secs 600
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
 cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
@@ -385,7 +391,7 @@ Shared shell command:
     - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
-    - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+    - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
     - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -393,7 +399,7 @@ Shared shell command:
     - `helpers validate-catalog [--catalog PATH]`
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
     - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
-    - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+    - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
     - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -402,11 +408,11 @@ Shared shell command:
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `candidates list`
     - `candidates delete SET_NAME`
-    - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
+    - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
     - `candidates show SET_NAME [--limit N] [--offset N]`
     - `candidates metrics SET_NAME`
     - `candidates score SET_NAME METRIC_NAME EXPRESSION`
-    - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
+    - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]`
     - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
     - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
     - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
@@ -511,7 +517,7 @@ Genome convenience commands:
   - Lists indexed genes from prepared cache (paged by `--limit`/`--offset`).
   - `--filter` is a case-insensitive regular expression.
   - `--biotype` can be repeated to constrain matches to selected biotypes.
-- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]`
+- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
   - Runs engine `PrepareGenome`.
 - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
   - Runs `blastn` against prepared genome cache/index.
@@ -534,8 +540,9 @@ Helper convenience commands:
   - Same behavior as `genomes status`, with helper-catalog default.
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
   - Same behavior as `genomes genes`, with helper-catalog default.
-- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]`
+- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
   - Same behavior as `genomes prepare`, with helper-catalog default.
+  - `--timeout-secs N`: optional prepare-job timebox.
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes blast`, with helper-catalog default.
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -551,16 +558,18 @@ Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candi
   - Lists available candidate sets from project metadata.
 - `candidates delete SET_NAME`
   - Removes one candidate set.
-- `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
+- `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
   - Creates a candidate set from fixed-length windows on `SEQ_ID`.
   - `--feature-kind` can be repeated to constrain nearest-feature context.
+  - `--feature-geometry`, `--feature-boundary`, and `--strand-relation`
+    control how directed feature distance targets are selected.
 - `candidates show SET_NAME [--limit N] [--offset N]`
   - Pages records (`sequence`, `coordinates`, `metrics`) from one set.
 - `candidates metrics SET_NAME`
   - Lists available metric names in one set.
 - `candidates score SET_NAME METRIC_NAME EXPRESSION`
   - Computes a derived metric expression for all records in a set.
-- `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
+- `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]`
   - Computes nearest-feature distance metric with optional feature filters.
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
   - Creates `OUTPUT_SET` by value and/or quantile thresholds.

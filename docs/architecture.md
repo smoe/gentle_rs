@@ -101,6 +101,11 @@ are now maintained in `docs/roadmap.md`.
     `metadata["candidate_sets"]` (`gentle.candidate_sets.v1`)
   - on disk, candidate metadata may be a sidecar reference
     (`gentle.candidate_sets.ref.v1`) pointing to JSONL-indexed records
+  - candidate sidecar load/save now uses stricter safety semantics:
+    - atomic project-file writes
+    - staged/rollback-aware sidecar replacement
+    - strict-load opt-in via env (`GENTLE_CANDIDATE_STORE_STRICT_LOAD`)
+      with non-strict warning fallback metadata
 - `lineage: LineageGraph`
   - `nodes` (sequence lineage nodes with origin + creation op)
   - `seq_to_node` (current sequence id -> latest lineage node)
@@ -139,9 +144,14 @@ Progress/cancellation contract:
 - Engine progress callbacks are cooperative and return `bool`.
 - `true` continues the running operation.
 - `false` requests cancellation.
-- Long-running operations that support this contract (for example genome-track
-  imports) can stop early while returning partial-import warnings and progress
+- Long-running operations that support this contract (genome-track imports and
+  genome-prepare flow) can stop early while returning warnings/progress
   summaries.
+- Genome-prepare additionally supports explicit timeboxing (`timeout_seconds`
+  in operation payload, `--timeout-secs` in CLI/shell, `timeout_sec` in GUI).
+- Annotation parsing during genome preparation is fault-tolerant: malformed
+  tabular annotation lines are skipped, summarized, and reported with capped
+  file/line examples in warnings.
 
 ### Provenance and DAG (recommended)
 
@@ -296,6 +306,14 @@ This enables reusable query composition:
 3. filter by absolute threshold and/or quantile
 4. intersect/union/subtract with other candidate sets
 
+Feature-distance geometry controls (engine + shell/CLI):
+
+- `--feature-geometry feature_span|feature_parts|feature_boundaries`
+- `--feature-boundary any|five_prime|three_prime|start|end`
+- `--strand-relation any|same|opposite`
+- defaults preserve prior behavior (`feature_span` + `any`)
+- `--feature-boundary` is only meaningful with `feature_boundaries`
+
 ## 8. Rendering and interpretation direction
 
 Two additional layers are needed for full human/AI collaboration:
@@ -354,6 +372,13 @@ Important separation:
 - Add shared shell `set-param` and JS/Lua helpers (`set_parameter`,
   `set_vcf_display_filter`) for display-parameter parity: accepted and
   implemented
+- Add genome-anchor extension operation (`ExtendGenomeAnchor`) and expose it via
+  shared shell/CLI/JS/Lua adapters: accepted and implemented
+- Add candidate feature-distance geometry controls (`feature_geometry_mode`,
+  `feature_boundary_mode`) across engine and shell/CLI: accepted and
+  implemented
+- Add candidate feature strand-relation control (`feature_strand_relation`) in
+  engine operation schema and shell/CLI/GUI adapters: accepted and implemented
 - Add tracked genome-signal subscriptions with auto-sync for newly anchored
   sequences via engine-managed subscription metadata:
   accepted and implemented

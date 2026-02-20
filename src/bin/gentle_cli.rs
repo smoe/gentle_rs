@@ -427,6 +427,7 @@ fn usage() {
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
+  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'\n  \
@@ -452,7 +453,7 @@ fn usage() {
   gentle_cli genomes validate-catalog [--catalog PATH]\n  \
   gentle_cli genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
@@ -461,7 +462,7 @@ fn usage() {
   gentle_cli helpers validate-catalog [--catalog PATH]\n  \
   gentle_cli helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
@@ -470,11 +471,11 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] candidates list\n  \
   gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
   gentle_cli [--state PATH|--project PATH] candidates show SET_NAME [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] candidates metrics SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates score SET_NAME METRIC_NAME EXPRESSION\n  \
-  gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite]\n  \
   gentle_cli [--state PATH|--project PATH] candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n  \
   gentle_cli [--state PATH|--project PATH] candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n  \
   gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n\n  \
@@ -487,6 +488,14 @@ fn usage() {
         ,
         shell_help = shell_help_text()
     );
+}
+
+fn is_shell_forwarded_command(command: &str) -> bool {
+    matches!(
+        command,
+        "genomes" | "helpers" | "resources" | "import-pool" | "ladders" | "tracks"
+            | "screenshot-window"
+    )
 }
 
 fn load_json_arg(value: &str) -> Result<String, String> {
@@ -532,6 +541,19 @@ fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
         .map_err(|e| format!("Could not serialize JSON output: {e}"))?;
     println!("{text}");
     Ok(())
+}
+
+#[allow(dead_code)]
+fn print_help_output(output: &serde_json::Value) -> Result<(), String> {
+    if let Some(help) = output.get("help").and_then(|v| v.as_str()) {
+        println!("{help}");
+        return Ok(());
+    }
+    if let Some(help_markdown) = output.get("help_markdown").and_then(|v| v.as_str()) {
+        println!("{help_markdown}");
+        return Ok(());
+    }
+    print_json(output)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -847,16 +869,7 @@ fn run() -> Result<(), String> {
 
     let command = &args[cmd_idx];
 
-    if matches!(
-        command.as_str(),
-        "genomes"
-            | "helpers"
-            | "resources"
-            | "import-pool"
-            | "ladders"
-            | "tracks"
-            | "screenshot-window"
-    ) {
+    if is_shell_forwarded_command(command.as_str()) {
         let tokens = args[cmd_idx..].to_vec();
         let shell_command = parse_shell_tokens(&tokens)?;
         let mut engine = GentleEngine::from_state(load_state(&state_path)?);
@@ -871,6 +884,17 @@ fn run() -> Result<(), String> {
     }
 
     match command.as_str() {
+        "help" => {
+            let tokens = args[cmd_idx..].to_vec();
+            let shell_command = parse_shell_tokens(&tokens)?;
+            if !matches!(shell_command, ShellCommand::Help { .. }) {
+                return Err("Expected help command".to_string());
+            }
+            let mut engine = GentleEngine::from_state(ProjectState::default());
+            let run =
+                execute_shell_command_with_options(&mut engine, &shell_command, &shell_options)?;
+            print_help_output(&run.output)
+        }
         "genomes" | "helpers" => {
             let helper_mode = command == "helpers";
             let default_catalog = if helper_mode {
@@ -1130,12 +1154,13 @@ fn run() -> Result<(), String> {
                     if args.len() <= cmd_idx + 2 {
                         usage();
                         return Err(format!(
-                            "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH]"
+                            "{label} prepare requires GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]"
                         ));
                     }
                     let genome_id = args[cmd_idx + 2].clone();
                     let mut catalog_path: Option<String> = None;
                     let mut cache_dir: Option<String> = None;
+                    let mut timeout_seconds: Option<u64> = None;
                     let mut idx = cmd_idx + 3;
                     while idx < args.len() {
                         match args[idx].as_str() {
@@ -1157,6 +1182,26 @@ fn run() -> Result<(), String> {
                                 cache_dir = Some(args[idx + 1].clone());
                                 idx += 2;
                             }
+                            "--timeout-secs" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --timeout-secs for {label} prepare"
+                                    ));
+                                }
+                                let raw = args[idx + 1].trim().to_string();
+                                let parsed = raw.parse::<u64>().map_err(|e| {
+                                    format!(
+                                        "Invalid --timeout-secs value '{}' for {label} prepare: {}",
+                                        raw, e
+                                    )
+                                })?;
+                                if parsed == 0 {
+                                    timeout_seconds = None;
+                                } else {
+                                    timeout_seconds = Some(parsed);
+                                }
+                                idx += 2;
+                            }
                             other => {
                                 return Err(format!(
                                     "Unknown option '{}' for {label} prepare",
@@ -1173,18 +1218,19 @@ fn run() -> Result<(), String> {
                         genome_id,
                         catalog_path: op_catalog_path,
                         cache_dir,
+                        timeout_seconds,
                     };
-                        let result = if let Some(sink) = global.progress_sink {
-                            let mut printer = ProgressPrinter::new(sink);
-                            engine
-                                .apply_with_progress(op, |p| {
-                                    printer.on_progress(p);
-                                    true
-                                })
-                                .map_err(|e| e.to_string())?
-                        } else {
-                            engine.apply(op).map_err(|e| e.to_string())?
-                        };
+                    let result = if let Some(sink) = global.progress_sink {
+                        let mut printer = ProgressPrinter::new(sink);
+                        engine
+                            .apply_with_progress(op, |p| {
+                                printer.on_progress(p);
+                                true
+                            })
+                            .map_err(|e| e.to_string())?
+                    } else {
+                        engine.apply(op).map_err(|e| e.to_string())?
+                    };
                     engine
                         .state()
                         .save_to_path(&state_path)
@@ -1927,5 +1973,62 @@ T [ 0 0 0 10 ]
         assert_eq!(parsed.state_path, "project.gentle.json");
         assert!(!parsed.allow_screenshots);
         assert_eq!(parsed.cmd_idx, 3);
+    }
+
+    #[test]
+    fn test_shell_forwarded_command_allowlist_contains_shared_shell_commands() {
+        for command in [
+            "genomes",
+            "helpers",
+            "resources",
+            "import-pool",
+            "ladders",
+            "tracks",
+            "screenshot-window",
+        ] {
+            assert!(
+                is_shell_forwarded_command(command),
+                "expected '{command}' to be shell-forwarded"
+            );
+        }
+        for command in ["capabilities", "op", "workflow", "state-summary"] {
+            assert!(
+                !is_shell_forwarded_command(command),
+                "expected '{command}' to be handled by direct CLI branch"
+            );
+        }
+    }
+
+    #[test]
+    fn test_forwarded_commands_use_shared_shell_parser_shapes() {
+        let resources = parse_shell_tokens(&[
+            "resources".to_string(),
+            "sync-jaspar".to_string(),
+            "motifs.pfm".to_string(),
+            "out.json".to_string(),
+        ])
+        .expect("parse resources sync-jaspar");
+        assert!(matches!(
+            resources,
+            ShellCommand::ResourcesSyncJaspar { .. }
+        ));
+
+        let import_pool = parse_shell_tokens(&[
+            "import-pool".to_string(),
+            "demo.pool.gentle.json".to_string(),
+            "pref".to_string(),
+        ])
+        .expect("parse import-pool");
+        assert!(matches!(import_pool, ShellCommand::ImportPool { .. }));
+
+        let extend = parse_shell_tokens(&[
+            "genomes".to_string(),
+            "extend-anchor".to_string(),
+            "anch".to_string(),
+            "5p".to_string(),
+            "25".to_string(),
+        ])
+        .expect("parse genomes extend-anchor");
+        assert!(matches!(extend, ShellCommand::ReferenceExtendAnchor { .. }));
     }
 }
