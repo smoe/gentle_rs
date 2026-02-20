@@ -7,7 +7,10 @@ use crate::{
         OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride,
         TfbsProgress, Workflow,
     },
-    engine_shell::{execute_shell_command_with_options, parse_shell_line, ShellExecutionOptions},
+    engine_shell::{
+        execute_shell_command_with_options, parse_shell_line, shell_help_text,
+        ShellExecutionOptions,
+    },
     icons::*,
     pool_gel::build_pool_gel_layout,
     render_dna::RenderDna,
@@ -45,6 +48,24 @@ struct EngineOpsUiState {
     mw_max_bp: String,
     mw_error: String,
     mw_unique: bool,
+    #[serde(default)]
+    sq_inputs_text: String,
+    #[serde(default)]
+    sq_gc_min: String,
+    #[serde(default)]
+    sq_gc_max: String,
+    #[serde(default)]
+    sq_max_homopolymer_run: String,
+    #[serde(default = "default_true")]
+    sq_reject_ambiguous_bases: bool,
+    #[serde(default = "default_true")]
+    sq_avoid_u6_tttt: bool,
+    #[serde(default)]
+    sq_forbidden_motifs: String,
+    #[serde(default)]
+    sq_unique: bool,
+    #[serde(default)]
+    sq_output_prefix: String,
     pcr_forward: String,
     pcr_reverse: String,
     pcr_unique: bool,
@@ -243,6 +264,15 @@ pub struct MainAreaDna {
     mw_max_bp: String,
     mw_error: String,
     mw_unique: bool,
+    sq_inputs_text: String,
+    sq_gc_min: String,
+    sq_gc_max: String,
+    sq_max_homopolymer_run: String,
+    sq_reject_ambiguous_bases: bool,
+    sq_avoid_u6_tttt: bool,
+    sq_forbidden_motifs: String,
+    sq_unique: bool,
+    sq_output_prefix: String,
     pcr_forward: String,
     pcr_reverse: String,
     pcr_unique: bool,
@@ -307,6 +337,14 @@ pub struct MainAreaDna {
     export_pool_id: String,
     export_pool_human_id: String,
     pool_gel_ladders: String,
+    pending_feature_tree_scroll_to: Option<usize>,
+    focused_feature_id: Option<usize>,
+    description_cache_initialized: bool,
+    description_cache_selected_id: Option<usize>,
+    description_cache_seq_len: usize,
+    description_cache_feature_count: usize,
+    description_cache_title: String,
+    description_cache_range: Option<String>,
 }
 
 impl MainAreaDna {
@@ -382,6 +420,15 @@ impl MainAreaDna {
             mw_max_bp: "1000".to_string(),
             mw_error: "0.10".to_string(),
             mw_unique: false,
+            sq_inputs_text: seq_id_for_defaults.clone().unwrap_or_default(),
+            sq_gc_min: "0.30".to_string(),
+            sq_gc_max: "0.70".to_string(),
+            sq_max_homopolymer_run: "4".to_string(),
+            sq_reject_ambiguous_bases: true,
+            sq_avoid_u6_tttt: true,
+            sq_forbidden_motifs: String::new(),
+            sq_unique: false,
+            sq_output_prefix: "sq".to_string(),
             pcr_forward: String::new(),
             pcr_reverse: String::new(),
             pcr_unique: false,
@@ -446,6 +493,14 @@ impl MainAreaDna {
             export_pool_id: String::new(),
             export_pool_human_id: String::new(),
             pool_gel_ladders: String::new(),
+            pending_feature_tree_scroll_to: None,
+            focused_feature_id: None,
+            description_cache_initialized: false,
+            description_cache_selected_id: None,
+            description_cache_seq_len: 0,
+            description_cache_feature_count: 0,
+            description_cache_title: String::new(),
+            description_cache_range: None,
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -640,10 +695,12 @@ impl MainAreaDna {
                     }
                     let mut pan_start = start_bp;
                     let max_start = sequence_length.saturating_sub(span_bp);
-                    let pan = ui.add_enabled(
-                        max_start > 0,
-                        egui::Slider::new(&mut pan_start, 0..=max_start).text("Pan"),
-                    );
+                    let pan = ui
+                        .add_enabled(
+                            max_start > 0,
+                            egui::Slider::new(&mut pan_start, 0..=max_start).text("Pan"),
+                        )
+                        .on_hover_text("Pan linear map viewport left/right");
                     if pan.changed() {
                         self.set_linear_viewport(pan_start, span_bp);
                     }
@@ -1003,6 +1060,9 @@ impl MainAreaDna {
                             .show(ui, |ui| {
                         ui.label("IDs are comma-separated sequence IDs.");
                         let template_seq_id = self.seq_id.clone().unwrap_or_default();
+                        egui::CollapsingHeader::new("Core cloning operations")
+                            .default_open(true)
+                            .show(ui, |ui| {
 
                 ui.horizontal(|ui| {
                     ui.label(format!("Digest template {}", template_seq_id));
@@ -1010,7 +1070,11 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.digest_enzymes_text);
                     ui.label("prefix");
                     ui.text_edit_singleline(&mut self.digest_prefix_text);
-                    if ui.button("Digest").clicked() {
+                    if ui
+                        .button("Digest")
+                        .on_hover_text("Digest active template with listed enzymes")
+                        .clicked()
+                    {
                         let enzymes = self
                             .digest_enzymes_text
                             .split(',')
@@ -1035,7 +1099,11 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.label("Merge inputs");
                     ui.text_edit_singleline(&mut self.merge_inputs_text);
-                    if ui.button("Merge").clicked() {
+                    if ui
+                        .button("Merge")
+                        .on_hover_text("Merge candidates from listed input sequence IDs")
+                        .clicked()
+                    {
                         let inputs = Self::parse_ids(&self.merge_inputs_text);
                         self.apply_operation_with_feedback(Operation::MergeContainers {
                             inputs,
@@ -1053,7 +1121,11 @@ impl MainAreaDna {
                     ui.checkbox(&mut self.ligation_unique, "Unique");
                     ui.label("Prefix");
                     ui.text_edit_singleline(&mut self.ligation_output_prefix);
-                    if ui.button("Ligate").clicked() {
+                    if ui
+                        .button("Ligate")
+                        .on_hover_text("Ligate listed inputs using selected protocol")
+                        .clicked()
+                    {
                         let inputs = Self::parse_ids(&self.ligation_inputs_text);
                         let protocol = if self.ligation_protocol_sticky {
                             LigationProtocol::Sticky
@@ -1083,7 +1155,11 @@ impl MainAreaDna {
                     ui.label("error");
                     ui.text_edit_singleline(&mut self.mw_error);
                     ui.checkbox(&mut self.mw_unique, "Unique");
-                    if ui.button("Filter MW").clicked() {
+                    if ui
+                        .button("Filter MW")
+                        .on_hover_text("Filter inputs by molecular-weight range in bp")
+                        .clicked()
+                    {
                         if let (Ok(min_bp), Ok(max_bp), Ok(error)) = (
                             self.mw_min_bp.parse::<usize>(),
                             self.mw_max_bp.parse::<usize>(),
@@ -1106,12 +1182,102 @@ impl MainAreaDna {
                 });
 
                 ui.horizontal(|ui| {
+                    ui.label("SeqQ inputs");
+                    ui.text_edit_singleline(&mut self.sq_inputs_text);
+                    ui.label("prefix");
+                    ui.text_edit_singleline(&mut self.sq_output_prefix);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("GC min");
+                    ui.text_edit_singleline(&mut self.sq_gc_min);
+                    ui.label("GC max");
+                    ui.text_edit_singleline(&mut self.sq_gc_max);
+                    ui.label("max homopoly");
+                    ui.text_edit_singleline(&mut self.sq_max_homopolymer_run);
+                });
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.sq_reject_ambiguous_bases, "Reject ambiguous");
+                    ui.checkbox(&mut self.sq_avoid_u6_tttt, "Avoid U6 TTTT");
+                    ui.checkbox(&mut self.sq_unique, "Unique");
+                    if ui
+                        .button("Filter SeqQ")
+                        .on_hover_text(
+                            "Practical sequence filters: GC bounds, homopolymers, U6 TTTT avoidance, forbidden motifs",
+                        )
+                        .clicked()
+                    {
+                        let parsed_gc_min = if self.sq_gc_min.trim().is_empty() {
+                            Ok(None)
+                        } else {
+                            self.sq_gc_min
+                                .parse::<f64>()
+                                .map(Some)
+                                .map_err(|_| "Invalid SeqQ GC min".to_string())
+                        };
+                        let parsed_gc_max = if self.sq_gc_max.trim().is_empty() {
+                            Ok(None)
+                        } else {
+                            self.sq_gc_max
+                                .parse::<f64>()
+                                .map(Some)
+                                .map_err(|_| "Invalid SeqQ GC max".to_string())
+                        };
+                        let parsed_max_homopolymer_run =
+                            if self.sq_max_homopolymer_run.trim().is_empty() {
+                                Ok(None)
+                            } else {
+                                self.sq_max_homopolymer_run
+                                    .parse::<usize>()
+                                    .map(Some)
+                                    .map_err(|_| "Invalid SeqQ max homopolymer run".to_string())
+                            };
+                        match (parsed_gc_min, parsed_gc_max, parsed_max_homopolymer_run) {
+                            (Ok(gc_min), Ok(gc_max), Ok(max_homopolymer_run)) => {
+                                let output_prefix = if self.sq_output_prefix.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(self.sq_output_prefix.trim().to_string())
+                                };
+                                self.apply_operation_with_feedback(
+                                    Operation::FilterBySequenceQuality {
+                                        inputs: Self::parse_ids(&self.sq_inputs_text),
+                                        gc_min,
+                                        gc_max,
+                                        max_homopolymer_run,
+                                        reject_ambiguous_bases: Some(
+                                            self.sq_reject_ambiguous_bases,
+                                        ),
+                                        avoid_u6_terminator_tttt: Some(self.sq_avoid_u6_tttt),
+                                        forbidden_motifs: Self::parse_ids(
+                                            &self.sq_forbidden_motifs,
+                                        ),
+                                        unique: self.sq_unique,
+                                        output_prefix,
+                                    },
+                                );
+                            }
+                            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
+                                self.op_status = e;
+                            }
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Forbidden motifs");
+                    ui.text_edit_singleline(&mut self.sq_forbidden_motifs);
+                });
+
+                ui.horizontal(|ui| {
                     ui.label("PCR fwd");
                     ui.text_edit_singleline(&mut self.pcr_forward);
                     ui.label("rev");
                     ui.text_edit_singleline(&mut self.pcr_reverse);
                     ui.checkbox(&mut self.pcr_unique, "Unique");
-                    if ui.button("PCR").clicked() {
+                    if ui
+                        .button("PCR")
+                        .on_hover_text("Run PCR on active template with provided primers")
+                        .clicked()
+                    {
                         let template = self.seq_id.clone().unwrap_or_default();
                         self.apply_operation_with_feedback(Operation::Pcr {
                             template,
@@ -1136,7 +1302,11 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.pcr_adv_max_mismatch);
                     ui.label("3' exact");
                     ui.text_edit_singleline(&mut self.pcr_adv_3prime_exact);
-                    if ui.button("PCR Adv").clicked() {
+                    if ui
+                        .button("PCR Adv")
+                        .on_hover_text("Run advanced PCR with anneal/mismatch constraints")
+                        .clicked()
+                    {
                         if let (Ok(anneal_len), Ok(max_mismatches), Ok(exact3)) = (
                             self.pcr_adv_anneal_len.parse::<usize>(),
                             self.pcr_adv_max_mismatch.parse::<usize>(),
@@ -1172,7 +1342,11 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.pcr_mut_ref);
                     ui.label("alt");
                     ui.text_edit_singleline(&mut self.pcr_mut_alt);
-                    if ui.button("PCR Mut").clicked() {
+                    if ui
+                        .button("PCR Mut")
+                        .on_hover_text("Run SNP mutagenesis PCR on active template")
+                        .clicked()
+                    {
                         if let (Ok(pos), Ok(anneal_len), Ok(max_mismatches), Ok(exact3)) = (
                             self.pcr_mut_position.parse::<usize>(),
                             self.pcr_adv_anneal_len.parse::<usize>(),
@@ -1207,9 +1381,11 @@ impl MainAreaDna {
                         }
                     }
                 });
+                            });
 
-                ui.separator();
-                ui.label("Region extraction and engine settings");
+                egui::CollapsingHeader::new("Region extraction and engine settings")
+                    .default_open(true)
+                    .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Extract from");
                     ui.text_edit_singleline(&mut self.extract_from);
@@ -1217,7 +1393,11 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.extract_to);
                     ui.label("output_id");
                     ui.text_edit_singleline(&mut self.extract_output_id);
-                    if ui.button("Extract Region").clicked() {
+                    if ui
+                        .button("Extract Region")
+                        .on_hover_text("Extract [from,to) region from active template sequence")
+                        .clicked()
+                    {
                         let template = self.seq_id.clone().unwrap_or_default();
                         if template.is_empty() {
                             self.op_status = "No active template sequence".to_string();
@@ -1242,7 +1422,11 @@ impl MainAreaDna {
                 });
 
                 ui.horizontal(|ui| {
-                    if ui.button("Recompute Features").clicked() {
+                    if ui
+                        .button("Recompute Features")
+                        .on_hover_text("Recompute annotations/features for active sequence")
+                        .clicked()
+                    {
                         let seq_id = self.seq_id.clone().unwrap_or_default();
                         if seq_id.is_empty() {
                             self.op_status = "No active template sequence".to_string();
@@ -1252,11 +1436,48 @@ impl MainAreaDna {
                             });
                         }
                     }
+                    ui.separator();
+                    let mut feature_details_font_size = self.feature_details_font_size();
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut feature_details_font_size, 8.0..=24.0)
+                                .step_by(0.5)
+                                .text("Feature details font")
+                                .suffix(" px"),
+                        )
+                        .on_hover_text("Adjust feature-tree/detail text size")
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_feature_details_font_size(feature_details_font_size);
+                        self.sync_feature_details_font_size_to_engine(feature_details_font_size);
+                    }
+                    if ui
+                        .button("Reset Font")
+                        .on_hover_text("Reset feature detail font size to default")
+                        .clicked()
+                    {
+                        let default_size = 11.0;
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_feature_details_font_size(default_size);
+                        self.sync_feature_details_font_size_to_engine(default_size);
+                    }
+                });
+
+                ui.horizontal(|ui| {
                     ui.label("SetParameter name");
                     ui.text_edit_singleline(&mut self.parameter_name);
                     ui.label("json");
                     ui.text_edit_singleline(&mut self.parameter_value_json);
-                    if ui.button("Set Parameter").clicked() {
+                    if ui
+                        .button("Set Parameter")
+                        .on_hover_text("Set strict-engine runtime parameter from JSON value")
+                        .clicked()
+                    {
                         if self.parameter_name.trim().is_empty() {
                             self.op_status = "SetParameter name cannot be empty".to_string();
                         } else {
@@ -1276,9 +1497,11 @@ impl MainAreaDna {
                         }
                     }
                 });
+                    });
 
-                ui.separator();
-                ui.label("Container-first operations");
+                egui::CollapsingHeader::new("Container-first ops, workflow, and pool export")
+                    .default_open(false)
+                    .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Digest container_id");
                     ui.text_edit_singleline(&mut self.container_digest_id);
@@ -1286,7 +1509,11 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.digest_enzymes_text);
                     ui.label("prefix");
                     ui.text_edit_singleline(&mut self.digest_prefix_text);
-                    if ui.button("Digest Container").clicked() {
+                    if ui
+                        .button("Digest Container")
+                        .on_hover_text("Digest members of an existing container by ID")
+                        .clicked()
+                    {
                         let enzymes = self
                             .digest_enzymes_text
                             .split(',')
@@ -1310,7 +1537,11 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.label("Merge container_ids");
                     ui.text_edit_singleline(&mut self.container_merge_ids);
-                    if ui.button("Merge ContainersById").clicked() {
+                    if ui
+                        .button("Merge ContainersById")
+                        .on_hover_text("Merge existing containers into one new container")
+                        .clicked()
+                    {
                         let container_ids = Self::parse_ids(&self.container_merge_ids);
                         if container_ids.is_empty() {
                             self.op_status =
@@ -1336,7 +1567,11 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.label("prefix");
                     ui.text_edit_singleline(&mut self.container_ligation_output_prefix);
-                    if ui.button("Ligate Container").clicked() {
+                    if ui
+                        .button("Ligate Container")
+                        .on_hover_text("Ligate members of selected container")
+                        .clicked()
+                    {
                         if self.container_ligation_id.trim().is_empty() {
                             self.op_status =
                                 "Provide container_id for LigationContainer".to_string();
@@ -1374,7 +1609,11 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.label("prefix");
                     ui.text_edit_singleline(&mut self.container_mw_output_prefix);
-                    if ui.button("Filter Container MW").clicked() {
+                    if ui
+                        .button("Filter Container MW")
+                        .on_hover_text("Filter one container by molecular-weight range in bp")
+                        .clicked()
+                    {
                         if self.container_mw_id.trim().is_empty() {
                             self.op_status =
                                 "Provide container_id for FilterContainerByMolecularWeight"
@@ -1410,7 +1649,11 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.label("run_id");
                     ui.text_edit_singleline(&mut self.workflow_run_id);
-                    if ui.button("Run Workflow").clicked() {
+                    if ui
+                        .button("Run Workflow")
+                        .on_hover_text("Execute JSON workflow operation array")
+                        .clicked()
+                    {
                         let ops = serde_json::from_str::<Vec<Operation>>(
                             self.workflow_ops_json.trim(),
                         );
@@ -1454,7 +1697,11 @@ impl MainAreaDna {
                     ui.text_edit_singleline(&mut self.export_pool_id);
                     ui.label("human_id");
                     ui.text_edit_singleline(&mut self.export_pool_human_id);
-                    if ui.button("Export Pool").clicked() {
+                    if ui
+                        .button("Export Pool")
+                        .on_hover_text("Export current pool candidates as JSON file")
+                        .clicked()
+                    {
                         self.export_pool_to_file();
                     }
                 });
@@ -1475,13 +1722,19 @@ impl MainAreaDna {
                     ui.label("gel ladders");
                     ui.text_edit_singleline(&mut self.pool_gel_ladders)
                         .on_hover_text("Optional comma-separated ladder names; leave blank for auto");
-                    if ui.button("Export Pool Gel SVG").clicked() {
+                    if ui
+                        .button("Export Pool Gel SVG")
+                        .on_hover_text("Export pool gel preview with auto or selected ladders")
+                        .clicked()
+                    {
                         self.export_pool_gel_svg();
                     }
                 });
+                    });
 
-                ui.separator();
-                ui.label("Anchored region extraction (promoter-like)");
+                egui::CollapsingHeader::new("Anchored region extraction (promoter-like)")
+                    .default_open(false)
+                    .show(ui, |ui| {
                 if ui
                     .button("Preset: Promoter (CDS start, upstream 500±100)")
                     .on_hover_text(
@@ -1559,7 +1812,11 @@ impl MainAreaDna {
                 ui.horizontal(|ui| {
                     ui.label("prefix");
                     ui.text_edit_singleline(&mut self.anchored_output_prefix);
-                    if ui.button("Extract Anchored").clicked() {
+                    if ui
+                        .button("Extract Anchored")
+                        .on_hover_text("Extract anchored region candidates from active sequence")
+                        .clicked()
+                    {
                         let template = self.seq_id.clone().unwrap_or_default();
                         if template.is_empty() {
                             self.op_status = "No active template sequence".to_string();
@@ -1676,9 +1933,11 @@ impl MainAreaDna {
                         }
                     }
                 });
+                    });
 
-                ui.separator();
-                ui.label("TFBS annotation (log-likelihood ratio)");
+                egui::CollapsingHeader::new("TFBS annotation (log-likelihood ratio)")
+                    .default_open(true)
+                    .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.tfbs_use_all_motifs, "All known JASPAR motifs");
                     if self.tfbs_use_all_motifs {
@@ -1694,7 +1953,11 @@ impl MainAreaDna {
                     ui.horizontal(|ui| {
                         ui.label("JASPAR filter");
                         ui.text_edit_singleline(&mut self.tfbs_catalog_filter);
-                        if ui.small_button("Clear list").clicked() {
+                        if ui
+                            .small_button("Clear list")
+                            .on_hover_text("Clear selected motif list")
+                            .clicked()
+                        {
                             self.tfbs_motifs.clear();
                         }
                     });
@@ -1721,7 +1984,11 @@ impl MainAreaDna {
                                     break;
                                 }
                                 ui.horizontal(|ui| {
-                                    if ui.small_button("+").clicked() {
+                                    if ui
+                                        .small_button("+")
+                                        .on_hover_text("Add motif to selected list")
+                                        .clicked()
+                                    {
                                         self.add_tfbs_motif_selection(&motif.id);
                                     }
                                     if let Some(name) = &motif.name {
@@ -1736,7 +2003,7 @@ impl MainAreaDna {
                 } else {
                     ui.small("Selection list is ignored while 'All known JASPAR motifs' is enabled.");
                 }
-                let llr_quantile_help = "Empirical quantile of the motif score among all scanned positions/windows for this motif on both strands of the current sequence. 0.0 disables quantile filtering; 1.0 keeps only top-scoring hits.";
+                let llr_quantile_help = "Empirical quantile of the motif score among all scanned positions/windows for this transcription-factor motif on both strands of the current sequence. Quantiles are computed per motif (not across all motifs). 0.0 disables quantile filtering; 1.0 keeps only top-scoring hits.";
                 ui.horizontal(|ui| {
                     ui.label("min llr_bits");
                     ui.text_edit_singleline(&mut self.tfbs_min_llr_bits);
@@ -1856,6 +2123,7 @@ impl MainAreaDna {
                 }
                 if ui
                     .add_enabled(self.tfbs_task.is_none(), egui::Button::new("Annotate TFBS"))
+                    .on_hover_text("Run TFBS annotation with current motif and threshold settings")
                     .clicked()
                 {
                     self.op_status = "Validating TFBS inputs...".to_string();
@@ -1941,6 +2209,7 @@ impl MainAreaDna {
                         }
                     }
                 }
+                    });
 
                 ui.separator();
                 if ui
@@ -2022,38 +2291,81 @@ impl MainAreaDna {
 
     fn render_shell_panel(&mut self, ui: &mut egui::Ui) {
         ui.collapsing("GENtle Shell", |ui| {
+            ui.set_width(ui.available_width());
             ui.label("Runs the same shared shell parser/executor as `gentle_cli shell`.");
             ui.monospace("Type `help` to list supported commands.");
+            ui.small("Command details are also documented in Help -> CLI Manual.");
 
             let preview = parse_shell_line(self.shell_command_text.trim())
                 .map(|cmd| cmd.preview())
                 .unwrap_or_else(|e| format!("Parse error: {e}"));
             self.shell_preview_text = preview;
 
-            let command_edit = ui.text_edit_singleline(&mut self.shell_command_text);
+            let command_edit = ui.add_sized(
+                [ui.available_width(), 0.0],
+                egui::TextEdit::singleline(&mut self.shell_command_text),
+            );
             if command_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 self.run_shell_command();
             }
 
             ui.horizontal(|ui| {
-                if ui.button("Run").clicked() {
+                if ui
+                    .button("Run")
+                    .on_hover_text("Execute current shell command")
+                    .clicked()
+                {
                     self.run_shell_command();
                 }
-                if ui.button("Help").clicked() {
-                    self.shell_command_text = "help".to_string();
+                if ui
+                    .button("Shell Help")
+                    .on_hover_text("Print shell command reference")
+                    .clicked()
+                {
+                    let help = shell_help_text();
+                    if !self.shell_output_text.is_empty() {
+                        self.shell_output_text.push('\n');
+                    }
+                    self.shell_output_text
+                        .push_str(&format!("$ help\n{help}\n"));
+                    self.shell_preview_text = "show shell command help".to_string();
+                    self.op_status = "shell help shown".to_string();
+                }
+                if ui
+                    .button("Engine Status")
+                    .on_hover_text("Run state-summary shell command")
+                    .clicked()
+                {
+                    self.shell_command_text = "state-summary".to_string();
                     self.run_shell_command();
                 }
-                if ui.button("Clear Output").clicked() {
+                if ui
+                    .button("Clear Output")
+                    .on_hover_text("Clear shell output pane")
+                    .clicked()
+                {
                     self.shell_output_text.clear();
                 }
             });
 
             ui.monospace(format!("preview: {}", self.shell_preview_text));
-            ui.add(
-                egui::TextEdit::multiline(&mut self.shell_output_text)
-                    .desired_rows(10)
-                    .code_editor(),
-            );
+            let output_height = (ui.available_height() * 0.6).max(180.0);
+            egui::ScrollArea::vertical()
+                .id_salt(format!(
+                    "gentle_shell_output_{}",
+                    self.seq_id.as_deref().unwrap_or("_global")
+                ))
+                .max_height(output_height)
+                .auto_shrink([false, false])
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.add_sized(
+                        [ui.available_width(), output_height],
+                        egui::TextEdit::multiline(&mut self.shell_output_text)
+                            .desired_width(f32::INFINITY)
+                            .code_editor(),
+                    );
+                });
         });
     }
 
@@ -2090,6 +2402,21 @@ impl MainAreaDna {
         guard.state_mut().display.regulatory_tracks_near_baseline = near_baseline;
     }
 
+    fn sync_feature_details_font_size_to_engine(&self, value: f32) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard.state_mut().display.feature_details_font_size = value.clamp(8.0, 24.0);
+    }
+
+    fn feature_details_font_size(&self) -> f32 {
+        self.dna_display
+            .read()
+            .map(|display| display.feature_details_font_size())
+            .unwrap_or(11.0)
+    }
+
     fn sync_from_engine_display(&mut self) {
         let Some(engine) = &self.engine else {
             return;
@@ -2123,6 +2450,7 @@ impl MainAreaDna {
         display.set_show_methylation_sites(settings.show_methylation_sites);
         display.set_regulatory_tracks_near_baseline(settings.regulatory_tracks_near_baseline);
         display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
+        display.set_feature_details_font_size(settings.feature_details_font_size);
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {
@@ -2225,7 +2553,14 @@ impl MainAreaDna {
     }
 
     fn focus_feature(&mut self, feature_id: usize) {
+        if self.focused_feature_id == Some(feature_id)
+            && self.pending_feature_tree_scroll_to.is_none()
+        {
+            return;
+        }
+        self.focused_feature_id = Some(feature_id);
         self.map_dna.select_feature(Some(feature_id));
+        self.pending_feature_tree_scroll_to = Some(feature_id);
         let Some((start, end)) = self.feature_bounds(feature_id) else {
             return;
         };
@@ -2252,7 +2587,9 @@ impl MainAreaDna {
     }
 
     fn clear_feature_focus(&mut self) {
+        self.focused_feature_id = None;
         self.map_dna.select_feature(None);
+        self.pending_feature_tree_scroll_to = None;
         self.dna_display
             .write()
             .expect("DNA display lock poisoned")
@@ -3046,6 +3383,15 @@ impl MainAreaDna {
             mw_max_bp: self.mw_max_bp.clone(),
             mw_error: self.mw_error.clone(),
             mw_unique: self.mw_unique,
+            sq_inputs_text: self.sq_inputs_text.clone(),
+            sq_gc_min: self.sq_gc_min.clone(),
+            sq_gc_max: self.sq_gc_max.clone(),
+            sq_max_homopolymer_run: self.sq_max_homopolymer_run.clone(),
+            sq_reject_ambiguous_bases: self.sq_reject_ambiguous_bases,
+            sq_avoid_u6_tttt: self.sq_avoid_u6_tttt,
+            sq_forbidden_motifs: self.sq_forbidden_motifs.clone(),
+            sq_unique: self.sq_unique,
+            sq_output_prefix: self.sq_output_prefix.clone(),
             pcr_forward: self.pcr_forward.clone(),
             pcr_reverse: self.pcr_reverse.clone(),
             pcr_unique: self.pcr_unique,
@@ -3132,6 +3478,15 @@ impl MainAreaDna {
         self.mw_max_bp = s.mw_max_bp;
         self.mw_error = s.mw_error;
         self.mw_unique = s.mw_unique;
+        self.sq_inputs_text = s.sq_inputs_text;
+        self.sq_gc_min = s.sq_gc_min;
+        self.sq_gc_max = s.sq_gc_max;
+        self.sq_max_homopolymer_run = s.sq_max_homopolymer_run;
+        self.sq_reject_ambiguous_bases = s.sq_reject_ambiguous_bases;
+        self.sq_avoid_u6_tttt = s.sq_avoid_u6_tttt;
+        self.sq_forbidden_motifs = s.sq_forbidden_motifs;
+        self.sq_unique = s.sq_unique;
+        self.sq_output_prefix = s.sq_output_prefix;
         self.pcr_forward = s.pcr_forward;
         self.pcr_reverse = s.pcr_reverse;
         self.pcr_unique = s.pcr_unique;
@@ -3262,7 +3617,11 @@ impl MainAreaDna {
             .resizable(false)
             .show(ctx, |ui| {
                 ui.label(message);
-                if ui.button("Close").clicked() {
+                if ui
+                    .button("Close")
+                    .on_hover_text("Dismiss this error popup")
+                    .clicked()
+                {
                     self.op_error_popup = None;
                 }
             });
@@ -3487,6 +3846,14 @@ impl MainAreaDna {
     }
 
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
+        struct FeatureTreeEntry {
+            id: usize,
+            button_label: String,
+            hover_text: Option<String>,
+            subgroup_key: Option<String>,
+            subgroup_label: Option<String>,
+        }
+
         ui.heading(
             self.dna
                 .read()
@@ -3505,6 +3872,7 @@ impl MainAreaDna {
             show_tfbs,
             tfbs_display_criteria,
             hidden_feature_kinds,
+            feature_details_font_size,
         ) = {
             let display = self.dna_display.read().expect("DNA display lock poisoned");
             (
@@ -3514,6 +3882,7 @@ impl MainAreaDna {
                 display.show_tfbs(),
                 display.tfbs_display_criteria(),
                 display.hidden_feature_kinds().clone(),
+                display.feature_details_font_size(),
             )
         };
         let typed_features = self
@@ -3553,7 +3922,7 @@ impl MainAreaDna {
                 if from < 0 || to < 0 {
                     return None;
                 }
-                let label = {
+                let feature_label = {
                     let name = RenderDna::feature_name(feature);
                     if name.trim().is_empty() {
                         format!("{} #{}", feature.kind.to_string(), id + 1)
@@ -3561,32 +3930,67 @@ impl MainAreaDna {
                         name
                     }
                 };
-                Some((feature.kind.to_string(), id, label))
+                let subgroup_label = if RenderDna::is_track_feature(feature) {
+                    RenderDna::track_group_label(feature)
+                } else if RenderDna::is_tfbs_feature(feature) {
+                    RenderDna::tfbs_group_label(feature)
+                } else if RenderDna::is_restriction_site_feature(feature) {
+                    RenderDna::restriction_site_group_label(feature)
+                } else {
+                    None
+                };
+                let subgroup_key = subgroup_label
+                    .as_ref()
+                    .map(|label| label.trim().to_ascii_uppercase());
+                let kind_label = if RenderDna::is_track_feature(feature) {
+                    "Tracks".to_string()
+                } else {
+                    feature.kind.to_string()
+                };
+                let range_label = RenderDna::feature_range_text(feature);
+                let grouped_entry = subgroup_label.is_some();
+                let button_label = if grouped_entry && !range_label.is_empty() {
+                    range_label.clone()
+                } else {
+                    feature_label.clone()
+                };
+                let hover_text = if grouped_entry {
+                    if range_label.is_empty() {
+                        Some(feature_label.clone())
+                    } else {
+                        Some(format!("{feature_label} ({range_label})"))
+                    }
+                } else {
+                    None
+                };
+                Some((
+                    kind_label,
+                    FeatureTreeEntry {
+                        id,
+                        button_label,
+                        hover_text,
+                        subgroup_key,
+                        subgroup_label,
+                    },
+                ))
             })
             .collect::<Vec<_>>();
-        let mut grouped_features: HashMap<String, Vec<usize>> = HashMap::new();
-        let mut label_by_id: HashMap<usize, String> = HashMap::new();
+        let mut grouped_features: HashMap<String, Vec<FeatureTreeEntry>> = HashMap::new();
         let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
-        for (kind, id, label) in typed_features {
-            grouped_features.entry(kind).or_default().push(id);
-            label_by_id.insert(id, label);
+        for (kind, entry) in typed_features {
+            grouped_features.entry(kind).or_default().push(entry);
         }
         let mut group_keys = grouped_features.keys().collect::<Vec<_>>();
         group_keys.sort();
         let mut clicked_feature: Option<usize> = None;
-        let feature_font_size = ui
-            .style()
-            .text_styles
-            .get(&egui::TextStyle::Button)
-            .map(|font| font.size)
-            .unwrap_or(13.0);
+        let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
         for kind in group_keys {
-            let Some(ids) = grouped_features.get(kind) else {
+            let Some(entries) = grouped_features.get(kind) else {
                 continue;
             };
             let has_selected = selected_id
-                .map(|selected| ids.iter().any(|id| *id == selected))
+                .map(|selected| entries.iter().any(|entry| entry.id == selected))
                 .unwrap_or(false);
             egui::CollapsingHeader::new(
                 egui::RichText::new(kind.as_str())
@@ -3596,24 +4000,90 @@ impl MainAreaDna {
             .id_salt(format!("feature_kind_{seq_key}_{kind}"))
             .open(if has_selected { Some(true) } else { None })
             .show(ui, |ui| {
-                for id in ids {
-                    let name = match label_by_id.get(id) {
-                        Some(name) => name,
-                        None => continue,
-                    };
-                    let selected = selected_id == Some(*id);
+                let mut grouped_entries: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
+                    HashMap::new();
+                let mut ungrouped_entries: Vec<&FeatureTreeEntry> = Vec::new();
+                for entry in entries {
+                    if let (Some(subgroup_key), Some(subgroup_label)) =
+                        (&entry.subgroup_key, &entry.subgroup_label)
+                    {
+                        grouped_entries
+                            .entry(subgroup_key.clone())
+                            .or_insert_with(|| (subgroup_label.clone(), Vec::new()))
+                            .1
+                            .push(entry);
+                    } else {
+                        ungrouped_entries.push(entry);
+                    }
+                }
+
+                let mut render_entry = |ui: &mut egui::Ui, entry: &FeatureTreeEntry| {
+                    let selected = selected_id == Some(entry.id);
                     ui.horizontal(|ui| {
-                        let button =
-                            egui::Button::new(egui::RichText::new(name).size(feature_font_size))
-                                .selected(selected);
-                        let response = ui.add(button);
-                        if selected {
+                        let button = egui::Button::new(
+                            egui::RichText::new(&entry.button_label).size(feature_font_size),
+                        )
+                        .selected(selected);
+                        let mut response = ui.add(button);
+                        if let Some(hover_text) = &entry.hover_text {
+                            response = response.on_hover_text(hover_text);
+                        }
+                        if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
                             response.scroll_to_me(Some(egui::Align::Center));
+                            self.pending_feature_tree_scroll_to = None;
                         }
                         if response.clicked() {
-                            clicked_feature = Some(*id);
+                            clicked_feature = Some(entry.id);
                         }
                     });
+                };
+
+                let mut subgroup_keys = grouped_entries.keys().cloned().collect::<Vec<_>>();
+                subgroup_keys.sort_by(|left, right| {
+                    let left_label = grouped_entries
+                        .get(left)
+                        .map(|(label, _)| label.as_str())
+                        .unwrap_or("");
+                    let right_label = grouped_entries
+                        .get(right)
+                        .map(|(label, _)| label.as_str())
+                        .unwrap_or("");
+                    left_label.cmp(right_label).then_with(|| left.cmp(right))
+                });
+
+                for subgroup_key in subgroup_keys {
+                    let Some((subgroup_label, subgroup_entries)) =
+                        grouped_entries.get(&subgroup_key)
+                    else {
+                        continue;
+                    };
+                    let subgroup_has_selected = selected_id
+                        .map(|selected| subgroup_entries.iter().any(|entry| entry.id == selected))
+                        .unwrap_or(false);
+                    let subgroup_heading = format!("{subgroup_label} ({})", subgroup_entries.len());
+                    egui::CollapsingHeader::new(
+                        egui::RichText::new(subgroup_heading)
+                            .size(feature_font_size)
+                            .strong(),
+                    )
+                    .id_salt(format!(
+                        "feature_kind_group_{seq_key}_{kind}_{}",
+                        subgroup_key
+                    ))
+                    .open(if subgroup_has_selected {
+                        Some(true)
+                    } else {
+                        None
+                    })
+                    .show(ui, |ui| {
+                        for entry in subgroup_entries {
+                            render_entry(ui, entry);
+                        }
+                    });
+                }
+
+                for entry in ungrouped_entries {
+                    render_entry(ui, entry);
                 }
             });
         }
@@ -3622,53 +4092,63 @@ impl MainAreaDna {
         }
     }
 
-    fn get_sequence_description(&self) -> String {
-        self.dna
-            .read()
-            .expect("DNA lock poisoned")
-            .description()
-            .join("\n")
+    fn refresh_description_cache(&mut self) {
+        let selected_id = self.get_selected_feature_id();
+        let mut clear_invalid_selection = false;
+        {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            let seq_len = dna.len();
+            let feature_count = dna.features().len();
+            let needs_refresh = !self.description_cache_initialized
+                || self.description_cache_selected_id != selected_id
+                || self.description_cache_seq_len != seq_len
+                || self.description_cache_feature_count != feature_count;
+            if !needs_refresh {
+                return;
+            }
+
+            self.description_cache_initialized = true;
+            self.description_cache_selected_id = selected_id;
+            self.description_cache_seq_len = seq_len;
+            self.description_cache_feature_count = feature_count;
+
+            if let Some(id) = selected_id {
+                if let Some(feature) = dna.features().get(id) {
+                    let label = RenderDna::feature_name(feature);
+                    self.description_cache_title = if label.trim().is_empty() {
+                        feature.kind.to_string()
+                    } else {
+                        label
+                    };
+                    self.description_cache_range = Some(RenderDna::feature_range_text(feature));
+                } else {
+                    clear_invalid_selection = true;
+                    self.description_cache_selected_id = None;
+                    self.description_cache_title = dna.description().join("\n");
+                    self.description_cache_range = None;
+                }
+            } else {
+                self.description_cache_title = dna.description().join("\n");
+                self.description_cache_range = None;
+            }
+        }
+        if clear_invalid_selection {
+            self.clear_feature_focus();
+        }
     }
 
     pub fn render_description(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.set_min_height(150.0);
-
-            match self.get_selected_feature_id() {
-                Some(id) => {
-                    let feature = self
-                        .dna
-                        .read()
-                        .expect("DNA lock poisoned")
-                        .features()
-                        .get(id)
-                        .cloned();
-                    if let Some(feature) = feature {
-                        let name = {
-                            let label = RenderDna::feature_name(&feature);
-                            if label.trim().is_empty() {
-                                feature.kind.to_string()
-                            } else {
-                                label
-                            }
-                        };
-                        ui.heading(name);
-                        let desc = &match feature.location.find_bounds() {
-                            Ok((from, to)) => format!("{from}..{to}"),
-                            Err(_) => String::new(),
-                        };
-                        ui.monospace(desc);
-                    } else {
-                        self.clear_feature_focus();
-                        let description = self.get_sequence_description();
-                        ui.heading(description);
-                    }
-                }
-                None => {
-                    let description = self.get_sequence_description();
-                    ui.heading(description);
-                }
-            };
+            self.refresh_description_cache();
+            ui.heading(&self.description_cache_title);
+            if let Some(range) = &self.description_cache_range {
+                ui.label(
+                    egui::RichText::new(range)
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+            }
         });
     }
 
@@ -3719,18 +4199,25 @@ impl MainAreaDna {
                                 label
                             }
                         };
-                        let range = feature
-                            .location
-                            .find_bounds()
-                            .ok()
-                            .map(|(from, to)| format!("{from}..{to}"))
-                            .unwrap_or_else(|| "-".to_string());
+                        let range = {
+                            let text = RenderDna::feature_range_text(feature);
+                            if text.is_empty() {
+                                "-".to_string()
+                            } else {
+                                text
+                            }
+                        };
                         Some((name, feature.kind.to_string(), range))
                     });
                     if let Some((name, kind, range)) = hover_text {
+                        let detail_font_size = self.feature_details_font_size();
                         response.clone().on_hover_ui_at_pointer(|ui| {
                             ui.strong(name);
-                            ui.monospace(format!("{kind} | {range}"));
+                            ui.label(
+                                egui::RichText::new(format!("{kind} | {range}"))
+                                    .monospace()
+                                    .size(detail_font_size),
+                            );
                         });
                     }
                 }
@@ -3761,20 +4248,30 @@ impl MainAreaDna {
             }
 
             if response.clicked() {
+                let previous_selected = self.map_dna.get_selected_feature_id();
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_click(pointer_state);
-                if let Some(feature_id) = self.map_dna.get_selected_feature_id() {
-                    self.focus_feature(feature_id);
-                } else {
-                    self.clear_feature_focus();
+                let next_selected = self.map_dna.get_selected_feature_id();
+                if next_selected != previous_selected {
+                    if let Some(feature_id) = next_selected {
+                        self.focus_feature(feature_id);
+                    } else {
+                        self.clear_feature_focus();
+                    }
                 }
             }
 
             if response.double_clicked() {
+                let previous_selected = self.map_dna.get_selected_feature_id();
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_double_click(pointer_state);
-                if let Some(feature_id) = self.map_dna.get_selected_feature_id() {
-                    self.focus_feature(feature_id);
+                let next_selected = self.map_dna.get_selected_feature_id();
+                if next_selected != previous_selected {
+                    if let Some(feature_id) = next_selected {
+                        self.focus_feature(feature_id);
+                    } else {
+                        self.clear_feature_focus();
+                    }
                 }
             }
         });

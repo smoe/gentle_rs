@@ -34,6 +34,15 @@
     "annotations_local": "/lab/resources/vectors/pBR322.gff3.gz",
     "cache_dir": "data/helper_genomes"
   },
+  "Plasmid pX300 (local)": {
+    "description": "CRISPR helper backbone (SpCas9 and sgRNA expression cassette)",
+    "genbank_accession": "LOCAL_UNPUBLISHED",
+    "genbank_reference": "not_uploaded_to_genbank",
+    "local_variant_unpublished": true,
+    "sequence_local": "/lab/resources/vectors/pX300.fa.gz",
+    "annotations_local": "/lab/resources/vectors/pX300.gff3.gz",
+    "cache_dir": "data/helper_genomes"
+  },
   "Plasmid pET-28a(+) (local)": {
     "description": "E. coli protein-expression backbone (T7 promoter, KanR)",
     "genbank_accession": "LOCAL_UNPUBLISHED",

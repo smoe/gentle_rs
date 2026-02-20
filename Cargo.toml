@@ -39,6 +39,7 @@ name = "gentle"
 [features]
 default = []
 screenshot-capture = []
+snapshot-tests = []
 
 [dependencies]
 serde = { version = "^1", features = ["derive"] }

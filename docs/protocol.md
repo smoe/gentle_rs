@@ -67,6 +67,7 @@ Current draft operations:
 - `ExtractRegion { input, from, to, output_id? }`
 - `SelectCandidate { input, criterion, output_id? }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
+- `FilterBySequenceQuality { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
 - `Reverse { input, output_id? }`
 - `Complement { input, output_id? }`
 - `ReverseComplement { input, output_id? }`
@@ -105,6 +106,8 @@ Current parameter support:
 - `max_fragments_per_container` (default `80000`)
   - limits digest fragment output per operation
   - also serves as ligation product-count limit guard
+- `feature_details_font_size` (default `11.0`, range `8.0..24.0`)
+  - controls GUI font size for the feature tree entries and feature range details
 
 Current ligation protocol behavior:
 
@@ -121,6 +124,23 @@ Current ligation protocol behavior:
 - Effective accepted range is expanded by `error`:
   - `effective_min = floor(min_bp * (1 - error))`
   - `effective_max = ceil(max_bp * (1 + error))`
+- `unique = true` requires exactly one match, otherwise the operation fails.
+
+`FilterBySequenceQuality` semantics:
+
+- Applies practical sequence filters across provided input sequence ids.
+- Optional GC bounds:
+  - `gc_min` and/or `gc_max` (fractional range `0.0..1.0`)
+  - when both are provided, `gc_min <= gc_max` is required
+- Optional homopolymer cap:
+  - `max_homopolymer_run >= 1`
+  - rejects candidates with a longer A/C/G/T run
+- `reject_ambiguous_bases` (default `true`):
+  - rejects sequences containing non-ACGT letters
+- `avoid_u6_terminator_tttt` (default `true`):
+  - rejects sequences containing `TTTT`
+- Optional `forbidden_motifs`:
+  - IUPAC motifs; reject when motif appears on either strand
 - `unique = true` requires exactly one match, otherwise the operation fails.
 
 `RenderPoolGelSvg` semantics:
@@ -299,3 +319,8 @@ This supports:
 - ligation protocol presets with sticky/blunt compatibility derivation
 - render/view model endpoint for frontend-independent graphical representation
 - schema publication for strict client-side validation
+- CRISPR guide-design base layer:
+  - practical sequence filters (GC bounds, homopolymers, U6 terminator rules)
+  - oligo generation and export contracts (table/plate/protocol text)
+  - macro/template expansion into deterministic `Workflow` JSON
+  - see draft: `docs/crispr_guides_spec.md`

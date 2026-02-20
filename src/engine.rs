@@ -90,6 +90,7 @@ pub struct DisplaySettings {
     pub show_methylation_sites: bool,
     pub linear_view_start_bp: usize,
     pub linear_view_span_bp: usize,
+    pub feature_details_font_size: f32,
 }
 
 impl Default for DisplaySettings {
@@ -113,10 +114,11 @@ impl Default for DisplaySettings {
             tfbs_display_min_true_log_odds_quantile: 0.95,
             show_restriction_enzymes: true,
             show_gc_contents: true,
-            show_open_reading_frames: true,
+            show_open_reading_frames: false,
             show_methylation_sites: false,
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
+            feature_details_font_size: 11.0,
         }
     }
 }
@@ -565,6 +567,18 @@ pub enum Operation {
         min_bp: usize,
         max_bp: usize,
         error: f64,
+        unique: bool,
+        output_prefix: Option<String>,
+    },
+    FilterBySequenceQuality {
+        inputs: Vec<SeqId>,
+        gc_min: Option<f64>,
+        gc_max: Option<f64>,
+        max_homopolymer_run: Option<usize>,
+        reject_ambiguous_bases: Option<bool>,
+        avoid_u6_terminator_tttt: Option<bool>,
+        #[serde(default)]
+        forbidden_motifs: Vec<String>,
         unique: bool,
         output_prefix: Option<String>,
     },
@@ -1118,6 +1132,7 @@ impl GentleEngine {
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
                 "FilterByMolecularWeight".to_string(),
+                "FilterBySequenceQuality".to_string(),
                 "Reverse".to_string(),
                 "Complement".to_string(),
                 "ReverseComplement".to_string(),
@@ -1849,13 +1864,28 @@ impl GentleEngine {
     }
 
     fn write_known_track_anchor_ids(&mut self, anchors: &BTreeSet<String>) {
+        if anchors.is_empty() {
+            self.state
+                .metadata
+                .remove(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY);
+            return;
+        }
         let values = anchors
             .iter()
             .map(|v| serde_json::Value::String(v.clone()))
             .collect::<Vec<_>>();
+        let new_value = serde_json::Value::Array(values);
+        if self
+            .state
+            .metadata
+            .get(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY)
+            == Some(&new_value)
+        {
+            return;
+        }
         self.state.metadata.insert(
             GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY.to_string(),
-            serde_json::Value::Array(values),
+            new_value,
         );
     }
 
@@ -2232,7 +2262,7 @@ impl GentleEngine {
         };
 
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("regulatory_region"),
+            kind: gb_io::FeatureKind::from("track"),
             location,
             qualifiers,
         }
@@ -2337,7 +2367,7 @@ impl GentleEngine {
         };
 
         gb_io::seq::Feature {
-            kind: gb_io::FeatureKind::from("regulatory_region"),
+            kind: gb_io::FeatureKind::from("track"),
             location,
             qualifiers,
         }
@@ -2998,6 +3028,9 @@ impl GentleEngine {
             Operation::SelectCandidate { .. } => Some("Selected candidate".to_string()),
             Operation::FilterByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
+            }
+            Operation::FilterBySequenceQuality { .. } => {
+                Some("Practical sequence filtered".to_string())
             }
             Operation::FilterContainerByMolecularWeight { .. } => {
                 Some("Molecular-weight filtered".to_string())
@@ -3841,6 +3874,7 @@ impl GentleEngine {
         start: usize,
         end: usize,
         reverse: bool,
+        motif_len: usize,
         tf_id: &str,
         tf_name: Option<&str>,
         llr_bits: f64,
@@ -3857,6 +3891,7 @@ impl GentleEngine {
         let mut qualifiers = vec![
             ("label".into(), Some(format!("TFBS {tf_id}"))),
             ("tf_id".into(), Some(tf_id.to_string())),
+            ("motif_length_bp".into(), Some(motif_len.to_string())),
             ("llr_bits".into(), Some(format!("{llr_bits:.6}"))),
             ("llr_quantile".into(), Some(format!("{llr_quantile:.6}"))),
             (
@@ -3876,9 +3911,13 @@ impl GentleEngine {
                 Some(format!("{true_log_odds_quantile:.6}")),
             ),
             (
+                "quantile_scope".into(),
+                Some("per_motif_windows_both_strands".to_string()),
+            ),
+            (
                 "note".into(),
                 Some(format!(
-                    "tf_id={tf_id}; llr_bits={llr_bits:.4}; llr_quantile={llr_quantile:.4}; true_log_odds_bits={true_log_odds_bits:.4}; true_log_odds_quantile={true_log_odds_quantile:.4}"
+                    "tf_id={tf_id}; motif_length_bp={motif_len}; llr_bits={llr_bits:.4}; llr_quantile={llr_quantile:.4}; true_log_odds_bits={true_log_odds_bits:.4}; true_log_odds_quantile={true_log_odds_quantile:.4}"
                 )),
             ),
             ("gentle_generated".into(), Some("tfbs".to_string())),
@@ -3972,6 +4011,74 @@ impl GentleEngine {
         }
         let motif_rc = Self::reverse_complement_iupac(&motif)?;
         Ok(Self::contains_iupac_pattern(sequence, motif_rc.as_bytes()))
+    }
+
+    fn normalized_sequence_for_quality(dna: &DNAsequence) -> Vec<u8> {
+        dna.get_forward_string()
+            .as_bytes()
+            .iter()
+            .filter(|b| !b.is_ascii_whitespace())
+            .map(|b| match b.to_ascii_uppercase() {
+                b'U' => b'T',
+                other => other,
+            })
+            .collect()
+    }
+
+    fn sequence_gc_fraction(sequence: &[u8]) -> Option<f64> {
+        let mut canonical = 0usize;
+        let mut gc = 0usize;
+        for b in sequence {
+            match b.to_ascii_uppercase() {
+                b'G' | b'C' => {
+                    canonical += 1;
+                    gc += 1;
+                }
+                b'A' | b'T' => {
+                    canonical += 1;
+                }
+                _ => {}
+            }
+        }
+        if canonical == 0 {
+            None
+        } else {
+            Some(gc as f64 / canonical as f64)
+        }
+    }
+
+    fn max_homopolymer_run(sequence: &[u8]) -> usize {
+        let mut best = 0usize;
+        let mut current = 0usize;
+        let mut prev = 0u8;
+        for b in sequence {
+            let base = b.to_ascii_uppercase();
+            if !matches!(base, b'A' | b'C' | b'G' | b'T') {
+                current = 0;
+                prev = 0;
+                continue;
+            }
+            if base == prev {
+                current += 1;
+            } else {
+                current = 1;
+                prev = base;
+            }
+            if current > best {
+                best = current;
+            }
+        }
+        best
+    }
+
+    fn contains_u6_terminator_t4(sequence: &[u8]) -> bool {
+        sequence.windows(4).any(|w| w == b"TTTT")
+    }
+
+    fn has_ambiguous_bases(sequence: &[u8]) -> bool {
+        sequence
+            .iter()
+            .any(|b| !matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
     }
 
     fn feature_labels(feature: &gb_io::seq::Feature) -> Vec<String> {
@@ -6416,6 +6523,198 @@ impl GentleEngine {
                     error
                 ));
             }
+            Operation::FilterBySequenceQuality {
+                inputs,
+                gc_min,
+                gc_max,
+                max_homopolymer_run,
+                reject_ambiguous_bases,
+                avoid_u6_terminator_tttt,
+                forbidden_motifs,
+                unique,
+                output_prefix,
+            } => {
+                if inputs.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "FilterBySequenceQuality requires at least one input sequence"
+                            .to_string(),
+                    });
+                }
+
+                if let Some(min) = gc_min {
+                    if !(0.0..=1.0).contains(&min) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("gc_min ({min}) must be between 0.0 and 1.0"),
+                        });
+                    }
+                }
+                if let Some(max) = gc_max {
+                    if !(0.0..=1.0).contains(&max) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("gc_max ({max}) must be between 0.0 and 1.0"),
+                        });
+                    }
+                }
+                if let (Some(min), Some(max)) = (gc_min, gc_max) {
+                    if min > max {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("gc_min ({min}) must be <= gc_max ({max})"),
+                        });
+                    }
+                }
+                if let Some(max_run) = max_homopolymer_run {
+                    if max_run == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "max_homopolymer_run must be >= 1".to_string(),
+                        });
+                    }
+                }
+
+                let reject_ambiguous_bases = reject_ambiguous_bases.unwrap_or(true);
+                let avoid_u6_terminator_tttt = avoid_u6_terminator_tttt.unwrap_or(true);
+                let mut forbidden_motifs_normalized: Vec<String> = vec![];
+                for motif in forbidden_motifs {
+                    let normalized = Self::normalize_iupac_text(&motif)?;
+                    if !normalized.is_empty() {
+                        forbidden_motifs_normalized.push(normalized);
+                    }
+                }
+
+                let mut matches: Vec<(SeqId, DNAsequence)> = vec![];
+                let mut rejected = 0usize;
+                let mut rejection_warnings_left = 32usize;
+                let input_count = inputs.len();
+
+                for input in &inputs {
+                    parent_seq_ids.push(input.clone());
+                    let dna = self
+                        .state
+                        .sequences
+                        .get(input)
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::NotFound,
+                            message: format!("Sequence '{input}' not found"),
+                        })?
+                        .clone();
+                    let sequence = Self::normalized_sequence_for_quality(&dna);
+                    let mut reasons: Vec<String> = vec![];
+
+                    if reject_ambiguous_bases && Self::has_ambiguous_bases(&sequence) {
+                        reasons.push("contains_ambiguous_base".to_string());
+                    }
+
+                    if gc_min.is_some() || gc_max.is_some() {
+                        match Self::sequence_gc_fraction(&sequence) {
+                            Some(gc) => {
+                                if let Some(min) = gc_min {
+                                    if gc < min {
+                                        reasons.push(format!("gc_too_low({gc:.3}<{min:.3})"));
+                                    }
+                                }
+                                if let Some(max) = gc_max {
+                                    if gc > max {
+                                        reasons.push(format!("gc_too_high({gc:.3}>{max:.3})"));
+                                    }
+                                }
+                            }
+                            None => reasons.push("gc_not_computable".to_string()),
+                        }
+                    }
+
+                    if let Some(max_run) = max_homopolymer_run {
+                        let observed = Self::max_homopolymer_run(&sequence);
+                        if observed > max_run {
+                            reasons.push(format!("homopolymer_run_exceeded({observed}>{max_run})"));
+                        }
+                    }
+
+                    if avoid_u6_terminator_tttt && Self::contains_u6_terminator_t4(&sequence) {
+                        reasons.push("u6_terminator_t4".to_string());
+                    }
+
+                    for motif in &forbidden_motifs_normalized {
+                        if Self::contains_motif_any_strand(&sequence, motif)? {
+                            reasons.push(format!("forbidden_motif_present({motif})"));
+                        }
+                    }
+
+                    if reasons.is_empty() {
+                        matches.push((input.clone(), dna));
+                    } else {
+                        rejected += 1;
+                        if rejection_warnings_left > 0 {
+                            result.warnings.push(format!(
+                                "Sequence '{}' rejected by practical filters: {}",
+                                input,
+                                reasons.join(", ")
+                            ));
+                            rejection_warnings_left -= 1;
+                        }
+                    }
+                }
+
+                if matches.len() > self.max_fragments_per_container() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "FilterBySequenceQuality produced {} candidates, exceeding max_fragments_per_container={}",
+                            matches.len(),
+                            self.max_fragments_per_container()
+                        ),
+                    });
+                }
+
+                if unique && matches.len() != 1 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "unique=true requires exactly one match, found {}",
+                            matches.len()
+                        ),
+                    });
+                }
+
+                let prefix = output_prefix.unwrap_or_else(|| "sq_filter".to_string());
+                for (i, (_source_id, mut dna)) in matches.into_iter().enumerate() {
+                    Self::prepare_sequence(&mut dna);
+                    let candidate = format!("{}_{}", prefix, i + 1);
+                    let seq_id = self.unique_seq_id(&candidate);
+                    self.state.sequences.insert(seq_id.clone(), dna);
+                    self.add_lineage_node(
+                        &seq_id,
+                        SequenceOrigin::InSilicoSelection,
+                        Some(&result.op_id),
+                    );
+                    result.created_seq_ids.push(seq_id);
+                }
+
+                if rejected > 32 {
+                    result.warnings.push(format!(
+                        "{} additional sequence(s) were rejected (warning output truncated)",
+                        rejected - 32
+                    ));
+                }
+
+                result.messages.push(format!(
+                    "Sequence-quality filter kept {} of {} sequence(s)",
+                    result.created_seq_ids.len(),
+                    input_count
+                ));
+                result.messages.push(format!(
+                    "Applied filters: gc_min={:?}, gc_max={:?}, max_homopolymer_run={:?}, reject_ambiguous_bases={}, avoid_u6_terminator_tttt={}, forbidden_motifs={}",
+                    gc_min,
+                    gc_max,
+                    max_homopolymer_run,
+                    reject_ambiguous_bases,
+                    avoid_u6_terminator_tttt,
+                    forbidden_motifs_normalized.len()
+                ));
+            }
             Operation::Reverse { input, output_id } => {
                 parent_seq_ids.push(input.clone());
                 let dna = self
@@ -6769,6 +7068,7 @@ impl GentleEngine {
                             start,
                             end,
                             reverse,
+                            llr_matrix.len(),
                             &tf_id,
                             tf_name.as_deref(),
                             llr_bits,
@@ -6837,6 +7137,32 @@ impl GentleEngine {
                         result.messages.push(format!(
                             "Set parameter '{}' to {}",
                             name, self.state.parameters.max_fragments_per_container
+                        ));
+                    }
+                    "feature_details_font_size" | "feature_detail_font_size" => {
+                        let raw = value.as_f64().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "SetParameter feature_details_font_size requires a number"
+                                .to_string(),
+                        })?;
+                        if !raw.is_finite() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "feature_details_font_size must be a finite number"
+                                    .to_string(),
+                            });
+                        }
+                        if !(8.0..=24.0).contains(&raw) {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: "feature_details_font_size must be between 8.0 and 24.0"
+                                    .to_string(),
+                            });
+                        }
+                        self.state.display.feature_details_font_size = raw as f32;
+                        result.messages.push(format!(
+                            "Set parameter 'feature_details_font_size' to {:.2}",
+                            self.state.display.feature_details_font_size
                         ));
                     }
                     _ => {
@@ -7556,6 +7882,22 @@ exit 2
     }
 
     #[test]
+    fn test_set_parameter_feature_details_font_size() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetParameter {
+                name: "feature_details_font_size".to_string(),
+                value: serde_json::json!(9.5),
+            })
+            .unwrap();
+        assert!(res
+            .messages
+            .iter()
+            .any(|m| m.contains("feature_details_font_size")));
+        assert!((engine.state().display.feature_details_font_size - 9.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn test_digest_respects_max_fragments_per_container() {
         let mut state = ProjectState::default();
         state
@@ -7625,6 +7967,79 @@ exit 2
                 error: 0.10,
                 unique: true,
                 output_prefix: Some("mw".to_string()),
+            })
+            .unwrap_err();
+
+        assert!(err.message.contains("exactly one match"));
+    }
+
+    #[test]
+    fn test_filter_by_sequence_quality_practical_filters() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("good".to_string(), seq("GACTGACTGACTGACTGACT"));
+        state
+            .sequences
+            .insert("low_gc".to_string(), seq("ATATATATATATATATATAT"));
+        state
+            .sequences
+            .insert("homopoly".to_string(), seq("GACAAAAAGACTGACTGACT"));
+        state
+            .sequences
+            .insert("u6_t4".to_string(), seq("GACTTTTGACTGACTGACT"));
+        state
+            .sequences
+            .insert("amb".to_string(), seq("GACTNNACTGACTGACTGAC"));
+        let mut engine = GentleEngine::from_state(state);
+
+        let res = engine
+            .apply(Operation::FilterBySequenceQuality {
+                inputs: vec![
+                    "good".to_string(),
+                    "low_gc".to_string(),
+                    "homopoly".to_string(),
+                    "u6_t4".to_string(),
+                    "amb".to_string(),
+                ],
+                gc_min: Some(0.30),
+                gc_max: Some(0.70),
+                max_homopolymer_run: Some(4),
+                reject_ambiguous_bases: Some(true),
+                avoid_u6_terminator_tttt: Some(true),
+                forbidden_motifs: vec![],
+                unique: false,
+                output_prefix: Some("sq".to_string()),
+            })
+            .unwrap();
+
+        assert_eq!(res.created_seq_ids.len(), 1);
+        assert_eq!(res.created_seq_ids[0], "sq_1".to_string());
+        assert!(engine.state().sequences.contains_key("sq_1"));
+    }
+
+    #[test]
+    fn test_filter_by_sequence_quality_unique_fails_on_multiple_matches() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("a".to_string(), seq("GACTGACTGACTGACTGACT"));
+        state
+            .sequences
+            .insert("b".to_string(), seq("GACCGACTGACTGACTGACC"));
+        let mut engine = GentleEngine::from_state(state);
+
+        let err = engine
+            .apply(Operation::FilterBySequenceQuality {
+                inputs: vec!["a".to_string(), "b".to_string()],
+                gc_min: Some(0.20),
+                gc_max: Some(0.80),
+                max_homopolymer_run: Some(6),
+                reject_ambiguous_bases: Some(true),
+                avoid_u6_terminator_tttt: Some(true),
+                forbidden_motifs: vec![],
+                unique: true,
+                output_prefix: Some("sq".to_string()),
             })
             .unwrap_err();
 
@@ -8338,7 +8753,20 @@ ORIGIN
             .collect();
         assert!(!tfbs_features.is_empty());
         assert!(tfbs_features.iter().all(|f| {
-            f.qualifier_values("llr_bits".into()).next().is_some()
+            let motif_len = f
+                .qualifier_values("motif_length_bp".into())
+                .next()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0);
+            let span_matches = f
+                .location
+                .find_bounds()
+                .ok()
+                .map(|(from, to)| (to - from) as usize == motif_len)
+                .unwrap_or(false);
+            span_matches
+                && motif_len == 4
+                && f.qualifier_values("llr_bits".into()).next().is_some()
                 && f.qualifier_values("llr_quantile".into()).next().is_some()
                 && f.qualifier_values("true_log_odds_bits".into())
                     .next()
@@ -8346,6 +8774,7 @@ ORIGIN
                 && f.qualifier_values("true_log_odds_quantile".into())
                     .next()
                     .is_some()
+                && f.qualifier_values("quantile_scope".into()).next().is_some()
         }));
     }
 
@@ -8852,6 +9281,34 @@ ORIGIN
             })
             .unwrap_err();
         assert!(err.message.contains("must be >= 1"));
+    }
+
+    #[test]
+    fn test_set_parameter_feature_details_font_size_invalid_type_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "feature_details_font_size".to_string(),
+                value: serde_json::json!("small"),
+            })
+            .unwrap_err();
+        assert!(err
+            .message
+            .contains("feature_details_font_size requires a number"));
+    }
+
+    #[test]
+    fn test_set_parameter_feature_details_font_size_out_of_range_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "feature_details_font_size".to_string(),
+                value: serde_json::json!(3.0),
+            })
+            .unwrap_err();
+        assert!(err
+            .message
+            .contains("feature_details_font_size must be between 8.0 and 24.0"));
     }
 
     #[test]
@@ -9605,6 +10062,21 @@ ORIGIN
             .filter(|f| GentleEngine::is_generated_genome_bed_feature(f))
             .count();
         assert_eq!(anch2_features, 1);
+    }
+
+    #[test]
+    fn test_sync_tracked_genome_track_subscriptions_does_not_persist_empty_known_anchor_key() {
+        let mut engine = GentleEngine::new();
+        let report = engine
+            .sync_tracked_genome_track_subscriptions(true)
+            .expect("sync should succeed for empty state");
+        assert_eq!(report.subscriptions_considered, 0);
+        assert_eq!(report.target_sequences, 0);
+        assert_eq!(report.applied_imports, 0);
+        assert!(!engine
+            .state()
+            .metadata
+            .contains_key(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY));
     }
 
     #[test]

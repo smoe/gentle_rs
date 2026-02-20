@@ -606,6 +606,13 @@ Filter candidates by molecular-weight proxy (bp length) with tolerance and uniqu
 {"FilterByMolecularWeight":{"inputs":["pgex_frag_1","pgex_frag_2","pgex_frag_3"],"min_bp":450,"max_bp":550,"error":0.10,"unique":true,"output_prefix":"mw_pick"}}
 ```
 
+Apply practical sequence-quality filters (GC bounds, homopolymer cap, U6 `TTTT`
+avoidance, forbidden motifs):
+
+```json
+{"FilterBySequenceQuality":{"inputs":["g1","g2","g3"],"gc_min":0.30,"gc_max":0.70,"max_homopolymer_run":4,"reject_ambiguous_bases":true,"avoid_u6_terminator_tttt":true,"forbidden_motifs":["GAATTC"],"unique":false,"output_prefix":"sq_pick"}}
+```
+
 Create transformed or branched candidates:
 
 ```json
@@ -631,6 +638,12 @@ Set an in-silico engine parameter (example: cap fragment/product combinatorics):
 
 ```json
 {"SetParameter":{"name":"max_fragments_per_container","value":80000}}
+```
+
+Set feature-details font size used in the feature tree/details panel (valid range `8.0..24.0`):
+
+```json
+{"SetParameter":{"name":"feature_details_font_size","value":10.5}}
 ```
 
 Export selected pool members (engine operation):

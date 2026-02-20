@@ -399,10 +399,14 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
         });
         for idx in regulatory_top_order {
             let f = &features[idx];
-            let x1 = bp_to_x(f.from, len, left, right);
-            let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            lane_regulatory_top_by_idx[idx] =
-                lane_allocate(&mut regulatory_top_lane_ends, x1, x2, 1.0);
+            if regulatory_tracks_near_baseline {
+                lane_regulatory_top_by_idx[idx] = 0;
+            } else {
+                let x1 = bp_to_x(f.from, len, left, right);
+                let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
+                lane_regulatory_top_by_idx[idx] =
+                    lane_allocate(&mut regulatory_top_lane_ends, x1, x2, 0.0);
+            }
         }
 
         let top_regular_extent = if top_lane_ends.is_empty() {
@@ -425,10 +429,10 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let x1 = bp_to_x(f.from, len, left, right);
             let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
             let (y, block_height) = if f.is_regulatory {
-                let lane = lane_regulatory_top_by_idx[idx];
                 let y = if regulatory_tracks_near_baseline {
-                    baseline - REGULATORY_SIDE_MARGIN - lane as f32 * REGULATORY_LANE_GAP
+                    baseline - REGULATORY_SIDE_MARGIN
                 } else {
+                    let lane = lane_regulatory_top_by_idx[idx];
                     baseline
                         - top_regular_extent
                         - regulatory_group_gap
@@ -862,6 +866,7 @@ mod tests {
     use super::*;
     use crate::engine::DisplaySettings;
     use gb_io::{seq::Location, FeatureKind};
+    #[cfg(feature = "snapshot-tests")]
     use std::fs;
 
     fn push_tfbs_feature(
@@ -885,6 +890,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "snapshot-tests")]
     fn snapshot_linear_svg() {
         let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(80)).unwrap();
         dna.update_computed_features();
@@ -894,6 +900,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "snapshot-tests")]
     fn snapshot_circular_svg() {
         let mut dna = DNAsequence::from_sequence(&"ATGC".repeat(80)).unwrap();
         dna.set_circular(true);
@@ -930,6 +937,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "snapshot-tests")]
     #[ignore]
     fn write_snapshots() {
         let mut dna_linear = DNAsequence::from_sequence(&"ATGC".repeat(80)).unwrap();

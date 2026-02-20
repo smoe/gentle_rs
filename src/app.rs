@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
@@ -43,6 +43,7 @@ use serde::{Deserialize, Serialize};
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
+const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
@@ -115,6 +116,10 @@ pub struct GENtleApp {
     help_markdown_cache: CommonMarkCache,
     help_gui_markdown: String,
     help_cli_markdown: String,
+    help_search_query: String,
+    help_search_matches: Vec<HelpSearchMatch>,
+    help_search_selected: usize,
+    help_focus_search_box: bool,
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
@@ -131,6 +136,9 @@ pub struct GENtleApp {
     current_project_path: Option<String>,
     lineage_graph_view: bool,
     lineage_graph_zoom: f32,
+    lineage_graph_node_offsets: HashMap<String, Vec2>,
+    lineage_graph_drag_origin: Option<(String, Vec2)>,
+    lineage_graph_offsets_synced_stamp: u64,
     lineage_cache_stamp: u64,
     lineage_cache_valid: bool,
     lineage_rows: Vec<LineageRow>,
@@ -141,6 +149,7 @@ pub struct GENtleApp {
     dirty_cache_stamp: u64,
     dirty_cache_valid: bool,
     dirty_cache_value: bool,
+    dirty_cache_last_deep_check: Instant,
     last_applied_window_title: String,
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
@@ -191,6 +200,7 @@ pub struct GENtleApp {
     genome_track_status: String,
     genome_bed_track_subscriptions: Vec<GenomeTrackSubscription>,
     genome_track_autosync_status: String,
+    tracked_autosync_last_op_count: Option<usize>,
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
 }
@@ -206,6 +216,12 @@ enum ProjectAction {
 enum HelpDoc {
     Gui,
     Cli,
+}
+
+#[derive(Clone, Debug)]
+struct HelpSearchMatch {
+    line_number: usize,
+    snippet: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -304,6 +320,10 @@ impl Default for GENtleApp {
             help_markdown_cache: CommonMarkCache::default(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
+            help_search_query: String::new(),
+            help_search_matches: vec![],
+            help_search_selected: 0,
+            help_focus_search_box: false,
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
@@ -321,6 +341,9 @@ impl Default for GENtleApp {
             current_project_path: None,
             lineage_graph_view: false,
             lineage_graph_zoom: 1.0,
+            lineage_graph_node_offsets: HashMap::new(),
+            lineage_graph_drag_origin: None,
+            lineage_graph_offsets_synced_stamp: 0,
             lineage_cache_stamp: 0,
             lineage_cache_valid: false,
             lineage_rows: vec![],
@@ -331,6 +354,7 @@ impl Default for GENtleApp {
             dirty_cache_stamp: 0,
             dirty_cache_valid: false,
             dirty_cache_value: false,
+            dirty_cache_last_deep_check: Instant::now(),
             last_applied_window_title: String::new(),
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
@@ -383,6 +407,7 @@ impl Default for GENtleApp {
             genome_track_status: String::new(),
             genome_bed_track_subscriptions: vec![],
             genome_track_autosync_status: String::new(),
+            tracked_autosync_last_op_count: None,
         }
     }
 }
@@ -890,6 +915,8 @@ impl GENtleApp {
     fn open_help_doc(&mut self, doc: HelpDoc) {
         self.refresh_help_docs();
         self.help_doc = doc;
+        self.refresh_help_search_matches();
+        self.help_focus_search_box = true;
         self.show_help_dialog = true;
     }
 
@@ -904,6 +931,54 @@ impl GENtleApp {
         match self.help_doc {
             HelpDoc::Gui => &self.help_gui_markdown,
             HelpDoc::Cli => &self.help_cli_markdown,
+        }
+    }
+
+    fn refresh_help_search_matches(&mut self) {
+        self.help_search_matches.clear();
+        let needle = self.help_search_query.trim();
+        if needle.is_empty() {
+            self.help_search_selected = 0;
+            return;
+        }
+        let needle_lower = needle.to_ascii_lowercase();
+        let markdown = self.active_help_markdown().to_string();
+        for (idx, line) in markdown.lines().enumerate() {
+            if line.to_ascii_lowercase().contains(&needle_lower) {
+                let snippet = line.trim();
+                self.help_search_matches.push(HelpSearchMatch {
+                    line_number: idx + 1,
+                    snippet: if snippet.is_empty() {
+                        "(empty line)".to_string()
+                    } else {
+                        snippet.chars().take(140).collect()
+                    },
+                });
+            }
+        }
+        if self.help_search_matches.is_empty() {
+            self.help_search_selected = 0;
+        } else if self.help_search_selected >= self.help_search_matches.len() {
+            self.help_search_selected = self.help_search_matches.len() - 1;
+        }
+    }
+
+    fn select_next_help_match(&mut self) {
+        if self.help_search_matches.is_empty() {
+            return;
+        }
+        self.help_search_selected =
+            (self.help_search_selected + 1) % self.help_search_matches.len();
+    }
+
+    fn select_prev_help_match(&mut self) {
+        if self.help_search_matches.is_empty() {
+            return;
+        }
+        if self.help_search_selected == 0 {
+            self.help_search_selected = self.help_search_matches.len() - 1;
+        } else {
+            self.help_search_selected -= 1;
         }
     }
 
@@ -1049,9 +1124,6 @@ impl GENtleApp {
         metadata_keys.sort_unstable();
         for key in metadata_keys {
             key.hash(&mut hasher);
-            if let Some(value) = state.metadata.get(key) {
-                value.to_string().hash(&mut hasher);
-            }
         }
 
         let display = &state.display;
@@ -1070,21 +1142,55 @@ impl GENtleApp {
         hasher.finish()
     }
 
+    fn current_lineage_change_stamp(&self) -> u64 {
+        let engine = self.engine.read().unwrap();
+        let state = engine.state();
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        engine.operation_log().len().hash(&mut hasher);
+        state.sequences.len().hash(&mut hasher);
+        state.lineage.nodes.len().hash(&mut hasher);
+        state.lineage.edges.len().hash(&mut hasher);
+        state.container_state.containers.len().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn current_operation_count(&self) -> usize {
+        self.engine.read().unwrap().operation_log().len()
+    }
+
+    fn project_has_user_content(&self) -> bool {
+        let engine = self.engine.read().unwrap();
+        let state = engine.state();
+        !state.sequences.is_empty()
+            || !state.lineage.nodes.is_empty()
+            || !state.container_state.containers.is_empty()
+    }
+
     fn mark_clean_snapshot(&mut self) {
         self.clean_state_fingerprint = self.current_state_fingerprint();
         self.dirty_cache_stamp = self.current_state_change_stamp();
         self.dirty_cache_valid = true;
         self.dirty_cache_value = false;
+        self.dirty_cache_last_deep_check = Instant::now();
     }
 
     fn is_project_dirty(&mut self) -> bool {
+        if !self.project_has_user_content() {
+            return false;
+        }
+        const DIRTY_DEEP_CHECK_INTERVAL: Duration = Duration::from_secs(2);
+        let now = Instant::now();
         let stamp = self.current_state_change_stamp();
-        if !self.dirty_cache_valid || stamp != self.dirty_cache_stamp {
+        let stamp_changed = !self.dirty_cache_valid || stamp != self.dirty_cache_stamp;
+        if stamp_changed
+            || now.duration_since(self.dirty_cache_last_deep_check) >= DIRTY_DEEP_CHECK_INTERVAL
+        {
             self.dirty_cache_value =
                 self.current_state_fingerprint() != self.clean_state_fingerprint;
-            self.dirty_cache_stamp = stamp;
-            self.dirty_cache_valid = true;
+            self.dirty_cache_last_deep_check = now;
         }
+        self.dirty_cache_stamp = stamp;
+        self.dirty_cache_valid = true;
         self.dirty_cache_value
     }
 
@@ -1093,6 +1199,14 @@ impl GENtleApp {
         self.apply_configuration_graphics_to_engine_state();
         self.current_project_path = None;
         self.last_applied_window_title.clear();
+        self.lineage_cache_valid = false;
+        self.lineage_rows.clear();
+        self.lineage_edges.clear();
+        self.lineage_op_label_by_id.clear();
+        self.lineage_containers.clear();
+        self.lineage_graph_node_offsets.clear();
+        self.lineage_graph_drag_origin = None;
+        self.lineage_graph_offsets_synced_stamp = 0;
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -1108,6 +1222,7 @@ impl GENtleApp {
         self.show_genome_bed_track_dialog = false;
         self.genome_track_status.clear();
         self.genome_track_autosync_status.clear();
+        self.tracked_autosync_last_op_count = None;
         self.load_bed_track_subscriptions_from_state();
         self.mark_clean_snapshot();
     }
@@ -1247,6 +1362,7 @@ impl GENtleApp {
             .unwrap()
             .list_genome_track_subscriptions();
         self.genome_bed_track_subscriptions = subscriptions;
+        self.tracked_autosync_last_op_count = None;
     }
 
     fn parse_optional_score_field(raw: &str, label: &str) -> Result<Option<f64>> {
@@ -1491,6 +1607,15 @@ impl GENtleApp {
     }
 
     fn sync_tracked_bed_tracks_for_new_anchors(&mut self) {
+        if self.genome_bed_track_subscriptions.is_empty() {
+            self.tracked_autosync_last_op_count = Some(self.current_operation_count());
+            return;
+        }
+        let operation_count = self.current_operation_count();
+        if self.tracked_autosync_last_op_count == Some(operation_count) {
+            return;
+        }
+        self.tracked_autosync_last_op_count = Some(operation_count);
         match self
             .engine
             .write()
@@ -1502,10 +1627,12 @@ impl GENtleApp {
                     self.genome_track_autosync_status =
                         Self::format_track_sync_status("Auto-sync", &report);
                 }
+                self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             }
             Err(e) => {
                 self.genome_track_autosync_status =
                     format!("Auto-sync failed unexpectedly: {}", e.message);
+                self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             }
         }
     }
@@ -2539,7 +2666,11 @@ impl GENtleApp {
         ui.horizontal(|ui| {
             ui.label("catalog");
             ui.text_edit_singleline(&mut self.genome_catalog_path);
-            if ui.button("Browse...").clicked() {
+            if ui
+                .button("Browse...")
+                .on_hover_text("Browse filesystem and fill this path")
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON", &["json"])
                     .pick_file()
@@ -2551,7 +2682,11 @@ impl GENtleApp {
         ui.horizontal(|ui| {
             ui.label("cache_dir");
             ui.text_edit_singleline(&mut self.genome_cache_dir);
-            if ui.button("Browse...").clicked() {
+            if ui
+                .button("Browse...")
+                .on_hover_text("Browse filesystem and fill this path")
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.genome_cache_dir = path.display().to_string();
                 }
@@ -2607,11 +2742,16 @@ impl GENtleApp {
                     !running && selected_preparable,
                     egui::Button::new("Prepare Genome"),
                 )
+                .on_hover_text("Download and index the selected reference genome")
                 .clicked()
             {
                 self.start_prepare_reference_genome();
             }
-            if ui.button("Close").clicked() {
+            if ui
+                .button("Close")
+                .on_hover_text("Close this dialog")
+                .clicked()
+            {
                 self.show_reference_genome_prepare_dialog = false;
             }
         });
@@ -2695,7 +2835,11 @@ impl GENtleApp {
                 ui.horizontal(|ui| {
                     ui.label("catalog");
                     ui.text_edit_singleline(&mut self.genome_catalog_path);
-                    if ui.button("Browse...").clicked() {
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Browse filesystem and fill this path")
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("JSON", &["json"])
                             .pick_file()
@@ -2707,7 +2851,11 @@ impl GENtleApp {
                 ui.horizontal(|ui| {
                     ui.label("cache_dir");
                     ui.text_edit_singleline(&mut self.genome_cache_dir);
-                    if ui.button("Browse...").clicked() {
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Browse filesystem and fill this path")
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.genome_cache_dir = path.display().to_string();
                         }
@@ -2772,7 +2920,11 @@ impl GENtleApp {
                         if response.changed() {
                             self.genome_gene_filter_page = 0;
                         }
-                        if ui.button("Clear").clicked() {
+                        if ui
+                            .button("Clear")
+                            .on_hover_text("Clear the gene filter text")
+                            .clicked()
+                        {
                             self.genome_gene_filter.clear();
                             self.genome_gene_filter_page = 0;
                         }
@@ -2795,13 +2947,21 @@ impl GENtleApp {
                         ui.separator();
                         ui.label("Biotype filter");
                         ui.horizontal(|ui| {
-                            if ui.button("All").clicked() {
+                            if ui
+                                .button("All")
+                                .on_hover_text("Enable all biotypes")
+                                .clicked()
+                            {
                                 for enabled in self.genome_biotype_filter.values_mut() {
                                     *enabled = true;
                                 }
                                 self.genome_gene_filter_page = 0;
                             }
-                            if ui.button("None").clicked() {
+                            if ui
+                                .button("None")
+                                .on_hover_text("Disable all biotypes")
+                                .clicked()
+                            {
                                 for enabled in self.genome_biotype_filter.values_mut() {
                                     *enabled = false;
                                 }
@@ -2858,6 +3018,7 @@ impl GENtleApp {
                                 self.genome_gene_filter_page > 0,
                                 egui::Button::new("Prev"),
                             )
+                            .on_hover_text("Show previous page of gene matches")
                             .clicked()
                         {
                             self.genome_gene_filter_page -= 1;
@@ -2872,6 +3033,7 @@ impl GENtleApp {
                                 self.genome_gene_filter_page + 1 < page_count,
                                 egui::Button::new("Next"),
                             )
+                            .on_hover_text("Show next page of gene matches")
                             .clicked()
                         {
                             self.genome_gene_filter_page += 1;
@@ -2928,11 +3090,18 @@ impl GENtleApp {
                                 self.genome_selected_gene.is_some(),
                                 egui::Button::new("Extract Selected Gene"),
                             )
+                            .on_hover_text(
+                                "Extract the currently selected gene from the prepared reference",
+                            )
                             .clicked()
                         {
                             self.extract_reference_genome_gene();
                         }
-                        if ui.button("Extract Region").clicked() {
+                        if ui
+                            .button("Extract Region")
+                            .on_hover_text("Extract the explicit chromosome start/end interval")
+                            .clicked()
+                        {
                             self.extract_reference_genome_region();
                         }
                     });
@@ -3036,7 +3205,11 @@ impl GENtleApp {
         ui.horizontal(|ui| {
             ui.label("catalog");
             ui.text_edit_singleline(&mut self.genome_catalog_path);
-            if ui.button("Browse...").clicked() {
+            if ui
+                .button("Browse...")
+                .on_hover_text("Browse filesystem and fill this path")
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("JSON", &["json"])
                     .pick_file()
@@ -3048,7 +3221,11 @@ impl GENtleApp {
         ui.horizontal(|ui| {
             ui.label("cache_dir");
             ui.text_edit_singleline(&mut self.genome_cache_dir);
-            if ui.button("Browse...").clicked() {
+            if ui
+                .button("Browse...")
+                .on_hover_text("Browse filesystem and fill this path")
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.genome_cache_dir = path.display().to_string();
                 }
@@ -3214,15 +3391,24 @@ impl GENtleApp {
                     !running && !prepared_genomes.is_empty(),
                     egui::Button::new("Run BLAST"),
                 )
+                .on_hover_text("Run BLAST query and collect hits for the selected prepared genome")
                 .clicked()
             {
                 self.start_reference_genome_blast();
             }
-            if ui.button("Clear Results").clicked() {
+            if ui
+                .button("Clear Results")
+                .on_hover_text("Clear all BLAST query results from this dialog")
+                .clicked()
+            {
                 self.genome_blast_results.clear();
                 self.genome_blast_selected_result = 0;
             }
-            if ui.button("Close").clicked() {
+            if ui
+                .button("Close")
+                .on_hover_text("Close this dialog")
+                .clicked()
+            {
                 self.show_reference_genome_blast_dialog = false;
             }
         });
@@ -3277,8 +3463,11 @@ impl GENtleApp {
                     );
                 });
                 let can_import = target_seq_id.is_some() && !result.report.hits.is_empty();
-                let button =
-                    ui.add_enabled(can_import, egui::Button::new("Import Hits To Sequence"));
+                let button = ui
+                    .add_enabled(can_import, egui::Button::new("Import Hits To Sequence"))
+                    .on_hover_text(
+                        "Import current BLAST hit intervals as features on the target sequence",
+                    );
                 if button.clicked() {
                     self.import_selected_blast_hits_as_track();
                 }
@@ -3343,7 +3532,11 @@ impl GENtleApp {
                 ui.horizontal(|ui| {
                     ui.label("catalog");
                     ui.text_edit_singleline(&mut self.genome_catalog_path);
-                    if ui.button("Browse...").clicked() {
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Browse filesystem and fill this path")
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("JSON", &["json"])
                             .pick_file()
@@ -3355,7 +3548,11 @@ impl GENtleApp {
                 ui.horizontal(|ui| {
                     ui.label("cache_dir");
                     ui.text_edit_singleline(&mut self.genome_cache_dir);
-                    if ui.button("Browse...").clicked() {
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Browse filesystem and fill this path")
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.genome_cache_dir = path.display().to_string();
                         }
@@ -3445,7 +3642,13 @@ impl GENtleApp {
                                                         .monospace()
                                                         .small(),
                                                 );
-                                                if ui.small_button("Retrieve").clicked() {
+                                                if ui
+                                                    .small_button("Retrieve")
+                                                    .on_hover_text(
+                                                        "Open retrieval dialog preselected for this prepared genome",
+                                                    )
+                                                    .clicked()
+                                                {
                                                     self.genome_id = inspection.genome_id.clone();
                                                     self.invalidate_genome_genes();
                                                     self.open_reference_genome_retrieve_dialog();
@@ -3547,7 +3750,11 @@ impl GENtleApp {
         ui.horizontal(|ui| {
             ui.label("track_path");
             ui.text_edit_singleline(&mut self.genome_track_path);
-            if ui.button("Browse...").clicked() {
+            if ui
+                .button("Browse...")
+                .on_hover_text("Browse filesystem and fill this path")
+                .clicked()
+            {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig"])
                     .pick_file()
@@ -3588,6 +3795,9 @@ impl GENtleApp {
                     !anchored_seq_ids.is_empty(),
                     egui::Button::new("Import To Selected"),
                 )
+                .on_hover_text(
+                    "Import this BED/BigWig signal file onto only the currently selected anchored sequence.",
+                )
                 .clicked()
             {
                 self.import_genome_bed_track_for_selected_sequence();
@@ -3597,6 +3807,9 @@ impl GENtleApp {
                     !anchored_seq_ids.is_empty(),
                     egui::Button::new("Import To All Anchored (One-Time)"),
                 )
+                .on_hover_text(
+                    "Import once onto every currently anchored sequence. No subscription is saved for future extracts.",
+                )
                 .clicked()
             {
                 self.import_genome_bed_track_for_all_anchored_sequences(false);
@@ -3605,6 +3818,9 @@ impl GENtleApp {
                 .add_enabled(
                     !anchored_seq_ids.is_empty(),
                     egui::Button::new("Import To All Anchored + Track"),
+                )
+                .on_hover_text(
+                    "Import onto all current anchored sequences and save this file as a tracked subscription for automatic future auto-sync.",
                 )
                 .clicked()
             {
@@ -3658,10 +3874,22 @@ impl GENtleApp {
                             "no"
                         });
                         ui.horizontal(|ui| {
-                            if ui.small_button("Apply now").clicked() {
+                            if ui
+                                .small_button("Apply now")
+                                .on_hover_text(
+                                    "Re-apply this tracked file to all currently anchored sequences now.",
+                                )
+                                .clicked()
+                            {
                                 apply_now_index = Some(index);
                             }
-                            if ui.small_button("Remove").clicked() {
+                            if ui
+                                .small_button("Remove")
+                                .on_hover_text(
+                                    "Remove this tracked subscription (does not remove already imported features).",
+                                )
+                                .clicked()
+                            {
                                 remove_index = Some(index);
                             }
                         });
@@ -3695,7 +3923,13 @@ impl GENtleApp {
             }
         }
         if !self.genome_bed_track_subscriptions.is_empty() {
-            if ui.button("Clear Tracked Files").clicked() {
+            if ui
+                .button("Clear Tracked Files")
+                .on_hover_text(
+                    "Remove all tracked subscriptions (does not remove already imported features).",
+                )
+                .clicked()
+            {
                 self.engine
                     .write()
                     .unwrap()
@@ -3841,7 +4075,7 @@ impl GENtleApp {
     }
 
     fn request_project_action(&mut self, action: ProjectAction) {
-        if self.is_project_dirty() {
+        if self.project_has_user_content() && self.is_project_dirty() {
             self.pending_project_action = Some(action);
         } else {
             self.execute_project_action(action);
@@ -3861,10 +4095,20 @@ impl GENtleApp {
 
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         self.current_project_path = Some(path.to_string());
+        self.lineage_cache_valid = false;
+        self.lineage_rows.clear();
+        self.lineage_edges.clear();
+        self.lineage_op_label_by_id.clear();
+        self.lineage_containers.clear();
+        self.lineage_graph_node_offsets.clear();
+        self.lineage_graph_drag_origin = None;
+        self.lineage_graph_offsets_synced_stamp = 0;
+        self.tracked_autosync_last_op_count = None;
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
         self.load_bed_track_subscriptions_from_state();
+        self.load_lineage_node_offsets_from_state();
 
         self.mark_clean_snapshot();
         Ok(())
@@ -3877,6 +4121,53 @@ impl GENtleApp {
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.clone()),
             None => "Untitled Project".to_string(),
+        }
+    }
+
+    fn load_lineage_node_offsets_from_state(&mut self) {
+        let serialized = self
+            .engine
+            .read()
+            .unwrap()
+            .state()
+            .metadata
+            .get(LINEAGE_NODE_OFFSETS_METADATA_KEY)
+            .cloned();
+        self.lineage_graph_node_offsets.clear();
+        if let Some(serialized) = serialized {
+            if let Ok(raw) = serde_json::from_value::<HashMap<String, [f32; 2]>>(serialized) {
+                for (node_id, pair) in raw {
+                    if pair[0].is_finite() && pair[1].is_finite() {
+                        self.lineage_graph_node_offsets
+                            .insert(node_id, Vec2::new(pair[0], pair[1]));
+                    }
+                }
+            }
+        }
+        self.lineage_graph_drag_origin = None;
+        self.lineage_graph_offsets_synced_stamp = 0;
+    }
+
+    fn persist_lineage_node_offsets_to_state(&mut self) {
+        let mut raw: HashMap<String, [f32; 2]> = HashMap::new();
+        for (node_id, offset) in &self.lineage_graph_node_offsets {
+            if offset.x.is_finite() && offset.y.is_finite() {
+                raw.insert(node_id.clone(), [offset.x, offset.y]);
+            }
+        }
+        let mut engine = self.engine.write().unwrap();
+        let state = engine.state_mut();
+        if raw.is_empty() {
+            state.metadata.remove(LINEAGE_NODE_OFFSETS_METADATA_KEY);
+            return;
+        }
+        let Ok(value) = serde_json::to_value(raw) else {
+            return;
+        };
+        if state.metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY) != Some(&value) {
+            state
+                .metadata
+                .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
         }
     }
 
@@ -4196,7 +4487,7 @@ impl GENtleApp {
     }
 
     fn refresh_lineage_cache_if_needed(&mut self) {
-        let stamp = self.current_state_change_stamp();
+        let stamp = self.current_lineage_change_stamp();
         if self.lineage_cache_valid && self.lineage_cache_stamp == stamp {
             return;
         }
@@ -4213,19 +4504,26 @@ impl GENtleApp {
                 op_label_by_id.insert(rec.result.op_id.clone(), Self::summarize_operation(&rec.op));
             }
 
+            let mut parents_by_node: HashMap<String, Vec<String>> = HashMap::new();
+            for edge in &state.lineage.edges {
+                let Some(parent_node) = state.lineage.nodes.get(&edge.from_node_id) else {
+                    continue;
+                };
+                parents_by_node
+                    .entry(edge.to_node_id.clone())
+                    .or_default()
+                    .push(parent_node.seq_id.clone());
+            }
+
             let mut out: Vec<LineageRow> = state
                 .lineage
                 .nodes
                 .values()
                 .map(|node| {
-                    let parents: Vec<String> = state
-                        .lineage
-                        .edges
-                        .iter()
-                        .filter(|e| e.to_node_id == node.node_id)
-                        .filter_map(|e| state.lineage.nodes.get(&e.from_node_id))
-                        .map(|p| p.seq_id.clone())
-                        .collect();
+                    let parents = parents_by_node
+                        .get(&node.node_id)
+                        .cloned()
+                        .unwrap_or_default();
                     let (length, circular) = state
                         .sequences
                         .get(&node.seq_id)
@@ -4305,6 +4603,241 @@ impl GENtleApp {
         self.lineage_cache_valid = true;
     }
 
+    fn lineage_layout_positions(
+        order_by_layer: &BTreeMap<usize, Vec<String>>,
+    ) -> HashMap<String, usize> {
+        let mut positions = HashMap::new();
+        for nodes in order_by_layer.values() {
+            for (index, node_id) in nodes.iter().enumerate() {
+                positions.insert(node_id.clone(), index);
+            }
+        }
+        positions
+    }
+
+    fn compute_lineage_dag_layout(
+        rows: &[LineageRow],
+        lineage_edges: &[(String, String, String)],
+    ) -> (HashMap<String, (usize, usize)>, usize, usize) {
+        if rows.is_empty() {
+            return (HashMap::new(), 1, 1);
+        }
+
+        let mut row_index: HashMap<String, usize> = HashMap::new();
+        for (index, row) in rows.iter().enumerate() {
+            row_index.insert(row.node_id.clone(), index);
+        }
+
+        let mut parents_by_node: HashMap<String, Vec<String>> = HashMap::new();
+        let mut children_by_node: HashMap<String, Vec<String>> = HashMap::new();
+        let mut indegree_by_node: HashMap<String, usize> = HashMap::new();
+        for row in rows {
+            parents_by_node.insert(row.node_id.clone(), Vec::new());
+            children_by_node.insert(row.node_id.clone(), Vec::new());
+            indegree_by_node.insert(row.node_id.clone(), 0);
+        }
+
+        let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+        for (from_node, to_node, _op_id) in lineage_edges {
+            if !row_index.contains_key(from_node) || !row_index.contains_key(to_node) {
+                continue;
+            }
+            if !seen_edges.insert((from_node.clone(), to_node.clone())) {
+                continue;
+            }
+            if let Some(children) = children_by_node.get_mut(from_node) {
+                children.push(to_node.clone());
+            }
+            if let Some(parents) = parents_by_node.get_mut(to_node) {
+                parents.push(from_node.clone());
+            }
+            if let Some(indegree) = indegree_by_node.get_mut(to_node) {
+                *indegree = indegree.saturating_add(1);
+            }
+        }
+
+        for parents in parents_by_node.values_mut() {
+            parents.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+        }
+        for children in children_by_node.values_mut() {
+            children.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+        }
+
+        let mut ready: Vec<String> = indegree_by_node
+            .iter()
+            .filter_map(|(node_id, indegree)| {
+                if *indegree == 0 {
+                    Some(node_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        ready.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+
+        let mut topo_order: Vec<String> = Vec::with_capacity(rows.len());
+        let mut topo_seen: HashSet<String> = HashSet::with_capacity(rows.len());
+        while !ready.is_empty() {
+            let node_id = ready.remove(0);
+            if !topo_seen.insert(node_id.clone()) {
+                continue;
+            }
+            topo_order.push(node_id.clone());
+            if let Some(children) = children_by_node.get(&node_id) {
+                for child_id in children {
+                    if let Some(indegree) = indegree_by_node.get_mut(child_id) {
+                        if *indegree > 0 {
+                            *indegree -= 1;
+                            if *indegree == 0 {
+                                ready.push(child_id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            ready.sort_by_key(|candidate| row_index.get(candidate).copied().unwrap_or(usize::MAX));
+        }
+
+        for row in rows {
+            if topo_seen.insert(row.node_id.clone()) {
+                topo_order.push(row.node_id.clone());
+            }
+        }
+
+        let mut layer_by_node: HashMap<String, usize> = HashMap::new();
+        for node_id in &topo_order {
+            let layer = parents_by_node
+                .get(node_id)
+                .map(|parents| {
+                    parents
+                        .iter()
+                        .filter_map(|parent_id| layer_by_node.get(parent_id).copied())
+                        .max()
+                        .map(|max_parent_layer| max_parent_layer + 1)
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0);
+            layer_by_node.insert(node_id.clone(), layer);
+        }
+
+        let mut order_by_layer: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+        for node_id in &topo_order {
+            let layer = layer_by_node.get(node_id).copied().unwrap_or(0);
+            order_by_layer
+                .entry(layer)
+                .or_default()
+                .push(node_id.clone());
+        }
+        for nodes in order_by_layer.values_mut() {
+            nodes.sort_by_key(|node_id| row_index.get(node_id).copied().unwrap_or(usize::MAX));
+        }
+
+        let max_layer = order_by_layer.keys().copied().max().unwrap_or(0);
+        let barycenter =
+            |neighbors: &[String], positions: &HashMap<String, usize>| -> Option<f32> {
+                let mut sum = 0.0f32;
+                let mut count = 0usize;
+                for node_id in neighbors {
+                    if let Some(pos) = positions.get(node_id) {
+                        sum += *pos as f32;
+                        count += 1;
+                    }
+                }
+                if count == 0 {
+                    None
+                } else {
+                    Some(sum / count as f32)
+                }
+            };
+
+        for _ in 0..6 {
+            for layer in 1..=max_layer {
+                let positions = Self::lineage_layout_positions(&order_by_layer);
+                let Some(mut nodes) = order_by_layer.remove(&layer) else {
+                    continue;
+                };
+                nodes.sort_by(|left, right| {
+                    let left_score = parents_by_node
+                        .get(left)
+                        .and_then(|parents| barycenter(parents, &positions));
+                    let right_score = parents_by_node
+                        .get(right)
+                        .and_then(|parents| barycenter(parents, &positions));
+                    let fallback = row_index
+                        .get(left)
+                        .copied()
+                        .unwrap_or(usize::MAX)
+                        .cmp(&row_index.get(right).copied().unwrap_or(usize::MAX));
+                    match (left_score, right_score) {
+                        (Some(l), Some(r)) => l
+                            .partial_cmp(&r)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(fallback),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => fallback,
+                    }
+                });
+                order_by_layer.insert(layer, nodes);
+            }
+
+            if max_layer == 0 {
+                break;
+            }
+
+            for layer in (0..max_layer).rev() {
+                let positions = Self::lineage_layout_positions(&order_by_layer);
+                let Some(mut nodes) = order_by_layer.remove(&layer) else {
+                    continue;
+                };
+                nodes.sort_by(|left, right| {
+                    let left_score = children_by_node
+                        .get(left)
+                        .and_then(|children| barycenter(children, &positions));
+                    let right_score = children_by_node
+                        .get(right)
+                        .and_then(|children| barycenter(children, &positions));
+                    let fallback = row_index
+                        .get(left)
+                        .copied()
+                        .unwrap_or(usize::MAX)
+                        .cmp(&row_index.get(right).copied().unwrap_or(usize::MAX));
+                    match (left_score, right_score) {
+                        (Some(l), Some(r)) => l
+                            .partial_cmp(&r)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                            .then(fallback),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => fallback,
+                    }
+                });
+                order_by_layer.insert(layer, nodes);
+            }
+        }
+
+        let mut layout_by_node: HashMap<String, (usize, usize)> = HashMap::new();
+        let mut max_rank_seen = 0usize;
+        for (layer, nodes) in &order_by_layer {
+            for node_id in nodes {
+                let rank = row_index.get(node_id).copied().unwrap_or(0);
+                max_rank_seen = max_rank_seen.max(rank);
+                layout_by_node.insert(node_id.clone(), (*layer, rank));
+            }
+        }
+
+        for row in rows {
+            let fallback_rank = row_index.get(&row.node_id).copied().unwrap_or(0);
+            max_rank_seen = max_rank_seen.max(fallback_rank);
+            layout_by_node
+                .entry(row.node_id.clone())
+                .or_insert((0, fallback_rank));
+        }
+
+        let max_nodes_in_layer = max_rank_seen.saturating_add(1);
+        (layout_by_node, max_layer + 1, max_nodes_in_layer)
+    }
+
     fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
@@ -4354,10 +4887,33 @@ impl GENtleApp {
         let mut open_pool: Option<(String, Vec<String>)> = None;
         let mut select_candidate_from: Option<String> = None;
         if self.lineage_graph_view {
+            if self.lineage_graph_offsets_synced_stamp != self.lineage_cache_stamp {
+                let offset_count_before = self.lineage_graph_node_offsets.len();
+                let active_node_ids = self
+                    .lineage_rows
+                    .iter()
+                    .map(|row| row.node_id.clone())
+                    .collect::<std::collections::HashSet<_>>();
+                self.lineage_graph_node_offsets
+                    .retain(|node_id, _| active_node_ids.contains(node_id));
+                if self
+                    .lineage_graph_drag_origin
+                    .as_ref()
+                    .is_some_and(|(node_id, _)| !active_node_ids.contains(node_id))
+                {
+                    self.lineage_graph_drag_origin = None;
+                }
+                if self.lineage_graph_node_offsets.len() != offset_count_before {
+                    self.persist_lineage_node_offsets_to_state();
+                }
+                self.lineage_graph_offsets_synced_stamp = self.lineage_cache_stamp;
+            }
             let rows = &self.lineage_rows;
             let lineage_edges = &self.lineage_edges;
             let op_label_by_id = &self.lineage_op_label_by_id;
             let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
+            let mut request_fit_zoom = false;
+            let mut persist_offsets_after_frame = false;
             ui.horizontal(|ui| {
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
@@ -4375,6 +4931,22 @@ impl GENtleApp {
                 if ui.button("Reset").on_hover_text("Reset zoom").clicked() {
                     graph_zoom = 1.0;
                 }
+                if ui
+                    .button("Fit")
+                    .on_hover_text("Fit full graph content into current graph area")
+                    .clicked()
+                {
+                    request_fit_zoom = true;
+                }
+                if ui
+                    .button("Reset Layout")
+                    .on_hover_text("Reset manually moved node positions")
+                    .clicked()
+                {
+                    self.lineage_graph_node_offsets.clear();
+                    self.lineage_graph_drag_origin = None;
+                    persist_offsets_after_frame = true;
+                }
                 ui.add(
                     egui::Slider::new(&mut graph_zoom, 0.35..=4.0)
                         .logarithmic(true)
@@ -4383,222 +4955,317 @@ impl GENtleApp {
                 ui.label(format!("{:.0}%", graph_zoom * 100.0));
             });
             ui.separator();
-            egui::ScrollArea::both()
-                .drag_to_scroll(true)
+            egui::Resize::default()
+                .id_salt("lineage_graph_area_resize")
+                .default_height(420.0)
+                .min_height(220.0)
+                .max_height(ui.available_height().max(220.0))
+                .resizable(egui::Vec2b::new(false, true))
                 .show(ui, |ui| {
-                    let base_width = (rows.len().max(1) as f32) * 180.0 + 120.0;
-                    let base_height = 440.0;
-                    let width = base_width * graph_zoom;
-                    let height = base_height * graph_zoom;
-                    let (resp, painter) =
-                        ui.allocate_painter(Vec2::new(width, height), egui::Sense::click());
-                    if resp.hovered() {
-                        let (zoom_modifier, scroll_y) = ui.input(|i| {
-                            (
-                                i.modifiers.ctrl || i.modifiers.command,
-                                i.smooth_scroll_delta.y,
-                            )
-                        });
-                        if zoom_modifier && scroll_y.abs() > f32::EPSILON {
-                            let factor = (1.0 + scroll_y * 0.0015).clamp(0.8, 1.25);
-                            graph_zoom = (graph_zoom * factor).clamp(0.35, 4.0);
-                        }
-                    }
-                    let rect = resp.rect;
-                    let edge_stroke_width = (1.0 * graph_zoom).clamp(1.0, 2.5);
-                    let op_font_size = (10.0 * graph_zoom).clamp(9.0, 16.0);
-                    let name_font_size = (12.0 * graph_zoom).clamp(10.0, 18.0);
-                    let details_font_size = (10.0 * graph_zoom).clamp(9.0, 15.0);
-                    let node_radius = 16.0 * graph_zoom;
-                    let mut pos_by_node: HashMap<String, Pos2> = HashMap::new();
-                    for (idx, row) in rows.iter().enumerate() {
-                        let mut h = std::collections::hash_map::DefaultHasher::new();
-                        row.node_id.hash(&mut h);
-                        let lane = (h.finish() % 4) as f32;
-                        let x = rect.left() + (80.0 + idx as f32 * 170.0) * graph_zoom;
-                        let y = rect.top() + (70.0 + lane * 80.0) * graph_zoom;
-                        pos_by_node.insert(row.node_id.clone(), Pos2::new(x, y));
-                    }
-                    let mut used_label_rects: Vec<egui::Rect> = Vec::new();
-                    for (from_node, to_node, op_id) in lineage_edges {
-                        let Some(from) = pos_by_node.get(from_node) else {
-                            continue;
-                        };
-                        let Some(to) = pos_by_node.get(to_node) else {
-                            continue;
-                        };
-                        painter.line_segment(
-                            [*from, *to],
-                            egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
-                        );
-                        let mid = Pos2::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
-                        let op_label = op_label_by_id
-                            .get(op_id)
-                            .cloned()
-                            .unwrap_or_else(|| op_id.clone());
-                        let display = op_label;
-                        let galley = painter.layout_no_wrap(
-                            display.clone(),
-                            egui::FontId::proportional(op_font_size),
-                            egui::Color32::BLACK,
-                        );
-                        let edge = *to - *from;
-                        let edge_len = edge.length();
-                        if edge_len < 0.1 {
-                            continue;
-                        }
-                        let edge_dir = edge / edge_len;
-                        let perp = Vec2::new(-edge_dir.y, edge_dir.x);
-                        let mut placed = None;
-                        for idx in 0..14 {
-                            let sign = if idx % 2 == 0 { 1.0 } else { -1.0 };
-                            let step = (idx / 2) as f32;
-                            let candidate_center =
-                                mid + perp * (12.0 + step * 12.0) * graph_zoom * sign;
-                            let candidate_rect = egui::Rect::from_center_size(
-                                candidate_center,
-                                Vec2::new(
-                                    galley.size().x + 10.0 * graph_zoom,
-                                    galley.size().y + 6.0 * graph_zoom,
-                                ),
-                            );
-                            if !used_label_rects
-                                .iter()
-                                .any(|r| r.intersects(candidate_rect))
-                            {
-                                placed = Some((candidate_center, candidate_rect));
-                                used_label_rects.push(candidate_rect);
-                                break;
+                    ui.small(
+                        "Resize area by dragging lower edge. Drag nodes to reposition. Cmd/Ctrl+scroll zooms.",
+                    );
+                    egui::ScrollArea::both()
+                        .drag_to_scroll(false)
+                        .max_height(ui.available_height())
+                        .show(ui, |ui| {
+                            let (layout_by_node, layer_count, max_nodes_in_layer) =
+                                Self::compute_lineage_dag_layout(rows, lineage_edges);
+                            let base_width = (layer_count.max(1) as f32) * 220.0 + 180.0;
+                            let base_height = (max_nodes_in_layer.max(1) as f32) * 110.0 + 180.0;
+                            if request_fit_zoom {
+                                let available = ui.available_size();
+                                let fit_x = ((available.x - 24.0).max(120.0) / base_width.max(1.0))
+                                    .max(0.01);
+                                let fit_y =
+                                    ((available.y - 24.0).max(120.0) / base_height.max(1.0))
+                                        .max(0.01);
+                                graph_zoom = fit_x.min(fit_y).clamp(0.35, 4.0);
+                                request_fit_zoom = false;
                             }
-                        }
-                        let (label_center, bg_rect) = placed.unwrap_or_else(|| {
-                            let fallback_center = mid + perp * 12.0 * graph_zoom;
-                            let rect = egui::Rect::from_center_size(
-                                fallback_center,
-                                Vec2::new(
-                                    galley.size().x + 10.0 * graph_zoom,
-                                    galley.size().y + 6.0 * graph_zoom,
-                                ),
+                            let width = base_width * graph_zoom;
+                            let height = base_height * graph_zoom;
+                            let (resp, painter) = ui.allocate_painter(
+                                Vec2::new(width, height),
+                                egui::Sense::click_and_drag(),
                             );
-                            (fallback_center, rect)
-                        });
-                        used_label_rects.push(bg_rect);
-                        painter.rect_filled(
-                            bg_rect,
-                            3.0 * graph_zoom,
-                            egui::Color32::from_rgba_premultiplied(245, 245, 245, 235),
-                        );
-                        painter.text(
-                            label_center,
-                            egui::Align2::CENTER_CENTER,
-                            display,
-                            egui::FontId::proportional(op_font_size),
-                            egui::Color32::BLACK,
-                        );
-                    }
-                    for row in rows {
-                        let Some(pos) = pos_by_node.get(&row.node_id).cloned() else {
-                            continue;
-                        };
-                        if row.pool_size > 1 {
-                            let points = vec![
-                                pos + Vec2::new(0.0, -16.0 * graph_zoom),
-                                pos + Vec2::new(16.0 * graph_zoom, 0.0),
-                                pos + Vec2::new(0.0, 16.0 * graph_zoom),
-                                pos + Vec2::new(-16.0 * graph_zoom, 0.0),
-                            ];
-                            painter.add(egui::Shape::convex_polygon(
-                                points,
-                                egui::Color32::from_rgb(180, 120, 70),
-                                egui::Stroke::new(
-                                    edge_stroke_width,
-                                    egui::Color32::from_rgb(235, 196, 150),
-                                ),
-                            ));
-                            painter.text(
-                                pos + Vec2::new(19.0 * graph_zoom, -14.0 * graph_zoom),
-                                egui::Align2::LEFT_TOP,
-                                format!("n={}", row.pool_size),
-                                egui::FontId::proportional(details_font_size),
-                                egui::Color32::YELLOW,
-                            );
-                        } else {
-                            painter.circle_filled(
-                                pos,
-                                node_radius,
-                                egui::Color32::from_rgb(90, 140, 210),
-                            );
-                        }
-                        painter.text(
-                            pos + Vec2::new(22.0 * graph_zoom, -4.0 * graph_zoom),
-                            egui::Align2::LEFT_BOTTOM,
-                            &row.display_name,
-                            egui::FontId::proportional(name_font_size),
-                            egui::Color32::BLACK,
-                        );
-                        painter.text(
-                            pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom),
-                            egui::Align2::LEFT_TOP,
-                            format!("{} ({} bp)", row.seq_id, row.length),
-                            egui::FontId::proportional(details_font_size),
-                            egui::Color32::BLACK,
-                        );
-                    }
-
-                    // Interactions: double-click opens sequence, single-click keeps current behavior.
-                    if let Some(pointer) = resp.interact_pointer_pos() {
-                        let mut hit_row: Option<LineageRow> = None;
-                        for row in rows {
-                            let Some(pos) = pos_by_node.get(&row.node_id).cloned() else {
-                                continue;
-                            };
-                            let hit = if row.pool_size > 1 {
-                                egui::Rect::from_center_size(
-                                    pos,
-                                    Vec2::new(30.0 * graph_zoom, 24.0 * graph_zoom),
-                                )
-                                .contains(pointer)
-                            } else {
-                                pointer.distance(pos) <= 18.0 * graph_zoom
-                            };
-                            if hit {
-                                hit_row = Some(row.clone());
-                                break;
-                            }
-                        }
-                        if let Some(row) = hit_row {
-                            if resp.double_clicked() {
-                                open_seq = Some(row.seq_id.clone());
-                            } else if resp.clicked() {
-                                if row.pool_size > 1 {
-                                    open_pool =
-                                        Some((row.seq_id.clone(), row.pool_members.clone()));
-                                } else {
-                                    open_seq = Some(row.seq_id.clone());
+                            if resp.hovered() {
+                                let (zoom_modifier, scroll_y) = ui.input(|i| {
+                                    (
+                                        i.modifiers.ctrl || i.modifiers.command,
+                                        i.smooth_scroll_delta.y,
+                                    )
+                                });
+                                if zoom_modifier && scroll_y.abs() > f32::EPSILON {
+                                    let factor = (1.0 + scroll_y * 0.0015).clamp(0.8, 1.25);
+                                    graph_zoom = (graph_zoom * factor).clamp(0.35, 4.0);
                                 }
                             }
-                        }
-                    }
+                            let rect = resp.rect;
+                            let edge_stroke_width = (1.0 * graph_zoom).clamp(1.0, 2.5);
+                            let op_font_size = (10.0 * graph_zoom).clamp(9.0, 16.0);
+                            let name_font_size = (12.0 * graph_zoom).clamp(10.0, 18.0);
+                            let details_font_size = (10.0 * graph_zoom).clamp(9.0, 15.0);
+                            let node_radius = 16.0 * graph_zoom;
+                            let mut pos_by_node: HashMap<String, Pos2> = HashMap::new();
+                            for (fallback_rank, row) in rows.iter().enumerate() {
+                                let (layer, rank) = layout_by_node
+                                    .get(&row.node_id)
+                                    .copied()
+                                    .unwrap_or((0, fallback_rank));
+                                let manual_offset = self
+                                    .lineage_graph_node_offsets
+                                    .get(&row.node_id)
+                                    .copied()
+                                    .unwrap_or(Vec2::ZERO);
+                                let x = rect.left()
+                                    + (90.0 + layer as f32 * 220.0) * graph_zoom
+                                    + manual_offset.x;
+                                let y = rect.top()
+                                    + (70.0 + rank as f32 * 110.0) * graph_zoom
+                                    + manual_offset.y;
+                                pos_by_node.insert(row.node_id.clone(), Pos2::new(x, y));
+                            }
+                            let mut used_label_rects: Vec<egui::Rect> = Vec::new();
+                            let mut op_label_galleys: HashMap<String, Arc<egui::Galley>> =
+                                HashMap::new();
+                            for (from_node, to_node, op_id) in lineage_edges {
+                                let Some(from) = pos_by_node.get(from_node) else {
+                                    continue;
+                                };
+                                let Some(to) = pos_by_node.get(to_node) else {
+                                    continue;
+                                };
+                                painter.line_segment(
+                                    [*from, *to],
+                                    egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
+                                );
+                                let mid = Pos2::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
+                                let op_label = op_label_by_id
+                                    .get(op_id)
+                                    .cloned()
+                                    .unwrap_or_else(|| op_id.clone());
+                                let display = op_label;
+                                let galley = op_label_galleys
+                                    .entry(display.clone())
+                                    .or_insert_with(|| {
+                                        painter.layout_no_wrap(
+                                            display.clone(),
+                                            egui::FontId::proportional(op_font_size),
+                                            egui::Color32::BLACK,
+                                        )
+                                    })
+                                    .clone();
+                                let edge = *to - *from;
+                                let edge_len = edge.length();
+                                if edge_len < 0.1 {
+                                    continue;
+                                }
+                                let edge_dir = edge / edge_len;
+                                let perp = Vec2::new(-edge_dir.y, edge_dir.x);
+                                let mut placed = None;
+                                for idx in 0..14 {
+                                    let sign = if idx % 2 == 0 { 1.0 } else { -1.0 };
+                                    let step = (idx / 2) as f32;
+                                    let candidate_center =
+                                        mid + perp * (12.0 + step * 12.0) * graph_zoom * sign;
+                                    let candidate_rect = egui::Rect::from_center_size(
+                                        candidate_center,
+                                        Vec2::new(
+                                            galley.size().x + 10.0 * graph_zoom,
+                                            galley.size().y + 6.0 * graph_zoom,
+                                        ),
+                                    );
+                                    if !used_label_rects
+                                        .iter()
+                                        .any(|r| r.intersects(candidate_rect))
+                                    {
+                                        placed = Some((candidate_center, candidate_rect));
+                                        break;
+                                    }
+                                }
+                                let (label_center, bg_rect) = placed.unwrap_or_else(|| {
+                                    let fallback_center = mid + perp * 12.0 * graph_zoom;
+                                    let rect = egui::Rect::from_center_size(
+                                        fallback_center,
+                                        Vec2::new(
+                                            galley.size().x + 10.0 * graph_zoom,
+                                            galley.size().y + 6.0 * graph_zoom,
+                                        ),
+                                    );
+                                    (fallback_center, rect)
+                                });
+                                used_label_rects.push(bg_rect);
+                                painter.rect_filled(
+                                    bg_rect,
+                                    3.0 * graph_zoom,
+                                    egui::Color32::from_rgba_premultiplied(245, 245, 245, 235),
+                                );
+                                painter.text(
+                                    label_center,
+                                    egui::Align2::CENTER_CENTER,
+                                    display,
+                                    egui::FontId::proportional(op_font_size),
+                                    egui::Color32::BLACK,
+                                );
+                            }
+                            for row in rows {
+                                let Some(pos) = pos_by_node.get(&row.node_id).cloned() else {
+                                    continue;
+                                };
+                                if row.pool_size > 1 {
+                                    let points = vec![
+                                        pos + Vec2::new(0.0, -16.0 * graph_zoom),
+                                        pos + Vec2::new(16.0 * graph_zoom, 0.0),
+                                        pos + Vec2::new(0.0, 16.0 * graph_zoom),
+                                        pos + Vec2::new(-16.0 * graph_zoom, 0.0),
+                                    ];
+                                    painter.add(egui::Shape::convex_polygon(
+                                        points,
+                                        egui::Color32::from_rgb(180, 120, 70),
+                                        egui::Stroke::new(
+                                            edge_stroke_width,
+                                            egui::Color32::from_rgb(235, 196, 150),
+                                        ),
+                                    ));
+                                    painter.text(
+                                        pos + Vec2::new(19.0 * graph_zoom, -14.0 * graph_zoom),
+                                        egui::Align2::LEFT_TOP,
+                                        format!("n={}", row.pool_size),
+                                        egui::FontId::proportional(details_font_size),
+                                        egui::Color32::YELLOW,
+                                    );
+                                } else {
+                                    painter.circle_filled(
+                                        pos,
+                                        node_radius,
+                                        egui::Color32::from_rgb(90, 140, 210),
+                                    );
+                                }
+                                painter.text(
+                                    pos + Vec2::new(22.0 * graph_zoom, -4.0 * graph_zoom),
+                                    egui::Align2::LEFT_BOTTOM,
+                                    &row.display_name,
+                                    egui::FontId::proportional(name_font_size),
+                                    egui::Color32::BLACK,
+                                );
+                                painter.text(
+                                    pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom),
+                                    egui::Align2::LEFT_TOP,
+                                    format!("{} ({} bp)", row.seq_id, row.length),
+                                    egui::FontId::proportional(details_font_size),
+                                    egui::Color32::BLACK,
+                                );
+                            }
+
+                            // Interactions: drag moves nodes; double-click opens sequence; single-click keeps current behavior.
+                            if let Some(pointer) = resp.interact_pointer_pos() {
+                                let mut hit_row: Option<&LineageRow> = None;
+                                for row in rows {
+                                    let Some(pos) = pos_by_node.get(&row.node_id).cloned() else {
+                                        continue;
+                                    };
+                                    let hit = if row.pool_size > 1 {
+                                        egui::Rect::from_center_size(
+                                            pos,
+                                            Vec2::new(30.0 * graph_zoom, 24.0 * graph_zoom),
+                                        )
+                                        .contains(pointer)
+                                    } else {
+                                        pointer.distance(pos) <= 18.0 * graph_zoom
+                                    };
+                                    if hit {
+                                        hit_row = Some(row);
+                                        break;
+                                    }
+                                }
+                                if resp.drag_started() {
+                                    if let Some(row) = hit_row {
+                                        let start_offset = self
+                                            .lineage_graph_node_offsets
+                                            .get(&row.node_id)
+                                            .copied()
+                                            .unwrap_or(Vec2::ZERO);
+                                        self.lineage_graph_drag_origin =
+                                            Some((row.node_id.clone(), start_offset));
+                                    } else {
+                                        self.lineage_graph_drag_origin = None;
+                                    }
+                                }
+                                if let Some((node_id, start_offset)) =
+                                    self.lineage_graph_drag_origin.clone()
+                                {
+                                    if resp.dragged() {
+                                        self.lineage_graph_node_offsets
+                                            .insert(node_id.clone(), start_offset + resp.drag_delta());
+                                    }
+                                    if resp.drag_stopped() {
+                                        self.lineage_graph_drag_origin = None;
+                                        persist_offsets_after_frame = true;
+                                    }
+                                }
+                                if self.lineage_graph_drag_origin.is_some() {
+                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                                }
+                                if let Some(row) = hit_row {
+                                    if resp.double_clicked() {
+                                        open_seq = Some(row.seq_id.clone());
+                                    } else if resp.clicked() {
+                                        if row.pool_size > 1 {
+                                            open_pool =
+                                                Some((row.seq_id.clone(), row.pool_members.clone()));
+                                        } else {
+                                            open_seq = Some(row.seq_id.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            if self.lineage_graph_drag_origin.is_some()
+                                && !ui.input(|i| i.pointer.primary_down())
+                            {
+                                self.lineage_graph_drag_origin = None;
+                                persist_offsets_after_frame = true;
+                            }
+                        });
                 });
+            if persist_offsets_after_frame {
+                self.persist_lineage_node_offsets_to_state();
+            }
             self.lineage_graph_zoom = graph_zoom;
         } else {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                egui::Grid::new("lineage_grid")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.strong("Node");
-                        ui.strong("Sequence");
-                        ui.strong("Parents");
-                        ui.strong("Origin");
-                        ui.strong("Op");
-                        ui.strong("Length");
-                        ui.strong("Topology");
-                        ui.strong("Action");
-                        ui.end_row();
-
-                        for row in &self.lineage_rows {
+            ui.horizontal(|ui| {
+                ui.strong("Node");
+                ui.separator();
+                ui.strong("Sequence");
+                ui.separator();
+                ui.strong("Parents");
+                ui.separator();
+                ui.strong("Origin");
+                ui.separator();
+                ui.strong("Op");
+                ui.separator();
+                ui.strong("Length");
+                ui.separator();
+                ui.strong("Topology");
+                ui.separator();
+                ui.strong("Action");
+            });
+            ui.separator();
+            let row_height = ui.text_style_height(&egui::TextStyle::Body).max(18.0) + 6.0;
+            egui::ScrollArea::vertical().show_rows(
+                ui,
+                row_height,
+                self.lineage_rows.len(),
+                |ui, row_range| {
+                    for row_idx in row_range {
+                        let row = &self.lineage_rows[row_idx];
+                        ui.horizontal(|ui| {
                             ui.monospace(&row.node_id);
-                            if ui.button(&row.seq_id).clicked() {
+                            if ui
+                                .button(&row.seq_id)
+                                .on_hover_text("Open this sequence in a dedicated window")
+                                .clicked()
+                            {
                                 open_seq = Some(row.seq_id.clone());
                             }
                             ui.label(if row.parents.is_empty() {
@@ -4610,47 +5277,73 @@ impl GENtleApp {
                             ui.monospace(&row.created_by_op);
                             ui.monospace(format!("{} bp", row.length));
                             ui.label(if row.circular { "circular" } else { "linear" });
-                            if ui.button("Select").clicked() {
+                            if ui
+                                .button("Select")
+                                .on_hover_text(
+                                    "Run candidate selection operation using this sequence as input",
+                                )
+                                .clicked()
+                            {
                                 select_candidate_from = Some(row.seq_id.clone());
                             }
-                            ui.end_row();
-                        }
-                    });
-            });
+                        });
+                        ui.separator();
+                    }
+                },
+            );
         }
         ui.separator();
         ui.heading("Containers");
         ui.label("Container-level view of candidate sequence sets");
-        egui::ScrollArea::vertical()
-            .max_height(180.0)
+        egui::Resize::default()
+            .id_salt("lineage_container_area_resize")
+            .default_height(220.0)
+            .min_height(120.0)
+            .max_height(ui.available_height().max(120.0))
+            .resizable(egui::Vec2b::new(false, true))
             .show(ui, |ui| {
-                egui::Grid::new("container_grid")
-                    .striped(true)
+                egui::ScrollArea::both()
+                    .id_salt("lineage_container_grid_scroll")
+                    .auto_shrink([false, false])
+                    .max_height(ui.available_height())
                     .show(ui, |ui| {
-                        ui.strong("Container");
-                        ui.strong("Kind");
-                        ui.strong("Members");
-                        ui.strong("Representative");
-                        ui.strong("Action");
-                        ui.end_row();
-                        for c in &self.lineage_containers {
-                            ui.monospace(&c.container_id);
-                            ui.label(&c.kind);
-                            ui.monospace(format!("{}", c.member_count));
-                            ui.monospace(&c.representative);
-                            if c.member_count > 1 {
-                                if ui.button("Open Pool").clicked() {
-                                    open_pool = Some((c.representative.clone(), c.members.clone()));
+                        egui::Grid::new("container_grid")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Container");
+                                ui.strong("Kind");
+                                ui.strong("Members");
+                                ui.strong("Representative");
+                                ui.strong("Action");
+                                ui.end_row();
+                                for c in &self.lineage_containers {
+                                    ui.monospace(&c.container_id);
+                                    ui.label(&c.kind);
+                                    ui.monospace(format!("{}", c.member_count));
+                                    ui.monospace(&c.representative);
+                                    if c.member_count > 1 {
+                                        if ui
+                                            .button("Open Pool")
+                                            .on_hover_text("Open this container as a pool view")
+                                            .clicked()
+                                        {
+                                            open_pool =
+                                                Some((c.representative.clone(), c.members.clone()));
+                                        }
+                                    } else if !c.representative.is_empty() {
+                                        if ui
+                                            .button("Open Seq")
+                                            .on_hover_text("Open this representative sequence")
+                                            .clicked()
+                                        {
+                                            open_seq = Some(c.representative.clone());
+                                        }
+                                    } else {
+                                        ui.label("-");
+                                    }
+                                    ui.end_row();
                                 }
-                            } else if !c.representative.is_empty() {
-                                if ui.button("Open Seq").clicked() {
-                                    open_seq = Some(c.representative.clone());
-                                }
-                            } else {
-                                ui.label("-");
-                            }
-                            ui.end_row();
-                        }
+                            });
                     });
             });
 
@@ -4875,25 +5568,49 @@ impl GENtleApp {
         ui.monospace(format!("Active bigWigToBedGraph: {active_bigwig}"));
 
         ui.horizontal(|ui| {
-            if ui.button("Use PATH").clicked() {
+            if ui
+                .button("Use PATH")
+                .on_hover_text("Clear rnapkin override and use PATH lookup")
+                .clicked()
+            {
                 self.configuration_rnapkin_executable.clear();
                 self.clear_rnapkin_validation();
             }
-            if ui.button("Use PATH (BLAST)").clicked() {
+            if ui
+                .button("Use PATH (BLAST)")
+                .on_hover_text("Clear makeblastdb/blastn overrides and use PATH lookup")
+                .clicked()
+            {
                 self.configuration_makeblastdb_executable.clear();
                 self.configuration_blastn_executable.clear();
                 self.clear_blast_validation();
             }
-            if ui.button("Use PATH (BigWig)").clicked() {
+            if ui
+                .button("Use PATH (BigWig)")
+                .on_hover_text("Clear bigWigToBedGraph override and use PATH lookup")
+                .clicked()
+            {
                 self.configuration_bigwig_to_bedgraph_executable.clear();
             }
-            if ui.button("Validate rnapkin").clicked() {
+            if ui
+                .button("Validate rnapkin")
+                .on_hover_text("Run rnapkin --version and capture validation status")
+                .clicked()
+            {
                 self.validate_rnapkin_executable();
             }
-            if ui.button("Validate BLAST tools").clicked() {
+            if ui
+                .button("Validate BLAST tools")
+                .on_hover_text("Run makeblastdb/blastn --version checks")
+                .clicked()
+            {
                 self.validate_blast_executables();
             }
-            if ui.button("Apply External Settings").clicked() {
+            if ui
+                .button("Apply External Settings")
+                .on_hover_text("Apply executable overrides to current runtime environment")
+                .clicked()
+            {
                 self.apply_configuration_external_apps();
             }
         });
@@ -5012,7 +5729,11 @@ impl GENtleApp {
         }
 
         ui.horizontal(|ui| {
-            if ui.button("Reset Defaults").clicked() {
+            if ui
+                .button("Reset Defaults")
+                .on_hover_text("Reset graphics settings to built-in defaults")
+                .clicked()
+            {
                 self.reset_configuration_graphics_to_defaults();
             }
             if ui
@@ -5020,11 +5741,16 @@ impl GENtleApp {
                     self.configuration_graphics_dirty,
                     egui::Button::new("Apply Graphics Settings"),
                 )
+                .on_hover_text("Apply graphics settings to project state")
                 .clicked()
             {
                 self.apply_configuration_graphics();
             }
-            if ui.button("Apply + Refresh Open Windows").clicked() {
+            if ui
+                .button("Apply + Refresh Open Windows")
+                .on_hover_text("Apply settings and refresh currently open sequence windows")
+                .clicked()
+            {
                 self.apply_configuration_graphics();
                 let refreshed = self.refresh_open_sequence_windows(ui.ctx());
                 self.configuration_status.push_str(&format!(
@@ -5032,7 +5758,11 @@ impl GENtleApp {
                     refreshed
                 ));
             }
-            if ui.button("Reload Current").clicked() {
+            if ui
+                .button("Reload Current")
+                .on_hover_text("Reload graphics settings from current project state")
+                .clicked()
+            {
                 self.sync_configuration_from_runtime();
                 self.configuration_status =
                     "Reloaded graphics settings from current project".to_string();
@@ -5061,7 +5791,11 @@ impl GENtleApp {
                 self.configuration_tab = ConfigurationTab::Graphics;
             }
             ui.separator();
-            if ui.button("Close").clicked() {
+            if ui
+                .button("Close")
+                .on_hover_text("Close configuration dialog")
+                .clicked()
+            {
                 self.show_configuration_dialog = false;
             }
         });
@@ -5122,19 +5856,31 @@ impl GENtleApp {
             .show(ctx, |ui| {
                 ui.label("Save changes to the current project before continuing?");
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
+                    if ui
+                        .button("Save")
+                        .on_hover_text("Save current project, then continue")
+                        .clicked()
+                    {
                         if self.save_current_project() {
                             if let Some(action) = self.pending_project_action.take() {
                                 self.execute_project_action(action);
                             }
                         }
                     }
-                    if ui.button("Don't Save").clicked() {
+                    if ui
+                        .button("Don't Save")
+                        .on_hover_text("Continue without saving current project changes")
+                        .clicked()
+                    {
                         if let Some(action) = self.pending_project_action.take() {
                             self.execute_project_action(action);
                         }
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text("Cancel and keep editing current project")
+                        .clicked()
+                    {
                         self.pending_project_action = None;
                     }
                 });
@@ -5198,28 +5944,112 @@ impl GENtleApp {
     }
 
     fn render_help_contents(&mut self, ui: &mut Ui) {
+        let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
+        if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
+            self.help_focus_search_box = true;
+        }
+
+        let mut active_doc_changed = false;
         ui.horizontal(|ui| {
             if ui
                 .selectable_label(self.help_doc == HelpDoc::Gui, "GUI Manual")
                 .clicked()
             {
                 self.help_doc = HelpDoc::Gui;
+                active_doc_changed = true;
             }
             if ui
                 .selectable_label(self.help_doc == HelpDoc::Cli, "CLI Manual")
                 .clicked()
             {
                 self.help_doc = HelpDoc::Cli;
+                active_doc_changed = true;
             }
             ui.separator();
-            if ui.button("Reload").clicked() {
+            if ui
+                .button("Reload")
+                .on_hover_text("Reload help markdown files from disk")
+                .clicked()
+            {
                 self.refresh_help_docs();
                 self.help_markdown_cache = CommonMarkCache::default();
+                active_doc_changed = true;
             }
-            if ui.button("Close").clicked() {
+            if ui
+                .button("Close")
+                .on_hover_text("Close help window")
+                .clicked()
+            {
                 self.show_help_dialog = false;
             }
         });
+
+        ui.horizontal(|ui| {
+            ui.label("Find:");
+            let search_id = ui.make_persistent_id("gentle_help_search_input");
+            let search_response = ui.add(
+                egui::TextEdit::singleline(&mut self.help_search_query)
+                    .id(search_id)
+                    .hint_text("Search help text (Cmd/Ctrl+F)")
+                    .desired_width(260.0),
+            );
+            if self.help_focus_search_box {
+                search_response.request_focus();
+                self.help_focus_search_box = false;
+            }
+            if search_response.changed() {
+                self.help_search_selected = 0;
+                self.refresh_help_search_matches();
+            }
+            if search_response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                self.select_next_help_match();
+            }
+
+            let has_matches = !self.help_search_matches.is_empty();
+            if ui
+                .add_enabled(has_matches, egui::Button::new("Prev"))
+                .on_hover_text("Jump to previous help search match")
+                .clicked()
+            {
+                self.select_prev_help_match();
+            }
+            if ui
+                .add_enabled(has_matches, egui::Button::new("Next"))
+                .on_hover_text("Jump to next help search match")
+                .clicked()
+            {
+                self.select_next_help_match();
+            }
+            if ui
+                .button("Clear")
+                .on_hover_text("Clear search query and match list")
+                .clicked()
+            {
+                self.help_search_query.clear();
+                self.help_search_selected = 0;
+                self.help_search_matches.clear();
+            }
+
+            if self.help_search_query.trim().is_empty() {
+                ui.small("No active search");
+            } else if self.help_search_matches.is_empty() {
+                ui.small("No matches");
+            } else {
+                ui.small(format!(
+                    "Match {}/{}",
+                    self.help_search_selected + 1,
+                    self.help_search_matches.len()
+                ));
+            }
+        });
+
+        if active_doc_changed {
+            self.refresh_help_search_matches();
+        }
+        if let Some(current) = self.help_search_matches.get(self.help_search_selected) {
+            ui.small(format!("Line {}: {}", current.line_number, current.snippet));
+        }
+
         ui.separator();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -5372,6 +6202,27 @@ impl GENtleApp {
                 min_bp,
                 max_bp,
                 error,
+                unique
+            ),
+            Operation::FilterBySequenceQuality {
+                inputs,
+                gc_min,
+                gc_max,
+                max_homopolymer_run,
+                reject_ambiguous_bases,
+                avoid_u6_terminator_tttt,
+                forbidden_motifs,
+                unique,
+                ..
+            } => format!(
+                "Sequence quality filter: inputs={}, gc_min={:?}, gc_max={:?}, max_homopolymer_run={:?}, reject_ambiguous_bases={}, avoid_u6_terminator_tttt={}, forbidden_motifs={}, unique={}",
+                inputs.join(", "),
+                gc_min,
+                gc_max,
+                max_homopolymer_run,
+                reject_ambiguous_bases.unwrap_or(true),
+                avoid_u6_terminator_tttt.unwrap_or(true),
+                forbidden_motifs.len(),
                 unique
             ),
             Operation::SelectCandidate {
