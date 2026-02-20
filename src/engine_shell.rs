@@ -2,8 +2,8 @@ use crate::{
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        Engine, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, Operation, ProjectState,
-        RenderSvgMode, Workflow,
+        Engine, GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine,
+        Operation, ProjectState, RenderSvgMode, Workflow,
     },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync, tf_motifs,
@@ -134,6 +134,15 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    ReferenceExtendAnchor {
+        helper_mode: bool,
+        seq_id: String,
+        side: GenomeAnchorSide,
+        length_bp: usize,
+        output_id: Option<String>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
     ReferenceBlast {
         helper_mode: bool,
         genome_id: String,
@@ -241,6 +250,7 @@ pub enum ShellCommand {
     },
     CandidatesMacro {
         script: String,
+        transactional: bool,
     },
     SetParameter {
         name: String,
@@ -567,6 +577,29 @@ impl ShellCommand {
                     "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', catalog='{catalog}', cache='{cache}')"
                 )
             }
+            Self::ReferenceExtendAnchor {
+                helper_mode,
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                let side_label = match side {
+                    GenomeAnchorSide::FivePrime => "5'",
+                    GenomeAnchorSide::ThreePrime => "3'",
+                };
+                format!(
+                    "extend {label}-anchored sequence '{seq_id}' on {side_label} by {length_bp} bp (output='{output}', catalog='{catalog}', cache='{cache}')"
+                )
+            }
             Self::ReferenceBlast {
                 helper_mode,
                 genome_id,
@@ -810,7 +843,10 @@ impl ShellCommand {
                 right_set,
                 output_set
             ),
-            Self::CandidatesMacro { script } => {
+            Self::CandidatesMacro {
+                script,
+                transactional,
+            } => {
                 let trimmed = script.trim();
                 let preview = if trimmed.starts_with('@') {
                     trimmed.to_string()
@@ -822,7 +858,12 @@ impl ShellCommand {
                         single_line
                     }
                 };
-                format!("run candidates macro '{preview}'")
+                let mode = if *transactional {
+                    "transactional"
+                } else {
+                    "best-effort"
+                };
+                format!("run {mode} candidates macro '{preview}'")
             }
             Self::SetParameter { name, value_json } => {
                 format!("set parameter '{}' to {}", name, value_json)
@@ -840,6 +881,7 @@ impl ShellCommand {
                 | Self::ReferencePrepare { .. }
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
+                | Self::ReferenceExtendAnchor { .. }
                 | Self::ReferenceBlastTrack { .. }
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
@@ -892,6 +934,7 @@ genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blast
 genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
+genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers list [--catalog PATH]\n\
 helpers validate-catalog [--catalog PATH]\n\
 helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]\n\
@@ -901,6 +944,7 @@ helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blast
 helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
+helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\
 tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
 tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\
@@ -919,7 +963,7 @@ candidates score SET_NAME METRIC_NAME EXPRESSION\n\
 candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]\n\
 candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]\n\
 candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET\n\
-candidates macro SCRIPT_OR_@FILE\n\
+candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]\n\
 set-param NAME JSON_VALUE\n\
 op <operation-json-or-@file>\n\
 workflow <workflow-json-or-@file>\n\
@@ -1101,6 +1145,21 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
 fn parse_ladder_molecule(value: &str) -> Result<LadderMolecule, String> {
     LadderMolecule::parse(value)
         .ok_or_else(|| format!("Unknown ladder molecule '{value}', expected 'dna' or 'rna'"))
+}
+
+fn parse_anchor_side(value: &str) -> Result<GenomeAnchorSide, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "5" | "5p" | "5prime" | "5'" | "five_prime" | "five-prime" => {
+            Ok(GenomeAnchorSide::FivePrime)
+        }
+        "3" | "3p" | "3prime" | "3'" | "three_prime" | "three-prime" => {
+            Ok(GenomeAnchorSide::ThreePrime)
+        }
+        _ => Err(format!(
+            "Unknown anchor side '{}'; expected 5p or 3p",
+            value
+        )),
+    }
 }
 
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -1656,8 +1715,60 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 cache_dir,
             })
         }
+        "extend-anchor" => {
+            if tokens.len() < 5 {
+                return Err(format!(
+                    "{label} extend-anchor requires SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let seq_id = tokens[2].clone();
+            let side = parse_anchor_side(&tokens[3])?;
+            let length_bp = tokens[4]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid LENGTH_BP '{}': {e}", tokens[4]))?;
+            if length_bp == 0 {
+                return Err("LENGTH_BP must be >= 1".to_string());
+            }
+            let mut output_id: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--output-id" => {
+                        output_id = Some(parse_option_path(tokens, &mut idx, "--output-id", label)?)
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--cache-dir",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} extend-anchor"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceExtendAnchor {
+                helper_mode,
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+                catalog_path,
+                cache_dir,
+            })
+        }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-track, extract-region, extract-gene)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-track, extract-region, extract-gene, extend-anchor)"
         )),
     }
 }
@@ -2027,21 +2138,55 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "macro" => {
             if tokens.len() < 3 {
                 return Err(
-                    "candidates macro requires SCRIPT_OR_@FILE (or --file PATH)".to_string(),
+                    "candidates macro requires SCRIPT_OR_@FILE (or --file PATH), optionally with --transactional".to_string(),
                 );
             }
-            let script = if tokens[2] == "--file" {
-                if tokens.len() != 4 {
-                    return Err("candidates macro --file requires PATH".to_string());
+            let mut idx = 2usize;
+            let mut transactional = false;
+            let mut script_file: Option<String> = None;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--transactional" | "--atomic" => {
+                        transactional = true;
+                        idx += 1;
+                    }
+                    "--file" => {
+                        if script_file.is_some() {
+                            return Err(
+                                "candidates macro --file may only be specified once".to_string(),
+                            );
+                        }
+                        idx += 1;
+                        if idx >= tokens.len() {
+                            return Err("candidates macro --file requires PATH".to_string());
+                        }
+                        script_file = Some(tokens[idx].trim().to_string());
+                        idx += 1;
+                    }
+                    _ => break,
                 }
-                format!("@{}", tokens[3].trim())
+            }
+            let script = if let Some(path) = script_file {
+                if idx != tokens.len() {
+                    return Err(
+                        "candidates macro does not accept inline script after --file PATH"
+                            .to_string(),
+                    );
+                }
+                format!("@{path}")
             } else {
-                tokens[2..].join(" ")
+                if idx >= tokens.len() {
+                    return Err("candidates macro requires SCRIPT_OR_@FILE".to_string());
+                }
+                tokens[idx..].join(" ")
             };
             if script.trim().is_empty() {
                 return Err("candidates macro requires non-empty script".to_string());
             }
-            Ok(ShellCommand::CandidatesMacro { script })
+            Ok(ShellCommand::CandidatesMacro {
+                script,
+                transactional,
+            })
         }
         other => Err(format!(
             "Unknown candidates subcommand '{other}' (expected list, delete, generate, show, metrics, score, score-distance, filter, set-op, macro)"
@@ -2937,6 +3082,7 @@ fn split_candidates_macro_statements(script: &str) -> Result<Vec<String>, String
 fn run_candidates_macro(
     engine: &mut GentleEngine,
     script_or_ref: &str,
+    transactional: bool,
     options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let script = load_candidates_macro_script(script_or_ref)?;
@@ -2944,6 +3090,11 @@ fn run_candidates_macro(
     if statements.is_empty() {
         return Err("candidates macro script is empty".to_string());
     }
+    let rollback_state = if transactional {
+        Some(engine.state().clone())
+    } else {
+        None
+    };
     let mut executed = 0usize;
     let mut changed = false;
     let mut rows: Vec<Value> = vec![];
@@ -2962,7 +3113,26 @@ fn run_candidates_macro(
         if matches!(cmd, ShellCommand::CandidatesMacro { .. }) {
             return Err("Nested candidates macro calls are not allowed".to_string());
         }
-        let run = execute_shell_command_with_options(engine, &cmd, options)?;
+        let run = match execute_shell_command_with_options(engine, &cmd, options) {
+            Ok(run) => run,
+            Err(err) => {
+                if transactional {
+                    if let Some(state) = rollback_state {
+                        *engine = GentleEngine::from_state(state);
+                    }
+                    return Err(format!(
+                        "candidates macro failed at statement {} ('{}'): {err}; all macro changes were rolled back",
+                        executed + 1,
+                        statement
+                    ));
+                }
+                return Err(format!(
+                    "candidates macro failed at statement {} ('{}'): {err}",
+                    executed + 1,
+                    statement
+                ));
+            }
+        };
         executed = executed.saturating_add(1);
         changed |= run.state_changed;
         rows.push(json!({
@@ -2978,6 +3148,7 @@ fn run_candidates_macro(
         state_changed: changed,
         output: json!({
             "executed": executed,
+            "transactional": transactional,
             "state_changed": changed,
             "results": rows
         }),
@@ -3544,6 +3715,32 @@ pub fn execute_shell_command_with_options(
                 output: json!({ "result": op_result }),
             }
         }
+        ShellCommand::ReferenceExtendAnchor {
+            helper_mode,
+            seq_id,
+            side,
+            length_bp,
+            output_id,
+            catalog_path,
+            cache_dir,
+        } => {
+            let op_result = engine
+                .apply(Operation::ExtendGenomeAnchor {
+                    seq_id: seq_id.clone(),
+                    side: *side,
+                    length_bp: *length_bp,
+                    output_id: output_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
         ShellCommand::TracksImportBed {
             seq_id,
             path,
@@ -3963,7 +4160,10 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
-        ShellCommand::CandidatesMacro { script } => run_candidates_macro(engine, script, options)?,
+        ShellCommand::CandidatesMacro {
+            script,
+            transactional,
+        } => run_candidates_macro(engine, script, *transactional, options)?,
         ShellCommand::SetParameter { name, value_json } => {
             let raw = parse_json_payload(value_json)?;
             let value: serde_json::Value = serde_json::from_str(&raw)
@@ -4458,8 +4658,30 @@ mod tests {
             parse_shell_line("candidates macro --file test_files/candidates_plan.gsh")
                 .expect("parse candidates macro --file");
         match cmd {
-            ShellCommand::CandidatesMacro { script } => {
+            ShellCommand::CandidatesMacro {
+                script,
+                transactional,
+            } => {
                 assert_eq!(script, "@test_files/candidates_plan.gsh");
+                assert!(!transactional);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_macro_transactional_flag() {
+        let cmd = parse_shell_line(
+            "candidates macro --transactional --file test_files/candidates_plan.gsh",
+        )
+        .expect("parse transactional candidates macro");
+        match cmd {
+            ShellCommand::CandidatesMacro {
+                script,
+                transactional,
+            } => {
+                assert_eq!(script, "@test_files/candidates_plan.gsh");
+                assert!(transactional);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -4622,14 +4844,40 @@ filter set1 set2 --metric score --min 10
             &mut engine,
             &ShellCommand::CandidatesMacro {
                 script: "generate win seqA --length 4 --step 2; score win x '(gc_fraction+1)'; filter win win_top --metric x --min-quantile 1.0".to_string(),
+                transactional: false,
             },
         )
         .expect("execute candidates macro");
         assert!(out.state_changed);
         assert_eq!(out.output["executed"].as_u64(), Some(3));
+        assert_eq!(out.output["transactional"].as_bool(), Some(false));
         let sets = engine.list_candidate_sets();
         assert!(sets.iter().any(|s| s.name == "win"));
         assert!(sets.iter().any(|s| s.name == "win_top"));
+    }
+
+    #[test]
+    fn execute_candidates_macro_transactional_rolls_back_on_error() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::CandidatesMacro {
+                script: "generate win seqA --length 4 --step 2; filter missing out --metric gc_fraction --min 0.1".to_string(),
+                transactional: true,
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("rolled back"));
+        let sets = engine.list_candidate_sets();
+        assert!(
+            !sets.iter().any(|s| s.name == "win"),
+            "transactional macro should roll back earlier statements"
+        );
     }
 
     #[test]
@@ -4639,6 +4887,7 @@ filter set1 set2 --metric score --min 10
             &mut engine,
             &ShellCommand::CandidatesMacro {
                 script: "macro x".to_string(),
+                transactional: false,
             },
         )
         .unwrap_err();
@@ -4786,7 +5035,11 @@ filter set1 set2 --metric score --min 10
             .expect("imported_ids array");
         assert_eq!(imported_ids.len(), 1);
         let imported_id = imported_ids[0].as_str().expect("imported id string");
-        assert_eq!(imported_id, "imported_2");
+        assert!(
+            imported_id.starts_with("imported_1"),
+            "import id should be a collision-resolved variant of imported_1, got {imported_id}"
+        );
+        assert_ne!(imported_id, "imported_1");
         assert!(engine.state().sequences.contains_key(imported_id));
     }
 
@@ -4811,6 +5064,34 @@ filter set1 set2 --metric score --min 10
                 assert_eq!(gene_query, "bla".to_string());
                 assert_eq!(occurrence, Some(2));
                 assert_eq!(output_id, Some("out".to_string()));
+                assert_eq!(cache_dir, Some("cache".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_extend_anchor_five_prime() {
+        let cmd = parse_shell_line(
+            "genomes extend-anchor tp73 5p 150 --output-id tp73_ext --catalog c.json --cache-dir cache",
+        )
+        .expect("parse genomes extend-anchor");
+        match cmd {
+            ShellCommand::ReferenceExtendAnchor {
+                helper_mode,
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(seq_id, "tp73".to_string());
+                assert_eq!(side, GenomeAnchorSide::FivePrime);
+                assert_eq!(length_bp, 150);
+                assert_eq!(output_id, Some("tp73_ext".to_string()));
+                assert_eq!(catalog_path, Some("c.json".to_string()));
                 assert_eq!(cache_dir, Some("cache".to_string()));
             }
             other => panic!("unexpected command: {other:?}"),

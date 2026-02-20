@@ -65,6 +65,7 @@ Current draft operations:
 - `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `ExtractRegion { input, from, to, output_id? }`
+- `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
 - `SelectCandidate { input, criterion, output_id? }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
 - `FilterByDesignConstraints { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
@@ -77,6 +78,12 @@ Current draft operations:
 - `SetTopology { seq_id, circular }`
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)
+
+`ExtendGenomeAnchor` side semantics:
+
+- `side` accepts `five_prime` or `three_prime`.
+- Direction is contextual to anchor strand.
+- On anchor strand `-`, `five_prime` increases physical genomic position.
 
 Adapter utility contracts (current, non-engine operations):
 

@@ -193,7 +193,8 @@ Supported commands:
 - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
 - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
-- `candidates macro SCRIPT_OR_@FILE`
+- `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+- `set-param NAME JSON_VALUE`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
 
@@ -538,6 +539,17 @@ TFBS display reduction (no recomputation needed):
 - disabling all criteria shows all TFBS features
 - sequence SVG export now uses the same TFBS filter settings as the GUI display
 
+VCF display filtering (no recomputation needed):
+
+- `VCF display filter` in Engine Ops offers live filtering criteria for imported
+  variant features:
+  - class toggles: `SNP`, `INS`, `DEL`, `SV`, `OTHER`
+  - `PASS only`
+  - `QUAL >= min` and `QUAL <= max` with enable checkboxes
+  - required INFO keys (comma-separated)
+- changes are written to shared display state and applied immediately.
+- sequence SVG export uses the same VCF display filter state as the GUI display.
+
 ## Reference Genomes (Main Menu)
 
 Reference-genome workflow is split into separate dialogs (masks) launched from
@@ -604,6 +616,8 @@ Recommended flow:
      - `Import To Selected`: import onto only the currently selected anchored sequence
      - `Import To All Anchored (One-Time)`: import onto all currently anchored sequences without saving a subscription
      - `Import To All Anchored + Track`: import onto all currently anchored sequences and save a tracked subscription for auto-sync to future anchored extracts
+   - import runs in a background task with live progress and can be cancelled
+     from the same dialog (`Cancel Import`).
    - tracked files are listed in the same window and can be managed:
      - `Apply now`: re-apply one tracked file to all currently anchored sequences
      - `Remove`: delete one tracked subscription (already imported features remain)

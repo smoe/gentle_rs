@@ -142,6 +142,11 @@ Exit methods:
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
 20. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
+21. `set_parameter(state, name, value)`
+    - Convenience wrapper for engine `SetParameter`.
+22. `set_vcf_display_filter(state, options)`
+    - Convenience wrapper that updates one or more VCF display-filter parameters
+      via `SetParameter` in one call.
 
 ### JavaScript example
 
@@ -217,6 +222,11 @@ Exit methods:
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
 20. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
+21. `set_parameter(project, name, value)`
+    - Convenience wrapper for engine `SetParameter`.
+22. `set_vcf_display_filter(project, opts)`
+    - Convenience wrapper that updates one or more VCF display-filter parameters
+      via `SetParameter` in one call.
 
 ### Lua example
 
@@ -320,6 +330,9 @@ cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20
 cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
 cargo run --bin gentle_cli -- candidates filter sgrnas sgrnas_q95 --metric gc_balance --min-quantile 0.95
 cargo run --bin gentle_cli -- candidates macro @candidate_flow.gsh
+cargo run --bin gentle_cli -- candidates macro --transactional --file candidate_flow.gsh
+cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
+cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -396,7 +409,8 @@ Shared shell command:
     - `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
     - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
     - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
-    - `candidates macro SCRIPT_OR_@FILE`
+    - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+    - `set-param NAME JSON_VALUE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (requires process startup with
@@ -506,6 +520,9 @@ Genome convenience commands:
   - Runs engine `ExtractGenomeRegion`.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
+- `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - Runs engine `ExtendGenomeAnchor`.
+  - Extends an already genome-anchored sequence in-silico on contextual `5'` or `3'`.
 
 Helper convenience commands:
 
@@ -525,6 +542,8 @@ Helper convenience commands:
   - Same behavior as `genomes extract-region`, with helper-catalog default.
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
+- `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes extend-anchor`, with helper-catalog default.
 
 Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candidates ...'`):
 
@@ -755,6 +774,29 @@ Set feature-details font size used in the feature tree/details panel (valid rang
 {"SetParameter":{"name":"feature_details_font_size","value":10.5}}
 ```
 
+Set VCF display filtering parameters shared by GUI and SVG export:
+
+```json
+{"SetParameter":{"name":"vcf_display_pass_only","value":true}}
+{"SetParameter":{"name":"vcf_display_use_min_qual","value":true}}
+{"SetParameter":{"name":"vcf_display_min_qual","value":30.0}}
+{"SetParameter":{"name":"vcf_display_required_info_keys","value":["AF","DP"]}}
+```
+
+Supported VCF display parameter names:
+
+- `vcf_display_show_snp`
+- `vcf_display_show_ins`
+- `vcf_display_show_del`
+- `vcf_display_show_sv`
+- `vcf_display_show_other`
+- `vcf_display_pass_only`
+- `vcf_display_use_min_qual`
+- `vcf_display_min_qual`
+- `vcf_display_use_max_qual`
+- `vcf_display_max_qual`
+- `vcf_display_required_info_keys` (string CSV or string array)
+
 Export selected pool members (engine operation):
 
 ```json
@@ -821,6 +863,12 @@ Extract by gene query (name/id) from the prepared gene index:
 {"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 116","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ```
 
+Extend an anchored sequence on the contextual 5' side by 250 bp:
+
+```json
+{"ExtendGenomeAnchor":{"seq_id":"grch38_tp53","side":"five_prime","length_bp":250,"output_id":"grch38_tp53_ext5","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+```
+
 Import BED intervals (plain `.bed` or gzipped `.bed.gz`) onto a genome-anchored
 sequence:
 
@@ -863,7 +911,8 @@ Notes:
   - `GENTLE_MAKEBLASTDB_BIN` (default: `makeblastdb`)
   - `GENTLE_BLASTN_BIN` (default: `blastn`)
 - `ImportGenomeBedTrack` expects `seq_id` to be a sequence created by
-  `ExtractGenomeRegion` or `ExtractGenomeGene` (genome-anchored provenance).
+  `ExtractGenomeRegion`, `ExtractGenomeGene`, or `ExtendGenomeAnchor`
+  (genome-anchored provenance).
 - `ImportGenomeBigWigTrack` expects the same genome-anchored `seq_id`.
 - `ImportGenomeVcfTrack` expects the same genome-anchored `seq_id`.
 - BED import accepts local `.bed` and `.bed.gz` files.
@@ -871,7 +920,7 @@ Notes:
   `bigWigToBedGraph` (override with `GENTLE_BIGWIG_TO_BEDGRAPH_BIN`).
 - VCF import accepts local `.vcf` and `.vcf.gz` files.
 - For VCF import, `min_score` / `max_score` filter on VCF `QUAL`.
-- `ExtractGenomeRegion` and `ExtractGenomeGene` append extraction provenance
+- `ExtractGenomeRegion`, `ExtractGenomeGene`, and `ExtendGenomeAnchor` append extraction provenance
   records into `ProjectState.metadata["provenance"]["genome_extractions"]`
   (genome id, coordinates/query, source descriptors, and checksums when present).
 - If `catalog_path` is omitted, engine default catalog is `assets/genomes.json`.
@@ -883,6 +932,8 @@ Notes:
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix
   differences (`1` vs `chr1`).
 - For `ExtractGenomeGene`, `occurrence` is 1-based among matching records.
+- For `ExtendGenomeAnchor`, `side` is contextual to anchor strand.
+  On anchor strand `-`, `5'` increases physical genomic position.
 
 Available `target` values:
 

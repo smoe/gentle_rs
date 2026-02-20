@@ -80,6 +80,15 @@ Notes:
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
 
+### Stability TODO (queued, items 5-7)
+
+- Add malformed-annotation reporting that summarizes non-fatal GTF/GFF parse
+  issues and exposes file/line context in engine/CLI/GUI.
+- Add external-binary preflight diagnostics (BLAST and related tools) with
+  explicit "found/missing/version/path" reporting before long jobs start.
+- Add cancellation/timebox controls for long-running background jobs so users
+  can stop/recover cleanly without restarting the app.
+
 ### Missing test coverage (current priority list)
 
 - Add shell execution tests for `resources sync-rebase` and
