@@ -7,17 +7,15 @@ This page documents the current graphical interface of GENtle.
 ```bash
 cargo run --bin gentle
 cargo run --bin gentle -- path/to/project.gentle.json
-cargo run --features screenshot-capture --bin gentle -- --allow-screenshots
 ```
 
 The GUI opens an empty project unless a project path is passed on startup.
 
 Screenshot capture policy:
 
-- Default builds keep screenshot capture unavailable.
-- Screenshot capture requires:
-  - build feature `screenshot-capture`
-  - runtime flag `--allow-screenshots`
+- Screenshot capture is currently disabled by security policy.
+- `--allow-screenshots` is rejected at startup and `screenshot-window` is
+  disabled in shared shell command execution.
 
 ## Configuration Window
 
@@ -165,7 +163,7 @@ Supported commands:
 - `state-summary`
 - `load-project PATH`
 - `save-project PATH`
-- `screenshot-window OUTPUT.png` (only in screenshot-enabled builds)
+- `screenshot-window OUTPUT.png` (currently disabled by security policy)
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
 - `render-rna-svg SEQ_ID OUTPUT.svg`
 - `rna-info SEQ_ID`
@@ -177,6 +175,8 @@ Supported commands:
 - `import-pool INPUT.pool.gentle.json [PREFIX]`
 - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
 - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
+- `agents list [--catalog PATH]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
 - `genomes list [--catalog PATH]`
 - `genomes validate-catalog [--catalog PATH]`
 - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
@@ -215,17 +215,36 @@ Supported commands:
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
 
-Screenshot command (shared shell, implemented):
+Screenshot command status:
 
-- `screenshot-window OUTPUT.png`
-  - compile-time gated: available only in builds with feature
-    `screenshot-capture`
-  - runtime gated: still requires startup opt-in flag `--allow-screenshots`
-  - captures active/topmost GENtle window only
-  - window lookup uses native AppKit in-process path (no AppleScript bridge)
-  - saves to caller-provided output filename/path
-- current backend support: macOS (`screencapture`); other platforms currently
-  return unsupported
+- `screenshot-window OUTPUT.png` is currently disabled by security policy.
+- Manual documentation updates remain the active path for image artifacts.
+
+## Agent Assistant
+
+GENtle provides a standalone `Agent Assistant` window for structured support from
+configured external/internal agent systems.
+
+Access:
+
+- main menu: `File -> Agent Assistant...`
+- command palette action: `Agent Assistant`
+- shortcut: `Cmd+Shift+A`
+
+Behavior:
+
+- loads systems from catalog JSON (default `assets/agent_systems.json`)
+- system selection is a dropdown from catalog entries
+- optional `Include state summary` injects current project summary context
+- optional `Allow auto execute` only applies to suggestions marked with `auto`
+- `Ask Agent` runs in background and reports status in `Background Jobs`
+- response panel can include:
+  - assistant message text
+  - follow-up questions
+  - suggested shared-shell commands with per-row `Run` action
+- execution is always per suggestion (row-run, explicit all, or explicit auto);
+  there is no global always-execute mode
+- each executed suggestion is logged with status/output in the same window
 
 ## Candidate-Set Workflow (Engine Ops + GUI Shell)
 
@@ -306,7 +325,8 @@ GENtle now tracks open native windows and can raise a selected one to front.
 - macOS native menu bridge: `Window -> GENtle Open Windows…` opens the same switcher
 
 The switcher lists the project window, sequence windows, and open auxiliary
-native windows (Help, Configuration, Prepare Genome, BLAST, Track Import).
+native windows (Help, Configuration, Prepare Genome, BLAST, Track Import,
+Agent Assistant).
 
 ## Help manuals
 
@@ -629,6 +649,7 @@ standalone window/viewport (not embedded in the project canvas):
 - `File -> Prepare Helper Genome...` (or `Genome -> Prepare Helper Genome...`)
 - `File -> Retrieve Helper Sequence...` (or `Genome -> Retrieve Helper Sequence...`)
 - `File -> BLAST Helper Sequence...` (or `Genome -> BLAST Helper Sequence...`)
+- `File -> Agent Assistant...`
 
 Recommended flow:
 

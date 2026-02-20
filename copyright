@@ -5,7 +5,7 @@ Upstream-Contact:
 Source: https://github.com/magnusmanske/gentle_rs/
 
 Files: *
-Copyright: 2024-2026, Magnus Manske
+Copyright: 2024-2025, Magnus Manske
            2026       Steffen Möller <moeller@debian.org>
 License: GPL-2+
  The upstream application UI text states: "Released under GPL 2003".

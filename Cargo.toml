@@ -1,13 +1,13 @@
 [package]
-name = "gentle"
-authors = ["Magnus Manske <magnusmanske@googlemail.com>"]
+name = "GENtle"
+authors = ["Magnus Manske <magnusmanske@googlemail.com>", "Steffen Möller <moeller@debian.org>"]
 description = "GENtle"
 keywords = ["plasmid", "vector", "primer", "biology", "pcr"]
 categories = ["science", "science::bioinformatics"]
 repository = "https://github.com/magnusmanske/gentle_rs/"
 readme = "README.md"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 default-run = "gentle"
 build = "build.rs"
 

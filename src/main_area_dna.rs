@@ -4307,9 +4307,7 @@ impl MainAreaDna {
     ) -> Result<AnchoredRegionAnchor, String> {
         if mode_position {
             let zero_based = position.trim().parse::<usize>().map_err(|_| {
-                format!(
-                    "Invalid {anchor_name} anchor position (expected 0-based integer)"
-                )
+                format!("Invalid {anchor_name} anchor position (expected 0-based integer)")
             })?;
             Ok(AnchoredRegionAnchor::Position { zero_based })
         } else {
@@ -4613,7 +4611,8 @@ impl MainAreaDna {
         ui.horizontal(|ui| {
             ui.label("length");
             ui.add(
-                egui::TextEdit::singleline(&mut self.candidate_between_length_bp).desired_width(64.0),
+                egui::TextEdit::singleline(&mut self.candidate_between_length_bp)
+                    .desired_width(64.0),
             );
             ui.label("step");
             ui.add(
@@ -5485,8 +5484,7 @@ impl MainAreaDna {
             candidate_between_length_bp: self.candidate_between_length_bp.clone(),
             candidate_between_step_bp: self.candidate_between_step_bp.clone(),
             candidate_between_limit: self.candidate_between_limit.clone(),
-            candidate_between_anchor_a_mode_position: self
-                .candidate_between_anchor_a_mode_position,
+            candidate_between_anchor_a_mode_position: self.candidate_between_anchor_a_mode_position,
             candidate_between_anchor_a_position: self.candidate_between_anchor_a_position.clone(),
             candidate_between_anchor_a_feature_kind: self
                 .candidate_between_anchor_a_feature_kind
@@ -5498,8 +5496,7 @@ impl MainAreaDna {
             candidate_between_anchor_a_occurrence: self
                 .candidate_between_anchor_a_occurrence
                 .clone(),
-            candidate_between_anchor_b_mode_position: self
-                .candidate_between_anchor_b_mode_position,
+            candidate_between_anchor_b_mode_position: self.candidate_between_anchor_b_mode_position,
             candidate_between_anchor_b_position: self.candidate_between_anchor_b_position.clone(),
             candidate_between_anchor_b_feature_kind: self
                 .candidate_between_anchor_b_feature_kind

@@ -1,5 +1,5 @@
 {
-   "command_count" : 67,
+   "command_count" : 69,
    "commands" : [
       {
          "aliases" : [
@@ -200,6 +200,30 @@
          "path" : "import-pool",
          "summary" : "Import pool artifact members as project sequences.",
          "usage" : "import-pool INPUT.pool.gentle.json [PREFIX]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "agents list",
+         "summary" : "List configured external/builtin agent systems from catalog.",
+         "usage" : "agents list [--catalog PATH]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "agents ask",
+         "summary" : "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
+         "usage" : "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
       },
       {
          "aliases" : [],

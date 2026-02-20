@@ -3570,13 +3570,10 @@ impl GentleEngine {
                 message: "Candidate macro parameter name cannot be empty".to_string(),
             });
         }
-        let valid = trimmed
-            .chars()
-            .enumerate()
-            .all(|(idx, ch)| match idx {
-                0 => ch.is_ascii_alphabetic() || ch == '_',
-                _ => ch.is_ascii_alphanumeric() || ch == '_',
-            });
+        let valid = trimmed.chars().enumerate().all(|(idx, ch)| match idx {
+            0 => ch.is_ascii_alphabetic() || ch == '_',
+            _ => ch.is_ascii_alphanumeric() || ch == '_',
+        });
         if !valid {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -3705,12 +3702,11 @@ impl GentleEngine {
             }
         }
 
-        let placeholder_regex = Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| {
-            EngineError {
+        let placeholder_regex =
+            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
                 code: ErrorCode::Internal,
                 message: format!("Could not compile candidate macro placeholder regex: {e}"),
-            }
-        })?;
+            })?;
         let mut missing: Vec<String> = vec![];
         for captures in placeholder_regex.captures_iter(&template.script) {
             if let Some(name) = captures.get(1).map(|m| m.as_str()) {
@@ -5563,15 +5559,18 @@ impl GentleEngine {
             let mut min_value = f64::INFINITY;
             let mut max_value = f64::NEG_INFINITY;
             for (idx, candidate) in set.candidates.iter().enumerate() {
-                let value = candidate.metrics.get(metric_name).copied().ok_or_else(|| {
-                    EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Candidate {} in '{}' is missing metric '{}'",
-                            idx, set_name, metric_name
-                        ),
-                    }
-                })?;
+                let value =
+                    candidate
+                        .metrics
+                        .get(metric_name)
+                        .copied()
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Candidate {} in '{}' is missing metric '{}'",
+                                idx, set_name, metric_name
+                            ),
+                        })?;
                 if !value.is_finite() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
@@ -5593,15 +5592,18 @@ impl GentleEngine {
             for ((metric_name, weight, direction), (min_value, max_value)) in
                 compiled.iter().zip(bounds.iter())
             {
-                let raw_value = candidate.metrics.get(metric_name).copied().ok_or_else(|| {
-                    EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "Candidate in '{}' is missing metric '{}'",
-                            set_name, metric_name
-                        ),
-                    }
-                })?;
+                let raw_value =
+                    candidate
+                        .metrics
+                        .get(metric_name)
+                        .copied()
+                        .ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "Candidate in '{}' is missing metric '{}'",
+                                set_name, metric_name
+                            ),
+                        })?;
                 let objective_value = if normalize_metrics {
                     let scaled = if *max_value > *min_value {
                         (raw_value - *min_value) / (*max_value - *min_value)
@@ -5624,7 +5626,10 @@ impl GentleEngine {
             combined_values.push(combined);
         }
 
-        let min_combined = combined_values.iter().copied().fold(f64::INFINITY, f64::min);
+        let min_combined = combined_values
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
         let max_combined = combined_values
             .iter()
             .copied()
@@ -5890,7 +5895,9 @@ impl GentleEngine {
             .candidates
             .into_iter()
             .zip(dominated.into_iter())
-            .filter_map(|(candidate, is_dominated)| if is_dominated { None } else { Some(candidate) })
+            .filter_map(
+                |(candidate, is_dominated)| if is_dominated { None } else { Some(candidate) },
+            )
             .collect::<Vec<_>>();
         let raw_frontier_count = frontier.len();
         if let Some(limit) = max_candidates {
@@ -5991,12 +5998,11 @@ impl GentleEngine {
             .iter()
             .map(|parameter| parameter.name.clone())
             .collect::<HashSet<_>>();
-        let placeholder_regex = Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| {
-            EngineError {
+        let placeholder_regex =
+            Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").map_err(|e| EngineError {
                 code: ErrorCode::Internal,
                 message: format!("Could not compile candidate macro placeholder regex: {e}"),
-            }
-        })?;
+            })?;
         for captures in placeholder_regex.captures_iter(script) {
             if let Some(param_name) = captures.get(1).map(|m| m.as_str()) {
                 if !declared.contains(param_name) {
@@ -6036,15 +6042,13 @@ impl GentleEngine {
             .is_some();
         self.write_candidate_macro_template_store(store)?;
         if replaced {
-            result.messages.push(format!(
-                "Updated candidate macro template '{}'",
-                name
-            ));
+            result
+                .messages
+                .push(format!("Updated candidate macro template '{}'", name));
         } else {
-            result.messages.push(format!(
-                "Added candidate macro template '{}'",
-                name
-            ));
+            result
+                .messages
+                .push(format!("Added candidate macro template '{}'", name));
         }
         Ok(())
     }
@@ -7089,11 +7093,10 @@ impl GentleEngine {
     }
 
     fn resolve_bigwig_to_bedgraph_executable() -> String {
-        env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| DEFAULT_BIGWIG_TO_BEDGRAPH_BIN.to_string())
+        crate::tool_overrides::resolve_tool_executable(
+            BIGWIG_TO_BEDGRAPH_ENV_BIN,
+            DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        )
     }
 
     fn convert_bigwig_to_bedgraph(path: &str) -> Result<NamedTempFile, EngineError> {
@@ -12744,7 +12747,9 @@ exit 2
     impl EnvVarGuard {
         fn set(key: &'static str, value: &str) -> Self {
             let previous = env::var(key).ok();
-            env::set_var(key, value);
+            unsafe {
+                env::set_var(key, value);
+            }
             Self { key, previous }
         }
     }
@@ -12752,8 +12757,12 @@ exit 2
     impl Drop for EnvVarGuard {
         fn drop(&mut self) {
             match &self.previous {
-                Some(value) => env::set_var(self.key, value),
-                None => env::remove_var(self.key),
+                Some(value) => unsafe {
+                    env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    env::remove_var(self.key);
+                },
             }
         }
     }

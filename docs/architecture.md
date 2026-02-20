@@ -312,6 +312,37 @@ Current work satisfies (1) through (4) for most operations; remaining gaps are
 mainly view-model formalization and promoting remaining adapter-level utility
 contracts into stable engine operations.
 
+### Agent assistant bridge (implemented)
+
+GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
+
+- Shared shell commands:
+  - `agents list [--catalog PATH]`
+  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- Catalog source defaults to `assets/agent_systems.json`.
+- Catalog entries describe transport and invocation details:
+  - `builtin_echo` (offline/demo transport)
+  - `external_json_stdio` (external adapter command over stdin/stdout JSON)
+- Agent request payload includes:
+  - system id and prompt
+  - optional project state summary context
+- Agent response payload supports mixed outcomes per reply:
+  - plain assistant message (`chat`)
+  - follow-up questions (`ask`)
+  - suggested shell commands with explicit execution intent (`ask` or `auto`)
+
+Execution safety model:
+
+- There is no global always-execute mode.
+- Execution is evaluated per returned suggestion:
+  - explicit user-run by index (`--execute-index`, GUI per-row Run)
+  - bulk explicit run (`--execute-all`)
+  - auto-only when caller enables `--allow-auto-exec` and suggestion intent is
+    `auto`
+- Nested/recursive `agents ask` execution is blocked in suggested-command runs.
+- Suggested commands are executed through the same shared shell parser/executor
+  used by GUI shell and `gentle_cli shell`.
+
 ### Candidate query/optimization command contract (current)
 
 Current implementation is engine-level and exposed through:
@@ -431,6 +462,12 @@ Important separation:
 - Add tracked genome-signal subscriptions with auto-sync for newly anchored
   sequences via engine-managed subscription metadata:
   accepted and implemented
+- Add agent-assistant bridge with catalog-driven transports, per-reply
+  execution intents, shared-shell execution, and standalone GUI viewport:
+  accepted and implemented
+- Replace runtime process-environment mutation for tool-path overrides with a
+  process-local override registry (`tool_overrides`) to keep Rust 2024-safe
+  behavior without unsafe env writes: accepted and implemented
 - Prevent idle redraw churn by deduplicating window-title viewport commands in
   GUI update loop: accepted and implemented
 - Defer for now: `import-pool` engine operation until first-class container

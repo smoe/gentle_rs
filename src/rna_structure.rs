@@ -96,11 +96,7 @@ pub fn is_single_stranded_rna(dna: &DNAsequence) -> bool {
 }
 
 fn rnapkin_executable() -> String {
-    std::env::var(RNAPKIN_ENV_BIN)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| DEFAULT_RNAPKIN_BIN.to_string())
+    crate::tool_overrides::resolve_tool_executable(RNAPKIN_ENV_BIN, DEFAULT_RNAPKIN_BIN)
 }
 
 fn normalized_rna_sequence(dna: &DNAsequence) -> String {

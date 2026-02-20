@@ -244,7 +244,13 @@ impl RenderDna {
     }
 
     fn has_regulatory_hint(feature: &Feature) -> bool {
-        for key in ["regulatory_class", "regulation", "function", "note", "label"] {
+        for key in [
+            "regulatory_class",
+            "regulation",
+            "function",
+            "note",
+            "label",
+        ] {
             for value in feature.qualifier_values(key.into()) {
                 let lower = value.to_ascii_lowercase();
                 if lower.contains("regulatory")

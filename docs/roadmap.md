@@ -96,11 +96,46 @@ Notes:
 - Separate visual lanes more strictly (annotation rectangles vs predictive
   overlays vs signal tracks) to avoid overlap collisions.
 
+### Post-delivery hardening backlog (shared)
+
+- Finish-button discoverability hardening:
+  - Run a completeness audit so every actionable button has both a concise
+    tooltip and a stable hover-status name in the status bar.
+  - Add regression checks for newly introduced dialogs/panels so these labels
+    do not silently disappear.
+- Dense-feature readability hardening:
+  - Continue smarter lane packing with stronger non-overlap constraints and
+    reduced wasted vertical gaps.
+  - Keep strict `REG@DNA` mode enforcing DNA-level placement only (never
+    intruding into gene lanes) and add focused visual regression fixtures.
+- Undo/redo reliability hardening:
+  - Expand operation-level history tests around mixed GUI workflows and
+    background-job gating.
+  - Keep visible history and transitions consistent after imports/retries.
+- Guided anchored-import hardening:
+  - Keep preflight summary deterministic for GenBank/BED/BigWig/VCF
+    (anchor detection, match status, projected tracks, apply-to-all behavior).
+  - Add broader fixture coverage for multi-anchor projects and re-anchoring.
+- Command-palette hardening:
+  - Keep action naming/keywords stable and improve ranking as command count
+    grows.
+  - Add keyboard-navigation regressions (`Cmd/Ctrl+K`, arrows, enter, escape).
+- Background-jobs robustness:
+  - Implemented now:
+    - typed job-event records with `kind/phase/job_id/timestamp/summary`
+    - monotonic per-job IDs for prepare/track-import/BLAST workers
+    - stale worker-message rejection by `job_id`
+    - idempotent cancellation handlers reused by dialogs and jobs panel
+    - explicit retry events from jobs panel actions
+  - Next:
+    - add BLAST cancellation support (worker-side interruption)
+    - optionally persist recent job-event history across restarts
+    - track retry argument snapshots for reproducibility/debugging
+
 ### Current branch blockers (must clear first)
 
-- Full `cargo test -q` currently has known red tests:
-  - `genomes::tests::test_prepare_reuses_downloaded_sequence_when_annotation_path_is_invalid`
-  - `genomes::tests::test_repo_assets_genome_catalog_is_valid`
+- None currently blocking on this branch. Latest local run: `cargo test -q`
+  passed (`263 passed, 1 ignored` in main suite; additional suites green).
 
 ### Stability TODO (queued, items 5-7)
 

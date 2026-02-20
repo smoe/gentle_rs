@@ -10,18 +10,24 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, RwLock,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
     about,
+    agent_bridge::{
+        invoke_agent_support, load_agent_system_catalog, AgentExecutionIntent,
+        AgentInvocationOutcome, AgentResponse, AgentSystemSpec, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+    },
     dna_sequence::{self, DNAsequence},
     engine::{
         BlastHitFeatureInput, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
         GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
         GenomeTrackSyncReport, GentleEngine, OpResult, Operation, OperationProgress, ProjectState,
-        SequenceGenomeAnchorSummary,
-        BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        SequenceGenomeAnchorSummary, BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+    },
+    engine_shell::{
+        execute_shell_command_with_options, parse_shell_line, ShellCommand, ShellExecutionOptions,
     },
     enzymes,
     genomes::{
@@ -31,7 +37,7 @@ use crate::{
         DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV,
     },
     icons::APP_ICON,
-    resource_sync, tf_motifs,
+    resource_sync, tf_motifs, tool_overrides,
     window::Window,
     TRANSLATIONS,
 };
@@ -221,6 +227,7 @@ pub struct GENtleApp {
     genome_blast_selected_result: usize,
     genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
+    show_agent_assistant_dialog: bool,
     genome_track_seq_id: String,
     genome_track_source_selection: GenomeTrackSourceSelection,
     genome_track_path: String,
@@ -244,8 +251,21 @@ pub struct GENtleApp {
     show_history_panel: bool,
     hover_status_name: String,
     app_status: String,
-    job_event_log: Vec<String>,
+    next_background_job_id: u64,
+    job_event_log: Vec<BackgroundJobEvent>,
     genome_track_preflight_track_subscription: bool,
+    agent_catalog_path: String,
+    agent_catalog_loaded_path: String,
+    agent_catalog_error: String,
+    agent_systems: Vec<AgentSystemSpec>,
+    agent_system_id: String,
+    agent_prompt: String,
+    agent_include_state_summary: bool,
+    agent_allow_auto_exec: bool,
+    agent_status: String,
+    agent_task: Option<AgentAskTask>,
+    agent_last_invocation: Option<AgentInvocationOutcome>,
+    agent_execution_log: Vec<AgentCommandExecutionRecord>,
 }
 
 #[derive(Clone)]
@@ -274,7 +294,76 @@ enum ConfigurationTab {
     Graphics,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BackgroundJobKind {
+    PrepareGenome,
+    BlastGenome,
+    TrackImport,
+    AgentAssist,
+}
+
+impl BackgroundJobKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::PrepareGenome => "PrepareGenome",
+            Self::BlastGenome => "BlastGenome",
+            Self::TrackImport => "TrackImport",
+            Self::AgentAssist => "AgentAssist",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BackgroundJobEventPhase {
+    Started,
+    CancelRequested,
+    Completed,
+    Failed,
+    Retried,
+    IgnoredStale,
+}
+
+impl BackgroundJobEventPhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Started => "started",
+            Self::CancelRequested => "cancel-requested",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Retried => "retried",
+            Self::IgnoredStale => "ignored-stale",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct BackgroundJobEvent {
+    job_id: Option<u64>,
+    kind: BackgroundJobKind,
+    phase: BackgroundJobEventPhase,
+    emitted_at_unix_ms: u128,
+    summary: String,
+}
+
+impl BackgroundJobEvent {
+    fn to_line(&self) -> String {
+        let job_token = self
+            .job_id
+            .map(|id| format!("#{id}"))
+            .unwrap_or_else(|| "#-".to_string());
+        format!(
+            "[{} {} {} @{}] {}",
+            self.kind.label(),
+            job_token,
+            self.phase.label(),
+            self.emitted_at_unix_ms,
+            self.summary
+        )
+    }
+}
+
 struct GenomePrepareTask {
+    job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
     timeout_seconds: Option<u64>,
@@ -282,19 +371,32 @@ struct GenomePrepareTask {
 }
 
 enum GenomePrepareTaskMessage {
-    Progress(PrepareGenomeProgress),
-    Done(Result<OpResult, EngineError>),
+    Progress {
+        job_id: u64,
+        progress: PrepareGenomeProgress,
+    },
+    Done {
+        job_id: u64,
+        result: Result<OpResult, EngineError>,
+    },
 }
 
 struct GenomeTrackImportTask {
+    job_id: u64,
     started: Instant,
     cancel_requested: Arc<AtomicBool>,
     receiver: mpsc::Receiver<GenomeTrackImportTaskMessage>,
 }
 
 enum GenomeTrackImportTaskMessage {
-    Progress(GenomeTrackImportProgress),
-    Done(Result<OpResult, EngineError>),
+    Progress {
+        job_id: u64,
+        progress: GenomeTrackImportProgress,
+    },
+    Done {
+        job_id: u64,
+        result: Result<OpResult, EngineError>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -305,17 +407,22 @@ enum GenomeBlastSourceMode {
 }
 
 struct GenomeBlastTask {
+    job_id: u64,
     started: Instant,
     receiver: mpsc::Receiver<GenomeBlastTaskMessage>,
 }
 
 enum GenomeBlastTaskMessage {
     Progress {
+        job_id: u64,
         done_queries: usize,
         total_queries: usize,
         current_query_label: String,
     },
-    Done(Result<GenomeBlastBatchResult, String>),
+    Done {
+        job_id: u64,
+        result: Result<GenomeBlastBatchResult, String>,
+    },
 }
 
 #[derive(Clone)]
@@ -329,6 +436,30 @@ struct GenomeBlastQueryResult {
 struct GenomeBlastBatchResult {
     reports: Vec<GenomeBlastQueryResult>,
     failed_queries: Vec<String>,
+}
+
+struct AgentAskTask {
+    job_id: u64,
+    started: Instant,
+    receiver: mpsc::Receiver<AgentAskTaskMessage>,
+}
+
+enum AgentAskTaskMessage {
+    Done {
+        job_id: u64,
+        result: Result<AgentInvocationOutcome, String>,
+    },
+}
+
+#[derive(Clone)]
+struct AgentCommandExecutionRecord {
+    index_1based: usize,
+    command: String,
+    trigger: String,
+    ok: bool,
+    state_changed: bool,
+    summary: String,
+    executed_at_unix_ms: u128,
 }
 
 #[derive(Clone)]
@@ -380,6 +511,7 @@ enum CommandPaletteAction {
     OpenRetrieveGenome,
     OpenBlastGenome,
     OpenGenomeTracks,
+    OpenAgentAssistant,
     OpenPreparedInspector,
     OpenGuiManual,
     OpenCliManual,
@@ -525,6 +657,7 @@ impl Default for GENtleApp {
             genome_blast_import_track_name: "blast_hits".to_string(),
             genome_blast_import_clear_existing: false,
             show_genome_bed_track_dialog: false,
+            show_agent_assistant_dialog: false,
             genome_track_seq_id: String::new(),
             genome_track_source_selection: GenomeTrackSourceSelection::Auto,
             genome_track_path: String::new(),
@@ -546,8 +679,21 @@ impl Default for GENtleApp {
             show_history_panel: false,
             hover_status_name: String::new(),
             app_status: String::new(),
+            next_background_job_id: 1,
             job_event_log: vec![],
             genome_track_preflight_track_subscription: true,
+            agent_catalog_path: DEFAULT_AGENT_SYSTEM_CATALOG_PATH.to_string(),
+            agent_catalog_loaded_path: String::new(),
+            agent_catalog_error: String::new(),
+            agent_systems: vec![],
+            agent_system_id: "builtin_echo".to_string(),
+            agent_prompt: String::new(),
+            agent_include_state_summary: true,
+            agent_allow_auto_exec: false,
+            agent_status: String::new(),
+            agent_task: None,
+            agent_last_invocation: None,
+            agent_execution_log: vec![],
         }
     }
 }
@@ -571,6 +717,10 @@ impl GENtleApp {
 
     fn bed_track_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle BED Tracks Viewport")
+    }
+
+    fn agent_assistant_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Agent Assistant Viewport")
     }
 
     fn configuration_store_path() -> PathBuf {
@@ -766,6 +916,22 @@ impl GENtleApp {
         self.configuration_graphics_dirty = false;
     }
 
+    fn sync_runtime_tool_overrides_from_configuration(&self) {
+        tool_overrides::set_tool_override(
+            "GENTLE_RNAPKIN_BIN",
+            &self.configuration_rnapkin_executable,
+        );
+        tool_overrides::set_tool_override(
+            MAKEBLASTDB_ENV_BIN,
+            &self.configuration_makeblastdb_executable,
+        );
+        tool_overrides::set_tool_override(BLASTN_ENV_BIN, &self.configuration_blastn_executable);
+        tool_overrides::set_tool_override(
+            BIGWIG_TO_BEDGRAPH_ENV_BIN,
+            &self.configuration_bigwig_to_bedgraph_executable,
+        );
+    }
+
     fn load_persisted_configuration(&mut self, apply_graphics_to_current_project: bool) {
         let Some(saved) = Self::read_persisted_configuration_from_disk() else {
             return;
@@ -775,35 +941,7 @@ impl GENtleApp {
         self.configuration_blastn_executable = saved.blastn_executable.trim().to_string();
         self.configuration_bigwig_to_bedgraph_executable =
             saved.bigwig_to_bedgraph_executable.trim().to_string();
-        if self.configuration_rnapkin_executable.is_empty() {
-            env::remove_var("GENTLE_RNAPKIN_BIN");
-        } else {
-            env::set_var(
-                "GENTLE_RNAPKIN_BIN",
-                self.configuration_rnapkin_executable.clone(),
-            );
-        }
-        if self.configuration_makeblastdb_executable.is_empty() {
-            env::remove_var(MAKEBLASTDB_ENV_BIN);
-        } else {
-            env::set_var(
-                MAKEBLASTDB_ENV_BIN,
-                self.configuration_makeblastdb_executable.clone(),
-            );
-        }
-        if self.configuration_blastn_executable.is_empty() {
-            env::remove_var(BLASTN_ENV_BIN);
-        } else {
-            env::set_var(BLASTN_ENV_BIN, self.configuration_blastn_executable.clone());
-        }
-        if self.configuration_bigwig_to_bedgraph_executable.is_empty() {
-            env::remove_var(BIGWIG_TO_BEDGRAPH_ENV_BIN);
-        } else {
-            env::set_var(
-                BIGWIG_TO_BEDGRAPH_ENV_BIN,
-                self.configuration_bigwig_to_bedgraph_executable.clone(),
-            );
-        }
+        self.sync_runtime_tool_overrides_from_configuration();
         self.configuration_graphics = saved.graphics_defaults;
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
         self.configuration_graphics_dirty = false;
@@ -1048,6 +1186,15 @@ impl GENtleApp {
         }
     }
 
+    fn resolved_bigwig_to_bedgraph_executable(&self) -> String {
+        let configured = self.configuration_bigwig_to_bedgraph_executable.trim();
+        if configured.is_empty() {
+            DEFAULT_BIGWIG_TO_BEDGRAPH_BIN.to_string()
+        } else {
+            configured.to_string()
+        }
+    }
+
     fn clear_rnapkin_validation(&mut self) {
         self.configuration_rnapkin_validation_ok = None;
         self.configuration_rnapkin_validation_message.clear();
@@ -1165,12 +1312,13 @@ impl GENtleApp {
     }
 
     fn sync_configuration_from_runtime(&mut self) {
-        self.configuration_rnapkin_executable = env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default();
+        self.configuration_rnapkin_executable =
+            tool_overrides::configured_or_env("GENTLE_RNAPKIN_BIN");
         self.configuration_makeblastdb_executable =
-            env::var(MAKEBLASTDB_ENV_BIN).unwrap_or_default();
-        self.configuration_blastn_executable = env::var(BLASTN_ENV_BIN).unwrap_or_default();
+            tool_overrides::configured_or_env(MAKEBLASTDB_ENV_BIN);
+        self.configuration_blastn_executable = tool_overrides::configured_or_env(BLASTN_ENV_BIN);
         self.configuration_bigwig_to_bedgraph_executable =
-            env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN).unwrap_or_default();
+            tool_overrides::configured_or_env(BIGWIG_TO_BEDGRAPH_ENV_BIN);
         if let Ok(engine) = self.engine.read() {
             self.configuration_graphics = engine.state().display.clone();
             self.configuration_graphics_dirty = false;
@@ -1206,22 +1354,104 @@ impl GENtleApp {
         response
     }
 
-    fn push_job_event(&mut self, event: String) {
-        let trimmed = event.trim();
+    fn alloc_background_job_id(&mut self) -> u64 {
+        let next = self.next_background_job_id.max(1);
+        self.next_background_job_id = next.saturating_add(1);
+        next
+    }
+
+    fn now_unix_ms() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|v| v.as_millis())
+            .unwrap_or_default()
+    }
+
+    fn push_job_event<S: Into<String>>(
+        &mut self,
+        kind: BackgroundJobKind,
+        phase: BackgroundJobEventPhase,
+        job_id: Option<u64>,
+        summary: S,
+    ) {
+        let summary = summary.into();
+        let trimmed = summary.trim();
         if trimmed.is_empty() {
             return;
         }
-        self.job_event_log.push(trimmed.to_string());
+        self.job_event_log.push(BackgroundJobEvent {
+            job_id,
+            kind,
+            phase,
+            emitted_at_unix_ms: Self::now_unix_ms(),
+            summary: trimmed.to_string(),
+        });
         if self.job_event_log.len() > 200 {
             let drain_len = self.job_event_log.len() - 200;
             self.job_event_log.drain(0..drain_len);
         }
     }
 
+    fn request_prepare_task_cancel(&mut self, origin: &str) {
+        let Some((job_id, already_requested)) = self.genome_prepare_task.as_ref().map(|task| {
+            (
+                task.job_id,
+                task.cancel_requested.swap(true, Ordering::Relaxed),
+            )
+        }) else {
+            self.genome_prepare_status = "No running genome preparation task to cancel".to_string();
+            return;
+        };
+
+        if already_requested {
+            self.genome_prepare_status =
+                "Cancellation was already requested for genome preparation".to_string();
+            return;
+        }
+
+        self.genome_prepare_status =
+            "Cancellation requested for running genome preparation".to_string();
+        self.push_job_event(
+            BackgroundJobKind::PrepareGenome,
+            BackgroundJobEventPhase::CancelRequested,
+            Some(job_id),
+            format!("Cancellation requested from {origin}"),
+        );
+    }
+
+    fn request_track_import_task_cancel(&mut self, origin: &str) {
+        let Some((job_id, already_requested)) =
+            self.genome_track_import_task.as_ref().map(|task| {
+                (
+                    task.job_id,
+                    task.cancel_requested.swap(true, Ordering::Relaxed),
+                )
+            })
+        else {
+            self.genome_track_status = "No running track-import job to cancel".to_string();
+            return;
+        };
+
+        if already_requested {
+            self.genome_track_status =
+                "Cancellation was already requested for track import".to_string();
+            return;
+        }
+
+        self.genome_track_status = "Cancellation requested for running track import".to_string();
+        self.push_job_event(
+            BackgroundJobKind::TrackImport,
+            BackgroundJobEventPhase::CancelRequested,
+            Some(job_id),
+            format!("Cancellation requested from {origin}"),
+        );
+    }
+
     fn has_active_background_jobs(&self) -> bool {
         self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
             || self.genome_track_import_task.is_some()
+            || self.agent_task.is_some()
     }
 
     fn refresh_sequence_windows_from_engine_state(&mut self) {
@@ -1365,6 +1595,12 @@ impl GENtleApp {
                 action: CommandPaletteAction::OpenGenomeTracks,
             },
             CommandPaletteEntry {
+                title: "Agent Assistant".to_string(),
+                detail: "Ask configured agent systems and run suggested commands".to_string(),
+                keywords: "agent assistant chat automation support".to_string(),
+                action: CommandPaletteAction::OpenAgentAssistant,
+            },
+            CommandPaletteEntry {
                 title: "Prepared References".to_string(),
                 detail: "Inspect prepared genome installs".to_string(),
                 keywords: "genome inspector prepared".to_string(),
@@ -1437,6 +1673,7 @@ impl GENtleApp {
             }
             CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
             CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
+            CommandPaletteAction::OpenAgentAssistant => self.open_agent_assistant_dialog(),
             CommandPaletteAction::OpenPreparedInspector => {
                 self.open_reference_genome_inspector_dialog()
             }
@@ -1816,11 +2053,16 @@ impl GENtleApp {
         self.genome_blast_selected_result = 0;
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
+        self.show_agent_assistant_dialog = false;
         self.genome_track_status.clear();
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
         self.genome_track_autosync_status.clear();
         self.tracked_autosync_last_op_count = None;
+        self.agent_task = None;
+        self.agent_status.clear();
+        self.agent_last_invocation = None;
+        self.agent_execution_log.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.mark_clean_snapshot();
@@ -1911,6 +2153,11 @@ impl GENtleApp {
     fn open_genome_bed_track_dialog(&mut self) {
         self.load_bed_track_subscriptions_from_state();
         self.show_genome_bed_track_dialog = true;
+    }
+
+    fn open_agent_assistant_dialog(&mut self) {
+        self.refresh_agent_system_catalog();
+        self.show_agent_assistant_dialog = true;
     }
 
     fn open_helper_genome_prepare_dialog(&mut self) {
@@ -2084,6 +2331,7 @@ impl GENtleApp {
         let op = Self::genome_track_import_operation(&seq_id, &subscription);
         let source_label = subscription.source.label().to_string();
         let path_label = subscription.path.clone();
+        let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
         let cancel_requested = Arc::new(AtomicBool::new(false));
         self.genome_track_import_progress = None;
@@ -2091,11 +2339,17 @@ impl GENtleApp {
             "Importing {source_label} track in background: '{}' -> '{}'",
             path_label, seq_id
         );
-        self.push_job_event(format!(
-            "Track import started: {} '{}' -> {}",
-            source_label, path_label, seq_id
-        ));
+        self.push_job_event(
+            BackgroundJobKind::TrackImport,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!(
+                "Track import started: {} '{}' -> {}",
+                source_label, path_label, seq_id
+            ),
+        );
         self.genome_track_import_task = Some(GenomeTrackImportTask {
+            job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
             receiver: rx,
@@ -2109,26 +2363,24 @@ impl GENtleApp {
                 let mut guard = engine.write().expect("Engine lock poisoned");
                 guard.apply_with_progress(op, move |progress| match progress {
                     OperationProgress::GenomeTrackImport(p) => {
-                        let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress(p));
+                        let _ = tx_progress.send(GenomeTrackImportTaskMessage::Progress {
+                            job_id,
+                            progress: p,
+                        });
                         !cancel_flag.load(Ordering::Relaxed)
                     }
                     _ => true,
                 })
             };
-            let _ = tx.send(GenomeTrackImportTaskMessage::Done(outcome));
+            let _ = tx.send(GenomeTrackImportTaskMessage::Done {
+                job_id,
+                result: outcome,
+            });
         });
     }
 
     fn validate_bigwig_converter_available(&self) -> Result<String> {
-        let configured = self.configuration_bigwig_to_bedgraph_executable.trim();
-        let executable = if configured.is_empty() {
-            env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
-                .ok()
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_BIGWIG_TO_BEDGRAPH_BIN.to_string())
-        } else {
-            configured.to_string()
-        };
+        let executable = self.resolved_bigwig_to_bedgraph_executable();
         match Command::new(&executable).arg("-version").output() {
             Ok(output) => {
                 let detail = Self::first_non_empty_output_line(&output.stdout, &output.stderr);
@@ -2242,21 +2494,31 @@ impl GENtleApp {
                     ),
                     tracked_note
                 );
-                self.push_job_event(format!(
-                    "{} import (all anchored): applied={}, failed={}",
-                    subscription.source.label(),
-                    report.applied_imports,
-                    report.failed_imports
-                ));
+                self.push_job_event(
+                    BackgroundJobKind::TrackImport,
+                    BackgroundJobEventPhase::Completed,
+                    None,
+                    format!(
+                        "{} import (all anchored): applied={}, failed={}",
+                        subscription.source.label(),
+                        report.applied_imports,
+                        report.failed_imports
+                    ),
+                );
                 self.load_bed_track_subscriptions_from_state();
             }
             Err(e) => {
                 self.genome_track_status = format!("Import track failed: {}", e.message);
-                self.push_job_event(format!(
-                    "{} import (all anchored) failed: {}",
-                    subscription.source.label(),
-                    e.message
-                ));
+                self.push_job_event(
+                    BackgroundJobKind::TrackImport,
+                    BackgroundJobEventPhase::Failed,
+                    None,
+                    format!(
+                        "{} import (all anchored) failed: {}",
+                        subscription.source.label(),
+                        e.message
+                    ),
+                );
             }
         }
     }
@@ -2288,21 +2550,28 @@ impl GENtleApp {
                     ),
                     &report,
                 );
-                self.push_job_event(format!(
-                    "Re-applied tracked {} '{}': applied={}, failed={}",
-                    subscription.source.label(),
-                    subscription.path,
-                    report.applied_imports,
-                    report.failed_imports
-                ));
+                self.push_job_event(
+                    BackgroundJobKind::TrackImport,
+                    BackgroundJobEventPhase::Completed,
+                    None,
+                    format!(
+                        "Re-applied tracked {} '{}': applied={}, failed={}",
+                        subscription.source.label(),
+                        subscription.path,
+                        report.applied_imports,
+                        report.failed_imports
+                    ),
+                );
             }
             Err(e) => {
                 self.genome_track_status =
                     format!("Could not re-apply tracked subscription: {}", e.message);
-                self.push_job_event(format!(
-                    "Tracked subscription apply failed: {}",
-                    e.message
-                ));
+                self.push_job_event(
+                    BackgroundJobKind::TrackImport,
+                    BackgroundJobEventPhase::Failed,
+                    None,
+                    format!("Tracked subscription apply failed: {}", e.message),
+                );
             }
         }
     }
@@ -2331,17 +2600,27 @@ impl GENtleApp {
                 if report.applied_imports > 0 || report.failed_imports > 0 {
                     self.genome_track_autosync_status =
                         Self::format_track_sync_status("Auto-sync", &report);
-                    self.push_job_event(format!(
-                        "Auto-sync: applied={}, failed={}",
-                        report.applied_imports, report.failed_imports
-                    ));
+                    self.push_job_event(
+                        BackgroundJobKind::TrackImport,
+                        BackgroundJobEventPhase::Completed,
+                        None,
+                        format!(
+                            "Auto-sync: applied={}, failed={}",
+                            report.applied_imports, report.failed_imports
+                        ),
+                    );
                 }
                 self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             }
             Err(e) => {
                 self.genome_track_autosync_status =
                     format!("Auto-sync failed unexpectedly: {}", e.message);
-                self.push_job_event(format!("Auto-sync failed: {}", e.message));
+                self.push_job_event(
+                    BackgroundJobKind::TrackImport,
+                    BackgroundJobEventPhase::Failed,
+                    None,
+                    format!("Auto-sync failed: {}", e.message),
+                );
                 self.tracked_autosync_last_op_count = Some(self.current_operation_count());
             }
         }
@@ -2368,6 +2647,253 @@ impl GENtleApp {
         }
         if self.genome_id != prev_genome {
             self.invalidate_genome_genes();
+        }
+    }
+
+    fn refresh_agent_system_catalog(&mut self) {
+        let catalog_path = self.agent_catalog_path.trim().to_string();
+        if !self.agent_systems.is_empty()
+            && self.agent_catalog_loaded_path == catalog_path
+            && self.agent_catalog_error.is_empty()
+        {
+            return;
+        }
+        self.agent_catalog_loaded_path = catalog_path.clone();
+        match load_agent_system_catalog(Some(&catalog_path)) {
+            Ok((_resolved, catalog)) => {
+                self.agent_systems = catalog.systems;
+                self.agent_catalog_error.clear();
+                if self.agent_system_id.trim().is_empty()
+                    || !self
+                        .agent_systems
+                        .iter()
+                        .any(|system| system.id == self.agent_system_id)
+                {
+                    self.agent_system_id = self
+                        .agent_systems
+                        .first()
+                        .map(|system| system.id.clone())
+                        .unwrap_or_default();
+                }
+            }
+            Err(err) => {
+                self.agent_catalog_error = err;
+                self.agent_systems.clear();
+                self.agent_system_id.clear();
+            }
+        }
+    }
+
+    fn selected_agent_system(&self) -> Option<AgentSystemSpec> {
+        self.agent_systems
+            .iter()
+            .find(|system| system.id == self.agent_system_id)
+            .cloned()
+    }
+
+    fn start_agent_assistant_request(&mut self) {
+        if self.agent_task.is_some() {
+            self.agent_status = "Agent request is already running".to_string();
+            return;
+        }
+        self.refresh_agent_system_catalog();
+        if !self.agent_catalog_error.is_empty() {
+            self.agent_status = format!("Agent catalog error: {}", self.agent_catalog_error);
+            return;
+        }
+        let system_id = self.agent_system_id.trim().to_string();
+        if system_id.is_empty() {
+            self.agent_status = "Select an agent system first".to_string();
+            return;
+        }
+        let prompt = self.agent_prompt.trim().to_string();
+        if prompt.is_empty() {
+            self.agent_status = "Agent prompt cannot be empty".to_string();
+            return;
+        }
+
+        let state_summary = if self.agent_include_state_summary {
+            Some(self.engine.read().unwrap().summarize_state())
+        } else {
+            None
+        };
+        let catalog_path = self.agent_catalog_path.trim().to_string();
+        let job_id = self.alloc_background_job_id();
+        let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
+        self.agent_status = format!("Asking agent '{}' in background", system_id);
+        self.push_job_event(
+            BackgroundJobKind::AgentAssist,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!("Agent request started for system '{}'", system_id),
+        );
+        self.agent_task = Some(AgentAskTask {
+            job_id,
+            started: Instant::now(),
+            receiver: rx,
+        });
+        std::thread::spawn(move || {
+            let result = invoke_agent_support(
+                Some(catalog_path.as_str()),
+                &system_id,
+                &prompt,
+                state_summary.as_ref(),
+            );
+            let _ = tx.send(AgentAskTaskMessage::Done { job_id, result });
+        });
+    }
+
+    fn execute_agent_suggested_command(
+        &mut self,
+        index_1based: usize,
+        command_text: &str,
+        trigger: &str,
+    ) {
+        let trimmed = command_text.trim();
+        if trimmed.is_empty() {
+            self.agent_status = format!("Suggestion #{index_1based} is empty");
+            return;
+        }
+        let command = match parse_shell_line(trimmed) {
+            Ok(command) => command,
+            Err(err) => {
+                self.agent_status = format!("Suggestion #{index_1based} parse error: {err}");
+                self.agent_execution_log.push(AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: false,
+                    state_changed: false,
+                    summary: format!("parse error: {err}"),
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                });
+                return;
+            }
+        };
+        if matches!(command, ShellCommand::AgentsAsk { .. }) {
+            self.agent_status =
+                format!("Suggestion #{index_1based} rejected: recursive 'agents ask' is blocked");
+            self.agent_execution_log.push(AgentCommandExecutionRecord {
+                index_1based,
+                command: trimmed.to_string(),
+                trigger: trigger.to_string(),
+                ok: false,
+                state_changed: false,
+                summary: "recursive agents ask blocked".to_string(),
+                executed_at_unix_ms: Self::now_unix_ms(),
+            });
+            return;
+        }
+        let options = ShellExecutionOptions::default();
+        let run = {
+            let mut guard = self.engine.write().unwrap();
+            execute_shell_command_with_options(&mut guard, &command, &options)
+        };
+        match run {
+            Ok(run) => {
+                if run.state_changed {
+                    self.lineage_cache_valid = false;
+                }
+                let summary = if run.state_changed {
+                    "executed (state changed)".to_string()
+                } else {
+                    "executed".to_string()
+                };
+                self.agent_status = format!("Suggestion #{index_1based}: {summary}");
+                self.agent_execution_log.push(AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: true,
+                    state_changed: run.state_changed,
+                    summary,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                });
+            }
+            Err(err) => {
+                self.agent_status = format!("Suggestion #{index_1based} failed: {err}");
+                self.agent_execution_log.push(AgentCommandExecutionRecord {
+                    index_1based,
+                    command: trimmed.to_string(),
+                    trigger: trigger.to_string(),
+                    ok: false,
+                    state_changed: false,
+                    summary: err,
+                    executed_at_unix_ms: Self::now_unix_ms(),
+                });
+            }
+        }
+        if self.agent_execution_log.len() > 100 {
+            let drain = self.agent_execution_log.len() - 100;
+            self.agent_execution_log.drain(0..drain);
+        }
+    }
+
+    fn execute_agent_auto_suggestions(&mut self, response: &AgentResponse) {
+        for (idx, suggestion) in response.suggested_commands.iter().enumerate() {
+            if suggestion.execution == AgentExecutionIntent::Auto {
+                self.execute_agent_suggested_command(idx + 1, &suggestion.command, "auto");
+            }
+        }
+    }
+
+    fn poll_agent_assistant_task(&mut self, ctx: &egui::Context) {
+        if self.agent_task.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let mut done: Option<(u64, Result<AgentInvocationOutcome, String>)> = None;
+        if let Some(task) = &self.agent_task {
+            match task.receiver.try_recv() {
+                Ok(AgentAskTaskMessage::Done { job_id, result }) => {
+                    done = Some((job_id, result));
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    done = Some((task.job_id, Err("Agent worker disconnected".to_string())));
+                }
+            }
+        }
+        if let Some((job_id, outcome)) = done {
+            let elapsed = self
+                .agent_task
+                .as_ref()
+                .map(|task| task.started.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            self.agent_task = None;
+            match outcome {
+                Ok(invocation) => {
+                    let suggestion_count = invocation.response.suggested_commands.len();
+                    self.agent_status = format!(
+                        "Agent response received in {:.1}s (suggestions={})",
+                        elapsed, suggestion_count
+                    );
+                    self.push_job_event(
+                        BackgroundJobKind::AgentAssist,
+                        BackgroundJobEventPhase::Completed,
+                        Some(job_id),
+                        format!(
+                            "Agent '{}' completed in {:.1}s (suggestions={})",
+                            invocation.system_id, elapsed, suggestion_count
+                        ),
+                    );
+                    let response = invocation.response.clone();
+                    self.agent_last_invocation = Some(invocation);
+                    if self.agent_allow_auto_exec {
+                        self.execute_agent_auto_suggestions(&response);
+                    }
+                }
+                Err(err) => {
+                    self.agent_status =
+                        format!("Agent request failed after {:.1}s: {}", elapsed, err);
+                    self.push_job_event(
+                        BackgroundJobKind::AgentAssist,
+                        BackgroundJobEventPhase::Failed,
+                        Some(job_id),
+                        format!("Agent request failed in {:.1}s: {}", elapsed, err),
+                    );
+                }
+            }
         }
     }
 
@@ -2687,6 +3213,7 @@ impl GENtleApp {
         let catalog_path = self.genome_catalog_path_opt();
         let cache_dir = self.genome_cache_dir_opt();
         let cancel_requested = Arc::new(AtomicBool::new(false));
+        let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
         self.genome_prepare_progress = None;
         self.genome_prepare_status = if let Some(timeout) = timeout_seconds {
@@ -2697,8 +3224,14 @@ impl GENtleApp {
         } else {
             format!("Preparing genome '{genome_id}' in background. You can keep using the UI.")
         };
-        self.push_job_event(format!("Prepare genome started: {}", genome_id));
+        self.push_job_event(
+            BackgroundJobKind::PrepareGenome,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!("Prepare genome started: {}", genome_id),
+        );
         self.genome_prepare_task = Some(GenomePrepareTask {
+            job_id,
             started: Instant::now(),
             cancel_requested: cancel_requested.clone(),
             timeout_seconds,
@@ -2737,7 +3270,10 @@ impl GENtleApp {
                         last_percent_tenths = Some(v);
                     }
                     last_bytes_bucket = bytes_bucket;
-                    let _ = tx_progress.send(GenomePrepareTaskMessage::Progress(p));
+                    let _ = tx_progress.send(GenomePrepareTaskMessage::Progress {
+                        job_id,
+                        progress: p,
+                    });
                 }
                 true
             };
@@ -2759,7 +3295,10 @@ impl GENtleApp {
                     &report,
                 )],
             });
-            let _ = tx.send(GenomePrepareTaskMessage::Done(outcome));
+            let _ = tx.send(GenomePrepareTaskMessage::Done {
+                job_id,
+                result: outcome,
+            });
         });
     }
 
@@ -2768,34 +3307,59 @@ impl GENtleApp {
             return;
         }
         ctx.request_repaint_after(Duration::from_millis(100));
-        let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut done: Option<(u64, Result<OpResult, EngineError>)> = None;
+        let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_prepare_task {
+            let active_job_id = task.job_id;
             const MAX_MESSAGES_PER_TICK: usize = 128;
             for _ in 0..MAX_MESSAGES_PER_TICK {
                 match task.receiver.try_recv() {
-                    Ok(GenomePrepareTaskMessage::Progress(progress)) => {
+                    Ok(GenomePrepareTaskMessage::Progress { job_id, progress }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
                         self.genome_prepare_progress = Some(progress.clone());
                         self.genome_prepare_status = format!(
                             "Preparing genome '{}': {} ({})",
                             progress.genome_id, progress.phase, progress.item
                         );
                     }
-                    Ok(GenomePrepareTaskMessage::Done(result)) => {
-                        done = Some(result);
+                    Ok(GenomePrepareTaskMessage::Done { job_id, result }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
+                        done = Some((job_id, result));
                         break;
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        done = Some(Err(EngineError {
-                            code: ErrorCode::Internal,
-                            message: "Genome preparation worker disconnected".to_string(),
-                        }));
+                        done = Some((
+                            active_job_id,
+                            Err(EngineError {
+                                code: ErrorCode::Internal,
+                                message: "Genome preparation worker disconnected".to_string(),
+                            }),
+                        ));
                         break;
                     }
                 }
             }
         }
-        if let Some(outcome) = done {
+        for stale_job_id in stale_job_ids {
+            self.push_job_event(
+                BackgroundJobKind::PrepareGenome,
+                BackgroundJobEventPhase::IgnoredStale,
+                Some(stale_job_id),
+                "Ignored stale prepare-genome worker message",
+            );
+        }
+        if let Some((job_id, outcome)) = done {
             let elapsed = self
                 .genome_prepare_task
                 .as_ref()
@@ -2815,7 +3379,12 @@ impl GENtleApp {
                         elapsed
                     );
                     self.invalidate_genome_genes();
-                    self.push_job_event(format!("Prepare genome completed in {:.1}s", elapsed));
+                    self.push_job_event(
+                        BackgroundJobKind::PrepareGenome,
+                        BackgroundJobEventPhase::Completed,
+                        Some(job_id),
+                        format!("Prepare genome completed in {:.1}s", elapsed),
+                    );
                 }
                 Err(e) => {
                     let lower = e.message.to_ascii_lowercase();
@@ -2833,10 +3402,12 @@ impl GENtleApp {
                         self.genome_prepare_status =
                             format!("Prepare genome failed after {:.1}s: {}", elapsed, e.message);
                     }
-                    self.push_job_event(format!(
-                        "Prepare genome ended in {:.1}s: {}",
-                        elapsed, e.message
-                    ));
+                    self.push_job_event(
+                        BackgroundJobKind::PrepareGenome,
+                        BackgroundJobEventPhase::Failed,
+                        Some(job_id),
+                        format!("Prepare genome ended in {:.1}s: {}", elapsed, e.message),
+                    );
                 }
             }
         }
@@ -2847,12 +3418,20 @@ impl GENtleApp {
             return;
         }
         ctx.request_repaint_after(Duration::from_millis(100));
-        let mut done: Option<Result<OpResult, EngineError>> = None;
+        let mut done: Option<(u64, Result<OpResult, EngineError>)> = None;
+        let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_track_import_task {
+            let active_job_id = task.job_id;
             const MAX_MESSAGES_PER_TICK: usize = 256;
             for _ in 0..MAX_MESSAGES_PER_TICK {
                 match task.receiver.try_recv() {
-                    Ok(GenomeTrackImportTaskMessage::Progress(progress)) => {
+                    Ok(GenomeTrackImportTaskMessage::Progress { job_id, progress }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
                         self.genome_track_import_progress = Some(progress.clone());
                         let canceling = task.cancel_requested.load(Ordering::Relaxed);
                         self.genome_track_status = format!(
@@ -2869,23 +3448,40 @@ impl GENtleApp {
                             }
                         );
                     }
-                    Ok(GenomeTrackImportTaskMessage::Done(result)) => {
-                        done = Some(result);
+                    Ok(GenomeTrackImportTaskMessage::Done { job_id, result }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
+                        done = Some((job_id, result));
                         break;
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        done = Some(Err(EngineError {
-                            code: ErrorCode::Internal,
-                            message: "Genome track import worker disconnected".to_string(),
-                        }));
+                        done = Some((
+                            active_job_id,
+                            Err(EngineError {
+                                code: ErrorCode::Internal,
+                                message: "Genome track import worker disconnected".to_string(),
+                            }),
+                        ));
                         break;
                     }
                 }
             }
         }
+        for stale_job_id in stale_job_ids {
+            self.push_job_event(
+                BackgroundJobKind::TrackImport,
+                BackgroundJobEventPhase::IgnoredStale,
+                Some(stale_job_id),
+                "Ignored stale track-import worker message",
+            );
+        }
 
-        if let Some(outcome) = done {
+        if let Some((job_id, outcome)) = done {
             let elapsed = self
                 .genome_track_import_task
                 .as_ref()
@@ -2915,15 +3511,22 @@ impl GENtleApp {
                         ),
                         elapsed
                     );
-                    self.push_job_event(format!("{prefix} in {:.1}s", elapsed));
+                    self.push_job_event(
+                        BackgroundJobKind::TrackImport,
+                        BackgroundJobEventPhase::Completed,
+                        Some(job_id),
+                        format!("{prefix} in {:.1}s", elapsed),
+                    );
                 }
                 Err(e) => {
                     self.genome_track_status =
                         format!("Import track failed after {:.1}s: {}", elapsed, e.message);
-                    self.push_job_event(format!(
-                        "Track import failed in {:.1}s: {}",
-                        elapsed, e.message
-                    ));
+                    self.push_job_event(
+                        BackgroundJobKind::TrackImport,
+                        BackgroundJobEventPhase::Failed,
+                        Some(job_id),
+                        format!("Track import failed in {:.1}s: {}", elapsed, e.message),
+                    );
                 }
             }
         }
@@ -3023,6 +3626,7 @@ impl GENtleApp {
         } else {
             Some(blast_task_name)
         };
+        let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
         self.genome_blast_results.clear();
         self.genome_blast_selected_result = 0;
@@ -3033,11 +3637,17 @@ impl GENtleApp {
             total_queries,
             if total_queries == 1 { "y" } else { "ies" }
         );
-        self.push_job_event(format!(
-            "BLAST started: genome='{}', queries={}, max_hits={}",
-            genome_id, total_queries, max_hits
-        ));
+        self.push_job_event(
+            BackgroundJobKind::BlastGenome,
+            BackgroundJobEventPhase::Started,
+            Some(job_id),
+            format!(
+                "BLAST started: genome='{}', queries={}, max_hits={}",
+                genome_id, total_queries, max_hits
+            ),
+        );
         self.genome_blast_task = Some(GenomeBlastTask {
+            job_id,
             started: Instant::now(),
             receiver: rx,
         });
@@ -3047,6 +3657,7 @@ impl GENtleApp {
 
             for (idx, (label, query)) in blast_queries.into_iter().enumerate() {
                 let _ = tx.send(GenomeBlastTaskMessage::Progress {
+                    job_id,
                     done_queries: idx,
                     total_queries,
                     current_query_label: label.clone(),
@@ -3073,6 +3684,7 @@ impl GENtleApp {
                     }
                 }
                 let _ = tx.send(GenomeBlastTaskMessage::Progress {
+                    job_id,
                     done_queries: idx + 1,
                     total_queries,
                     current_query_label: label,
@@ -3090,7 +3702,10 @@ impl GENtleApp {
                     failed_queries,
                 })
             };
-            let _ = tx.send(GenomeBlastTaskMessage::Done(done_result));
+            let _ = tx.send(GenomeBlastTaskMessage::Done {
+                job_id,
+                result: done_result,
+            });
         });
     }
 
@@ -3099,16 +3714,25 @@ impl GENtleApp {
             return;
         }
         ctx.request_repaint_after(Duration::from_millis(100));
-        let mut done: Option<Result<GenomeBlastBatchResult, String>> = None;
+        let mut done: Option<(u64, Result<GenomeBlastBatchResult, String>)> = None;
+        let mut stale_job_ids: Vec<u64> = vec![];
         if let Some(task) = &self.genome_blast_task {
+            let active_job_id = task.job_id;
             const MAX_MESSAGES_PER_TICK: usize = 128;
             for _ in 0..MAX_MESSAGES_PER_TICK {
                 match task.receiver.try_recv() {
                     Ok(GenomeBlastTaskMessage::Progress {
+                        job_id,
                         done_queries,
                         total_queries,
                         current_query_label,
                     }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
                         let fraction = if total_queries == 0 {
                             0.0
                         } else {
@@ -3118,20 +3742,34 @@ impl GENtleApp {
                         self.genome_blast_progress_label =
                             format!("{done_queries} / {total_queries} ({current_query_label})");
                     }
-                    Ok(GenomeBlastTaskMessage::Done(result)) => {
-                        done = Some(result);
+                    Ok(GenomeBlastTaskMessage::Done { job_id, result }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
+                        done = Some((job_id, result));
                         break;
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        done = Some(Err("BLAST worker disconnected".to_string()));
+                        done = Some((active_job_id, Err("BLAST worker disconnected".to_string())));
                         break;
                     }
                 }
             }
         }
+        for stale_job_id in stale_job_ids {
+            self.push_job_event(
+                BackgroundJobKind::BlastGenome,
+                BackgroundJobEventPhase::IgnoredStale,
+                Some(stale_job_id),
+                "Ignored stale BLAST worker message",
+            );
+        }
 
-        if let Some(outcome) = done {
+        if let Some((job_id, outcome)) = done {
             let elapsed = self
                 .genome_blast_task
                 .as_ref()
@@ -3161,12 +3799,17 @@ impl GENtleApp {
                             self.genome_blast_results.len(),
                             hit_total
                         );
-                        self.push_job_event(format!(
-                            "BLAST completed in {:.1}s: {} result(s), {} hit(s)",
-                            elapsed,
-                            self.genome_blast_results.len(),
-                            hit_total
-                        ));
+                        self.push_job_event(
+                            BackgroundJobKind::BlastGenome,
+                            BackgroundJobEventPhase::Completed,
+                            Some(job_id),
+                            format!(
+                                "BLAST completed in {:.1}s: {} result(s), {} hit(s)",
+                                elapsed,
+                                self.genome_blast_results.len(),
+                                hit_total
+                            ),
+                        );
                     } else {
                         self.genome_blast_status = format!(
                             "BLAST finished in {:.1}s: {} query result(s), {} total hit(s), {} failed query(ies): {}",
@@ -3176,23 +3819,33 @@ impl GENtleApp {
                             batch.failed_queries.len(),
                             batch.failed_queries.join(" | ")
                         );
-                        self.push_job_event(format!(
-                            "BLAST completed in {:.1}s with {} failed quer{}",
-                            elapsed,
-                            batch.failed_queries.len(),
-                            if batch.failed_queries.len() == 1 {
-                                "y"
-                            } else {
-                                "ies"
-                            }
-                        ));
+                        self.push_job_event(
+                            BackgroundJobKind::BlastGenome,
+                            BackgroundJobEventPhase::Failed,
+                            Some(job_id),
+                            format!(
+                                "BLAST completed in {:.1}s with {} failed quer{}",
+                                elapsed,
+                                batch.failed_queries.len(),
+                                if batch.failed_queries.len() == 1 {
+                                    "y"
+                                } else {
+                                    "ies"
+                                }
+                            ),
+                        );
                     }
                 }
                 Err(e) => {
                     self.genome_blast_results.clear();
                     self.genome_blast_selected_result = 0;
                     self.genome_blast_status = format!("BLAST failed after {:.1}s: {}", elapsed, e);
-                    self.push_job_event(format!("BLAST failed in {:.1}s: {}", elapsed, e));
+                    self.push_job_event(
+                        BackgroundJobKind::BlastGenome,
+                        BackgroundJobEventPhase::Failed,
+                        Some(job_id),
+                        format!("BLAST failed in {:.1}s: {}", elapsed, e),
+                    );
                 }
             }
         }
@@ -3657,15 +4310,13 @@ impl GENtleApp {
             {
                 self.show_reference_genome_prepare_dialog = false;
             }
-            if let Some(task) = &self.genome_prepare_task {
+            if self.genome_prepare_task.is_some() {
                 if ui
                     .button("Cancel Prepare")
                     .on_hover_text("Request cancellation of the running prepare task.")
                     .clicked()
                 {
-                    task.cancel_requested.store(true, Ordering::Relaxed);
-                    self.genome_prepare_status =
-                        "Cancellation requested for running genome preparation".to_string();
+                    self.request_prepare_task_cancel("prepare dialog");
                 }
             }
         });
@@ -4679,8 +5330,7 @@ impl GENtleApp {
                     .on_hover_text("Browse filesystem and fill this path"),
                 "Genome Tracks > Browse Track Path",
             );
-            if browse_track_resp.clicked()
-            {
+            if browse_track_resp.clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Signal tracks", &["bed", "gz", "bw", "bigwig", "vcf"])
                     .pick_file()
@@ -4830,12 +5480,8 @@ impl GENtleApp {
                     ),
                     "Genome Tracks > Cancel Import",
                 );
-                if cancel_import_resp.clicked()
-                {
-                    if let Some(task) = &self.genome_track_import_task {
-                        task.cancel_requested.store(true, Ordering::Relaxed);
-                    }
-                    self.genome_track_status = "Cancellation requested for running track import".to_string();
+                if cancel_import_resp.clicked() {
+                    self.request_track_import_task_cancel("genome tracks dialog");
                 }
             });
         }
@@ -4989,8 +5635,7 @@ impl GENtleApp {
                     ),
                 "Genome Tracks > Clear Tracked Files",
             );
-            if clear_resp.clicked()
-            {
+            if clear_resp.clicked() {
                 self.engine
                     .write()
                     .unwrap()
@@ -5039,6 +5684,263 @@ impl GENtleApp {
                 self.show_genome_bed_track_dialog = false;
             }
         });
+    }
+
+    fn render_agent_assistant_contents(&mut self, ui: &mut Ui) {
+        self.refresh_agent_system_catalog();
+        ui.label("Ask an agent system for project support, then execute suggested GENtle shell commands per reply.");
+        ui.horizontal(|ui| {
+            ui.label("catalog");
+            ui.text_edit_singleline(&mut self.agent_catalog_path);
+            if ui
+                .button("Browse...")
+                .on_hover_text("Browse filesystem and fill this path")
+                .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+                {
+                    self.agent_catalog_path = path.display().to_string();
+                    self.agent_catalog_loaded_path.clear();
+                    self.refresh_agent_system_catalog();
+                }
+            }
+        });
+        if !self.agent_catalog_error.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(190, 70, 70),
+                format!("Catalog error: {}", self.agent_catalog_error),
+            );
+        }
+        ui.horizontal(|ui| {
+            ui.label("system");
+            egui::ComboBox::from_id_salt("agent_system_combo")
+                .selected_text(if self.agent_system_id.trim().is_empty() {
+                    "(choose system)"
+                } else {
+                    self.agent_system_id.as_str()
+                })
+                .show_ui(ui, |ui| {
+                    for system in &self.agent_systems {
+                        ui.selectable_value(
+                            &mut self.agent_system_id,
+                            system.id.clone(),
+                            format!("{} ({})", system.label, system.id),
+                        );
+                    }
+                });
+        });
+        if let Some(system) = self.selected_agent_system() {
+            if let Some(description) = system.description.as_deref() {
+                let trimmed = description.trim();
+                if !trimmed.is_empty() {
+                    ui.small(trimmed);
+                }
+            }
+            ui.small(format!("transport: {}", system.transport.as_str()));
+            if !system.command.is_empty() {
+                ui.small(format!("command: {}", system.command.join(" ")));
+            }
+        } else if self.agent_systems.is_empty() {
+            ui.small("No systems loaded from this catalog.");
+        }
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut self.agent_include_state_summary,
+                "Include project state summary in request",
+            );
+            ui.checkbox(
+                &mut self.agent_allow_auto_exec,
+                "Auto-run suggestions marked as 'auto'",
+            );
+        });
+        ui.label("Prompt");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.agent_prompt)
+                .desired_rows(6)
+                .desired_width(f32::INFINITY),
+        );
+        let running = self.agent_task.is_some();
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(!running, egui::Button::new("Ask Agent"))
+                .on_hover_text("Send prompt to selected agent system")
+                .clicked()
+            {
+                self.start_agent_assistant_request();
+            }
+            if ui
+                .button("Clear Response")
+                .on_hover_text("Clear latest agent response and status")
+                .clicked()
+            {
+                self.agent_last_invocation = None;
+                self.agent_status.clear();
+            }
+            if ui
+                .button("Clear Execution Log")
+                .on_hover_text("Clear local execution history for agent suggestions")
+                .clicked()
+            {
+                self.agent_execution_log.clear();
+            }
+            if ui
+                .button("Close")
+                .on_hover_text("Close this dialog")
+                .clicked()
+            {
+                self.show_agent_assistant_dialog = false;
+            }
+        });
+        if let Some(task) = &self.agent_task {
+            ui.horizontal(|ui| {
+                ui.add(egui::Spinner::new());
+                ui.label(format!(
+                    "Agent request running ({:.1}s)",
+                    task.started.elapsed().as_secs_f32()
+                ));
+            });
+        }
+        if !self.agent_status.is_empty() {
+            ui.separator();
+            ui.monospace(self.agent_status.clone());
+        }
+
+        if let Some(invocation) = self.agent_last_invocation.clone() {
+            ui.separator();
+            ui.label(format!(
+                "Latest response from {} ({})",
+                invocation.system_label, invocation.system_id
+            ));
+            ui.small(format!(
+                "elapsed={} ms | transport={} | exit_code={:?}",
+                invocation.elapsed_ms, invocation.transport, invocation.exit_code
+            ));
+            if !invocation.response.assistant_message.trim().is_empty() {
+                ui.group(|ui| {
+                    ui.strong("Agent message");
+                    ui.label(invocation.response.assistant_message.trim());
+                });
+            }
+            if !invocation.response.questions.is_empty() {
+                ui.group(|ui| {
+                    ui.strong("Agent questions");
+                    for question in &invocation.response.questions {
+                        ui.label(format!("- {}", question));
+                    }
+                });
+            }
+            if invocation.response.suggested_commands.is_empty() {
+                ui.small("No executable suggestions in this reply.");
+            } else {
+                ui.separator();
+                ui.strong("Suggested commands");
+                let mut run_request: Option<(usize, String)> = None;
+                egui::Grid::new("agent_suggested_commands_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("#");
+                        ui.strong("Intent");
+                        ui.strong("Command");
+                        ui.strong("Rationale");
+                        ui.strong("Action");
+                        ui.end_row();
+                        for (idx, suggestion) in invocation
+                            .response
+                            .suggested_commands
+                            .iter()
+                            .enumerate()
+                        {
+                            let index_1based = idx + 1;
+                            ui.label(index_1based.to_string());
+                            ui.label(suggestion.execution.as_str());
+                            ui.monospace(suggestion.command.as_str());
+                            ui.label(suggestion.rationale.clone().unwrap_or_default());
+                            let can_run = !suggestion.command.trim().is_empty()
+                                && suggestion.execution != AgentExecutionIntent::Chat;
+                            let run_resp = ui
+                                .add_enabled(can_run, egui::Button::new("Run"))
+                                .on_hover_text(
+                                    "Execute this suggested command using GENtle shared shell parser/executor",
+                                );
+                            if run_resp.clicked() {
+                                run_request = Some((index_1based, suggestion.command.clone()));
+                            }
+                            ui.end_row();
+                        }
+                    });
+                if let Some((index_1based, command)) = run_request {
+                    self.execute_agent_suggested_command(index_1based, &command, "manual");
+                }
+            }
+            if !invocation.raw_stderr.trim().is_empty() {
+                ui.separator();
+                ui.strong("Agent stderr");
+                let mut stderr = invocation.raw_stderr.clone();
+                ui.add(
+                    egui::TextEdit::multiline(&mut stderr)
+                        .desired_rows(4)
+                        .desired_width(f32::INFINITY),
+                );
+            }
+        }
+
+        if !self.agent_execution_log.is_empty() {
+            ui.separator();
+            ui.strong("Execution log");
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    for entry in self.agent_execution_log.iter().rev() {
+                        ui.label(format!(
+                            "#{} [{}] {} | {} | changed={} | t={}",
+                            entry.index_1based,
+                            entry.trigger,
+                            if entry.ok { "ok" } else { "error" },
+                            entry.command,
+                            entry.state_changed,
+                            entry.executed_at_unix_ms
+                        ));
+                        ui.small(entry.summary.clone());
+                    }
+                });
+        }
+    }
+
+    fn render_agent_assistant_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_agent_assistant_dialog {
+            return;
+        }
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Agent Assistant")
+            .with_inner_size([980.0, 720.0])
+            .with_min_inner_size([640.0, 420.0]);
+        ctx.show_viewport_immediate(
+            Self::agent_assistant_viewport_id(),
+            builder,
+            |ctx, class| {
+                if class == egui::ViewportClass::Embedded {
+                    let mut open = self.show_agent_assistant_dialog;
+                    egui::Window::new("Agent Assistant")
+                        .open(&mut open)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_size(Vec2::new(980.0, 720.0))
+                        .show(ctx, |ui| self.render_agent_assistant_contents(ui));
+                    self.show_agent_assistant_dialog = open;
+                    return;
+                }
+
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.render_agent_assistant_contents(ui);
+                });
+
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    self.show_agent_assistant_dialog = false;
+                }
+            },
+        );
     }
 
     fn refresh_project_restriction_enzymes(&mut self, resource_path: &str) -> Result<usize> {
@@ -5177,6 +6079,10 @@ impl GENtleApp {
         self.new_windows.clear();
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
+        self.agent_task = None;
+        self.agent_status.clear();
+        self.agent_last_invocation = None;
+        self.agent_execution_log.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
 
@@ -5349,6 +6255,13 @@ impl GENtleApp {
                 detail: "Import BED/BigWig/VCF track overlays".to_string(),
             });
         }
+        if self.show_agent_assistant_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::agent_assistant_viewport_id(),
+                title: "Agent Assistant".to_string(),
+                detail: "Agent chat and per-reply command execution".to_string(),
+            });
+        }
 
         let mut sequence_windows = self
             .windows
@@ -5381,6 +6294,8 @@ impl GENtleApp {
             self.show_reference_genome_blast_dialog = true;
         } else if viewport_id == Self::bed_track_viewport_id() {
             self.show_genome_bed_track_dialog = true;
+        } else if viewport_id == Self::agent_assistant_viewport_id() {
+            self.show_agent_assistant_dialog = true;
         }
 
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
@@ -5519,6 +6434,16 @@ impl GENtleApp {
                     .clicked()
                 {
                     self.open_genome_bed_track_dialog();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Agent Assistant...")
+                    .on_hover_text(
+                        "Ask configured agent systems and execute suggested shared-shell commands",
+                    )
+                    .clicked()
+                {
+                    self.open_agent_assistant_dialog();
                     ui.close_menu();
                 }
                 if ui
@@ -6242,8 +7167,7 @@ impl GENtleApp {
                     .on_hover_text("Download and index reference genomes"),
                 "Lineage > Prepare Reference Genome",
             );
-            if prepare_resp.clicked()
-            {
+            if prepare_resp.clicked() {
                 self.open_reference_genome_prepare_dialog();
             }
             let retrieve_resp = self.track_hover_status(
@@ -6251,8 +7175,7 @@ impl GENtleApp {
                     .on_hover_text("Extract sequence regions from prepared genomes"),
                 "Lineage > Retrieve Genome Sequence",
             );
-            if retrieve_resp.clicked()
-            {
+            if retrieve_resp.clicked() {
                 self.open_reference_genome_retrieve_dialog();
             }
             let blast_resp = self.track_hover_status(
@@ -6260,8 +7183,7 @@ impl GENtleApp {
                     .on_hover_text("Run BLAST against prepared genome indices"),
                 "Lineage > BLAST Genome Sequence",
             );
-            if blast_resp.clicked()
-            {
+            if blast_resp.clicked() {
                 self.open_reference_genome_blast_dialog();
             }
         });
@@ -7098,55 +8020,18 @@ impl GENtleApp {
             .trim()
             .to_string();
 
-        if self.configuration_rnapkin_executable.is_empty() {
-            env::remove_var("GENTLE_RNAPKIN_BIN");
-        } else {
-            env::set_var(
-                "GENTLE_RNAPKIN_BIN",
-                self.configuration_rnapkin_executable.clone(),
-            );
-        }
+        self.sync_runtime_tool_overrides_from_configuration();
 
-        if self.configuration_makeblastdb_executable.is_empty() {
-            env::remove_var(MAKEBLASTDB_ENV_BIN);
-        } else {
-            env::set_var(
-                MAKEBLASTDB_ENV_BIN,
-                self.configuration_makeblastdb_executable.clone(),
-            );
-        }
-
-        if self.configuration_blastn_executable.is_empty() {
-            env::remove_var(BLASTN_ENV_BIN);
-        } else {
-            env::set_var(BLASTN_ENV_BIN, self.configuration_blastn_executable.clone());
-        }
-
-        if self.configuration_bigwig_to_bedgraph_executable.is_empty() {
-            env::remove_var(BIGWIG_TO_BEDGRAPH_ENV_BIN);
-        } else {
-            env::set_var(
-                BIGWIG_TO_BEDGRAPH_ENV_BIN,
-                self.configuration_bigwig_to_bedgraph_executable.clone(),
-            );
-        }
-
-        let rnapkin_status = env::var("GENTLE_RNAPKIN_BIN")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "PATH lookup: rnapkin".to_string());
-        let makeblastdb_status = env::var(MAKEBLASTDB_ENV_BIN)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_MAKEBLASTDB_BIN}"));
-        let blastn_status = env::var(BLASTN_ENV_BIN)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BLASTN_BIN}"));
-        let bigwig_status = env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BIGWIG_TO_BEDGRAPH_BIN}"));
+        let rnapkin_status =
+            tool_overrides::active_resolution_label("GENTLE_RNAPKIN_BIN", "rnapkin");
+        let makeblastdb_status =
+            tool_overrides::active_resolution_label(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN);
+        let blastn_status =
+            tool_overrides::active_resolution_label(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN);
+        let bigwig_status = tool_overrides::active_resolution_label(
+            BIGWIG_TO_BEDGRAPH_ENV_BIN,
+            DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        );
         self.configuration_status = format!(
             "External app settings applied (rnapkin: {}, makeblastdb: {}, blastn: {}, bigWigToBedGraph: {})",
             rnapkin_status, makeblastdb_status, blastn_status, bigwig_status
@@ -7254,10 +8139,8 @@ impl GENtleApp {
         if rnapkin_edit_response.changed() {
             self.clear_rnapkin_validation();
         }
-        let active_rnapkin = env::var("GENTLE_RNAPKIN_BIN")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "PATH lookup: rnapkin".to_string());
+        let active_rnapkin =
+            tool_overrides::active_resolution_label("GENTLE_RNAPKIN_BIN", "rnapkin");
         ui.monospace(format!("Active resolution: {active_rnapkin}"));
 
         ui.separator();
@@ -7273,10 +8156,8 @@ impl GENtleApp {
         if makeblastdb_edit_response.changed() {
             self.clear_blast_validation();
         }
-        let active_makeblastdb = env::var(MAKEBLASTDB_ENV_BIN)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_MAKEBLASTDB_BIN}"));
+        let active_makeblastdb =
+            tool_overrides::active_resolution_label(MAKEBLASTDB_ENV_BIN, DEFAULT_MAKEBLASTDB_BIN);
         ui.monospace(format!("Active makeblastdb: {active_makeblastdb}"));
 
         ui.label("blastn executable override");
@@ -7291,10 +8172,8 @@ impl GENtleApp {
         if blastn_edit_response.changed() {
             self.clear_blast_validation();
         }
-        let active_blastn = env::var(BLASTN_ENV_BIN)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BLASTN_BIN}"));
+        let active_blastn =
+            tool_overrides::active_resolution_label(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN);
         ui.monospace(format!("Active blastn: {active_blastn}"));
 
         ui.separator();
@@ -7306,10 +8185,10 @@ impl GENtleApp {
                     DEFAULT_BIGWIG_TO_BEDGRAPH_BIN
                 )),
         );
-        let active_bigwig = env::var(BIGWIG_TO_BEDGRAPH_ENV_BIN)
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| format!("PATH lookup: {DEFAULT_BIGWIG_TO_BEDGRAPH_BIN}"));
+        let active_bigwig = tool_overrides::active_resolution_label(
+            BIGWIG_TO_BEDGRAPH_ENV_BIN,
+            DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        );
         ui.monospace(format!("Active bigWigToBedGraph: {active_bigwig}"));
 
         ui.horizontal(|ui| {
@@ -7806,7 +8685,8 @@ impl GENtleApp {
                 ui.separator();
 
                 ui.strong("Prepare Genome");
-                if let Some(task) = &self.genome_prepare_task {
+                let mut cancel_prepare_clicked = false;
+                if self.genome_prepare_task.is_some() {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
                         if let Some(progress) = &self.genome_prepare_progress {
@@ -7822,7 +8702,7 @@ impl GENtleApp {
                             .on_hover_text("Request cancellation of genome prepare job")
                             .clicked()
                         {
-                            task.cancel_requested.store(true, Ordering::Relaxed);
+                            cancel_prepare_clicked = true;
                         }
                     });
                 } else {
@@ -7833,9 +8713,18 @@ impl GENtleApp {
                             .on_hover_text("Run prepare genome again using current dialog settings")
                             .clicked()
                         {
+                            self.push_job_event(
+                                BackgroundJobKind::PrepareGenome,
+                                BackgroundJobEventPhase::Retried,
+                                None,
+                                "Retry requested from background jobs panel",
+                            );
                             self.start_prepare_reference_genome();
                         }
                     });
+                }
+                if cancel_prepare_clicked {
+                    self.request_prepare_task_cancel("background jobs panel");
                 }
                 if !self.genome_prepare_status.trim().is_empty() {
                     ui.small(self.genome_prepare_status.clone());
@@ -7864,6 +8753,12 @@ impl GENtleApp {
                             .on_hover_text("Run BLAST again using current BLAST dialog settings")
                             .clicked()
                         {
+                            self.push_job_event(
+                                BackgroundJobKind::BlastGenome,
+                                BackgroundJobEventPhase::Retried,
+                                None,
+                                "Retry requested from background jobs panel",
+                            );
                             self.start_reference_genome_blast();
                         }
                     });
@@ -7874,7 +8769,8 @@ impl GENtleApp {
 
                 ui.separator();
                 ui.strong("Genome Track Import");
-                if let Some(task) = &self.genome_track_import_task {
+                let mut cancel_track_import_clicked = false;
+                if self.genome_track_import_task.is_some() {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
                         if let Some(progress) = &self.genome_track_import_progress {
@@ -7894,7 +8790,7 @@ impl GENtleApp {
                             .on_hover_text("Request cancellation of running track-import job")
                             .clicked()
                         {
-                            task.cancel_requested.store(true, Ordering::Relaxed);
+                            cancel_track_import_clicked = true;
                         }
                     });
                 } else {
@@ -7907,12 +8803,51 @@ impl GENtleApp {
                             )
                             .clicked()
                         {
+                            self.push_job_event(
+                                BackgroundJobKind::TrackImport,
+                                BackgroundJobEventPhase::Retried,
+                                None,
+                                "Retry requested from background jobs panel",
+                            );
                             self.import_genome_bed_track_for_selected_sequence();
                         }
                     });
                 }
+                if cancel_track_import_clicked {
+                    self.request_track_import_task_cancel("background jobs panel");
+                }
                 if !self.genome_track_status.trim().is_empty() {
                     ui.small(self.genome_track_status.clone());
+                }
+
+                ui.separator();
+                ui.strong("Agent Assistant");
+                if let Some(task) = &self.agent_task {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        ui.label(format!("Running ({:.1}s)", task.started.elapsed().as_secs_f32()));
+                        ui.small("Cancellation is not yet available for agent requests");
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.small("Idle");
+                        if ui
+                            .button("Retry")
+                            .on_hover_text("Run the agent assistant request again with current prompt/settings")
+                            .clicked()
+                        {
+                            self.push_job_event(
+                                BackgroundJobKind::AgentAssist,
+                                BackgroundJobEventPhase::Retried,
+                                None,
+                                "Retry requested from background jobs panel",
+                            );
+                            self.start_agent_assistant_request();
+                        }
+                    });
+                }
+                if !self.agent_status.trim().is_empty() {
+                    ui.small(self.agent_status.clone());
                 }
 
                 ui.separator();
@@ -7921,7 +8856,7 @@ impl GENtleApp {
                     .max_height(180.0)
                     .show(ui, |ui| {
                         for event in self.job_event_log.iter().rev().take(40) {
-                            ui.small(event);
+                            ui.small(event.to_line());
                         }
                     });
             });
@@ -8669,6 +9604,8 @@ impl eframe::App for GENtleApp {
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::L);
             let open_import_bed_track =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::B);
+            let open_agent_assistant =
+                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::A);
             let save_project = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
             let close_project =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
@@ -8700,6 +9637,9 @@ impl eframe::App for GENtleApp {
             if ctx.input_mut(|i| i.consume_shortcut(&open_import_bed_track)) {
                 self.open_genome_bed_track_dialog();
             }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_agent_assistant)) {
+                self.open_agent_assistant_dialog();
+            }
             if ctx.input_mut(|i| i.consume_shortcut(&save_project)) {
                 let _ = self.save_current_project();
             }
@@ -8727,6 +9667,7 @@ impl eframe::App for GENtleApp {
             self.poll_prepare_reference_genome_task(ctx);
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
+            self.poll_agent_assistant_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
 
             // Show menu bar
@@ -8748,6 +9689,7 @@ impl eframe::App for GENtleApp {
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
+            self.render_agent_assistant_dialog(ctx);
             self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);
@@ -8790,8 +9732,19 @@ impl eframe::App for GENtleApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{GENtleApp, MAX_RECENT_PROJECTS};
-    use std::fs;
+    use super::{
+        BackgroundJobEventPhase, BackgroundJobKind, EngineError, ErrorCode, GENtleApp,
+        GenomePrepareTask, GenomePrepareTaskMessage, MAX_RECENT_PROJECTS,
+    };
+    use eframe::egui;
+    use std::{
+        fs,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc, Arc,
+        },
+        time::Instant,
+    };
     use tempfile::tempdir;
 
     #[test]
@@ -8883,5 +9836,82 @@ mod tests {
         let project_path = temp.path().join("my_project.gentle.json");
         let label = GENtleApp::recent_project_menu_label(project_path.to_string_lossy().as_ref());
         assert!(label.starts_with("my_project.gentle.json ("));
+    }
+
+    #[test]
+    fn request_prepare_cancel_is_idempotent() {
+        let mut app = GENtleApp::default();
+        let (_tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
+        app.genome_prepare_task = Some(GenomePrepareTask {
+            job_id: 42,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            timeout_seconds: None,
+            receiver: rx,
+        });
+
+        app.request_prepare_task_cancel("test");
+        app.request_prepare_task_cancel("test");
+
+        let cancel_events = app
+            .job_event_log
+            .iter()
+            .filter(|event| {
+                event.kind == BackgroundJobKind::PrepareGenome
+                    && event.phase == BackgroundJobEventPhase::CancelRequested
+                    && event.job_id == Some(42)
+            })
+            .count();
+        assert_eq!(cancel_events, 1);
+        assert!(app
+            .genome_prepare_task
+            .as_ref()
+            .unwrap()
+            .cancel_requested
+            .load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn poll_prepare_ignores_stale_job_messages() {
+        let mut app = GENtleApp::default();
+        let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
+        app.genome_prepare_task = Some(GenomePrepareTask {
+            job_id: 7,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            timeout_seconds: None,
+            receiver: rx,
+        });
+
+        tx.send(GenomePrepareTaskMessage::Done {
+            job_id: 6,
+            result: Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "stale".to_string(),
+            }),
+        })
+        .unwrap();
+        tx.send(GenomePrepareTaskMessage::Done {
+            job_id: 7,
+            result: Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "actual".to_string(),
+            }),
+        })
+        .unwrap();
+
+        app.poll_prepare_reference_genome_task(&egui::Context::default());
+
+        assert!(app.genome_prepare_task.is_none());
+        assert!(app.job_event_log.iter().any(|event| {
+            event.kind == BackgroundJobKind::PrepareGenome
+                && event.phase == BackgroundJobEventPhase::IgnoredStale
+                && event.job_id == Some(6)
+        }));
+        assert!(app.job_event_log.iter().any(|event| {
+            event.kind == BackgroundJobKind::PrepareGenome
+                && event.phase == BackgroundJobEventPhase::Failed
+                && event.job_id == Some(7)
+        }));
     }
 }

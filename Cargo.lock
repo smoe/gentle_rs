@@ -3,6 +3,43 @@
 version = 4
 
 [[package]]
+name = "GENtle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bio",
+ "copypasta",
+ "csv",
+ "deno_core",
+ "eframe",
+ "egui-file-dialog",
+ "egui_commonmark",
+ "egui_extras",
+ "flate2",
+ "gb-io",
+ "image",
+ "itertools 0.11.0",
+ "lazy_static",
+ "mlua",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "pulldown-cmark",
+ "rayon",
+ "regex",
+ "reqwest",
+ "rfd",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha1",
+ "svg",
+ "tempfile",
+ "winres",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2090,43 +2127,6 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
-]
-
-[[package]]
-name = "gentle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bio",
- "copypasta",
- "csv",
- "deno_core",
- "eframe",
- "egui-file-dialog",
- "egui_commonmark",
- "egui_extras",
- "flate2",
- "gb-io",
- "image",
- "itertools 0.13.0",
- "lazy_static",
- "mlua",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "pulldown-cmark",
- "rayon",
- "regex",
- "reqwest",
- "rfd",
- "rustyline",
- "serde",
- "serde_json",
- "serde_with",
- "sha1",
- "svg",
- "tempfile",
- "winres",
 ]
 
 [[package]]

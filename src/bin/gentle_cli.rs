@@ -468,7 +468,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
+  gentle_cli [--state PATH|--project PATH] tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
+  gentle_cli agents list [--catalog PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
   gentle_cli [--state PATH|--project PATH] candidates list\n  \
   gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
@@ -504,6 +507,7 @@ fn is_shell_forwarded_command(command: &str) -> bool {
         command,
         "genomes"
             | "helpers"
+            | "agents"
             | "resources"
             | "import-pool"
             | "ladders"
@@ -2004,6 +2008,7 @@ T [ 0 0 0 10 ]
         for command in [
             "genomes",
             "helpers",
+            "agents",
             "resources",
             "import-pool",
             "ladders",
@@ -2054,5 +2059,16 @@ T [ 0 0 0 10 ]
         ])
         .expect("parse genomes extend-anchor");
         assert!(matches!(extend, ShellCommand::ReferenceExtendAnchor { .. }));
+
+        let agents = parse_shell_tokens(&[
+            "agents".to_string(),
+            "ask".to_string(),
+            "builtin_echo".to_string(),
+            "--prompt".to_string(),
+            "hello".to_string(),
+            "--allow-auto-exec".to_string(),
+        ])
+        .expect("parse agents ask");
+        assert!(matches!(agents, ShellCommand::AgentsAsk { .. }));
     }
 }

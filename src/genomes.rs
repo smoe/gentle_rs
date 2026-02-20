@@ -2190,11 +2190,7 @@ fn non_empty_regular_file_exists(path: &Path) -> bool {
 }
 
 fn resolve_tool_executable(env_var: &str, default_bin: &str) -> String {
-    std::env::var(env_var)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| default_bin.to_string())
+    crate::tool_overrides::resolve_tool_executable(env_var, default_bin)
 }
 
 fn default_blast_db_prefix(install_dir: &Path) -> PathBuf {

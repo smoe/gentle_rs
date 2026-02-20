@@ -114,7 +114,13 @@ fn is_vcf_track_feature(feature: &Feature) -> bool {
 }
 
 fn has_regulatory_hint(feature: &Feature) -> bool {
-    for key in ["regulatory_class", "regulation", "function", "note", "label"] {
+    for key in [
+        "regulatory_class",
+        "regulation",
+        "function",
+        "note",
+        "label",
+    ] {
         for value in feature.qualifier_values(key.into()) {
             let lower = value.to_ascii_lowercase();
             if lower.contains("regulatory")
@@ -515,8 +521,7 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             let f = &features[idx];
             let x1 = bp_to_x(f.from, len, left, right);
             let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-            lane_top_by_idx[idx] =
-                lane_allocate(&mut top_lane_ends, x1, x2, FEATURE_LANE_PADDING);
+            lane_top_by_idx[idx] = lane_allocate(&mut top_lane_ends, x1, x2, FEATURE_LANE_PADDING);
         }
 
         let mut bottom_order: Vec<usize> = features
@@ -564,8 +569,12 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
             } else {
                 let x1 = bp_to_x(f.from, len, left, right);
                 let x2 = bp_to_x(f.to, len, left, right).max(x1 + 1.0);
-                lane_regulatory_top_by_idx[idx] =
-                    lane_allocate(&mut regulatory_top_lane_ends, x1, x2, REGULATORY_LANE_PADDING);
+                lane_regulatory_top_by_idx[idx] = lane_allocate(
+                    &mut regulatory_top_lane_ends,
+                    x1,
+                    x2,
+                    REGULATORY_LANE_PADDING,
+                );
             }
         }
 
@@ -614,7 +623,9 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
                 } else {
                     FEATURE_SIDE_MARGIN
                 };
-                let y = baseline - required_margin.max(FEATURE_SIDE_MARGIN) - lane as f32 * FEATURE_LANE_GAP;
+                let y = baseline
+                    - required_margin.max(FEATURE_SIDE_MARGIN)
+                    - lane as f32 * FEATURE_LANE_GAP;
                 (y, FEATURE_BLOCK_HEIGHT)
             };
             let half_height = block_height * 0.5;

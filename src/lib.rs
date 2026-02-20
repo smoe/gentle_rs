@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use translations::Translations;
 
 pub mod about;
+pub mod agent_bridge;
 pub mod amino_acids;
 pub mod app;
 pub mod dna_display;
@@ -41,6 +42,7 @@ pub mod sequence_rows_dna;
 pub mod sequence_rows_restriction_enzymes;
 pub mod shell_docs;
 pub mod tf_motifs;
+pub mod tool_overrides;
 pub mod translations;
 pub mod window;
 pub mod window_dna;

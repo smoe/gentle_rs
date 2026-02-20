@@ -49,6 +49,11 @@ Reference genome capability status:
 - `gentle_js`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 - `gentle_lua`: supported via dedicated helpers (`list_reference_genomes`, `is_reference_genome_prepared`, `list_reference_genome_genes`, `blast_reference_genome`, `blast_helper_genome`, `prepare_genome`, `extract_genome_region`, `extract_genome_gene`) and `apply_operation`
 
+Agent-assistant capability status:
+
+- `gentle_cli`: supported via shared-shell command family (`agents list`, `agents ask`) and direct forwarding (`gentle_cli agents ...`)
+- GUI: supported via standalone `Agent Assistant` viewport using the same bridge and command executor
+
 Candidate-set capability status:
 
 - `gentle_cli`: supported as first-class `candidates ...` commands and shared-shell `candidates ...` commands, backed by shared engine operations (`GenerateCandidateSet`, `GenerateCandidateSetBetweenAnchors`, `DeleteCandidateSet`, `ScoreCandidateSetExpression`, `ScoreCandidateSetDistance`, `ScoreCandidateSetWeightedObjective`, `TopKCandidateSet`, `ParetoFrontierCandidateSet`, `FilterCandidateSet`, `CandidateSetOp`, `UpsertCandidateMacroTemplate`, `DeleteCandidateMacroTemplate`)
@@ -342,6 +347,10 @@ cargo run --bin gentle_cli -- export-pool frag_1,frag_2 digest.pool.gentle.json 
 cargo run --bin gentle_cli -- import-pool digest.pool.gentle.json imported
 cargo run --bin gentle_cli -- resources sync-rebase rebase.withrefm data/resources/rebase.enzymes.json --commercial-only
 cargo run --bin gentle_cli -- resources sync-jaspar JASPAR2026_CORE_non-redundant_pfms_jaspar.txt data/resources/jaspar.motifs.json
+cargo run --bin gentle_cli -- agents list
+cargo run --bin gentle_cli -- agents list --catalog assets/agent_systems.json
+cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "summarize current project state"
+cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "ask: Which sequence should I use?" --execute-index 1
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
@@ -384,7 +393,7 @@ Global CLI options:
 - `--state PATH`: use a non-default project state file
 - `--progress` or `--progress-stderr`: print live progress events to `stderr`
 - `--progress-stdout`: print live progress events to `stdout`
-- `--allow-screenshots`: opt-in guard for window screenshot commands
+- `--allow-screenshots`: currently rejected (screenshot bridge disabled by security policy)
 
 Current progress events include TFBS annotation updates, genome-prepare
 updates (download/index phases), and genome-track import updates.
@@ -423,6 +432,8 @@ Shared shell command:
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
+    - `agents list [--catalog PATH]`
+    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
     - `genomes list [--catalog PATH]`
     - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
@@ -464,8 +475,7 @@ Shared shell command:
     - `set-param NAME JSON_VALUE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
-    - `screenshot-window OUTPUT.png` (requires process startup with
-      `--allow-screenshots`)
+    - `screenshot-window OUTPUT.png` (currently disabled by security policy)
     - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]`
   - Use single quotes around JSON payloads to preserve whitespace:
     - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
@@ -475,23 +485,10 @@ Shared shell command:
 
 Screenshot bridge:
 
-- Startup guard:
-  - screenshot commands are accepted only when `gentle_cli` was started with
-    `--allow-screenshots`.
-- Command surface:
-  - direct CLI: `gentle_cli --allow-screenshots screenshot-window OUTPUT.png`
-  - shared shell: `gentle_cli --allow-screenshots shell 'screenshot-window OUTPUT.png'`
-- Scope/safety:
-  - captures only the active/topmost GENtle window
-  - full-screen capture and non-GENtle window capture are out of contract
-  - window lookup is native AppKit in-process (no AppleScript automation path)
-  - in practice this is most useful from the GUI shell; a headless `gentle_cli`
-    process usually has no eligible window
-  - current backend support is macOS (`screencapture`); non-macOS returns an
-    unsupported error for now
-- Output:
-  - caller chooses the full output path/filename (for docs auto-update workflows)
-  - expected result schema: `gentle.screenshot.v1`
+- Current status: disabled by security policy.
+- `screenshot-window` currently returns a deterministic disabled-policy message.
+- `--allow-screenshots` is rejected by argument parsing.
+- Manual documentation updates remain the current approach for image artifacts.
 
 Pool exchange commands:
 
@@ -550,6 +547,19 @@ Resource sync commands:
   - Default output: `data/resources/jaspar.motifs.json`.
   - `ExtractAnchoredRegion` can resolve TF motifs by ID/name from this local registry.
   - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
+
+Agent bridge commands:
+
+- `agents list [--catalog PATH]`
+  - Lists configured agent systems from catalog JSON.
+  - Default catalog path: `assets/agent_systems.json`.
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - Invokes one configured agent system and returns message/questions/suggested shell commands.
+  - `--no-state-summary` disables project-context injection in the request.
+  - Suggested commands are executed only when explicitly selected
+    (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled
+    and the suggestion intent is `auto`.
+  - Recursive `agents ask` execution from suggested commands is blocked by design.
 
 Genome convenience commands:
 

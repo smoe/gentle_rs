@@ -1,13 +1,13 @@
 use crate::{
+    agent_bridge::{invoke_agent_support, load_agent_system_catalog, AgentExecutionIntent},
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
         CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
         CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm,
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, Engine, GenomeAnchorSide, GenomeTrackSource,
-        GenomeTrackSubscription, GentleEngine, Operation, ProjectState, RenderSvgMode,
-        SequenceAnchor, Workflow,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Engine, GenomeAnchorSide,
+        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, Operation, ProjectState,
+        RenderSvgMode, SequenceAnchor, Workflow, CANDIDATE_MACRO_TEMPLATES_METADATA_KEY,
     },
     genomes::{GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH},
     resource_sync,
@@ -101,6 +101,18 @@ pub enum ShellCommand {
     ResourcesSyncJaspar {
         input: String,
         output: Option<String>,
+    },
+    AgentsList {
+        catalog_path: Option<String>,
+    },
+    AgentsAsk {
+        system_id: String,
+        prompt: String,
+        catalog_path: Option<String>,
+        include_state_summary: bool,
+        allow_auto_exec: bool,
+        execute_all: bool,
+        execute_indices: Vec<usize>,
     },
     ReferenceList {
         helper_mode: bool,
@@ -740,6 +752,39 @@ impl ShellCommand {
                     .clone()
                     .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_RESOURCE_PATH.to_string());
                 format!("sync JASPAR from '{input}' to '{output}'")
+            }
+            Self::AgentsList { catalog_path } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "assets/agent_systems.json".to_string());
+                format!("list agent systems from catalog '{catalog}'")
+            }
+            Self::AgentsAsk {
+                system_id,
+                prompt,
+                catalog_path,
+                include_state_summary,
+                allow_auto_exec,
+                execute_all,
+                execute_indices,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| "assets/agent_systems.json".to_string());
+                let execute_mode = if *execute_all {
+                    "all".to_string()
+                } else if !execute_indices.is_empty() {
+                    format!("indices={}", execute_indices.len())
+                } else if *allow_auto_exec {
+                    "auto-only".to_string()
+                } else {
+                    "none".to_string()
+                };
+                format!(
+                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, execute={execute_mode})",
+                    prompt.len(),
+                    include_state_summary
+                )
             }
             Self::ReferenceList {
                 helper_mode,
@@ -3133,6 +3178,121 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("agents requires a subcommand: list or ask".to_string());
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "agents list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for agents list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::AgentsList { catalog_path })
+        }
+        "ask" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
+                );
+            }
+            let system_id = tokens[2].trim().to_string();
+            if system_id.is_empty() {
+                return Err("agents ask SYSTEM_ID cannot be empty".to_string());
+            }
+
+            let mut prompt: Option<String> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut include_state_summary = true;
+            let mut allow_auto_exec = false;
+            let mut execute_all = false;
+            let mut execute_indices: Vec<usize> = vec![];
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--prompt" => {
+                        prompt = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--prompt",
+                            "agents ask",
+                        )?);
+                    }
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "agents ask",
+                        )?);
+                    }
+                    "--allow-auto-exec" => {
+                        allow_auto_exec = true;
+                        idx += 1;
+                    }
+                    "--execute-all" => {
+                        execute_all = true;
+                        idx += 1;
+                    }
+                    "--execute-index" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--execute-index", "agents ask")?;
+                        let index = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --execute-index value '{raw}': {e}"))?;
+                        if index == 0 {
+                            return Err("--execute-index must be >= 1".to_string());
+                        }
+                        execute_indices.push(index);
+                    }
+                    "--no-state-summary" => {
+                        include_state_summary = false;
+                        idx += 1;
+                    }
+                    "--with-state-summary" => {
+                        include_state_summary = true;
+                        idx += 1;
+                    }
+                    other => return Err(format!("Unknown option '{other}' for agents ask")),
+                }
+            }
+
+            let prompt = prompt
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "agents ask requires non-empty --prompt TEXT".to_string())?;
+            execute_indices.sort_unstable();
+            execute_indices.dedup();
+
+            Ok(ShellCommand::AgentsAsk {
+                system_id,
+                prompt,
+                catalog_path,
+                include_state_summary,
+                allow_auto_exec,
+                execute_all,
+                execute_indices,
+            })
+        }
+        other => Err(format!(
+            "Unknown agents subcommand '{other}' (expected list or ask)"
+        )),
+    }
+}
+
 pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.is_empty() {
         return Err("Missing shell command".to_string());
@@ -3353,6 +3513,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 prefix: tokens.get(2).cloned().unwrap_or_else(|| "pool".to_string()),
             })
         }
+        "agents" => parse_agents_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
@@ -4053,9 +4214,7 @@ fn run_candidates_macro(
             cmd,
             ShellCommand::CandidatesMacro { .. } | ShellCommand::CandidatesTemplateRun { .. }
         ) {
-            return Err(
-                "Nested candidates macro/template-run calls are not allowed".to_string(),
-            );
+            return Err("Nested candidates macro/template-run calls are not allowed".to_string());
         }
         let run = match execute_shell_command_with_options(engine, &cmd, options) {
             Ok(run) => run,
@@ -4097,6 +4256,153 @@ fn run_candidates_macro(
             "results": rows
         }),
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AgentSuggestedExecutionReport {
+    index: usize,
+    command: String,
+    execution_intent: String,
+    trigger: String,
+    executed: bool,
+    ok: bool,
+    state_changed: bool,
+    error: Option<String>,
+    output: Option<Value>,
+}
+
+fn should_execute_agent_suggestion(
+    index_1based: usize,
+    intent: AgentExecutionIntent,
+    execute_all: bool,
+    execute_indices: &BTreeSet<usize>,
+    allow_auto_exec: bool,
+) -> Option<&'static str> {
+    if execute_all {
+        return Some("execute_all");
+    }
+    if execute_indices.contains(&index_1based) {
+        return Some("execute_index");
+    }
+    if allow_auto_exec && intent == AgentExecutionIntent::Auto {
+        return Some("allow_auto_exec");
+    }
+    None
+}
+
+fn execute_agent_suggested_commands(
+    engine: &mut GentleEngine,
+    suggestions: &[crate::agent_bridge::AgentSuggestedCommand],
+    execute_all: bool,
+    execute_indices: &BTreeSet<usize>,
+    allow_auto_exec: bool,
+    options: &ShellExecutionOptions,
+) -> (bool, Vec<AgentSuggestedExecutionReport>) {
+    let mut changed = false;
+    let mut rows: Vec<AgentSuggestedExecutionReport> = vec![];
+    for (idx, suggestion) in suggestions.iter().enumerate() {
+        let index_1based = idx + 1;
+        let trigger = should_execute_agent_suggestion(
+            index_1based,
+            suggestion.execution,
+            execute_all,
+            execute_indices,
+            allow_auto_exec,
+        );
+        if trigger.is_none() {
+            rows.push(AgentSuggestedExecutionReport {
+                index: index_1based,
+                command: suggestion.command.clone(),
+                execution_intent: suggestion.execution.as_str().to_string(),
+                trigger: "none".to_string(),
+                executed: false,
+                ok: true,
+                state_changed: false,
+                error: None,
+                output: None,
+            });
+            continue;
+        }
+        let command_text = suggestion.command.trim().to_string();
+        if command_text.is_empty() {
+            rows.push(AgentSuggestedExecutionReport {
+                index: index_1based,
+                command: suggestion.command.clone(),
+                execution_intent: suggestion.execution.as_str().to_string(),
+                trigger: trigger.unwrap_or("unknown").to_string(),
+                executed: false,
+                ok: false,
+                state_changed: false,
+                error: Some("Suggested command is empty".to_string()),
+                output: None,
+            });
+            continue;
+        }
+        let parsed = match parse_shell_line(&command_text) {
+            Ok(command) => command,
+            Err(err) => {
+                rows.push(AgentSuggestedExecutionReport {
+                    index: index_1based,
+                    command: command_text,
+                    execution_intent: suggestion.execution.as_str().to_string(),
+                    trigger: trigger.unwrap_or("unknown").to_string(),
+                    executed: true,
+                    ok: false,
+                    state_changed: false,
+                    error: Some(format!("Could not parse suggested command: {err}")),
+                    output: None,
+                });
+                continue;
+            }
+        };
+        if matches!(parsed, ShellCommand::AgentsAsk { .. }) {
+            rows.push(AgentSuggestedExecutionReport {
+                index: index_1based,
+                command: command_text,
+                execution_intent: suggestion.execution.as_str().to_string(),
+                trigger: trigger.unwrap_or("unknown").to_string(),
+                executed: true,
+                ok: false,
+                state_changed: false,
+                error: Some(
+                    "Recursive 'agents ask' execution is blocked for suggested commands"
+                        .to_string(),
+                ),
+                output: None,
+            });
+            continue;
+        }
+        match execute_shell_command_with_options(engine, &parsed, options) {
+            Ok(run) => {
+                changed |= run.state_changed;
+                rows.push(AgentSuggestedExecutionReport {
+                    index: index_1based,
+                    command: command_text,
+                    execution_intent: suggestion.execution.as_str().to_string(),
+                    trigger: trigger.unwrap_or("unknown").to_string(),
+                    executed: true,
+                    ok: true,
+                    state_changed: run.state_changed,
+                    error: None,
+                    output: Some(run.output),
+                });
+            }
+            Err(err) => {
+                rows.push(AgentSuggestedExecutionReport {
+                    index: index_1based,
+                    command: command_text,
+                    execution_intent: suggestion.execution.as_str().to_string(),
+                    trigger: trigger.unwrap_or("unknown").to_string(),
+                    executed: true,
+                    ok: false,
+                    state_changed: false,
+                    error: Some(err),
+                    output: None,
+                });
+            }
+        }
+    }
+    (changed, rows)
 }
 
 pub fn execute_shell_command(
@@ -4379,6 +4685,107 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
                     "report": report,
+                }),
+            }
+        }
+        ShellCommand::AgentsList { catalog_path } => {
+            let (resolved_catalog_path, catalog) =
+                load_agent_system_catalog(catalog_path.as_deref())?;
+            let systems = catalog
+                .systems
+                .iter()
+                .map(|system| {
+                    json!({
+                        "id": system.id,
+                        "label": system.label,
+                        "description": system.description,
+                        "transport": system.transport.as_str(),
+                        "command": system.command,
+                        "working_dir": system.working_dir,
+                    })
+                })
+                .collect::<Vec<_>>();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.agent_systems_list.v1",
+                    "catalog_path": resolved_catalog_path,
+                    "catalog_schema": catalog.schema,
+                    "system_count": systems.len(),
+                    "systems": systems
+                }),
+            }
+        }
+        ShellCommand::AgentsAsk {
+            system_id,
+            prompt,
+            catalog_path,
+            include_state_summary,
+            allow_auto_exec,
+            execute_all,
+            execute_indices,
+        } => {
+            let state_summary = if *include_state_summary {
+                Some(engine.summarize_state())
+            } else {
+                None
+            };
+            let invocation = invoke_agent_support(
+                catalog_path.as_deref(),
+                system_id,
+                prompt,
+                state_summary.as_ref(),
+            )?;
+            let suggested = invocation.response.suggested_commands.clone();
+            let suggested_count = suggested.len();
+            let requested_indices = execute_indices.iter().copied().collect::<BTreeSet<usize>>();
+            let mut invalid_execute_indices = requested_indices
+                .iter()
+                .copied()
+                .filter(|idx| *idx == 0 || *idx > suggested_count)
+                .collect::<Vec<_>>();
+            invalid_execute_indices.sort_unstable();
+            let execute_index_set = requested_indices
+                .iter()
+                .copied()
+                .filter(|idx| *idx >= 1 && *idx <= suggested_count)
+                .collect::<BTreeSet<_>>();
+            let (state_changed, execution_reports) = execute_agent_suggested_commands(
+                engine,
+                &suggested,
+                *execute_all,
+                &execute_index_set,
+                *allow_auto_exec,
+                options,
+            );
+            let executed_count = execution_reports.iter().filter(|row| row.executed).count();
+            let executed_error_count = execution_reports
+                .iter()
+                .filter(|row| row.executed && !row.ok)
+                .count();
+            let auto_suggestion_count = suggested
+                .iter()
+                .filter(|item| item.execution == AgentExecutionIntent::Auto)
+                .count();
+            ShellRunResult {
+                state_changed,
+                output: json!({
+                    "schema": "gentle.agent_ask_result.v1",
+                    "invocation": invocation,
+                    "request": {
+                        "include_state_summary": include_state_summary,
+                        "allow_auto_exec": allow_auto_exec,
+                        "execute_all": execute_all,
+                        "execute_indices": execute_indices,
+                        "invalid_execute_indices": invalid_execute_indices,
+                    },
+                    "summary": {
+                        "suggested_command_count": suggested_count,
+                        "auto_suggestion_count": auto_suggestion_count,
+                        "executed_count": executed_count,
+                        "executed_error_count": executed_error_count,
+                    },
+                    "executions": execution_reports
                 }),
             }
         }
@@ -6093,7 +6500,10 @@ mod tests {
                 assert_eq!(objectives.len(), 2);
                 assert!(normalize_metrics);
                 assert_eq!(objectives[0].metric, "gc_fraction");
-                assert_eq!(objectives[1].direction, CandidateObjectiveDirection::Minimize);
+                assert_eq!(
+                    objectives[1].direction,
+                    CandidateObjectiveDirection::Minimize
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -6638,12 +7048,10 @@ filter set1 set2 --metric score --min 10
         .expect("run template");
         assert!(run.state_changed);
         assert_eq!(run.output["template_name"].as_str(), Some("scan"));
-        assert!(
-            engine
-                .list_candidate_sets()
-                .iter()
-                .any(|set| set.name == "hits")
-        );
+        assert!(engine
+            .list_candidate_sets()
+            .iter()
+            .any(|set| set.name == "hits"));
     }
 
     #[test]
@@ -6734,6 +7142,72 @@ filter set1 set2 --metric score --min 10
             .expect("execute tracked list");
         assert!(!list.state_changed);
         assert_eq!(list.output["count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn parse_agents_ask_command() {
+        let cmd = parse_shell_line(
+            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --allow-auto-exec --execute-index 2 --no-state-summary",
+        )
+        .expect("parse agents ask");
+        match cmd {
+            ShellCommand::AgentsAsk {
+                system_id,
+                prompt,
+                catalog_path,
+                include_state_summary,
+                allow_auto_exec,
+                execute_all,
+                execute_indices,
+            } => {
+                assert_eq!(system_id, "builtin_echo");
+                assert_eq!(prompt, "auto: state-summary");
+                assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
+                assert!(!include_state_summary);
+                assert!(allow_auto_exec);
+                assert!(!execute_all);
+                assert_eq!(execute_indices, vec![2]);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_agents_ask_runs_auto_suggestion_when_enabled() {
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("agents.json");
+        let catalog_json = r#"{
+  "schema": "gentle.agent_systems.v1",
+  "systems": [
+    {
+      "id": "builtin_echo",
+      "label": "Builtin Echo",
+      "transport": "builtin_echo"
+    }
+  ]
+}"#;
+        fs::write(&catalog_path, catalog_json).expect("write catalog");
+
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::AgentsAsk {
+                system_id: "builtin_echo".to_string(),
+                prompt: "auto: state-summary\nask: capabilities".to_string(),
+                catalog_path: Some(catalog_path.display().to_string()),
+                include_state_summary: true,
+                allow_auto_exec: true,
+                execute_all: false,
+                execute_indices: vec![],
+            },
+        )
+        .expect("execute agents ask");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["summary"]["suggested_command_count"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(out.output["summary"]["executed_count"].as_u64(), Some(1));
     }
 
     #[test]

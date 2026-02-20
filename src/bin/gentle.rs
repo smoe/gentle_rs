@@ -170,7 +170,7 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
     if cli.allow_screenshots {
-        std::env::set_var("GENTLE_ALLOW_SCREENSHOTS", "1");
+        eprintln!("--allow-screenshots is not supported in this build");
     }
 
     let options = NativeOptions {
