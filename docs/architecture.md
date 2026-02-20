@@ -114,8 +114,9 @@ Container semantics now exist as first-class state.
 `SelectCandidate` remains explicit in-silico disambiguation when multiple
 possible products exist.
 
-Display state (`ProjectState.display`) now also carries TFBS display-filter
-criteria so interactive GUI filtering and SVG export use one shared contract.
+Display state (`ProjectState.display`) now also carries TFBS and VCF
+display-filter criteria so interactive GUI filtering and SVG export use one
+shared contract.
 
 ### Operation-based execution
 
@@ -132,6 +133,15 @@ This enables:
 - auditability
 - machine-to-machine use
 - eventual undo/replay support
+
+Progress/cancellation contract:
+
+- Engine progress callbacks are cooperative and return `bool`.
+- `true` continues the running operation.
+- `false` requests cancellation.
+- Long-running operations that support this contract (for example genome-track
+  imports) can stop early while returning partial-import warnings and progress
+  summaries.
 
 ### Provenance and DAG (recommended)
 
@@ -180,6 +190,8 @@ Practical rule:
 - Provide ergonomic function wrappers
 - Internally call engine operations
 - Return structured results where possible
+- Keep helper parity for state/display mutations (`set_parameter`,
+  `set_vcf_display_filter`) so automation does not depend on GUI-only controls
 
 ### CLI (`gentle_cli`)
 
@@ -274,7 +286,8 @@ Command surface:
 - `candidates score-distance SET_NAME METRIC_NAME ...`
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
 - `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
-- `candidates macro SCRIPT_OR_@FILE`
+- `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+- `set-param NAME JSON_VALUE`
 
 This enables reusable query composition:
 
@@ -329,11 +342,18 @@ Important separation:
   accepted and implemented
 - Add shared TFBS display filtering criteria and enforce parity in SVG export:
   accepted and implemented
+- Add shared VCF display filtering criteria (class/FILTER/QUAL/INFO) and enforce
+  parity in SVG export: accepted and implemented
 - Add dedicated GUI BLAST viewport with background execution/progress and
   project-sequence/pool query modes: accepted and implemented
 - Add BigWig genome-signal import operation (`ImportGenomeBigWigTrack`) with
   `bigWigToBedGraph` conversion and shared shell/adapter exposure:
   accepted and implemented
+- Add cancellable background genome-track import in GUI using shared engine
+  progress callbacks: accepted and implemented
+- Add shared shell `set-param` and JS/Lua helpers (`set_parameter`,
+  `set_vcf_display_filter`) for display-parameter parity: accepted and
+  implemented
 - Add tracked genome-signal subscriptions with auto-sync for newly anchored
   sequences via engine-managed subscription metadata:
   accepted and implemented

@@ -532,6 +532,27 @@ impl JavaScriptInterface {
           			}
           		});
           	}
+          	function extend_genome_anchor(state, seq_id, side, length_bp, output_id, catalog_path, cache_dir) {
+          		const rawSide = String(side ?? "5p").trim().toLowerCase();
+          		const sideValue = (rawSide === "3" || rawSide === "3p" || rawSide === "3prime" || rawSide === "3'" || rawSide === "three_prime" || rawSide === "three-prime")
+          			? "three_prime"
+          			: ((rawSide === "5" || rawSide === "5p" || rawSide === "5prime" || rawSide === "5'" || rawSide === "five_prime" || rawSide === "five-prime")
+          				? "five_prime"
+          				: null);
+          		if (!sideValue) {
+          			throw new Error("extend_genome_anchor side must be 5p or 3p");
+          		}
+          		return apply_operation(state, {
+          			ExtendGenomeAnchor: {
+          				seq_id: seq_id,
+          				side: sideValue,
+          				length_bp: Number(length_bp),
+          				output_id: output_id ?? null,
+          				catalog_path: catalog_path ?? null,
+          				cache_dir: cache_dir ?? null
+          			}
+          		});
+          	}
           	function import_genome_bed_track(state, seq_id, path, track_name, min_score, max_score, clear_existing) {
           		return apply_operation(state, {
           			ImportGenomeBedTrack: {

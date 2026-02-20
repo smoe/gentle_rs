@@ -7329,6 +7329,22 @@ impl GENtleApp {
                 catalog_path.clone().unwrap_or_else(|| "-".to_string()),
                 cache_dir.clone().unwrap_or_else(|| "-".to_string())
             ),
+            Operation::ExtendGenomeAnchor {
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => format!(
+                "Extend genome anchor: seq_id={}, side={:?}, length_bp={}, output_id={}, catalog_path={}, cache_dir={}",
+                seq_id,
+                side,
+                length_bp,
+                output_id.clone().unwrap_or_else(|| "-".to_string()),
+                catalog_path.clone().unwrap_or_else(|| "-".to_string()),
+                cache_dir.clone().unwrap_or_else(|| "-".to_string())
+            ),
             Operation::ImportGenomeBedTrack {
                 seq_id,
                 path,

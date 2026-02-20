@@ -1,6 +1,6 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
-use crate::engine::{Engine, GentleEngine, Operation, ProjectState, Workflow};
+use crate::engine::{Engine, GenomeAnchorSide, GentleEngine, Operation, ProjectState, Workflow};
 use crate::engine_shell::{execute_shell_command, ShellCommand};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
@@ -104,6 +104,7 @@ impl LuaInterface {
         );
         println!("  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper");
         println!("  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir]): Engine op helper");
+        println!("  - extend_genome_anchor(project, seq_id, side_5p_or_3p, length_bp, [output_id], [catalog_path], [cache_dir]): Engine op helper");
         println!("  - import_genome_bed_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BED/BED.GZ overlay helper");
         println!("  - import_genome_bigwig_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BigWig overlay helper");
         println!("  - import_genome_vcf_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): VCF/VCF.GZ variant overlay helper");
@@ -756,6 +757,59 @@ impl LuaInterface {
                             genome_id,
                             gene_query,
                             occurrence,
+                            output_id,
+                            catalog_path,
+                            cache_dir,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
+        )?;
+
+        self.lua.globals().set(
+            "extend_genome_anchor",
+            self.lua.create_function(
+                |lua,
+                 (state, seq_id, side_raw, length_bp, output_id, catalog_path, cache_dir): (
+                    Value,
+                    String,
+                    String,
+                    usize,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )| {
+                    let side = match side_raw.trim().to_ascii_lowercase().as_str() {
+                        "5" | "5p" | "5prime" | "5'" | "five_prime" | "five-prime" => {
+                            GenomeAnchorSide::FivePrime
+                        }
+                        "3" | "3p" | "3prime" | "3'" | "three_prime" | "three-prime" => {
+                            GenomeAnchorSide::ThreePrime
+                        }
+                        _ => {
+                            return Err(Self::err(
+                                "extend_genome_anchor side must be 5p or 3p",
+                            ))
+                        }
+                    };
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::ExtendGenomeAnchor {
+                            seq_id,
+                            side,
+                            length_bp,
                             output_id,
                             catalog_path,
                             cache_dir,

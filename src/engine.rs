@@ -49,6 +49,8 @@ pub const CANDIDATE_SETS_METADATA_KEY: &str = "candidate_sets";
 const CANDIDATE_SETS_SCHEMA: &str = "gentle.candidate_sets.v1";
 const CANDIDATE_SETS_REF_SCHEMA: &str = "gentle.candidate_sets.ref.v1";
 const CANDIDATE_SETS_DISK_INDEX_SCHEMA: &str = "gentle.candidate_sets.disk_index.v1";
+const CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY: &str = "candidate_sets_load_warning";
+const CANDIDATE_STORE_STRICT_LOAD_ENV: &str = "GENTLE_CANDIDATE_STORE_STRICT_LOAD";
 const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
@@ -243,6 +245,31 @@ pub struct ProjectState {
     pub container_state: ContainerState,
 }
 
+#[derive(Debug)]
+enum CandidateSidecarTransaction {
+    Noop,
+    Replace {
+        final_dir: PathBuf,
+        staging_dir: PathBuf,
+    },
+    Remove {
+        final_dir: PathBuf,
+    },
+}
+
+#[derive(Debug)]
+enum CandidateSidecarCommitted {
+    Noop,
+    Replaced {
+        final_dir: PathBuf,
+        backup_dir: Option<PathBuf>,
+    },
+    Removed {
+        final_dir: PathBuf,
+        backup_dir: Option<PathBuf>,
+    },
+}
+
 impl ProjectState {
     pub fn load_from_path(path: &str) -> Result<Self, EngineError> {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
@@ -253,21 +280,49 @@ impl ProjectState {
             code: ErrorCode::InvalidInput,
             message: format!("Could not parse state JSON '{path}': {e}"),
         })?;
-        state.hydrate_candidate_store_from_external_ref(path)?;
+        if let Err(err) = state.hydrate_candidate_store_from_external_ref(path) {
+            if Self::strict_candidate_store_load_enabled() {
+                return Err(err);
+            }
+            let warning = err.message;
+            state.metadata.remove(CANDIDATE_SETS_METADATA_KEY);
+            state.metadata.insert(
+                CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY.to_string(),
+                json!({
+                    "message": warning,
+                    "strict_env": CANDIDATE_STORE_STRICT_LOAD_ENV,
+                }),
+            );
+        } else {
+            state
+                .metadata
+                .remove(CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY);
+        }
         Ok(state)
     }
 
     pub fn save_to_path(&self, path: &str) -> Result<(), EngineError> {
         let mut state_for_disk = self.clone();
-        state_for_disk.externalize_candidate_store_to_sidecar(path)?;
+        let project_path = Path::new(path);
+        let sidecar_tx = state_for_disk.prepare_candidate_store_sidecar_transaction(project_path)?;
         let text = serde_json::to_string_pretty(&state_for_disk).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize state: {e}"),
         })?;
-        std::fs::write(path, text).map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!("Could not write state file '{path}': {e}"),
-        })
+        let committed = Self::commit_candidate_store_transaction(sidecar_tx)?;
+        if let Err(write_err) = Self::write_text_file_atomically(project_path, &text) {
+            if let Err(rollback_err) = Self::rollback_candidate_store_transaction(committed) {
+                return Err(EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "{}; candidate-sidecar rollback also failed: {}",
+                        write_err.message, rollback_err.message
+                    ),
+                });
+            }
+            return Err(write_err);
+        }
+        Self::finalize_candidate_store_transaction(committed)
     }
 
     fn candidate_store_sidecar_basename(project_path: &Path) -> String {
@@ -287,12 +342,130 @@ impl ProjectState {
         parent.join(Self::candidate_store_sidecar_basename(project_path))
     }
 
-    fn candidate_store_sidecar_index_abs(project_path: &Path) -> PathBuf {
-        Self::candidate_store_sidecar_dir(project_path).join("index.json")
-    }
-
     fn candidate_store_sidecar_index_rel(project_path: &Path) -> PathBuf {
         PathBuf::from(Self::candidate_store_sidecar_basename(project_path)).join("index.json")
+    }
+
+    fn strict_candidate_store_load_enabled() -> bool {
+        matches!(
+            env::var(CANDIDATE_STORE_STRICT_LOAD_ENV)
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    }
+
+    fn write_text_file_atomically(path: &Path, text: &str) -> Result<(), EngineError> {
+        let parent = path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        std::fs::create_dir_all(&parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create parent directory '{}' for state save: {e}",
+                parent.display()
+            ),
+        })?;
+        let mut tmp = NamedTempFile::new_in(&parent).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create temporary state file in '{}': {e}",
+                parent.display()
+            ),
+        })?;
+        tmp.write_all(text.as_bytes()).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write temporary state file for '{}': {e}", path.display()),
+        })?;
+        tmp.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush temporary state file for '{}': {e}", path.display()),
+        })?;
+        tmp.as_file().sync_all().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not sync temporary state file for '{}': {e}",
+                path.display()
+            ),
+        })?;
+        tmp.persist(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not replace state file '{}': {}", path.display(), e.error),
+        })?;
+        Ok(())
+    }
+
+    fn candidate_sidecar_staging_dir(final_dir: &Path) -> Result<PathBuf, EngineError> {
+        let parent = final_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let base = final_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("candidate_sidecar");
+        let nonce = format!("{}-{}", std::process::id(), GentleEngine::now_unix_ms());
+        for attempt in 0..64 {
+            let suffix = if attempt == 0 {
+                nonce.clone()
+            } else {
+                format!("{nonce}-{attempt}")
+            };
+            let candidate = parent.join(format!(".{base}.staging.{suffix}"));
+            match std::fs::create_dir(&candidate) {
+                Ok(_) => return Ok(candidate),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => {
+                    return Err(EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not create candidate-sidecar staging directory '{}': {e}",
+                            candidate.display()
+                        ),
+                    })
+                }
+            }
+        }
+        Err(EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create unique candidate-sidecar staging directory under '{}'",
+                parent.display()
+            ),
+        })
+    }
+
+    fn candidate_sidecar_backup_dir(final_dir: &Path) -> Result<PathBuf, EngineError> {
+        let parent = final_dir
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let base = final_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("candidate_sidecar");
+        let nonce = format!("{}-{}", std::process::id(), GentleEngine::now_unix_ms());
+        for attempt in 0..64 {
+            let suffix = if attempt == 0 {
+                nonce.clone()
+            } else {
+                format!("{nonce}-{attempt}")
+            };
+            let candidate = parent.join(format!(".{base}.backup.{suffix}"));
+            if !candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+        Err(EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not allocate candidate-sidecar backup path under '{}'",
+                parent.display()
+            ),
+        })
     }
 
     fn sanitize_candidate_set_file_stem(name: &str) -> String {
@@ -478,51 +651,64 @@ impl ProjectState {
         Ok(())
     }
 
-    fn externalize_candidate_store_to_sidecar(
+    fn load_candidate_store_for_externalization(
+        &self,
+        project_path: &Path,
+        value: serde_json::Value,
+    ) -> Result<Option<CandidateStore>, EngineError> {
+        if let Some(store) = Self::parse_inline_candidate_store_value(&value) {
+            return Ok(Some(store));
+        }
+        let reference: CandidateStoreReference = serde_json::from_value(value).map_err(|e| {
+            EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not parse candidate-store reference metadata '{}': {e}",
+                    CANDIDATE_SETS_METADATA_KEY
+                ),
+            }
+        })?;
+        if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
+            return Ok(None);
+        }
+        let store = Self::load_candidate_store_from_ref(project_path, &reference)?;
+        Ok(Some(store))
+    }
+
+    fn prepare_candidate_store_sidecar_transaction(
         &mut self,
-        project_path: &str,
-    ) -> Result<(), EngineError> {
+        project_path: &Path,
+    ) -> Result<CandidateSidecarTransaction, EngineError> {
+        let sidecar_dir = Self::candidate_store_sidecar_dir(project_path);
         let Some(value) = self
             .metadata
             .get(CANDIDATE_SETS_METADATA_KEY)
             .cloned()
         else {
-            return Ok(());
-        };
-        let project_path = Path::new(project_path);
-        let mut store = if let Some(store) = Self::parse_inline_candidate_store_value(&value) {
-            store
-        } else {
-            let reference: CandidateStoreReference = serde_json::from_value(value).map_err(|e| {
-                EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not parse candidate-store reference metadata '{}': {e}",
-                        CANDIDATE_SETS_METADATA_KEY
-                    ),
-                }
-            })?;
-            if reference.schema != CANDIDATE_SETS_REF_SCHEMA {
-                return Ok(());
+            if sidecar_dir.exists() {
+                return Ok(CandidateSidecarTransaction::Remove {
+                    final_dir: sidecar_dir,
+                });
             }
-            Self::load_candidate_store_from_ref(project_path, &reference)?
+            return Ok(CandidateSidecarTransaction::Noop);
+        };
+        let Some(mut store) = self.load_candidate_store_for_externalization(project_path, value)?
+        else {
+            return Ok(CandidateSidecarTransaction::Noop);
         };
         if store.sets.is_empty() {
             self.metadata.remove(CANDIDATE_SETS_METADATA_KEY);
-            return Ok(());
+            if sidecar_dir.exists() {
+                return Ok(CandidateSidecarTransaction::Remove {
+                    final_dir: sidecar_dir,
+                });
+            }
+            return Ok(CandidateSidecarTransaction::Noop);
         }
         if store.schema.trim().is_empty() {
             store.schema = CANDIDATE_SETS_SCHEMA.to_string();
         }
-
-        let sidecar_dir = Self::candidate_store_sidecar_dir(project_path);
-        std::fs::create_dir_all(&sidecar_dir).map_err(|e| EngineError {
-            code: ErrorCode::Io,
-            message: format!(
-                "Could not create candidate-store directory '{}': {e}",
-                sidecar_dir.display()
-            ),
-        })?;
+        let staging_dir = Self::candidate_sidecar_staging_dir(&sidecar_dir)?;
 
         let mut set_names: Vec<String> = store.sets.keys().cloned().collect();
         set_names.sort_unstable();
@@ -535,7 +721,7 @@ impl ProjectState {
             set_name.hash(&mut hasher);
             let stem = Self::sanitize_candidate_set_file_stem(set_name);
             let records_filename = format!("{:03}_{}_{}.jsonl", idx + 1, stem, hasher.finish());
-            let records_path = sidecar_dir.join(&records_filename);
+            let records_path = staging_dir.join(&records_filename);
             let records_file = File::create(&records_path).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
@@ -584,7 +770,7 @@ impl ProjectState {
             set_count: index_entries.len(),
             sets: index_entries,
         };
-        let index_path = Self::candidate_store_sidecar_index_abs(project_path);
+        let index_path = staging_dir.join("index.json");
         let index_text = serde_json::to_string_pretty(&index).map_err(|e| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not serialize candidate-store index: {e}"),
@@ -612,7 +798,150 @@ impl ProjectState {
         })?;
         self.metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), reference_value);
-        Ok(())
+        Ok(CandidateSidecarTransaction::Replace {
+            final_dir: sidecar_dir,
+            staging_dir,
+        })
+    }
+
+    fn commit_candidate_store_transaction(
+        tx: CandidateSidecarTransaction,
+    ) -> Result<CandidateSidecarCommitted, EngineError> {
+        match tx {
+            CandidateSidecarTransaction::Noop => Ok(CandidateSidecarCommitted::Noop),
+            CandidateSidecarTransaction::Replace {
+                final_dir,
+                staging_dir,
+            } => {
+                let mut backup_dir: Option<PathBuf> = None;
+                if final_dir.exists() {
+                    let backup = Self::candidate_sidecar_backup_dir(&final_dir)?;
+                    std::fs::rename(&final_dir, &backup).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not move existing candidate-sidecar directory '{}' to backup '{}': {e}",
+                            final_dir.display(),
+                            backup.display()
+                        ),
+                    })?;
+                    backup_dir = Some(backup);
+                }
+                if let Err(e) = std::fs::rename(&staging_dir, &final_dir) {
+                    if let Some(backup) = &backup_dir {
+                        let _ = std::fs::rename(backup, &final_dir);
+                    }
+                    let _ = std::fs::remove_dir_all(&staging_dir);
+                    return Err(EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not activate candidate-sidecar directory '{}' from staging '{}': {e}",
+                            final_dir.display(),
+                            staging_dir.display()
+                        ),
+                    });
+                }
+                Ok(CandidateSidecarCommitted::Replaced {
+                    final_dir,
+                    backup_dir,
+                })
+            }
+            CandidateSidecarTransaction::Remove { final_dir } => {
+                if !final_dir.exists() {
+                    return Ok(CandidateSidecarCommitted::Noop);
+                }
+                let backup = Self::candidate_sidecar_backup_dir(&final_dir)?;
+                std::fs::rename(&final_dir, &backup).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not stage candidate-sidecar removal '{}' -> '{}': {e}",
+                        final_dir.display(),
+                        backup.display()
+                    ),
+                })?;
+                Ok(CandidateSidecarCommitted::Removed {
+                    final_dir,
+                    backup_dir: Some(backup),
+                })
+            }
+        }
+    }
+
+    fn rollback_candidate_store_transaction(
+        committed: CandidateSidecarCommitted,
+    ) -> Result<(), EngineError> {
+        match committed {
+            CandidateSidecarCommitted::Noop => Ok(()),
+            CandidateSidecarCommitted::Replaced {
+                final_dir,
+                backup_dir,
+            } => {
+                if let Some(backup) = backup_dir {
+                    if final_dir.exists() {
+                        std::fs::remove_dir_all(&final_dir).map_err(|e| EngineError {
+                            code: ErrorCode::Io,
+                            message: format!(
+                                "Could not remove partially committed candidate-sidecar directory '{}': {e}",
+                                final_dir.display()
+                            ),
+                        })?;
+                    }
+                    std::fs::rename(&backup, &final_dir).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not restore candidate-sidecar backup '{}' -> '{}': {e}",
+                            backup.display(),
+                            final_dir.display()
+                        ),
+                    })?;
+                } else if final_dir.exists() {
+                    std::fs::remove_dir_all(&final_dir).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not remove new candidate-sidecar directory '{}' during rollback: {e}",
+                            final_dir.display()
+                        ),
+                    })?;
+                }
+                Ok(())
+            }
+            CandidateSidecarCommitted::Removed {
+                final_dir,
+                backup_dir,
+            } => {
+                if let Some(backup) = backup_dir {
+                    std::fs::rename(&backup, &final_dir).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not restore candidate-sidecar directory '{}' -> '{}': {e}",
+                            backup.display(),
+                            final_dir.display()
+                        ),
+                    })?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn finalize_candidate_store_transaction(
+        committed: CandidateSidecarCommitted,
+    ) -> Result<(), EngineError> {
+        match committed {
+            CandidateSidecarCommitted::Noop => Ok(()),
+            CandidateSidecarCommitted::Replaced { backup_dir, .. }
+            | CandidateSidecarCommitted::Removed { backup_dir, .. } => {
+                if let Some(backup) = backup_dir {
+                    std::fs::remove_dir_all(&backup).map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not remove candidate-sidecar backup directory '{}': {e}",
+                            backup.display()
+                        ),
+                    })?;
+                }
+                Ok(())
+            }
+        }
     }
 }
 
@@ -858,6 +1187,22 @@ pub struct BlastHitFeatureInput {
     pub query_coverage_percent: Option<f64>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GenomeAnchorSide {
+    FivePrime,
+    ThreePrime,
+}
+
+impl GenomeAnchorSide {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FivePrime => "5prime",
+            Self::ThreePrime => "3prime",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Operation {
     LoadFile {
@@ -920,6 +1265,14 @@ pub enum Operation {
         genome_id: String,
         gene_query: String,
         occurrence: Option<usize>,
+        output_id: Option<SeqId>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ExtendGenomeAnchor {
+        seq_id: SeqId,
+        side: GenomeAnchorSide,
+        length_bp: usize,
         output_id: Option<SeqId>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
@@ -1281,6 +1634,8 @@ struct GenomeSequenceAnchor {
     start_1based: usize,
     end_1based: usize,
     strand: Option<char>,
+    catalog_path: Option<String>,
+    cache_dir: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1858,6 +2213,7 @@ impl GentleEngine {
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
                 "ExtractGenomeGene".to_string(),
+                "ExtendGenomeAnchor".to_string(),
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
                 "ImportGenomeVcfTrack".to_string(),
@@ -4030,6 +4386,18 @@ impl GentleEngine {
                 .and_then(|v| v.as_str())
                 .and_then(|v| v.trim().chars().next())
                 .filter(|c| matches!(c, '+' | '-'));
+            let catalog_path = entry
+                .get("catalog_path")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string());
+            let cache_dir = entry
+                .get("cache_dir")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_string());
             let recorded_at = entry
                 .get("recorded_at_unix_ms")
                 .and_then(|v| v.as_u64())
@@ -4047,6 +4415,8 @@ impl GentleEngine {
                     start_1based: start_1based as usize,
                     end_1based: end_1based as usize,
                     strand: anchor_strand,
+                    catalog_path,
+                    cache_dir,
                 });
             }
         }
@@ -4054,7 +4424,7 @@ impl GentleEngine {
         latest.ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
             message: format!(
-                "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene first"
+                "Sequence '{seq_id}' is not anchored to a genome interval; run ExtractGenomeRegion/ExtractGenomeGene/ExtendGenomeAnchor first"
             ),
         })
     }
@@ -5557,6 +5927,8 @@ impl GentleEngine {
             start_1based,
             end_1based,
             strand: Some(anchor_strand),
+            catalog_path: None,
+            cache_dir: None,
         })
     }
 
@@ -5723,6 +6095,7 @@ impl GentleEngine {
             Operation::ExtractAnchoredRegion { .. } => Some("Extracted region".to_string()),
             Operation::ExtractGenomeRegion { .. } => Some("Extracted genome region".to_string()),
             Operation::ExtractGenomeGene { .. } => Some("Extracted genome gene".to_string()),
+            Operation::ExtendGenomeAnchor { .. } => Some("Extended genome anchor".to_string()),
             Operation::ImportGenomeBedTrack { .. } => Some("Imported BED track".to_string()),
             Operation::ImportGenomeBigWigTrack { .. } => Some("Imported BigWig track".to_string()),
             Operation::ImportGenomeVcfTrack { .. } => Some("Imported VCF track".to_string()),
@@ -7681,6 +8054,163 @@ impl GentleEngine {
                     genome_id,
                     Self::genome_gene_display_label(selected_gene)
                 ));
+            }
+            Operation::ExtendGenomeAnchor {
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+                catalog_path,
+                cache_dir,
+            } => {
+                if length_bp == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ExtendGenomeAnchor requires length_bp >= 1".to_string(),
+                    });
+                }
+                if !self.state.sequences.contains_key(&seq_id) {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    });
+                }
+                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                let resolved_catalog_path = catalog_path
+                    .or(anchor.catalog_path.clone())
+                    .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
+                let catalog = GenomeCatalog::from_json_file(&resolved_catalog_path).map_err(|e| {
+                    EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not open genome catalog '{}': {}",
+                            resolved_catalog_path, e
+                        ),
+                    }
+                })?;
+
+                let anchor_is_reverse = anchor.strand == Some('-');
+                let (new_start_1based, new_end_1based) = match (anchor_is_reverse, side) {
+                    (false, GenomeAnchorSide::FivePrime) => (
+                        anchor.start_1based.saturating_sub(length_bp).max(1),
+                        anchor.end_1based,
+                    ),
+                    (false, GenomeAnchorSide::ThreePrime) => (
+                        anchor.start_1based,
+                        anchor.end_1based.saturating_add(length_bp),
+                    ),
+                    (true, GenomeAnchorSide::FivePrime) => (
+                        anchor.start_1based,
+                        anchor.end_1based.saturating_add(length_bp),
+                    ),
+                    (true, GenomeAnchorSide::ThreePrime) => (
+                        anchor.start_1based.saturating_sub(length_bp).max(1),
+                        anchor.end_1based,
+                    ),
+                };
+                let mut sequence = catalog
+                    .get_sequence_region_with_cache(
+                        &anchor.genome_id,
+                        &anchor.chromosome,
+                        new_start_1based,
+                        new_end_1based,
+                        resolved_cache_dir.as_deref(),
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not load extended genome region {}:{}-{} from '{}': {}",
+                            anchor.chromosome, new_start_1based, new_end_1based, anchor.genome_id, e
+                        ),
+                    })?;
+                if anchor_is_reverse {
+                    sequence = Self::reverse_complement(&sequence);
+                }
+
+                let side_token = side.as_str();
+                let default_id = format!("{seq_id}_ext_{side_token}_{length_bp}");
+                let base = output_id.unwrap_or(default_id);
+                let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not construct DNA sequence from extended anchor: {e}"),
+                })?;
+                Self::prepare_sequence(&mut dna);
+                let extended_seq_id = self.unique_seq_id(&base);
+                self.state.sequences.insert(extended_seq_id.clone(), dna);
+                self.add_lineage_node(
+                    &extended_seq_id,
+                    SequenceOrigin::Derived,
+                    Some(&result.op_id),
+                );
+                result.created_seq_ids.push(extended_seq_id.clone());
+                parent_seq_ids.push(seq_id.clone());
+
+                let source_plan = catalog
+                    .source_plan(&anchor.genome_id, resolved_cache_dir.as_deref())
+                    .ok();
+                let inspection = catalog
+                    .inspect_prepared_genome(&anchor.genome_id, resolved_cache_dir.as_deref())
+                    .ok()
+                    .flatten();
+                let (
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                    seq_id: extended_seq_id.clone(),
+                    recorded_at_unix_ms: Self::now_unix_ms(),
+                    operation: "ExtendGenomeAnchor".to_string(),
+                    genome_id: anchor.genome_id.clone(),
+                    catalog_path: resolved_catalog_path.clone(),
+                    cache_dir: resolved_cache_dir.clone(),
+                    chromosome: Some(anchor.chromosome.clone()),
+                    start_1based: Some(new_start_1based),
+                    end_1based: Some(new_end_1based),
+                    gene_query: None,
+                    occurrence: None,
+                    gene_id: None,
+                    gene_name: None,
+                    strand: anchor.strand,
+                    anchor_strand: Some(anchor.strand.unwrap_or('+')),
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                });
+                let side_label = match side {
+                    GenomeAnchorSide::FivePrime => "5'",
+                    GenomeAnchorSide::ThreePrime => "3'",
+                };
+                let anchor_strand = anchor.strand.unwrap_or('+');
+                result.messages.push(format!(
+                    "Extended genome anchor '{}' on {} by {} bp (anchor strand {}) => {}:{}-{} as '{}'",
+                    seq_id,
+                    side_label,
+                    length_bp,
+                    anchor_strand,
+                    anchor.chromosome,
+                    new_start_1based,
+                    new_end_1based,
+                    extended_seq_id
+                ));
+                let lower_bound_clipped = matches!(
+                    (anchor_is_reverse, side),
+                    (false, GenomeAnchorSide::FivePrime) | (true, GenomeAnchorSide::ThreePrime)
+                ) && new_start_1based == 1
+                    && anchor.start_1based <= length_bp;
+                if lower_bound_clipped {
+                    result.warnings.push(format!(
+                        "Requested {} bp {} extension for '{}' clipped at chromosome start position 1",
+                        length_bp, side_label, seq_id
+                    ));
+                }
             }
             Operation::ImportGenomeBedTrack {
                 seq_id,
@@ -11892,6 +12422,7 @@ ORIGIN
                     if let OperationProgress::Tfbs(p) = progress {
                         progress_events.push(p);
                     }
+                    true
                 },
             )
             .unwrap();
@@ -12682,6 +13213,270 @@ ORIGIN
                     .map(|v| !v.is_empty())
                     .unwrap_or(false)
         }));
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_plus_strand_adds_lineage_and_provenance() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGT\nACGT\nACGT\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        );
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("toy_slice".to_string()),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let extended = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "toy_slice".to_string(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 2,
+                output_id: Some("toy_slice_ext5".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(extended.created_seq_ids, vec!["toy_slice_ext5".to_string()]);
+        let extended_seq = engine
+            .state()
+            .sequences
+            .get("toy_slice_ext5")
+            .expect("extended sequence should exist");
+        assert_eq!(extended_seq.get_forward_string(), "ACGTACGTAC");
+
+        let lineage = &engine.state().lineage;
+        let parent = lineage
+            .seq_to_node
+            .get("toy_slice")
+            .expect("parent lineage node should exist");
+        let child = lineage
+            .seq_to_node
+            .get("toy_slice_ext5")
+            .expect("child lineage node should exist");
+        assert!(lineage
+            .edges
+            .iter()
+            .any(|edge| edge.from_node_id == *parent && edge.to_node_id == *child));
+
+        let provenance = engine
+            .state()
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .and_then(|v| v.as_object())
+            .expect("provenance metadata object");
+        let extractions = provenance
+            .get(GENOME_EXTRACTIONS_METADATA_KEY)
+            .and_then(|v| v.as_array())
+            .expect("genome_extractions array");
+        let entry = extractions
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("seq_id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "toy_slice_ext5")
+                    .unwrap_or(false)
+            })
+            .expect("extended provenance entry");
+        assert_eq!(
+            entry.get("operation").and_then(|v| v.as_str()),
+            Some("ExtendGenomeAnchor")
+        );
+        assert_eq!(entry.get("start_1based").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(entry.get("end_1based").and_then(|v| v.as_u64()), Some(10));
+        assert_eq!(entry.get("anchor_strand").and_then(|v| v.as_str()), Some("+"));
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_reverse_strand_respects_5prime_and_3prime_physical_direction() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta_gz = root.join("toy.fa.gz");
+        let ann_gz = root.join("toy.gtf.gz");
+        write_gzip(&fasta_gz, ">chr1\nACGTTGCAATGCCGTA\n");
+        write_gzip(
+            &ann_gz,
+            "chr1\tsrc\tgene\t1\t16\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        );
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy genome",
+    "sequence_remote": "{}",
+    "annotations_remote": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            file_url(&fasta_gz),
+            file_url(&ann_gz),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("rev_anchor".to_string(), seq("ATTGCA"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "rev_anchor",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "LoadFileGenBankRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": catalog_path_str,
+                        "cache_dir": null,
+                        "chromosome": "chr1",
+                        "start_1based": 5,
+                        "end_1based": 10,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "-",
+                        "sequence_source_type": "synthetic",
+                        "annotation_source_type": "synthetic",
+                        "sequence_source": "synthetic",
+                        "annotation_source": "synthetic",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let ext5 = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "rev_anchor".to_string(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 3,
+                output_id: Some("rev_ext5".to_string()),
+                catalog_path: None,
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(ext5.created_seq_ids, vec!["rev_ext5".to_string()]);
+        assert_eq!(
+            engine
+                .state()
+                .sequences
+                .get("rev_ext5")
+                .expect("rev_ext5 sequence")
+                .get_forward_string(),
+            "GGCATTGCA"
+        );
+
+        let ext3 = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "rev_anchor".to_string(),
+                side: GenomeAnchorSide::ThreePrime,
+                length_bp: 2,
+                output_id: Some("rev_ext3".to_string()),
+                catalog_path: None,
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(ext3.created_seq_ids, vec!["rev_ext3".to_string()]);
+        assert_eq!(
+            engine
+                .state()
+                .sequences
+                .get("rev_ext3")
+                .expect("rev_ext3 sequence")
+                .get_forward_string(),
+            "ATTGCAAC"
+        );
+
+        let provenance = engine
+            .state()
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .and_then(|v| v.as_object())
+            .expect("provenance metadata object");
+        let extractions = provenance
+            .get(GENOME_EXTRACTIONS_METADATA_KEY)
+            .and_then(|v| v.as_array())
+            .expect("genome_extractions array");
+
+        let ext5_entry = extractions
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("seq_id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "rev_ext5")
+                    .unwrap_or(false)
+            })
+            .expect("rev_ext5 provenance");
+        assert_eq!(ext5_entry.get("start_1based").and_then(|v| v.as_u64()), Some(5));
+        assert_eq!(ext5_entry.get("end_1based").and_then(|v| v.as_u64()), Some(13));
+        assert_eq!(ext5_entry.get("anchor_strand").and_then(|v| v.as_str()), Some("-"));
+
+        let ext3_entry = extractions
+            .iter()
+            .find(|entry| {
+                entry
+                    .get("seq_id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "rev_ext3")
+                    .unwrap_or(false)
+            })
+            .expect("rev_ext3 provenance");
+        assert_eq!(ext3_entry.get("start_1based").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(ext3_entry.get("end_1based").and_then(|v| v.as_u64()), Some(10));
+        assert_eq!(ext3_entry.get("anchor_strand").and_then(|v| v.as_str()), Some("-"));
     }
 
     #[test]
@@ -13646,9 +14441,45 @@ ORIGIN
     }
 
     #[test]
-    fn test_project_state_load_errors_when_candidate_sidecar_is_missing() {
+    fn test_project_state_load_degrades_when_candidate_sidecar_is_missing() {
         let td = tempdir().expect("tempdir");
         let project_path = td.path().join("broken.gentle.json");
+        let project_json = serde_json::json!({
+            "sequences": {},
+            "metadata": {
+                CANDIDATE_SETS_METADATA_KEY: {
+                    "schema": CANDIDATE_SETS_REF_SCHEMA,
+                    "storage": "jsonl_indexed",
+                    "index_path": "missing_sidecar/index.json",
+                    "set_count": 1,
+                    "updated_at_unix_ms": 0
+                }
+            }
+        });
+        std::fs::write(
+            &project_path,
+            serde_json::to_string_pretty(&project_json).expect("serialize project"),
+        )
+        .expect("write project");
+        let loaded = ProjectState::load_from_path(project_path.to_string_lossy().as_ref())
+            .expect("load in degraded mode");
+        assert!(!loaded.metadata.contains_key(CANDIDATE_SETS_METADATA_KEY));
+        let warning = loaded
+            .metadata
+            .get(CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY)
+            .expect("degraded-load warning metadata");
+        let warning_message = warning
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(warning_message.contains("candidate-store index"));
+    }
+
+    #[test]
+    fn test_project_state_load_strict_mode_errors_when_candidate_sidecar_is_missing() {
+        let _guard = EnvVarGuard::set(CANDIDATE_STORE_STRICT_LOAD_ENV, "1");
+        let td = tempdir().expect("tempdir");
+        let project_path = td.path().join("broken_strict.gentle.json");
         let project_json = serde_json::json!({
             "sequences": {},
             "metadata": {
@@ -13669,6 +14500,49 @@ ORIGIN
         let err =
             ProjectState::load_from_path(project_path.to_string_lossy().as_ref()).unwrap_err();
         assert!(err.message.contains("candidate-store index"));
+    }
+
+    #[test]
+    fn test_candidate_store_save_replaces_sidecar_and_removes_stale_files() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seqA".to_string(), seq("ACGTACGTACGT"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::GenerateCandidateSet {
+                set_name: "windows".to_string(),
+                seq_id: "seqA".to_string(),
+                length_bp: 4,
+                step_bp: 2,
+                feature_kinds: vec![],
+                feature_label_regex: None,
+                max_distance_bp: None,
+                limit: Some(16),
+            })
+            .expect("generate candidates");
+
+        let td = tempdir().expect("tempdir");
+        let project_path = td.path().join("replace_sidecar.gentle.json");
+        engine
+            .state()
+            .save_to_path(project_path.to_string_lossy().as_ref())
+            .expect("initial save");
+
+        let sidecar_dir = ProjectState::candidate_store_sidecar_dir(&project_path);
+        let stale_path = sidecar_dir.join("stale.jsonl");
+        std::fs::write(&stale_path, "{\"stale\":true}\n").expect("write stale sidecar file");
+        assert!(stale_path.exists(), "stale file should exist before re-save");
+
+        engine
+            .state()
+            .save_to_path(project_path.to_string_lossy().as_ref())
+            .expect("second save");
+
+        assert!(
+            !stale_path.exists(),
+            "stale sidecar file should be removed by directory replacement"
+        );
     }
 
     #[test]

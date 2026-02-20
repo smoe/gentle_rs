@@ -4195,6 +4195,7 @@ impl MainAreaDna {
             } else {
                 let command = ShellCommand::CandidatesMacro {
                     script: script.clone(),
+                    transactional: false,
                 };
                 let outcome = {
                     let mut guard = engine.write().expect("Engine lock poisoned");
