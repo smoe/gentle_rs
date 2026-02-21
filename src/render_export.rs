@@ -4,9 +4,9 @@ use crate::{
 };
 use gb_io::seq::Feature;
 use std::collections::{HashMap, HashSet};
+use svg::Document;
 use svg::node::element::path::Data;
 use svg::node::element::{Circle, Line, Path, Rectangle, Text};
-use svg::Document;
 
 const W: f32 = 1200.0;
 const H: f32 = 700.0;
@@ -333,13 +333,18 @@ fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usiz
     }
 }
 
-fn collect_features(dna: &DNAsequence, display: &DisplaySettings, view_span_bp: usize) -> Vec<FeatureVm> {
+fn collect_features(
+    dna: &DNAsequence,
+    display: &DisplaySettings,
+    view_span_bp: usize,
+) -> Vec<FeatureVm> {
     let mut ret = Vec::new();
     for feature in dna.features() {
         if feature.kind.to_string().to_ascii_uppercase() == "SOURCE" {
             continue;
         }
-        let max_view_span = feature_max_view_span_bp(feature, display.regulatory_feature_max_view_span_bp);
+        let max_view_span =
+            feature_max_view_span_bp(feature, display.regulatory_feature_max_view_span_bp);
         if max_view_span > 0 && view_span_bp > max_view_span {
             continue;
         }
@@ -1083,7 +1088,7 @@ pub fn export_svg_pair(
 mod tests {
     use super::*;
     use crate::engine::DisplaySettings;
-    use gb_io::{seq::Location, FeatureKind};
+    use gb_io::{FeatureKind, seq::Location};
     #[cfg(feature = "snapshot-tests")]
     use std::fs;
 

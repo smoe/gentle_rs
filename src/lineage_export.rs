@@ -1,7 +1,7 @@
 use crate::engine::ProjectState;
 use std::collections::HashMap;
-use svg::node::element::{Circle, Line, Polygon, Rectangle, Text};
 use svg::Document;
+use svg::node::element::{Circle, Line, Polygon, Rectangle, Text};
 
 const W: f32 = 1600.0;
 const H: f32 = 900.0;

@@ -62,9 +62,9 @@ mod macos_native_help_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
+    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::{ns_string, MainThreadMarker, NSObject, NSObjectProtocol};
+    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -157,9 +157,9 @@ mod macos_native_settings_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
+    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::{ns_string, MainThreadMarker, NSObject, NSObjectProtocol};
+    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -252,9 +252,9 @@ mod macos_native_windows_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
+    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
     use objc2_app_kit::NSApplication;
-    use objc2_foundation::{ns_string, MainThreadMarker, NSObject, NSObjectProtocol};
+    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 

@@ -20,6 +20,14 @@
     "ncbi_assembly_name": "GRCh38.p14",
     "cache_dir": "data/genomes"
   },
+  "Human T2T CHM13v2.0 NCBI RefSeq GCF_009914755.1": {
+    "ncbi_taxonomy_id": 9606,
+    "description": "Human T2T CHM13v2.0 from NCBI RefSeq assembly",
+    "ncbi_assembly_accession": "GCF_009914755.1",
+    "ncbi_assembly_name": "T2T-CHM13v2.0",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_009914755.1",
+    "cache_dir": "data/genomes"
+  },
   "Mouse GRCm39 Ensembl 116": {
     "ncbi_taxonomy_id": 10090,
     "description": "Mouse GRCm39 Ensembl 116",

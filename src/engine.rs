@@ -1,20 +1,21 @@
 use crate::{
+    DNA_LADDERS, RNA_LADDERS,
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
     genomes::{
-        is_prepare_cancelled_error, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
-        GenomeSourcePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
+        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
+        PrepareGenomeReport, PreparedGenomeInspection, is_prepare_cancelled_error,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{build_serial_gel_layout, export_pool_gel_svg, GelSampleInput},
+    pool_gel::{GelSampleInput, build_serial_gel_layout, export_pool_gel_svg},
     render_export::{export_circular_svg, export_linear_svg},
     restriction_enzyme::RestrictionEnzyme,
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
-    tf_motifs, DNA_LADDERS, RNA_LADDERS,
+    tf_motifs,
 };
 use flate2::read::GzDecoder;
 use regex::{Regex, RegexBuilder};
@@ -466,7 +467,7 @@ impl ProjectState {
                             "Could not create candidate-sidecar staging directory '{}': {e}",
                             candidate.display()
                         ),
-                    })
+                    });
                 }
             }
         }
@@ -3938,7 +3939,9 @@ impl GentleEngine {
         Ok(())
     }
 
-    fn read_guide_design_store_from_metadata(value: Option<&serde_json::Value>) -> GuideDesignStore {
+    fn read_guide_design_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> GuideDesignStore {
         let mut store = value
             .cloned()
             .and_then(|v| serde_json::from_value::<GuideDesignStore>(v).ok())
@@ -3950,7 +3953,9 @@ impl GentleEngine {
     }
 
     fn read_guide_design_store(&self) -> GuideDesignStore {
-        Self::read_guide_design_store_from_metadata(self.state.metadata.get(GUIDE_DESIGN_METADATA_KEY))
+        Self::read_guide_design_store_from_metadata(
+            self.state.metadata.get(GUIDE_DESIGN_METADATA_KEY),
+        )
     }
 
     fn write_guide_design_store(&mut self, mut store: GuideDesignStore) -> Result<(), EngineError> {
@@ -4001,10 +4006,7 @@ impl GentleEngine {
             "-" | "minus" | "reverse" | "rev" => Ok("-".to_string()),
             other => Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Unsupported guide strand '{}'; expected '+' or '-'",
-                    other
-                ),
+                message: format!("Unsupported guide strand '{}'; expected '+' or '-'", other),
             }),
         }
     }
@@ -4209,10 +4211,7 @@ impl GentleEngine {
             if *value == 0 {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "max_homopolymer_run_per_base for '{}' must be >= 1",
-                        base
-                    ),
+                    message: format!("max_homopolymer_run_per_base for '{}' must be >= 1", base),
                 });
             }
             let key = if key == "U" {
@@ -4231,18 +4230,15 @@ impl GentleEngine {
             {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
-                    message:
-                        "required_5prime_base must be one canonical nucleotide (A/C/G/T)"
-                            .to_string(),
+                    message: "required_5prime_base must be one canonical nucleotide (A/C/G/T)"
+                        .to_string(),
                 });
             }
-            config.required_5prime_base = Some(
-                if normalized == "U" {
-                    "T".to_string()
-                } else {
-                    normalized
-                },
-            );
+            config.required_5prime_base = Some(if normalized == "U" {
+                "T".to_string()
+            } else {
+                normalized
+            });
         }
 
         let mut motifs = vec![];
@@ -4559,7 +4555,10 @@ impl GentleEngine {
             .collect()
     }
 
-    pub fn get_workflow_macro_template(&self, name: &str) -> Result<WorkflowMacroTemplate, EngineError> {
+    pub fn get_workflow_macro_template(
+        &self,
+        name: &str,
+    ) -> Result<WorkflowMacroTemplate, EngineError> {
         let name = Self::normalize_workflow_macro_template_name(name)?;
         let store = self.read_workflow_macro_template_store();
         store
@@ -5163,11 +5162,7 @@ impl GentleEngine {
                         }
                     }
                 }
-                if ambiguous {
-                    None
-                } else {
-                    strand
-                }
+                if ambiguous { None } else { strand }
             };
             match geometry_mode {
                 CandidateFeatureGeometryMode::FeatureSpan => {
@@ -5495,7 +5490,7 @@ impl GentleEngine {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("Unsupported character '{}' in expression", b as char),
-                    })
+                    });
                 }
             }
         }
@@ -5672,7 +5667,7 @@ impl GentleEngine {
                         return Err(EngineError {
                             code: ErrorCode::InvalidInput,
                             message: format!("Unknown expression function '{}'", name),
-                        })
+                        });
                     }
                 };
                 if value.is_finite() {
@@ -6300,7 +6295,10 @@ impl GentleEngine {
                         if gc < min {
                             row.reasons.push(GuideFilterReason {
                                 code: "gc_too_low".to_string(),
-                                message: format!("GC fraction {:.3} is below minimum {:.3}", gc, min),
+                                message: format!(
+                                    "GC fraction {:.3} is below minimum {:.3}",
+                                    gc, min
+                                ),
                             });
                         }
                     }
@@ -6308,7 +6306,10 @@ impl GentleEngine {
                         if gc > max {
                             row.reasons.push(GuideFilterReason {
                                 code: "gc_too_high".to_string(),
-                                message: format!("GC fraction {:.3} is above maximum {:.3}", gc, max),
+                                message: format!(
+                                    "GC fraction {:.3} is above maximum {:.3}",
+                                    gc, max
+                                ),
                             });
                         }
                     }
@@ -6355,14 +6356,17 @@ impl GentleEngine {
                 if Self::contains_u6_terminator_t4(&window) {
                     row.reasons.push(GuideFilterReason {
                         code: "u6_terminator_t4".to_string(),
-                        message: "Contains TTTT in configured U6 terminator scan window".to_string(),
+                        message: "Contains TTTT in configured U6 terminator scan window"
+                            .to_string(),
                     });
                 }
             }
 
             let max_repeat = Self::max_dinucleotide_repeat_units(&spacer);
-            row.metrics
-                .insert("max_dinucleotide_repeat_units".to_string(), max_repeat as f64);
+            row.metrics.insert(
+                "max_dinucleotide_repeat_units".to_string(),
+                max_repeat as f64,
+            );
             if let Some(limit) = config.max_dinucleotide_repeat_units {
                 if max_repeat > limit {
                     row.reasons.push(GuideFilterReason {
@@ -6603,14 +6607,11 @@ impl GentleEngine {
             .map(Self::normalize_oligo_set_id)
             .transpose()?;
         let default_id = format!("{}_{}_{}", guide_set_id, template.template_id, now);
-        let oligo_set_id = Self::unique_oligo_set_id(
-            &store,
-            requested.as_deref().unwrap_or(default_id.as_str()),
-        );
-        store.latest_oligo_set_by_guide_set.insert(
-            guide_set_id.clone(),
-            oligo_set_id.clone(),
-        );
+        let oligo_set_id =
+            Self::unique_oligo_set_id(&store, requested.as_deref().unwrap_or(default_id.as_str()));
+        store
+            .latest_oligo_set_by_guide_set
+            .insert(guide_set_id.clone(), oligo_set_id.clone());
         store.oligo_sets.insert(
             oligo_set_id.clone(),
             GuideOligoSet {
@@ -6642,9 +6643,9 @@ impl GentleEngine {
             template.template_id
         ));
         if passed_only {
-            result.messages.push(
-                "Oligo generation used only practical-filter passing guides".to_string(),
-            );
+            result
+                .messages
+                .push("Oligo generation used only practical-filter passing guides".to_string());
         }
         Ok(())
     }
@@ -6695,17 +6696,12 @@ impl GentleEngine {
                 message: format!("Guide set '{}' not found", guide_set_id),
             });
         }
-        let oligo_set = Self::resolve_oligo_set_for_export(
-            &store,
-            &guide_set_id,
-            oligo_set_id.as_deref(),
-        )?;
+        let oligo_set =
+            Self::resolve_oligo_set_for_export(&store, &guide_set_id, oligo_set_id.as_deref())?;
 
         let text = match format {
             GuideOligoExportFormat::CsvTable => {
-                let mut rows = vec![
-                    "guide_id,rank,forward_oligo,reverse_oligo,notes".to_string()
-                ];
+                let mut rows = vec!["guide_id,rank,forward_oligo,reverse_oligo,notes".to_string()];
                 for record in &oligo_set.records {
                     let rank = record.rank.map(|v| v.to_string()).unwrap_or_default();
                     let notes = record.notes.join("; ");
@@ -6724,9 +6720,8 @@ impl GentleEngine {
                 let plate_format = plate_format.unwrap_or_default();
                 let (rows_per_plate, cols_per_plate) = plate_format.dimensions();
                 let capacity = rows_per_plate * cols_per_plate;
-                let mut rows = vec![
-                    "plate,well,guide_id,rank,forward_oligo,reverse_oligo,notes".to_string(),
-                ];
+                let mut rows =
+                    vec!["plate,well,guide_id,rank,forward_oligo,reverse_oligo,notes".to_string()];
                 for (idx, record) in oligo_set.records.iter().enumerate() {
                     let plate_index = idx / capacity + 1;
                     let within_plate = idx % capacity;
@@ -6814,11 +6809,8 @@ impl GentleEngine {
                 message: format!("Guide set '{}' not found", guide_set_id),
             });
         }
-        let oligo_set = Self::resolve_oligo_set_for_export(
-            &store,
-            &guide_set_id,
-            oligo_set_id.as_deref(),
-        )?;
+        let oligo_set =
+            Self::resolve_oligo_set_for_export(&store, &guide_set_id, oligo_set_id.as_deref())?;
         let include_qc = include_qc_checklist.unwrap_or(true);
 
         let mut text = String::new();
@@ -6856,7 +6848,9 @@ impl GentleEngine {
         if include_qc {
             text.push_str("\nQC checklist:\n");
             text.push_str("- Confirm oligo lengths and overhang sequences.\n");
-            text.push_str("- Confirm no guide contains forbidden motifs for your cloning strategy.\n");
+            text.push_str(
+                "- Confirm no guide contains forbidden motifs for your cloning strategy.\n",
+            );
             text.push_str("- Confirm expected insert size by colony PCR or digest.\n");
             text.push_str("- Confirm sequence identity by Sanger/NGS.\n");
         }
@@ -9579,11 +9573,7 @@ impl GentleEngine {
                 break;
             }
         }
-        if block.is_empty() {
-            None
-        } else {
-            Some(block)
-        }
+        if block.is_empty() { None } else { Some(block) }
     }
 
     fn parse_genbank_accession_region(path: &str) -> Option<(String, usize, usize, String, char)> {
@@ -9640,11 +9630,7 @@ impl GentleEngine {
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
             .collect::<String>();
-        if token.is_empty() {
-            None
-        } else {
-            Some(token)
-        }
+        if token.is_empty() { None } else { Some(token) }
     }
 
     fn parse_genome_id_from_definition(definition: &str) -> Option<String> {
@@ -9775,7 +9761,10 @@ impl GentleEngine {
     fn next_arrangement_id(&mut self) -> String {
         loop {
             self.state.container_state.next_arrangement_counter += 1;
-            let id = format!("arrangement-{}", self.state.container_state.next_arrangement_counter);
+            let id = format!(
+                "arrangement-{}",
+                self.state.container_state.next_arrangement_counter
+            );
             if !self.state.container_state.arrangements.contains_key(&id) {
                 return id;
             }
@@ -10178,12 +10167,16 @@ impl GentleEngine {
             }
             let mut members: Vec<(String, usize)> = Vec::with_capacity(container.members.len());
             for seq_id in &container.members {
-                let dna = self.state.sequences.get(seq_id).ok_or_else(|| EngineError {
-                    code: ErrorCode::NotFound,
-                    message: format!(
-                        "Container '{container_id}' references unknown sequence '{seq_id}'"
-                    ),
-                })?;
+                let dna = self
+                    .state
+                    .sequences
+                    .get(seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Container '{container_id}' references unknown sequence '{seq_id}'"
+                        ),
+                    })?;
                 members.push((seq_id.clone(), dna.len()));
             }
             let lane_name = container
@@ -11121,7 +11114,8 @@ impl GentleEngine {
                         code: ErrorCode::InvalidInput,
                         message: format!(
                             "Sequence anchor '{anchor_name}' position {} is out of bounds for sequence length {}",
-                            zero_based, dna.len()
+                            zero_based,
+                            dna.len()
                         ),
                     });
                 }
@@ -11676,78 +11670,77 @@ impl GentleEngine {
                     .map(|v| v.trim().to_string())
                     .filter(|v| !v.is_empty())
                     .collect::<Vec<_>>();
-                let samples: Vec<GelSampleInput> =
-                    if let Some(arrangement_id) = arrangement_id.as_deref().map(str::trim) {
-                        if arrangement_id.is_empty() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: "arrangement_id cannot be empty".to_string(),
-                            });
-                        }
-                        let (arrangement_samples, arrangement_ladders) =
-                            self.gel_samples_from_arrangement(arrangement_id)?;
-                        if ladder_names.is_empty() {
-                            ladder_names = arrangement_ladders;
-                        }
-                        if !inputs.is_empty() {
-                            result.warnings.push(
-                                "RenderPoolGelSvg ignored 'inputs' because arrangement_id was provided"
-                                    .to_string(),
-                            );
-                        }
-                        if container_ids
-                            .as_ref()
-                            .is_some_and(|ids| !ids.is_empty())
-                        {
-                            result.warnings.push(
+                let samples: Vec<GelSampleInput> = if let Some(arrangement_id) =
+                    arrangement_id.as_deref().map(str::trim)
+                {
+                    if arrangement_id.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "arrangement_id cannot be empty".to_string(),
+                        });
+                    }
+                    let (arrangement_samples, arrangement_ladders) =
+                        self.gel_samples_from_arrangement(arrangement_id)?;
+                    if ladder_names.is_empty() {
+                        ladder_names = arrangement_ladders;
+                    }
+                    if !inputs.is_empty() {
+                        result.warnings.push(
+                            "RenderPoolGelSvg ignored 'inputs' because arrangement_id was provided"
+                                .to_string(),
+                        );
+                    }
+                    if container_ids.as_ref().is_some_and(|ids| !ids.is_empty()) {
+                        result.warnings.push(
                                 "RenderPoolGelSvg ignored 'container_ids' because arrangement_id was provided"
                                     .to_string(),
                             );
-                        }
-                        arrangement_samples
-                    } else if let Some(container_ids) = container_ids {
-                        if container_ids.is_empty() {
-                            return Err(EngineError {
-                                code: ErrorCode::InvalidInput,
-                                message: "container_ids was provided but empty".to_string(),
-                            });
-                        }
-                        if !inputs.is_empty() {
-                            result.warnings.push(
-                                "RenderPoolGelSvg ignored 'inputs' because container_ids were provided"
-                                    .to_string(),
-                            );
-                        }
-                        self.gel_samples_from_container_ids(&container_ids)?
-                    } else {
-                        if inputs.is_empty() {
-                            return Err(EngineError {
+                    }
+                    arrangement_samples
+                } else if let Some(container_ids) = container_ids {
+                    if container_ids.is_empty() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "container_ids was provided but empty".to_string(),
+                        });
+                    }
+                    if !inputs.is_empty() {
+                        result.warnings.push(
+                            "RenderPoolGelSvg ignored 'inputs' because container_ids were provided"
+                                .to_string(),
+                        );
+                    }
+                    self.gel_samples_from_container_ids(&container_ids)?
+                } else {
+                    if inputs.is_empty() {
+                        return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: "RenderPoolGelSvg requires either inputs, container_ids, or arrangement_id"
                                     .to_string(),
                             });
-                        }
-                        let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
-                        for seq_id in &inputs {
-                            let dna = self
-                                .state
-                                .sequences
-                                .get(seq_id)
-                                .ok_or_else(|| EngineError {
-                                    code: ErrorCode::NotFound,
-                                    message: format!("Sequence '{seq_id}' not found"),
-                                })?;
-                            members.push((seq_id.clone(), dna.len()));
-                        }
-                        vec![GelSampleInput {
-                            name: format!("Input tube (n={})", members.len()),
-                            members,
-                        }]
-                    };
-                let layout = build_serial_gel_layout(&samples, &ladder_names).map_err(|e| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: e,
-                })?;
+                    }
+                    let mut members: Vec<(String, usize)> = Vec::with_capacity(inputs.len());
+                    for seq_id in &inputs {
+                        let dna = self
+                            .state
+                            .sequences
+                            .get(seq_id)
+                            .ok_or_else(|| EngineError {
+                                code: ErrorCode::NotFound,
+                                message: format!("Sequence '{seq_id}' not found"),
+                            })?;
+                        members.push((seq_id.clone(), dna.len()));
+                    }
+                    vec![GelSampleInput {
+                        name: format!("Input tube (n={})", members.len()),
+                        members,
+                    }]
+                };
+                let layout =
+                    build_serial_gel_layout(&samples, &ladder_names).map_err(|e| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: e,
+                    })?;
                 let svg = export_pool_gel_svg(&layout);
                 std::fs::write(&path, svg).map_err(|e| EngineError {
                     code: ErrorCode::Io,
@@ -13590,22 +13583,14 @@ impl GentleEngine {
                 let forward_primer = match forward_primer {
                     Some(p) => {
                         let v = Self::normalize_iupac_text(&p)?;
-                        if v.is_empty() {
-                            None
-                        } else {
-                            Some(v)
-                        }
+                        if v.is_empty() { None } else { Some(v) }
                     }
                     None => None,
                 };
                 let reverse_primer = match reverse_primer {
                     Some(p) => {
                         let v = Self::normalize_iupac_text(&p)?;
-                        if v.is_empty() {
-                            None
-                        } else {
-                            Some(v)
-                        }
+                        if v.is_empty() { None } else { Some(v) }
                     }
                     None => None,
                 };
@@ -14978,7 +14963,7 @@ impl Engine for GentleEngine {
 mod tests {
     use super::*;
     use bio::io::fasta;
-    use flate2::{write::GzEncoder, Compression};
+    use flate2::{Compression, write::GzEncoder};
     use std::env;
     use std::fs;
     use std::io::Write;
@@ -15476,10 +15461,12 @@ exit 2
         let lineage = &engine.state().lineage;
         let x_node = lineage.seq_to_node.get("x").unwrap();
         let part_node = lineage.seq_to_node.get("part").unwrap();
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|e| e.from_node_id == *x_node && e.to_node_id == *part_node));
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|e| e.from_node_id == *x_node && e.to_node_id == *part_node)
+        );
     }
 
     #[test]
@@ -15507,14 +15494,18 @@ exit 2
         let a_node = lineage.seq_to_node.get("a").unwrap();
         let b_node = lineage.seq_to_node.get("b").unwrap();
         let ab_node = lineage.seq_to_node.get(&res.created_seq_ids[0]).unwrap();
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|e| e.from_node_id == *a_node && e.to_node_id == *ab_node));
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|e| e.from_node_id == *b_node && e.to_node_id == *ab_node));
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|e| e.from_node_id == *a_node && e.to_node_id == *ab_node)
+        );
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|e| e.from_node_id == *b_node && e.to_node_id == *ab_node)
+        );
     }
 
     #[test]
@@ -15618,10 +15609,12 @@ exit 2
         let s_node = lineage.seq_to_node.get("s").unwrap();
         for derived in ["s_rev", "s_comp", "s_rc", "s_branch"] {
             let dnode = lineage.seq_to_node.get(derived).unwrap();
-            assert!(lineage
-                .edges
-                .iter()
-                .any(|e| e.from_node_id == *s_node && e.to_node_id == *dnode));
+            assert!(
+                lineage
+                    .edges
+                    .iter()
+                    .any(|e| e.from_node_id == *s_node && e.to_node_id == *dnode)
+            );
         }
     }
 
@@ -15640,10 +15633,11 @@ exit 2
                 value: serde_json::json!(1234),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("max_fragments_per_container")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("max_fragments_per_container"))
+        );
         assert_eq!(engine.state().parameters.max_fragments_per_container, 1234);
     }
 
@@ -15656,10 +15650,11 @@ exit 2
                 value: serde_json::json!(9.5),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("feature_details_font_size")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("feature_details_font_size"))
+        );
         assert!((engine.state().display.feature_details_font_size - 9.5).abs() < f32::EPSILON);
     }
 
@@ -15672,11 +15667,15 @@ exit 2
                 value: serde_json::json!(50000),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("regulatory_feature_max_view_span_bp")));
-        assert_eq!(engine.state().display.regulatory_feature_max_view_span_bp, 50_000);
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("regulatory_feature_max_view_span_bp"))
+        );
+        assert_eq!(
+            engine.state().display.regulatory_feature_max_view_span_bp,
+            50_000
+        );
     }
 
     #[test]
@@ -16152,9 +16151,10 @@ exit 2
                 require_all_mutations: Some(true),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("No amplicon introduced all requested mutations"));
+        assert!(
+            err.message
+                .contains("No amplicon introduced all requested mutations")
+        );
     }
 
     #[test]
@@ -16250,10 +16250,12 @@ exit 2
             })
             .unwrap();
         assert_eq!(res.created_seq_ids, vec!["tp73".to_string()]);
-        assert!(engine
-            .list_sequences_with_genome_anchor()
-            .iter()
-            .any(|seq_id| seq_id == "tp73"));
+        assert!(
+            engine
+                .list_sequences_with_genome_anchor()
+                .iter()
+                .any(|seq_id| seq_id == "tp73")
+        );
 
         let td = tempdir().unwrap();
         let bed_path = td.path().join("tp73_anchor_test.bed");
@@ -16269,20 +16271,23 @@ exit 2
                 clear_existing: Some(true),
             })
             .unwrap();
-        assert!(import_res
-            .changed_seq_ids
-            .iter()
-            .any(|seq_id| seq_id == "tp73"));
+        assert!(
+            import_res
+                .changed_seq_ids
+                .iter()
+                .any(|seq_id| seq_id == "tp73")
+        );
 
         let tp73 = engine
             .state()
             .sequences
             .get("tp73")
             .expect("tp73 should exist");
-        assert!(tp73
-            .features()
-            .iter()
-            .any(GentleEngine::is_generated_genome_bed_feature));
+        assert!(
+            tp73.features()
+                .iter()
+                .any(GentleEngine::is_generated_genome_bed_feature)
+        );
     }
 
     #[test]
@@ -16873,6 +16878,156 @@ ORIGIN
     }
 
     #[test]
+    fn test_create_arrangement_serial_operation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("a".to_string(), seq("ATGCATGC"));
+        state.sequences.insert("b".to_string(), seq("ATGCATGCATGC"));
+        state.container_state.containers.insert(
+            "container-1".to_string(),
+            Container {
+                container_id: "container-1".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Tube A".to_string()),
+                members: vec!["a".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.containers.insert(
+            "container-2".to_string(),
+            Container {
+                container_id: "container-2".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Tube B".to_string()),
+                members: vec!["b".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let result = engine
+            .apply(Operation::CreateArrangementSerial {
+                container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+                arrangement_id: Some("arr-test".to_string()),
+                name: Some("Digest run".to_string()),
+                ladders: Some(vec!["NEB 1kb DNA Ladder".to_string()]),
+            })
+            .unwrap();
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|m| m.contains("Created serial arrangement 'arr-test'"))
+        );
+        let arrangement = engine
+            .state()
+            .container_state
+            .arrangements
+            .get("arr-test")
+            .expect("arrangement was created");
+        assert_eq!(arrangement.mode, ArrangementMode::Serial);
+        assert_eq!(
+            arrangement.lane_container_ids,
+            vec!["container-1".to_string(), "container-2".to_string()]
+        );
+        assert_eq!(arrangement.ladders, vec!["NEB 1kb DNA Ladder".to_string()]);
+    }
+
+    #[test]
+    fn test_render_pool_gel_svg_operation_from_containers_and_arrangement() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("a".to_string(), seq(&"ATGC".repeat(70)));
+        state
+            .sequences
+            .insert("b".to_string(), seq(&"ATGC".repeat(110)));
+        state
+            .sequences
+            .insert("c".to_string(), seq(&"ATGC".repeat(150)));
+        state.container_state.containers.insert(
+            "container-1".to_string(),
+            Container {
+                container_id: "container-1".to_string(),
+                kind: ContainerKind::Singleton,
+                name: Some("Tube A".to_string()),
+                members: vec!["a".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.containers.insert(
+            "container-2".to_string(),
+            Container {
+                container_id: "container-2".to_string(),
+                kind: ContainerKind::Pool,
+                name: Some("Tube B".to_string()),
+                members: vec!["b".to_string(), "c".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        state.container_state.arrangements.insert(
+            "arr-1".to_string(),
+            Arrangement {
+                arrangement_id: "arr-1".to_string(),
+                mode: ArrangementMode::Serial,
+                name: Some("Run 1".to_string()),
+                lane_container_ids: vec!["container-1".to_string(), "container-2".to_string()],
+                ladders: vec!["NEB 100bp DNA Ladder".to_string()],
+                created_by_op: None,
+                created_at_unix_ms: 0,
+            },
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let tmp_container = tempfile::NamedTempFile::new().unwrap();
+        let path_container = tmp_container.path().with_extension("container.gel.svg");
+        let path_container_text = path_container.display().to_string();
+        let res_container = engine
+            .apply(Operation::RenderPoolGelSvg {
+                inputs: vec![],
+                path: path_container_text.clone(),
+                ladders: None,
+                container_ids: Some(vec!["container-2".to_string()]),
+                arrangement_id: None,
+            })
+            .unwrap();
+        assert!(
+            res_container
+                .messages
+                .iter()
+                .any(|m| m.contains("serial gel SVG"))
+        );
+        let svg_container = std::fs::read_to_string(path_container_text).unwrap();
+        assert!(svg_container.contains("Serial Gel Preview"));
+        assert!(svg_container.contains("Tube B"));
+
+        let tmp_arrangement = tempfile::NamedTempFile::new().unwrap();
+        let path_arrangement = tmp_arrangement.path().with_extension("arrangement.gel.svg");
+        let path_arrangement_text = path_arrangement.display().to_string();
+        let res_arrangement = engine
+            .apply(Operation::RenderPoolGelSvg {
+                inputs: vec![],
+                path: path_arrangement_text.clone(),
+                ladders: None,
+                container_ids: None,
+                arrangement_id: Some("arr-1".to_string()),
+            })
+            .unwrap();
+        assert!(
+            res_arrangement
+                .messages
+                .iter()
+                .any(|m| m.contains("2 sample lane(s)"))
+        );
+        let svg_arrangement = std::fs::read_to_string(path_arrangement_text).unwrap();
+        assert!(svg_arrangement.contains("Serial Gel Preview"));
+        assert!(svg_arrangement.contains("Tube A"));
+        assert!(svg_arrangement.contains("Tube B"));
+    }
+
+    #[test]
     fn test_render_pool_gel_svg_operation_missing_input_fails() {
         let mut state = ProjectState::default();
         state.sequences.insert("a".to_string(), seq("ATGC"));
@@ -16924,10 +17079,12 @@ ORIGIN
         assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
         assert!(catalog.ladder_count > 0);
         assert_eq!(catalog.ladder_count, catalog.ladders.len());
-        assert!(catalog
-            .ladders
-            .iter()
-            .any(|ladder| ladder.name == "NEB 100bp DNA Ladder"));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .any(|ladder| ladder.name == "NEB 100bp DNA Ladder")
+        );
     }
 
     #[test]
@@ -16942,18 +17099,21 @@ ORIGIN
                 name_filter: Some("NEB".to_string()),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("DNA ladders catalog")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("DNA ladders catalog"))
+        );
         let text = std::fs::read_to_string(path_text).unwrap();
         let catalog: DnaLadderCatalog = serde_json::from_str(&text).unwrap();
         assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
         assert!(catalog.ladder_count > 0);
-        assert!(catalog
-            .ladders
-            .iter()
-            .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb")));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb"))
+        );
     }
 
     #[test]
@@ -16962,10 +17122,12 @@ ORIGIN
         assert_eq!(catalog.schema, "gentle.rna_ladders.v1");
         assert!(catalog.ladder_count > 0);
         assert_eq!(catalog.ladder_count, catalog.ladders.len());
-        assert!(catalog
-            .ladders
-            .iter()
-            .any(|ladder| ladder.name.contains("RNA")));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .any(|ladder| ladder.name.contains("RNA"))
+        );
     }
 
     #[test]
@@ -16980,18 +17142,21 @@ ORIGIN
                 name_filter: Some("NEB".to_string()),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("RNA ladders catalog")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("RNA ladders catalog"))
+        );
         let text = std::fs::read_to_string(path_text).unwrap();
         let catalog: RnaLadderCatalog = serde_json::from_str(&text).unwrap();
         assert_eq!(catalog.schema, "gentle.rna_ladders.v1");
         assert!(catalog.ladder_count > 0);
-        assert!(catalog
-            .ladders
-            .iter()
-            .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb")));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb"))
+        );
     }
 
     #[test]
@@ -17161,9 +17326,10 @@ ORIGIN
                 value: serde_json::json!("small"),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("feature_details_font_size requires a number"));
+        assert!(
+            err.message
+                .contains("feature_details_font_size requires a number")
+        );
     }
 
     #[test]
@@ -17175,9 +17341,10 @@ ORIGIN
                 value: serde_json::json!(3.0),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("feature_details_font_size must be between 8.0 and 24.0"));
+        assert!(
+            err.message
+                .contains("feature_details_font_size must be between 8.0 and 24.0")
+        );
     }
 
     #[test]
@@ -17189,9 +17356,10 @@ ORIGIN
                 value: serde_json::json!("wide"),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("regulatory_feature_max_view_span_bp requires a non-negative integer"));
+        assert!(
+            err.message
+                .contains("regulatory_feature_max_view_span_bp requires a non-negative integer")
+        );
     }
 
     #[test]
@@ -17391,10 +17559,11 @@ ORIGIN
                 timeout_seconds: None,
             })
             .unwrap();
-        assert!(prep
-            .messages
-            .iter()
-            .any(|m| m.contains("Prepared genome 'ToyGenome'")));
+        assert!(
+            prep.messages
+                .iter()
+                .any(|m| m.contains("Prepared genome 'ToyGenome'"))
+        );
         let catalog_path_str = catalog_path.to_string_lossy().to_string();
         let catalog_names = GentleEngine::list_reference_genomes(Some(&catalog_path_str)).unwrap();
         assert!(catalog_names.contains(&"ToyGenome".to_string()));
@@ -17594,10 +17763,12 @@ ORIGIN
             .seq_to_node
             .get("toy_slice_ext5")
             .expect("child lineage node should exist");
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|edge| edge.from_node_id == *parent && edge.to_node_id == *child));
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|edge| edge.from_node_id == *parent && edge.to_node_id == *child)
+        );
 
         let provenance = engine
             .state()
@@ -17922,10 +18093,12 @@ ORIGIN
             })
             .unwrap();
         assert_eq!(result.created_seq_ids, vec!["anch_ext".to_string()]);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.contains("clipped at chromosome start position 1")));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("clipped at chromosome start position 1"))
+        );
     }
 
     #[test]
@@ -18042,11 +18215,13 @@ ORIGIN
             })
             .collect();
         assert_eq!(generated_gz.len(), 1);
-        assert!(generated_gz[0]
-            .qualifier_values("label".into())
-            .next()
-            .map(|v| v.contains("peak_a"))
-            .unwrap_or(false));
+        assert!(
+            generated_gz[0]
+                .qualifier_values("label".into())
+                .next()
+                .map(|v| v.contains("peak_a"))
+                .unwrap_or(false)
+        );
     }
 
     #[cfg(unix)]
@@ -18220,10 +18395,12 @@ ORIGIN
             .unwrap();
         assert!(plain.changed_seq_ids.contains(&"toy_slice".to_string()));
         assert!(plain.warnings.iter().any(|w| w.contains("VCF line")));
-        assert!(plain
-            .warnings
-            .iter()
-            .any(|w| w.contains("did not match anchor chromosome")));
+        assert!(
+            plain
+                .warnings
+                .iter()
+                .any(|w| w.contains("did not match anchor chromosome"))
+        );
         assert!(plain.warnings.iter().any(|w| w.contains("chr2")));
 
         let dna_plain = engine.state().sequences.get("toy_slice").unwrap();
@@ -18233,9 +18410,11 @@ ORIGIN
             .filter(|f| GentleEngine::is_generated_genome_vcf_feature(f))
             .collect();
         assert_eq!(plain_features.len(), 3);
-        assert!(plain_features
-            .iter()
-            .any(|f| { f.qualifier_values("vcf_alt".into()).any(|v| v == "<DEL>") }));
+        assert!(
+            plain_features
+                .iter()
+                .any(|f| { f.qualifier_values("vcf_alt".into()).any(|v| v == "<DEL>") })
+        );
 
         let vcf_gz = td.path().join("variants.vcf.gz");
         write_gzip(
@@ -18253,10 +18432,12 @@ ORIGIN
             })
             .unwrap();
         assert!(filtered.changed_seq_ids.contains(&"toy_slice".to_string()));
-        assert!(filtered
-            .warnings
-            .iter()
-            .any(|w| w.contains("QUAL-based score filters")));
+        assert!(
+            filtered
+                .warnings
+                .iter()
+                .any(|w| w.contains("QUAL-based score filters"))
+        );
 
         let dna_filtered = engine.state().sequences.get("toy_slice").unwrap();
         let filtered_features: Vec<_> = dna_filtered
@@ -18459,10 +18640,12 @@ ORIGIN
             )
             .unwrap();
         assert!(cancelled);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.contains("import cancelled")));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("import cancelled"))
+        );
         let dna = engine.state().sequences.get("toy_slice").unwrap();
         let features: Vec<_> = dna
             .features()
@@ -18510,10 +18693,11 @@ ORIGIN
                 timeout_seconds: None,
             })
             .unwrap();
-        assert!(prep
-            .messages
-            .iter()
-            .any(|m| m.contains("[genbank_accession]")));
+        assert!(
+            prep.messages
+                .iter()
+                .any(|m| m.contains("[genbank_accession]"))
+        );
 
         let plan = GentleEngine::describe_reference_genome_sources(
             Some(&catalog_path_str),
@@ -18721,10 +18905,12 @@ ORIGIN
         assert_eq!(report.subscriptions_considered, 0);
         assert_eq!(report.target_sequences, 0);
         assert_eq!(report.applied_imports, 0);
-        assert!(!engine
-            .state()
-            .metadata
-            .contains_key(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY));
+        assert!(
+            !engine
+                .state()
+                .metadata
+                .contains_key(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY)
+        );
     }
 
     #[test]

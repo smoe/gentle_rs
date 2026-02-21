@@ -936,8 +936,7 @@ pub fn invoke_agent_support(
                                     AgentBridgeErrorCode::AdapterTransient,
                                     format!(
                                         "agent command remained transiently unavailable after {} attempts: {}",
-                                        AGENT_INVOKE_RETRY_ATTEMPTS,
-                                        error.message
+                                        AGENT_INVOKE_RETRY_ATTEMPTS, error.message
                                     ),
                                 ));
                             }

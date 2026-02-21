@@ -1552,10 +1552,9 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("-")
             ),
-            Self::GuidesFilterShow { guide_set_id } => format!(
-                "show practical guide filter report for '{}'",
-                guide_set_id
-            ),
+            Self::GuidesFilterShow { guide_set_id } => {
+                format!("show practical guide filter report for '{}'", guide_set_id)
+            }
             Self::GuidesOligosGenerate {
                 guide_set_id,
                 template_id,
@@ -3460,7 +3459,9 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "show" => {
             if tokens.len() < 3 {
-                return Err("guides show requires GUIDE_SET_ID [--limit N] [--offset N]".to_string());
+                return Err(
+                    "guides show requires GUIDE_SET_ID [--limit N] [--offset N]".to_string()
+                );
             }
             let guide_set_id = tokens[2].clone();
             let mut limit = DEFAULT_GUIDE_PAGE_SIZE;
@@ -3478,8 +3479,7 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         }
                     }
                     "--offset" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--offset", "guides show")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--offset", "guides show")?;
                         offset = raw
                             .parse::<usize>()
                             .map_err(|e| format!("Invalid --offset value '{raw}': {e}"))?;
@@ -3509,19 +3509,14 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         if guides_json.is_some() {
                             return Err("guides put JSON payload was already specified".to_string());
                         }
-                        guides_json = Some(parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--json",
-                            "guides put",
-                        )?);
+                        guides_json =
+                            Some(parse_option_path(tokens, &mut idx, "--json", "guides put")?);
                     }
                     "--file" => {
                         if guides_json.is_some() {
                             return Err("guides put JSON payload was already specified".to_string());
                         }
-                        let path =
-                            parse_option_path(tokens, &mut idx, "--file", "guides put")?;
+                        let path = parse_option_path(tokens, &mut idx, "--file", "guides put")?;
                         guides_json = Some(format!("@{path}"));
                     }
                     other => return Err(format!("Unknown option '{other}' for guides put")),
@@ -3571,12 +3566,8 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         if config_json.is_some() {
                             return Err("guides filter config was already specified".to_string());
                         }
-                        let path = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--config-file",
-                            "guides filter",
-                        )?;
+                        let path =
+                            parse_option_path(tokens, &mut idx, "--config-file", "guides filter")?;
                         config_json = Some(format!("@{path}"));
                     }
                     "--output-set" => {
@@ -3663,7 +3654,9 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "guides oligos-list",
                         )?);
                     }
-                    other => return Err(format!("Unknown option '{other}' for guides oligos-list")),
+                    other => {
+                        return Err(format!("Unknown option '{other}' for guides oligos-list"));
+                    }
                 }
             }
             Ok(ShellCommand::GuidesOligosList { guide_set_id })
@@ -3701,12 +3694,8 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         format = parse_guide_export_format(&raw)?;
                     }
                     "--plate" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--plate",
-                            "guides oligos-export",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--plate", "guides oligos-export")?;
                         plate_format = Some(parse_guide_plate_format(&raw)?);
                     }
                     "--oligo-set" => {
@@ -3718,9 +3707,7 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         )?);
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown option '{other}' for guides oligos-export"
-                        ));
+                        return Err(format!("Unknown option '{other}' for guides oligos-export"));
                     }
                 }
             }
@@ -4283,9 +4270,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         idx += 2;
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for arrange-serial"
-                        ));
+                        return Err(format!("Unknown argument '{other}' for arrange-serial"));
                     }
                 }
             }
@@ -5881,6 +5866,9 @@ pub fn execute_shell_command_with_options(
                     "annotation_source_type": source_plan.annotation_source_type,
                     "sequence_source": source_plan.sequence_source,
                     "annotation_source": source_plan.annotation_source,
+                    "nucleotide_length_bp": source_plan.nucleotide_length_bp,
+                    "molecular_mass_da": source_plan.molecular_mass_da,
+                    "molecular_mass_source": source_plan.molecular_mass_source,
                 }),
             }
         }
@@ -6976,7 +6964,11 @@ pub fn execute_shell_command_with_options(
             guide_set_id,
             guides_json,
         } => {
-            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             let raw = parse_json_payload(guides_json)?;
             let guides: Vec<GuideCandidate> = serde_json::from_str(&raw)
                 .map_err(|e| format!("Invalid guides JSON payload: {e}"))?;
@@ -6986,7 +6978,11 @@ pub fn execute_shell_command_with_options(
                     guides,
                 })
                 .map_err(|e| e.to_string())?;
-            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -6996,13 +6992,21 @@ pub fn execute_shell_command_with_options(
             }
         }
         ShellCommand::GuidesDelete { guide_set_id } => {
-            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             let op_result = engine
                 .apply(Operation::DeleteGuideSet {
                     guide_set_id: guide_set_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
-            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -7016,7 +7020,11 @@ pub fn execute_shell_command_with_options(
             config_json,
             output_guide_set_id,
         } => {
-            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             let config = if let Some(raw) = config_json {
                 let loaded = parse_json_payload(raw)?;
                 serde_json::from_str::<GuidePracticalFilterConfig>(&loaded)
@@ -7031,7 +7039,11 @@ pub fn execute_shell_command_with_options(
                     output_guide_set_id: output_guide_set_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
-            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -7059,7 +7071,11 @@ pub fn execute_shell_command_with_options(
             output_oligo_set_id,
             passed_only,
         } => {
-            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             let op_result = engine
                 .apply(Operation::GenerateGuideOligos {
                     guide_set_id: guide_set_id.clone(),
@@ -7069,7 +7085,11 @@ pub fn execute_shell_command_with_options(
                     passed_only: Some(*passed_only),
                 })
                 .map_err(|e| e.to_string())?;
-            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -7108,7 +7128,11 @@ pub fn execute_shell_command_with_options(
             path,
             plate_format,
         } => {
-            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             let op_result = engine
                 .apply(Operation::ExportGuideOligos {
                     guide_set_id: guide_set_id.clone(),
@@ -7118,7 +7142,11 @@ pub fn execute_shell_command_with_options(
                     plate_format: *plate_format,
                 })
                 .map_err(|e| e.to_string())?;
-            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -7136,7 +7164,11 @@ pub fn execute_shell_command_with_options(
             path,
             include_qc_checklist,
         } => {
-            let before = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let before = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             let op_result = engine
                 .apply(Operation::ExportGuideProtocolText {
                     guide_set_id: guide_set_id.clone(),
@@ -7145,7 +7177,11 @@ pub fn execute_shell_command_with_options(
                     include_qc_checklist: Some(*include_qc_checklist),
                 })
                 .map_err(|e| e.to_string())?;
-            let after = engine.state().metadata.get(GUIDE_DESIGN_METADATA_KEY).cloned();
+            let after = engine
+                .state()
+                .metadata
+                .get(GUIDE_DESIGN_METADATA_KEY)
+                .cloned();
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -7989,6 +8025,47 @@ mod tests {
     }
 
     #[test]
+    fn parse_guides_filter_and_oligos_export_with_options() {
+        let filter = parse_shell_line(
+            "guides filter tp73 --config '{\"gc_min\":0.35,\"gc_max\":0.7}' --output-set tp73_pass",
+        )
+        .expect("parse guides filter");
+        match filter {
+            ShellCommand::GuidesFilter {
+                guide_set_id,
+                config_json,
+                output_guide_set_id,
+            } => {
+                assert_eq!(guide_set_id, "tp73".to_string());
+                assert!(config_json.is_some());
+                assert_eq!(output_guide_set_id, Some("tp73_pass".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let export = parse_shell_line(
+            "guides oligos-export tp73 out.csv --format plate_csv --plate 96 --oligo-set tp73_set",
+        )
+        .expect("parse guides oligos-export");
+        match export {
+            ShellCommand::GuidesOligosExport {
+                guide_set_id,
+                oligo_set_id,
+                format,
+                path,
+                plate_format,
+            } => {
+                assert_eq!(guide_set_id, "tp73");
+                assert_eq!(oligo_set_id.as_deref(), Some("tp73_set"));
+                assert_eq!(format, GuideOligoExportFormat::PlateCsv);
+                assert_eq!(path, "out.csv");
+                assert_eq!(plate_format, Some(GuideOligoPlateFormat::Plate96));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_macros_run_and_template_commands() {
         let run =
             parse_shell_line("macros run --transactional --file test_files/workflow_plan.gsh")
@@ -8567,7 +8644,8 @@ filter set1 set2 --metric score --min 10
             "macros template-put clone_slice --file test_files/cloning_digest_ligation_extract.gsh --param seq_id=x --param digest_prefix=d --param ligation_prefix=lig --param extract_from=0 --param extract_to=1 --param output_id=slice",
         )
         .expect("parse macros template-put clone fixture");
-        let upsert = execute_shell_command(&mut engine, &put).expect("upsert clone fixture template");
+        let upsert =
+            execute_shell_command(&mut engine, &put).expect("upsert clone fixture template");
         assert!(upsert.state_changed);
 
         let run_cmd = parse_shell_line("macros template-run clone_slice --transactional")
@@ -8645,6 +8723,131 @@ filter set1 set2 --metric score --min 10
         )
         .unwrap_err();
         assert!(err.contains("Nested candidates macro"));
+    }
+
+    #[test]
+    fn execute_guides_commands_end_to_end() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let tmp = tempdir().expect("tempdir");
+        let csv_path = tmp.path().join("guides.csv");
+        let protocol_path = tmp.path().join("guides.protocol.txt");
+
+        let guides_json = serde_json::to_string(&vec![
+            GuideCandidate {
+                guide_id: "g1".to_string(),
+                seq_id: "tp73".to_string(),
+                start_0based: 100,
+                end_0based_exclusive: 120,
+                strand: "+".to_string(),
+                protospacer: "GACCTGTTGACGATGTTCCA".to_string(),
+                pam: "AGG".to_string(),
+                nuclease: "SpCas9".to_string(),
+                cut_offset_from_protospacer_start: 17,
+                rank: Some(1),
+            },
+            GuideCandidate {
+                guide_id: "g2".to_string(),
+                seq_id: "tp73".to_string(),
+                start_0based: 220,
+                end_0based_exclusive: 240,
+                strand: "+".to_string(),
+                protospacer: "TTTTGCCATGTTGACCTGAA".to_string(),
+                pam: "TGG".to_string(),
+                nuclease: "SpCas9".to_string(),
+                cut_offset_from_protospacer_start: 17,
+                rank: Some(2),
+            },
+        ])
+        .expect("serialize guides");
+
+        let put = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesPut {
+                guide_set_id: "tp73_guides".to_string(),
+                guides_json,
+            },
+        )
+        .expect("guides put");
+        assert!(put.state_changed);
+
+        let filter = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesFilter {
+                guide_set_id: "tp73_guides".to_string(),
+                config_json: Some(
+                    "{\"gc_min\":0.3,\"gc_max\":0.7,\"avoid_u6_terminator_tttt\":true}".to_string(),
+                ),
+                output_guide_set_id: Some("tp73_pass".to_string()),
+            },
+        )
+        .expect("guides filter");
+        assert!(filter.state_changed);
+
+        let report = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesFilterShow {
+                guide_set_id: "tp73_guides".to_string(),
+            },
+        )
+        .expect("guides filter-show");
+        assert!(!report.state_changed);
+        let report_rows = report.output["report"]["results"]
+            .as_array()
+            .map(|rows| rows.len())
+            .unwrap_or_default();
+        assert_eq!(report_rows, 2, "expected filter report rows for all guides");
+
+        let generated = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesOligosGenerate {
+                guide_set_id: "tp73_guides".to_string(),
+                template_id: "lenti_bsmbi_u6_default".to_string(),
+                apply_5prime_g_extension: true,
+                output_oligo_set_id: Some("tp73_oligos".to_string()),
+                passed_only: true,
+            },
+        )
+        .expect("guides oligos-generate");
+        assert!(generated.state_changed);
+
+        let listed = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesOligosList {
+                guide_set_id: Some("tp73_guides".to_string()),
+            },
+        )
+        .expect("guides oligos-list");
+        assert!(!listed.state_changed);
+        assert_eq!(listed.output["oligo_set_count"].as_u64(), Some(1));
+
+        let exported = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesOligosExport {
+                guide_set_id: "tp73_guides".to_string(),
+                oligo_set_id: Some("tp73_oligos".to_string()),
+                format: GuideOligoExportFormat::CsvTable,
+                path: csv_path.to_string_lossy().to_string(),
+                plate_format: None,
+            },
+        )
+        .expect("guides oligos-export");
+        assert!(exported.state_changed);
+        let csv = fs::read_to_string(&csv_path).expect("read csv export");
+        assert!(csv.contains("guide_id,rank,forward_oligo,reverse_oligo,notes"));
+
+        let protocol = execute_shell_command(
+            &mut engine,
+            &ShellCommand::GuidesProtocolExport {
+                guide_set_id: "tp73_guides".to_string(),
+                oligo_set_id: Some("tp73_oligos".to_string()),
+                path: protocol_path.to_string_lossy().to_string(),
+                include_qc_checklist: true,
+            },
+        )
+        .expect("guides protocol-export");
+        assert!(protocol.state_changed);
+        let protocol_text = fs::read_to_string(&protocol_path).expect("read protocol export");
+        assert!(protocol_text.contains("GENtle Guide Oligo Protocol"));
     }
 
     #[test]
@@ -9107,6 +9310,57 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         assert!(!out.state_changed);
         assert_eq!(out.output["valid"].as_bool(), Some(true));
         assert_eq!(out.output["genome_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn execute_genomes_status_reports_length_and_mass_metadata() {
+        let td = tempdir().expect("tempdir");
+        let fasta = td.path().join("toy.fa");
+        let gtf = td.path().join("toy.gtf");
+        let cache = td.path().join("cache");
+        fs::write(&fasta, ">chr1\nACGT\n").expect("write fasta");
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .expect("write gtf");
+        let catalog = td.path().join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}",
+    "nucleotide_length_bp": 4
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache.display()
+        );
+        fs::write(&catalog, catalog_json).expect("write catalog");
+        let mut engine = GentleEngine::new();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceStatus {
+                helper_mode: false,
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog.to_string_lossy().to_string()),
+                cache_dir: None,
+            },
+        )
+        .expect("execute status");
+        assert!(!out.state_changed);
+        assert_eq!(out.output["nucleotide_length_bp"].as_u64(), Some(4));
+        let expected_mass = 4.0 * 617.96 + 36.04;
+        let observed_mass = out.output["molecular_mass_da"]
+            .as_f64()
+            .expect("molecular_mass_da should be present");
+        assert!((observed_mass - expected_mass).abs() < 1e-6);
+        assert_eq!(
+            out.output["molecular_mass_source"].as_str(),
+            Some("estimated_from_nucleotide_length")
+        );
     }
 
     #[test]

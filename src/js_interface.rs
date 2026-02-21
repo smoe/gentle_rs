@@ -2,7 +2,7 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     engine::{Engine, EngineStateSummary, GentleEngine, Operation, ProjectState, Workflow},
-    engine_shell::{execute_shell_command, ShellCommand},
+    engine_shell::{ShellCommand, execute_shell_command},
     enzymes::active_restriction_enzymes,
     methylation_sites::MethylationMode,
     resource_sync,

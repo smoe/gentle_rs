@@ -97,6 +97,12 @@ Current draft operations:
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
 - `DeleteCandidateSet { set_name }`
+- `UpsertGuideSet { guide_set_id, guides[] }`
+- `DeleteGuideSet { guide_set_id }`
+- `FilterGuidesPractical { guide_set_id, config?, output_guide_set_id? }`
+- `GenerateGuideOligos { guide_set_id, template_id, apply_5prime_g_extension?, output_oligo_set_id?, passed_only? }`
+- `ExportGuideOligos { guide_set_id, oligo_set_id?, format: csv_table|plate_csv|fasta, path, plate_format? }`
+- `ExportGuideProtocolText { guide_set_id, oligo_set_id?, path, include_qc_checklist? }`
 - `ScoreCandidateSetExpression { set_name, metric, expression }`
 - `ScoreCandidateSetDistance { set_name, metric, feature_kinds[], feature_label_regex?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation? }`
 - `FilterCandidateSet { input_set, output_set, metric, min?, max?, min_quantile?, max_quantile? }`
@@ -330,6 +336,35 @@ Current ligation protocol behavior:
 - Optional `forbidden_motifs`:
   - IUPAC motifs; reject when motif appears on either strand
 - `unique = true` requires exactly one match, otherwise the operation fails.
+
+Guide-design semantics:
+
+- Guide sets persist in `ProjectState.metadata["guide_design"]`
+  (`schema = gentle.guide_design.v1`) and include:
+  - guide sets
+  - practical-filter reports
+  - oligo sets
+  - audit log entries for guide operations/exports
+- `UpsertGuideSet`:
+  - normalizes guide fields and validates required properties
+  - sorts by rank (then guide id) and rejects duplicate `guide_id` within one set
+- `FilterGuidesPractical`:
+  - applies deterministic practical filters over one guide set
+  - supports GC bounds, global/per-base homopolymer limits, ambiguous-base
+    rejection, U6 `TTTT` avoidance, dinucleotide repeat cap, forbidden motifs,
+    and required 5' base checks
+  - can emit a passed-only output guide set (`output_guide_set_id`)
+  - always persists a structured per-guide report with reasons/warnings/metrics
+- `GenerateGuideOligos`:
+  - generates forward/reverse oligos using a named template
+  - supports optional 5' G extension and passed-only mode
+  - persists generated oligo records in named oligo sets
+- `ExportGuideOligos`:
+  - exports an oligo set as `csv_table`, `plate_csv` (96/384), or `fasta`
+  - records export actions in the guide-design audit log
+- `ExportGuideProtocolText`:
+  - exports a deterministic human-readable protocol text artifact
+  - optional QC checklist can be included/excluded
 
 Candidate-set semantics:
 
@@ -583,9 +618,8 @@ This supports:
 - ligation protocol presets with sticky/blunt compatibility derivation
 - render/view model endpoint for frontend-independent graphical representation
 - schema publication for strict client-side validation
-- CRISPR guide-design base layer:
-  - guide-candidate domain model and ranking layer
-  - oligo generation and export contracts (table/plate/protocol text)
-  - macro/template expansion into deterministic `Workflow` JSON
-  - design-constraint filtering is already available as `FilterByDesignConstraints`
+- CRISPR guide-design next phase:
+  - off-target search/ranking contracts
+  - on-target efficacy model integration hooks
+  - guide-design macro/template expansion into deterministic `Workflow` JSON
   - see draft: `docs/rna_guides_spec.md`

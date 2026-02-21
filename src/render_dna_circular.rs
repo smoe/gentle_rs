@@ -185,7 +185,9 @@ impl RenderDnaCircular {
                 );
                 self.display.write().unwrap().select(selection);
             } else {
-                println!("I RenderDnaCircular::on_double_click: Could not select any feature or RestrictionEnzyme.");
+                println!(
+                    "I RenderDnaCircular::on_double_click: Could not select any feature or RestrictionEnzyme."
+                );
             }
         }
     }

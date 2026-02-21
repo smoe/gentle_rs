@@ -1061,6 +1061,9 @@ fn run() -> Result<(), String> {
                         "annotation_source_type": source_plan.annotation_source_type,
                         "sequence_source": source_plan.sequence_source,
                         "annotation_source": source_plan.annotation_source,
+                        "nucleotide_length_bp": source_plan.nucleotide_length_bp,
+                        "molecular_mass_da": source_plan.molecular_mass_da,
+                        "molecular_mass_source": source_plan.molecular_mass_source,
                     }))
                 }
                 "genes" => {
@@ -1142,7 +1145,10 @@ fn run() -> Result<(), String> {
                                 idx += 2;
                             }
                             other => {
-                                return Err(format!("Unknown option '{}' for {label} genes", other));
+                                return Err(format!(
+                                    "Unknown option '{}' for {label} genes",
+                                    other
+                                ));
                             }
                         }
                     }
@@ -2259,6 +2265,32 @@ T [ 0 0 0 10 ]
         ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(matches!(parsed, Some(ShellCommand::ImportPool { .. })));
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_macros_template_run() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "macros".to_string(),
+            "template-run".to_string(),
+            "clone".to_string(),
+            "--bind".to_string(),
+            "seq_id=seqA".to_string(),
+            "--transactional".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::MacrosTemplateRun {
+                name,
+                bindings,
+                transactional,
+            }) => {
+                assert_eq!(name, "clone");
+                assert_eq!(bindings.get("seq_id").map(String::as_str), Some("seqA"));
+                assert!(transactional);
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
     }
 
     #[test]

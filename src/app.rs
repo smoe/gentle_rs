@@ -3,46 +3,46 @@ use std::{
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
-    panic::{catch_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     process::Command,
     sync::{
+        Arc, RwLock,
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, RwLock,
+        mpsc,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
-    about,
+    TRANSLATIONS, about,
     agent_bridge::{
-        invoke_agent_support, load_agent_system_catalog, AgentExecutionIntent,
-        AgentInvocationOutcome, AgentResponse, AgentSystemSpec, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+        AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
+        DEFAULT_AGENT_SYSTEM_CATALOG_PATH, invoke_agent_support, load_agent_system_catalog,
     },
     dna_sequence::{self, DNAsequence},
     engine::{
-        BlastHitFeatureInput, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
-        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
-        GenomeTrackSyncReport, GentleEngine, OpResult, Operation, OperationProgress, ProjectState,
-        SequenceGenomeAnchorSummary, BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GenomeTrackImportProgress,
+        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, OpResult,
+        Operation, OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
     },
     engine_shell::{
-        execute_shell_command_with_options, parse_shell_line, ShellCommand, ShellExecutionOptions,
+        ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
     },
     enzymes,
     genomes::{
-        GenomeBlastReport, GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan,
-        PrepareGenomeProgress, PreparedGenomeInspection, BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN,
-        DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
-        DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV,
+        BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
+        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, MAKEBLASTDB_ENV_BIN,
+        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress, PreparedGenomeInspection,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs, tool_overrides,
     window::Window,
-    TRANSLATIONS,
 };
-use anyhow::{anyhow, Result};
-use eframe::egui::{self, menu, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
+use anyhow::{Result, anyhow};
+use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId, menu};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
@@ -1593,7 +1593,7 @@ impl GENtleApp {
                 action: CommandPaletteAction::OpenPrepareGenome,
             },
             CommandPaletteEntry {
-                title: "Retrieve Genome Sequence".to_string(),
+                title: "Retrieve Genomic Sequence".to_string(),
                 detail: "Extract region/gene from prepared genome".to_string(),
                 keywords: "genome retrieve extract anchor".to_string(),
                 action: CommandPaletteAction::OpenRetrieveGenome,
@@ -1962,6 +1962,7 @@ impl GENtleApp {
         state.lineage.nodes.len().hash(&mut hasher);
         state.lineage.edges.len().hash(&mut hasher);
         state.container_state.containers.len().hash(&mut hasher);
+        state.container_state.arrangements.len().hash(&mut hasher);
         state.metadata.len().hash(&mut hasher);
 
         let mut metadata_keys: Vec<&String> = state.metadata.keys().collect();
@@ -2041,6 +2042,7 @@ impl GENtleApp {
         state.lineage.nodes.len().hash(&mut hasher);
         state.lineage.edges.len().hash(&mut hasher);
         state.container_state.containers.len().hash(&mut hasher);
+        state.container_state.arrangements.len().hash(&mut hasher);
         hasher.finish()
     }
 
@@ -2054,6 +2056,7 @@ impl GENtleApp {
         !state.sequences.is_empty()
             || !state.lineage.nodes.is_empty()
             || !state.container_state.containers.is_empty()
+            || !state.container_state.arrangements.is_empty()
     }
 
     fn mark_clean_snapshot(&mut self) {
@@ -2200,7 +2203,73 @@ impl GENtleApp {
         }
     }
 
+    fn sanitize_file_stem(raw: &str, fallback: &str) -> String {
+        let mut out: String = raw
+            .trim()
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        out = out.trim_matches('_').to_string();
+        if out.is_empty() {
+            fallback.to_string()
+        } else {
+            out
+        }
+    }
+
+    fn prompt_export_serial_gel_svg(
+        &mut self,
+        default_stem: &str,
+        container_ids: Option<Vec<String>>,
+        arrangement_id: Option<String>,
+        ladders: Option<Vec<String>>,
+    ) {
+        let stem = Self::sanitize_file_stem(default_stem, "serial_gel");
+        let default_file_name = format!("{stem}.gel.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.app_status = "Serial gel SVG export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let result = self
+            .engine
+            .write()
+            .unwrap()
+            .apply(Operation::RenderPoolGelSvg {
+                inputs: vec![],
+                path: path_text.clone(),
+                ladders,
+                container_ids,
+                arrangement_id,
+            });
+        match result {
+            Ok(op_result) => {
+                self.app_status = op_result
+                    .messages
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("Wrote serial gel SVG to '{path_text}'"));
+            }
+            Err(e) => {
+                self.app_status = format!("Could not export serial gel SVG: {}", e.message);
+            }
+        }
+    }
+
     fn open_reference_genome_prepare_dialog(&mut self) {
+        if self.show_reference_genome_prepare_dialog {
+            self.queue_focus_viewport(Self::prepare_genome_viewport_id());
+        }
         self.show_reference_genome_prepare_dialog = true;
     }
 
@@ -2209,6 +2278,9 @@ impl GENtleApp {
     }
 
     fn open_reference_genome_blast_dialog(&mut self) {
+        if self.show_reference_genome_blast_dialog {
+            self.queue_focus_viewport(Self::blast_genome_viewport_id());
+        }
         self.show_reference_genome_blast_dialog = true;
     }
 
@@ -2230,7 +2302,7 @@ impl GENtleApp {
         self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
         self.genome_cache_dir = "data/helper_genomes".to_string();
         self.invalidate_genome_genes();
-        self.show_reference_genome_prepare_dialog = true;
+        self.open_reference_genome_prepare_dialog();
     }
 
     fn open_helper_genome_retrieve_dialog(&mut self) {
@@ -2243,7 +2315,7 @@ impl GENtleApp {
     fn open_helper_genome_blast_dialog(&mut self) {
         self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
         self.genome_cache_dir = "data/helper_genomes".to_string();
-        self.show_reference_genome_blast_dialog = true;
+        self.open_reference_genome_blast_dialog();
     }
 
     fn genome_catalog_path_opt(&self) -> Option<String> {
@@ -3147,6 +3219,24 @@ impl GENtleApp {
         let cache_dir = self.genome_cache_dir_opt();
         let plan = catalog.source_plan(genome_id, cache_dir.as_deref())?;
         Ok(Some(plan))
+    }
+
+    fn format_genome_source_plan_summary(plan: &GenomeSourcePlan) -> String {
+        let mut parts = vec![format!(
+            "sources: sequence={} | annotation={}",
+            plan.sequence_source_type, plan.annotation_source_type
+        )];
+        if let Some(length_bp) = plan.nucleotide_length_bp {
+            parts.push(format!("length={length_bp} bp"));
+        }
+        if let Some(mass_da) = plan.molecular_mass_da {
+            let source = plan
+                .molecular_mass_source
+                .as_deref()
+                .unwrap_or("unknown_source");
+            parts.push(format!("mass={mass_da:.3e} Da ({source})"));
+        }
+        parts.join(" | ")
     }
 
     fn choose_genome_from_catalog(ui: &mut Ui, genome_id: &mut String, names: &[String]) -> bool {
@@ -4304,6 +4394,7 @@ impl GENtleApp {
                 format!("Catalog error: {}", self.genome_catalog_error),
             );
         }
+        let all_genomes = self.genome_catalog_genomes.clone();
         let preparable_genomes = match self.unprepared_genomes_for_prepare_dialog() {
             Ok(names) => names,
             Err(e) => {
@@ -4314,17 +4405,41 @@ impl GENtleApp {
                 vec![]
             }
         };
-        let selection_changed =
-            Self::choose_genome_from_catalog(ui, &mut self.genome_id, &preparable_genomes);
+        let preparable_set: HashSet<String> = preparable_genomes.iter().cloned().collect();
+        let mut selection_changed = false;
+        let selected_text = if self.genome_id.trim().is_empty() {
+            "Select genome".to_string()
+        } else {
+            self.genome_id.clone()
+        };
+        egui::ComboBox::from_label("genome")
+            .selected_text(selected_text)
+            .show_ui(ui, |ui| {
+                for genome_name in &all_genomes {
+                    let is_preparable = preparable_set.contains(genome_name);
+                    let item_label = if is_preparable {
+                        genome_name.clone()
+                    } else {
+                        format!("{genome_name} (already prepared)")
+                    };
+                    ui.add_enabled_ui(is_preparable, |ui| {
+                        if ui
+                            .selectable_label(self.genome_id == *genome_name, item_label)
+                            .clicked()
+                        {
+                            self.genome_id = genome_name.clone();
+                            selection_changed = true;
+                            ui.close_menu();
+                        }
+                    });
+                }
+            });
         if selection_changed {
             self.invalidate_genome_genes();
         }
         match self.selected_genome_source_plan() {
             Ok(Some(plan)) => {
-                ui.small(format!(
-                    "sources: sequence={} | annotation={}",
-                    plan.sequence_source_type, plan.annotation_source_type
-                ));
+                ui.small(Self::format_genome_source_plan_summary(&plan));
             }
             Ok(None) => {}
             Err(e) => {
@@ -4457,10 +4572,12 @@ impl GENtleApp {
         }
         self.refresh_genome_catalog_list();
         let mut open = self.show_reference_genome_retrieve_dialog;
-        egui::Window::new("Retrieve Genome Sequence")
+        egui::Window::new("Retrieve Genomic Sequence")
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
+            .default_size(Vec2::new(980.0, 760.0))
+            .min_size(Vec2::new(860.0, 520.0))
             .show(ctx, |ui| {
                 ui.label("Retrieve region sequences from a prepared genome.");
                 ui.horizontal(|ui| {
@@ -4519,10 +4636,7 @@ impl GENtleApp {
                 }
                 match self.selected_genome_source_plan() {
                     Ok(Some(plan)) => {
-                        ui.small(format!(
-                            "sources: sequence={} | annotation={}",
-                            plan.sequence_source_type, plan.annotation_source_type
-                        ));
+                        ui.small(Self::format_genome_source_plan_summary(&plan));
                     }
                     Ok(None) => {}
                     Err(e) => {
@@ -4694,7 +4808,7 @@ impl GENtleApp {
                         let start_changed = ui
                             .add(
                                 egui::TextEdit::singleline(&mut self.genome_start_1based)
-                                    .desired_width(90.0)
+                                    .desired_width(120.0)
                                     .char_limit(10),
                             )
                             .changed();
@@ -4705,7 +4819,7 @@ impl GENtleApp {
                         let end_changed = ui
                             .add(
                                 egui::TextEdit::singleline(&mut self.genome_end_1based)
-                                    .desired_width(90.0)
+                                    .desired_width(120.0)
                                     .char_limit(10),
                             )
                             .changed();
@@ -4890,10 +5004,7 @@ impl GENtleApp {
         }
         match self.selected_genome_source_plan() {
             Ok(Some(plan)) => {
-                ui.small(format!(
-                    "sources: sequence={} | annotation={}",
-                    plan.sequence_source_type, plan.annotation_source_type
-                ));
+                ui.small(Self::format_genome_source_plan_summary(&plan));
             }
             Ok(None) => {}
             Err(e) => {
@@ -6479,7 +6590,7 @@ impl GENtleApp {
                     ui.close_menu();
                 }
                 if ui
-                    .button("Retrieve Genome Sequence...")
+                    .button("Retrieve Genomic Sequence...")
                     .on_hover_text(
                         "Extract anchored region/gene sequence from a prepared reference",
                     )
@@ -6651,7 +6762,7 @@ impl GENtleApp {
                     ui.close_menu();
                 }
                 if ui
-                    .button("Retrieve Genome Sequence...")
+                    .button("Retrieve Genomic Sequence...")
                     .on_hover_text(
                         "Extract anchored region/gene sequence from a prepared reference",
                     )
@@ -7254,9 +7365,9 @@ impl GENtleApp {
                 self.open_reference_genome_prepare_dialog();
             }
             let retrieve_resp = self.track_hover_status(
-                ui.button("Retrieve Genome Sequence...")
+                ui.button("Retrieve Genomic Sequence...")
                     .on_hover_text("Extract sequence regions from prepared genomes"),
-                "Lineage > Retrieve Genome Sequence",
+                "Lineage > Retrieve Genomic Sequence",
             );
             if retrieve_resp.clicked() {
                 self.open_reference_genome_retrieve_dialog();
@@ -7292,6 +7403,9 @@ impl GENtleApp {
 
         let mut open_seq: Option<String> = None;
         let mut open_pool: Option<(String, Vec<String>)> = None;
+        let mut open_lane_containers: Option<Vec<String>> = None;
+        let mut export_container_gel: Option<(String, Vec<String>)> = None;
+        let mut export_arrangement_gel: Option<(String, String)> = None;
         let mut select_candidate_from: Option<String> = None;
         let mut graph_zoom = self.lineage_graph_zoom.clamp(0.35, 4.0);
         let mut graph_area_height = self.lineage_graph_area_height.clamp(220.0, 2400.0);
@@ -8077,31 +8191,144 @@ impl GENtleApp {
                                     ui.label(&c.kind);
                                     ui.monospace(format!("{}", c.member_count));
                                     ui.monospace(&c.representative);
-                                    if c.member_count > 1 {
-                                        if ui
-                                            .button("Open Pool")
-                                            .on_hover_text("Open this container as a pool view")
-                                            .clicked()
-                                        {
-                                            open_pool =
-                                                Some((c.representative.clone(), c.members.clone()));
+                                    ui.horizontal(|ui| {
+                                        if c.member_count > 1 {
+                                            if ui
+                                                .button("Open Pool")
+                                                .on_hover_text("Open this container as a pool view")
+                                                .clicked()
+                                            {
+                                                open_pool = Some((
+                                                    c.representative.clone(),
+                                                    c.members.clone(),
+                                                ));
+                                            }
+                                        } else if !c.representative.is_empty() {
+                                            if ui
+                                                .button("Open Seq")
+                                                .on_hover_text("Open this representative sequence")
+                                                .clicked()
+                                            {
+                                                open_seq = Some(c.representative.clone());
+                                            }
+                                        } else {
+                                            ui.label("-");
                                         }
-                                    } else if !c.representative.is_empty() {
-                                        if ui
-                                            .button("Open Seq")
-                                            .on_hover_text("Open this representative sequence")
-                                            .clicked()
+                                        if c.member_count > 0
+                                            && ui
+                                                .button("Gel SVG")
+                                                .on_hover_text(
+                                                    "Export a serial gel lane for this container",
+                                                )
+                                                .clicked()
                                         {
-                                            open_seq = Some(c.representative.clone());
+                                            export_container_gel = Some((
+                                                c.container_id.clone(),
+                                                vec![c.container_id.clone()],
+                                            ));
                                         }
-                                    } else {
-                                        ui.label("-");
-                                    }
+                                    });
                                     ui.end_row();
                                 }
                             });
+                        ui.separator();
+                        ui.heading("Arrangements");
+                        ui.label("Serial lane setups from one or more containers");
+                        if self.lineage_arrangements.is_empty() {
+                            ui.label("No arrangements recorded");
+                        } else {
+                            egui::Grid::new("arrangement_grid")
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.strong("Arrangement");
+                                    ui.strong("Mode");
+                                    ui.strong("Name");
+                                    ui.strong("Lanes");
+                                    ui.strong("Lane containers");
+                                    ui.strong("Ladders");
+                                    ui.strong("Action");
+                                    ui.end_row();
+                                    for arrangement in &self.lineage_arrangements {
+                                        ui.monospace(&arrangement.arrangement_id);
+                                        ui.label(&arrangement.mode);
+                                        ui.label(if arrangement.name.trim().is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            arrangement.name.clone()
+                                        });
+                                        ui.monospace(arrangement.lane_count.to_string());
+                                        ui.label(if arrangement.lane_container_ids.is_empty() {
+                                            "-".to_string()
+                                        } else {
+                                            arrangement.lane_container_ids.join(", ")
+                                        });
+                                        ui.label(if arrangement.ladders.is_empty() {
+                                            "auto".to_string()
+                                        } else {
+                                            arrangement.ladders.join(", ")
+                                        });
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .button("Export Gel")
+                                                .on_hover_text(
+                                                    "Export one serial gel using this arrangement",
+                                                )
+                                                .clicked()
+                                            {
+                                                let stem = if arrangement.name.trim().is_empty() {
+                                                    arrangement.arrangement_id.clone()
+                                                } else {
+                                                    arrangement.name.clone()
+                                                };
+                                                export_arrangement_gel = Some((
+                                                    stem,
+                                                    arrangement.arrangement_id.clone(),
+                                                ));
+                                            }
+                                            if !arrangement.lane_container_ids.is_empty()
+                                                && ui
+                                                    .button("Open Lanes")
+                                                    .on_hover_text(
+                                                        "Open windows for the lane containers in this arrangement",
+                                                    )
+                                                    .clicked()
+                                            {
+                                                open_lane_containers =
+                                                    Some(arrangement.lane_container_ids.clone());
+                                            }
+                                        });
+                                        ui.end_row();
+                                    }
+                                });
+                        }
                     });
             });
+
+        if let Some((stem, container_ids)) = export_container_gel.take() {
+            self.prompt_export_serial_gel_svg(&stem, Some(container_ids), None, None);
+        }
+        if let Some((stem, arrangement_id)) = export_arrangement_gel.take() {
+            self.prompt_export_serial_gel_svg(&stem, None, Some(arrangement_id), None);
+        }
+        if let Some(container_ids) = open_lane_containers.take() {
+            for container_id in &container_ids {
+                if let Some(container_row) = self
+                    .lineage_containers
+                    .iter()
+                    .find(|row| row.container_id == *container_id)
+                    .cloned()
+                {
+                    if container_row.member_count > 1 {
+                        self.open_pool_window(
+                            &container_row.representative,
+                            container_row.members.clone(),
+                        );
+                    } else if !container_row.representative.is_empty() {
+                        self.open_sequence_window(&container_row.representative);
+                    }
+                }
+            }
+        }
 
         if (self.lineage_graph_zoom - graph_zoom).abs() > 0.0001 {
             self.lineage_graph_zoom = graph_zoom;
@@ -8223,8 +8450,8 @@ impl GENtleApp {
         self.configuration_graphics.show_tfbs = defaults.show_tfbs;
         self.configuration_graphics.regulatory_tracks_near_baseline =
             defaults.regulatory_tracks_near_baseline;
-        self.configuration_graphics.regulatory_feature_max_view_span_bp =
-            defaults.regulatory_feature_max_view_span_bp;
+        self.configuration_graphics
+            .regulatory_feature_max_view_span_bp = defaults.regulatory_feature_max_view_span_bp;
         self.configuration_graphics.tfbs_display_use_llr_bits = defaults.tfbs_display_use_llr_bits;
         self.configuration_graphics.tfbs_display_min_llr_bits = defaults.tfbs_display_min_llr_bits;
         self.configuration_graphics.tfbs_display_use_llr_quantile =
@@ -9547,9 +9774,9 @@ impl GENtleApp {
                 path,
                 format,
             } => format!("Save file: seq_id={seq_id}, path={path}, format={format:?}"),
-            Operation::RenderSequenceSvg { seq_id, mode, path } => format!(
-                "Render sequence SVG: seq_id={seq_id}, mode={mode:?}, path={path}"
-            ),
+            Operation::RenderSequenceSvg { seq_id, mode, path } => {
+                format!("Render sequence SVG: seq_id={seq_id}, mode={mode:?}, path={path}")
+            }
             Operation::RenderRnaStructureSvg { seq_id, path } => {
                 format!("Render RNA structure SVG: seq_id={seq_id}, path={path}")
             }
@@ -9560,10 +9787,21 @@ impl GENtleApp {
                 inputs,
                 path,
                 ladders,
-                ..
+                container_ids,
+                arrangement_id,
             } => format!(
-                "Render pool gel SVG: inputs={}, path={}, ladders={}",
+                "Render serial gel SVG: inputs={}, container_ids={}, arrangement_id={}, path={}, ladders={}",
                 inputs.join(", "),
+                container_ids
+                    .as_ref()
+                    .map(|v| v.join(", "))
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| "-".to_string()),
+                arrangement_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-"),
                 path,
                 ladders
                     .as_ref()
@@ -9937,8 +10175,9 @@ mod tests {
     use std::{
         fs,
         sync::{
+            Arc,
             atomic::{AtomicBool, Ordering},
-            mpsc, Arc,
+            mpsc,
         },
         time::Instant,
     };
@@ -10060,12 +10299,13 @@ mod tests {
             })
             .count();
         assert_eq!(cancel_events, 1);
-        assert!(app
-            .genome_prepare_task
-            .as_ref()
-            .unwrap()
-            .cancel_requested
-            .load(Ordering::Relaxed));
+        assert!(
+            app.genome_prepare_task
+                .as_ref()
+                .unwrap()
+                .cancel_requested
+                .load(Ordering::Relaxed)
+        );
     }
 
     #[test]

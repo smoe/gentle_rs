@@ -56,6 +56,10 @@ pub struct GenomeCatalogEntry {
     pub annotations_local: Option<String>,
     #[serde(default = "default_cache_dir")]
     pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub nucleotide_length_bp: Option<usize>,
+    #[serde(default)]
+    pub molecular_mass_da: Option<f64>,
 }
 
 fn default_cache_dir() -> Option<String> {
@@ -212,6 +216,12 @@ pub struct GenomeSourcePlan {
     pub annotation_source: String,
     pub sequence_source_type: String,
     pub annotation_source_type: String,
+    #[serde(default)]
+    pub nucleotide_length_bp: Option<usize>,
+    #[serde(default)]
+    pub molecular_mass_da: Option<f64>,
+    #[serde(default)]
+    pub molecular_mass_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -292,13 +302,48 @@ impl GenomeCatalog {
             entry.annotations_remote.as_ref(),
             entry,
         )?;
-        let _ = self.install_dir(genome_id, entry, cache_dir_override);
+        let nucleotide_length_bp = entry
+            .nucleotide_length_bp
+            .or_else(|| self.prepared_sequence_length_bp(genome_id, entry, cache_dir_override));
+        let (molecular_mass_da, molecular_mass_source) =
+            if let Some(mass_da) = entry.molecular_mass_da {
+                (Some(mass_da), Some("catalog".to_string()))
+            } else if let Some(length_bp) = nucleotide_length_bp {
+                (
+                    estimate_double_stranded_dna_mass_da(length_bp),
+                    Some("estimated_from_nucleotide_length".to_string()),
+                )
+            } else {
+                (None, None)
+            };
         Ok(GenomeSourcePlan {
             sequence_source_type: source_type_label(sequence.source_type).to_string(),
             annotation_source_type: source_type_label(annotation.source_type).to_string(),
             sequence_source: sequence.source,
             annotation_source: annotation.source,
+            nucleotide_length_bp,
+            molecular_mass_da,
+            molecular_mass_source,
         })
+    }
+
+    fn prepared_sequence_length_bp(
+        &self,
+        genome_id: &str,
+        entry: &GenomeCatalogEntry,
+        cache_dir_override: Option<&str>,
+    ) -> Option<usize> {
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            return None;
+        }
+        let manifest = Self::load_manifest(&manifest_path).ok()?;
+        let index = load_fasta_index(Path::new(&manifest.fasta_index_path)).ok()?;
+        let total_bp = index
+            .values()
+            .fold(0u128, |acc, entry| acc.saturating_add(entry.length as u128));
+        usize::try_from(total_bp).ok()
     }
 
     pub fn is_prepared(
@@ -1342,7 +1387,7 @@ fn resolve_genbank_accession_source(
         _ => {
             return Err(format!(
                 "Unsupported GenBank accession source kind '{kind}'"
-            ))
+            ));
         }
     };
     Ok(Some(build_genbank_efetch_url(&accession, rettype)))
@@ -1502,6 +1547,20 @@ fn has_non_empty(value: &Option<String>) -> bool {
         .unwrap_or(false)
 }
 
+const ESTIMATED_DOUBLE_STRANDED_DNA_DA_PER_BP: f64 = 617.96;
+const ESTIMATED_DOUBLE_STRANDED_DNA_DA_TERMINAL: f64 = 36.04;
+
+fn estimate_double_stranded_dna_mass_da(length_bp: usize) -> Option<f64> {
+    if length_bp == 0 {
+        None
+    } else {
+        Some(
+            (length_bp as f64) * ESTIMATED_DOUBLE_STRANDED_DNA_DA_PER_BP
+                + ESTIMATED_DOUBLE_STRANDED_DNA_DA_TERMINAL,
+        )
+    }
+}
+
 fn validate_catalog_entries(
     catalog_path: &str,
     entries: &HashMap<String, GenomeCatalogEntry>,
@@ -1591,6 +1650,21 @@ fn validate_catalog_entries(
                 "Missing annotation source: provide annotations_local/annotations_remote or NCBI assembly/GenBank accession fields"
                     .to_string(),
             );
+        }
+        if let Some(length_bp) = entry.nucleotide_length_bp {
+            if length_bp == 0 {
+                entry_errors.push(
+                    "'nucleotide_length_bp' must be a positive integer when provided".to_string(),
+                );
+            }
+        }
+        if let Some(mass_da) = entry.molecular_mass_da {
+            if !mass_da.is_finite() || mass_da <= 0.0 {
+                entry_errors.push(
+                    "'molecular_mass_da' must be a finite positive number when provided"
+                        .to_string(),
+                );
+            }
         }
 
         for err in entry_errors {
@@ -3430,7 +3504,7 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::{write::GzEncoder, Compression};
+    use flate2::{Compression, write::GzEncoder};
     use std::env;
     use tempfile::tempdir;
 
@@ -3515,16 +3589,20 @@ mod tests {
         let manifest =
             GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
                 .unwrap();
-        assert!(manifest
-            .sequence_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
-        assert!(manifest
-            .annotation_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
+        assert!(
+            manifest
+                .sequence_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(
+            manifest
+                .annotation_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
         let gene_index_path = manifest
             .gene_index_path
             .expect("gene index path should be set");
@@ -3538,16 +3616,20 @@ mod tests {
         assert!(inspection.annotation_present);
         assert!(inspection.fasta_index_ready);
         assert!(inspection.gene_index_ready);
-        assert!(inspection
-            .sequence_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
-        assert!(inspection
-            .annotation_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
+        assert!(
+            inspection
+                .sequence_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(
+            inspection
+                .annotation_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
 
         let second = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(second.reused_existing);
@@ -3630,9 +3712,11 @@ mod tests {
             })
             .unwrap_err();
         assert!(first_err.contains("missing_annotation.gtf"));
-        assert!(first_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
+        assert!(
+            first_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
 
         let sequence_path = cache_dir.join("toygenome").join("sequence.fa");
         assert!(sequence_path.exists());
@@ -3645,9 +3729,11 @@ mod tests {
             })
             .unwrap_err();
         assert!(second_err.contains("missing_annotation.gtf"));
-        assert!(!second_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
+        assert!(
+            !second_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
         assert!(second_phases.iter().any(|phase| phase == "reuse_sequence"));
     }
 
@@ -3695,12 +3781,16 @@ mod tests {
             })
             .unwrap();
         assert!(!first.reused_existing);
-        assert!(first_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
-        assert!(first_phases
-            .iter()
-            .any(|phase| phase == "download_annotation"));
+        assert!(
+            first_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
+        assert!(
+            first_phases
+                .iter()
+                .any(|phase| phase == "download_annotation")
+        );
 
         let mut second_phases: Vec<String> = vec![];
         let second = catalog
@@ -3710,12 +3800,16 @@ mod tests {
             })
             .unwrap();
         assert!(second.reused_existing);
-        assert!(!second_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
-        assert!(!second_phases
-            .iter()
-            .any(|phase| phase == "download_annotation"));
+        assert!(
+            !second_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
+        assert!(
+            !second_phases
+                .iter()
+                .any(|phase| phase == "download_annotation")
+        );
         assert!(second_phases.iter().any(|phase| phase == "index_blast"));
         assert!(second_phases.iter().any(|phase| phase == "ready"));
     }
@@ -3796,10 +3890,12 @@ mod tests {
         let report = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(!report.blast_index_ready);
         assert!(!report.warnings.is_empty());
-        assert!(report
-            .warnings
-            .iter()
-            .any(|w| w.to_ascii_lowercase().contains("makeblastdb")));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.to_ascii_lowercase().contains("makeblastdb"))
+        );
 
         let inspection = catalog
             .inspect_prepared_genome("ToyGenome", None)
@@ -3856,15 +3952,19 @@ mod tests {
             && g.gene_name.as_deref() == Some("A;B")
             && g.biotype.as_deref() == Some("lncRNA")
             && g.strand == Some('-')));
-        assert!(genes
-            .iter()
-            .any(|g| g.gene_id.as_deref() == Some("12345") && g.gene_name.is_none()));
+        assert!(
+            genes
+                .iter()
+                .any(|g| g.gene_id.as_deref() == Some("12345") && g.gene_name.is_none())
+        );
         assert!(genes.iter().any(|g| g.gene_id.as_deref() == Some("GENE4")
             && g.start_1based == 1001
             && g.end_1based == 1050));
-        assert!(genes
-            .iter()
-            .any(|g| g.gene_id.as_deref() == Some("chr1_1200_1300")));
+        assert!(
+            genes
+                .iter()
+                .any(|g| g.gene_id.as_deref() == Some("chr1_1200_1300"))
+        );
     }
 
     #[test]
@@ -4111,9 +4211,11 @@ mod tests {
         .unwrap();
         assert!(!genes.is_empty());
         assert_eq!(report.source_format, "genbank");
-        assert!(genes
-            .iter()
-            .any(|g| g.biotype.as_deref() == Some("promoter")));
+        assert!(
+            genes
+                .iter()
+                .any(|g| g.biotype.as_deref() == Some("promoter"))
+        );
         assert!(genes.iter().any(|g| {
             g.biotype.as_deref() == Some("origin_of_replication")
                 && g.start_1based <= 2978
@@ -4201,6 +4303,153 @@ mod tests {
         let gb = catalog.source_plan("GenbankGenome", None).unwrap();
         assert_eq!(gb.sequence_source_type, "genbank_accession");
         assert_eq!(gb.annotation_source_type, "genbank_accession");
+    }
+
+    #[test]
+    fn test_source_plan_uses_catalog_molecular_mass_when_provided() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let local_seq = root.join("helper.fa");
+        let local_ann = root.join("helper.gff3");
+        fs::write(&local_seq, ">chrH\nACGT\n").unwrap();
+        fs::write(&local_ann, "##gff-version 3\n").unwrap();
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "HelperMassKnown": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "nucleotide_length_bp": 5000,
+    "molecular_mass_da": 3089836.04
+  }}
+}}"#,
+            local_seq.display(),
+            local_ann.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let plan = catalog.source_plan("HelperMassKnown", None).unwrap();
+        assert_eq!(plan.nucleotide_length_bp, Some(5000));
+        assert_eq!(plan.molecular_mass_da, Some(3_089_836.04));
+        assert_eq!(plan.molecular_mass_source.as_deref(), Some("catalog"));
+    }
+
+    #[test]
+    fn test_source_plan_estimates_mass_from_catalog_nucleotide_length() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let local_seq = root.join("helper.fa");
+        let local_ann = root.join("helper.gff3");
+        fs::write(&local_seq, ">chrH\nACGT\n").unwrap();
+        fs::write(&local_ann, "##gff-version 3\n").unwrap();
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "HelperMassEstimated": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "nucleotide_length_bp": 2686
+  }}
+}}"#,
+            local_seq.display(),
+            local_ann.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let plan = catalog.source_plan("HelperMassEstimated", None).unwrap();
+        assert_eq!(plan.nucleotide_length_bp, Some(2686));
+        let expected = estimate_double_stranded_dna_mass_da(2686).unwrap();
+        let observed = plan.molecular_mass_da.unwrap();
+        assert!((observed - expected).abs() < 1e-6);
+        assert_eq!(
+            plan.molecular_mass_source.as_deref(),
+            Some("estimated_from_nucleotide_length")
+        );
+    }
+
+    #[test]
+    fn test_source_plan_estimates_mass_from_prepared_sequence_length() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let local_seq = root.join("toy.fa");
+        let local_ann = root.join("toy.gtf");
+        fs::write(&local_seq, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &local_ann,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"G1\"; gene_name \"G1\";\n",
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "PreparedHelper": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            local_seq.display(),
+            local_ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog =
+            GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog
+            .prepare_genome_once("PreparedHelper")
+            .expect("prepare should succeed");
+        let plan = catalog.source_plan("PreparedHelper", None).unwrap();
+        assert_eq!(plan.nucleotide_length_bp, Some(12));
+        let expected = estimate_double_stranded_dna_mass_da(12).unwrap();
+        let observed = plan.molecular_mass_da.unwrap();
+        assert!((observed - expected).abs() < 1e-6);
+        assert_eq!(
+            plan.molecular_mass_source.as_deref(),
+            Some("estimated_from_nucleotide_length")
+        );
+    }
+
+    #[test]
+    fn test_catalog_validation_rejects_invalid_length_and_mass_fields() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let local_seq = root.join("local.fa");
+        let local_ann = root.join("local.gff3");
+        fs::write(&local_seq, ">chr1\nACGT\n").unwrap();
+        fs::write(&local_ann, "##gff-version 3\n").unwrap();
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "BadLength": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "nucleotide_length_bp": 0
+  }},
+  "BadMass": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "molecular_mass_da": -3.0
+  }}
+}}"#,
+            local_seq.display(),
+            local_ann.display(),
+            local_seq.display(),
+            local_ann.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let err = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect_err("catalog validation should fail");
+        assert!(err.contains("BadLength"));
+        assert!(err.contains("'nucleotide_length_bp' must be a positive integer"));
+        assert!(err.contains("BadMass"));
+        assert!(err.contains("'molecular_mass_da' must be a finite positive number"));
     }
 
     #[test]

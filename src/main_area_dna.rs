@@ -8,8 +8,8 @@ use crate::{
         PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
-        execute_shell_command_with_options, parse_shell_line, shell_help_text, ShellCommand,
-        ShellExecutionOptions,
+        ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
+        shell_help_text,
     },
     feature_location::collect_location_ranges_usize,
     icons::*,
@@ -27,8 +27,8 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        mpsc::{self, Receiver, TryRecvError},
         Arc, Mutex, RwLock,
+        mpsc::{self, Receiver, TryRecvError},
     },
     time::{Duration, Instant},
 };
@@ -840,12 +840,14 @@ impl MainAreaDna {
     }
 
     fn active_sequence_has_gene_annotations(&self) -> bool {
-        self.dna.read().map(|dna| {
-            dna.features()
-                .iter()
-                .any(|feature| RenderDna::is_gene_feature(feature))
-        })
-        .unwrap_or(false)
+        self.dna
+            .read()
+            .map(|dna| {
+                dna.features()
+                    .iter()
+                    .any(|feature| RenderDna::is_gene_feature(feature))
+            })
+            .unwrap_or(false)
     }
 
     fn active_linear_viewport_range(&self) -> Option<(usize, usize)> {
@@ -931,21 +933,21 @@ impl MainAreaDna {
 
     fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
         let viewport = self.active_linear_viewport_range();
-        let (tfbs_display_criteria, vcf_display_criteria, regulatory_feature_max_view_span_bp) = self
-            .dna_display
-            .read()
-            .map(|display| {
-                (
-                    display.tfbs_display_criteria(),
-                    display.vcf_display_criteria(),
-                    display.regulatory_feature_max_view_span_bp(),
-                )
-            })
-            .unwrap_or((
-                TfbsDisplayCriteria::default(),
-                VcfDisplayCriteria::default(),
-                50_000,
-            ));
+        let (tfbs_display_criteria, vcf_display_criteria, regulatory_feature_max_view_span_bp) =
+            self.dna_display
+                .read()
+                .map(|display| {
+                    (
+                        display.tfbs_display_criteria(),
+                        display.vcf_display_criteria(),
+                        display.regulatory_feature_max_view_span_bp(),
+                    )
+                })
+                .unwrap_or((
+                    TfbsDisplayCriteria::default(),
+                    VcfDisplayCriteria::default(),
+                    50_000,
+                ));
         let view_span_bp = viewport
             .map(|(start, end)| end.saturating_sub(start))
             .unwrap_or(0);
@@ -6449,9 +6451,7 @@ impl MainAreaDna {
                     egui::ScrollArea::vertical()
                         .id_salt(format!(
                             "feature_tree_scroll_{}",
-                            self.seq_id
-                                .as_deref()
-                                .unwrap_or("<no-seq-id>")
+                            self.seq_id.as_deref().unwrap_or("<no-seq-id>")
                         ))
                         .auto_shrink([false, false])
                         .max_height(tree_height)
@@ -6504,9 +6504,7 @@ impl MainAreaDna {
                             );
                             for line in details.iter().take(4) {
                                 ui.label(
-                                    egui::RichText::new(line)
-                                        .monospace()
-                                        .size(detail_font_size),
+                                    egui::RichText::new(line).monospace().size(detail_font_size),
                                 );
                             }
                         });

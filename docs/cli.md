@@ -62,6 +62,12 @@ Candidate-set capability status:
 - `gentle_js`: supported via `apply_operation` with the same candidate-set operations
 - `gentle_lua`: supported via `apply_operation` with the same candidate-set operations
 
+Guide-design capability status:
+
+- `gentle_cli`: supported as first-class `guides ...` commands and shared-shell `guides ...` commands, backed by shared engine operations (`UpsertGuideSet`, `DeleteGuideSet`, `FilterGuidesPractical`, `GenerateGuideOligos`, `ExportGuideOligos`, `ExportGuideProtocolText`)
+- `gentle_js`: supported via `apply_operation` with the same guide-design operations
+- `gentle_lua`: supported via `apply_operation` with the same guide-design operations
+
 ## Build and run
 
 From the repository root:
@@ -220,6 +226,8 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 
 - `docs/examples/generated/load_and_digest_pgex.md`
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
+- `docs/examples/generated/guides_filter_and_generate_oligos.md`
+- `docs/examples/generated/guides_export_csv_and_protocol.md`
 
 ## `gentle_lua` (Lua shell)
 
@@ -301,6 +309,8 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 
 - `docs/examples/generated/load_and_digest_pgex.md`
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
+- `docs/examples/generated/guides_filter_and_generate_oligos.md`
+- `docs/examples/generated/guides_export_csv_and_protocol.md`
 
 ## File format expectations
 
@@ -358,6 +368,9 @@ cargo run --bin gentle_cli -- shell 'state-summary'
 cargo run --bin gentle_cli -- shell 'op @op.json'
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg --ladders "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"
+cargo run --bin gentle_cli -- render-pool-gel-svg - digest.gel.svg --containers container-3,container-8
+cargo run --bin gentle_cli -- render-pool-gel-svg - digest.gel.svg --arrangement arrangement-2
+cargo run --bin gentle_cli -- arrange-serial container-3,container-8 --id arrangement-2 --name "Digest run A" --ladders "NEB 100bp DNA Ladder"
 cargo run --bin gentle_cli -- ladders list
 cargo run --bin gentle_cli -- ladders list --filter NEB
 cargo run --bin gentle_cli -- ladders list --molecule rna
@@ -403,6 +416,12 @@ cargo run --bin gentle_cli -- candidates macro @candidate_flow.gsh
 cargo run --bin gentle_cli -- candidates macro --transactional --file candidate_flow.gsh
 cargo run --bin gentle_cli -- candidates template-put scan_tp53 --script 'generate ${set_name} ${seq_id} --length ${len} --step 1' --param set_name --param seq_id=grch38_tp53 --param len=20
 cargo run --bin gentle_cli -- candidates template-run scan_tp53 --bind set_name=tp53_candidates --transactional
+cargo run --bin gentle_cli -- guides list
+cargo run --bin gentle_cli -- guides put tp73_guides --json '[{"guide_id":"g1","seq_id":"tp73","start_0based":100,"end_0based_exclusive":120,"strand":"+","protospacer":"GACCTGTTGACGATGTTCCA","pam":"AGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17}]'
+cargo run --bin gentle_cli -- guides filter tp73_guides --config '{"gc_min":0.3,"gc_max":0.7,"avoid_u6_terminator_tttt":true}' --output-set tp73_guides_pass
+cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only
+cargo run --bin gentle_cli -- guides oligos-export tp73_guides exports/tp73_guides.csv --format csv_table --oligo-set tp73_lenti
+cargo run --bin gentle_cli -- guides protocol-export tp73_guides exports/tp73_guides.protocol.txt --oligo-set tp73_lenti
 cargo run --bin gentle_cli -- shell 'macros template-list'
 cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_flow.gsh'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
@@ -448,7 +467,8 @@ Shared shell command:
     - `render-rna-svg SEQ_ID OUTPUT.svg`
     - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
-    - `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+    - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
+    - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
@@ -501,6 +521,17 @@ Shared shell command:
     - `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
     - `candidates template-delete TEMPLATE_NAME`
     - `candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
+    - `guides list`
+    - `guides show GUIDE_SET_ID [--limit N] [--offset N]`
+    - `guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)`
+    - `guides delete GUIDE_SET_ID`
+    - `guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]`
+    - `guides filter-show GUIDE_SET_ID`
+    - `guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]`
+    - `guides oligos-list [--guide-set GUIDE_SET_ID]`
+    - `guides oligos-show OLIGO_SET_ID`
+    - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
+    - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `set-param NAME JSON_VALUE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
@@ -538,12 +569,17 @@ Rendering export commands:
   - Uses external `rnapkin` executable (set `GENTLE_RNAPKIN_BIN` to override executable path).
 - `render-lineage-svg OUTPUT.svg`
   - Calls engine operation `RenderLineageSvg`.
-- `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
   - Calls engine operation `RenderPoolGelSvg`.
-  - `IDS` is a comma-separated sequence-id list.
+  - Use `IDS` as a comma-separated sequence-id list, or pass `-`/`_` when using `--containers` or `--arrangement`.
+  - `--containers` renders one lane per container ID.
+  - `--arrangement` renders lanes from a stored serial arrangement.
   - Optional `--ladders` overrides auto ladder selection.
   - If `--ladders` is omitted, engine auto-selects one or two ladders based on
     pool bp range.
+- `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
+  - Calls engine operation `CreateArrangementSerial`.
+  - Persists a serial lane setup that can be reused by `render-pool-gel-svg --arrangement`.
 
 RNA secondary-structure text command:
 
@@ -607,6 +643,8 @@ Genome convenience commands:
   - Shows whether the genome cache is prepared/indexed.
   - Also reports resolved source details: `sequence_source_type`,
     `annotation_source_type`, `sequence_source`, `annotation_source`.
+  - Also reports optional mass metadata:
+    `nucleotide_length_bp`, `molecular_mass_da`, `molecular_mass_source`.
 - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
   - Lists indexed genes from prepared cache (paged by `--limit`/`--offset`).
   - `--filter` is a case-insensitive regular expression.
@@ -631,7 +669,8 @@ Helper convenience commands:
 - `helpers validate-catalog [--catalog PATH]`
   - Same behavior as `genomes validate-catalog`, with helper-catalog default.
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
-  - Same behavior as `genomes status`, with helper-catalog default.
+  - Same behavior as `genomes status`, with helper-catalog default
+    (including length/mass metadata fields).
 - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
   - Same behavior as `genomes genes`, with helper-catalog default.
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
@@ -720,6 +759,34 @@ Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candi
 - `candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
   - Expands a named template with provided bindings/defaults, then executes it as
     a candidate macro script.
+
+Guide-design commands (`gentle_cli guides ...` and `gentle_cli shell 'guides ...'`):
+
+- `guides list`
+  - Lists persisted guide sets from guide-design metadata.
+- `guides show GUIDE_SET_ID [--limit N] [--offset N]`
+  - Pages guide rows from one guide set.
+- `guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)`
+  - Creates/replaces one guide set from JSON array payload.
+  - Input payload is `Vec<GuideCandidate>` objects.
+- `guides delete GUIDE_SET_ID`
+  - Deletes one guide set.
+- `guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]`
+  - Applies practical guide constraints and persists a filter report.
+  - Optional `--output-set` writes passed guides into a new set.
+- `guides filter-show GUIDE_SET_ID`
+  - Returns persisted practical-filter report (reasons, warnings, metrics).
+- `guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]`
+  - Generates guide oligos from selected template.
+  - Built-ins include `lenti_bsmbi_u6_default` and `plain_forward_reverse`.
+- `guides oligos-list [--guide-set GUIDE_SET_ID]`
+  - Lists persisted oligo sets (optionally filtered by source guide set).
+- `guides oligos-show OLIGO_SET_ID`
+  - Shows one oligo set with generated forward/reverse oligos.
+- `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
+  - Exports oligo rows for ordering or plate layouts.
+- `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
+  - Exports a human-readable wet-lab protocol text for generated oligos.
 
 Notes:
 
@@ -1090,6 +1157,11 @@ Notes:
 - Helper/vector entries can also define `genbank_accession`; when explicit
   URLs are absent, GENtle derives direct NCBI EFetch sources
   (`rettype=fasta` + `rettype=gbwithparts`) for one-time prepare/index.
+- Catalog entries may also include optional physical parameters:
+  `nucleotide_length_bp` and `molecular_mass_da`.
+- If `molecular_mass_da` is omitted but nucleotide length is available
+  (directly or from prepared FASTA index), GENtle estimates dsDNA molecular
+  mass and labels it as `estimated_from_nucleotide_length`.
 - `ExtractGenomeRegion` expects the genome to have been prepared already.
 - `ExtractGenomeGene` also expects prepared cache and gene index.
 - `genomes/helpers blast` expects prepared cache and a BLAST index.

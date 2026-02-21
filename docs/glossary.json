@@ -1,5 +1,5 @@
 {
-   "command_count" : 69,
+   "command_count" : 86,
    "commands" : [
       {
          "aliases" : [
@@ -612,6 +612,150 @@
          "path" : "tracks tracked apply",
          "summary" : "Apply tracked genome-track subscriptions to anchored sequences.",
          "usage" : "tracks tracked apply [--index N] [--only-new-anchors]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides list",
+         "summary" : "List persisted guide sets.",
+         "usage" : "guides list"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides show",
+         "summary" : "Page guides from one set.",
+         "usage" : "guides show GUIDE_SET_ID [--limit N] [--offset N]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "UpsertGuideSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides put",
+         "summary" : "Create or replace one guide set from JSON input.",
+         "usage" : "guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "DeleteGuideSet"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides delete",
+         "summary" : "Delete one guide set.",
+         "usage" : "guides delete GUIDE_SET_ID"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "FilterGuidesPractical"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides filter",
+         "summary" : "Apply practical design-constraint filtering to one guide set.",
+         "usage" : "guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides filter-show",
+         "summary" : "Inspect persisted practical-filter report for one guide set.",
+         "usage" : "guides filter-show GUIDE_SET_ID"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "GenerateGuideOligos"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides oligos-generate",
+         "summary" : "Generate guide oligo set from one guide set and template.",
+         "usage" : "guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides oligos-list",
+         "summary" : "List generated guide oligo sets.",
+         "usage" : "guides oligos-list [--guide-set GUIDE_SET_ID]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides oligos-show",
+         "summary" : "Inspect one generated guide oligo set.",
+         "usage" : "guides oligos-show OLIGO_SET_ID"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExportGuideOligos"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides oligos-export",
+         "summary" : "Export generated guide oligos to csv/plate/fasta formats.",
+         "usage" : "guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]"
+      },
+      {
+         "aliases" : [],
+         "engine_operations" : [
+            "ExportGuideProtocolText"
+         ],
+         "interfaces" : [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path" : "guides protocol-export",
+         "summary" : "Export a human-readable guide oligo protocol text file.",
+         "usage" : "guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]"
       },
       {
          "aliases" : [],

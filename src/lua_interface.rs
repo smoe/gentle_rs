@@ -1,7 +1,7 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{Engine, GenomeAnchorSide, GentleEngine, Operation, ProjectState, Workflow};
-use crate::engine_shell::{execute_shell_command, ShellCommand};
+use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
 use crate::resource_sync;
@@ -85,7 +85,9 @@ impl LuaInterface {
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
         println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
-        println!("  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog");
+        println!(
+            "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
+        );
         println!(
             "  - ask_agent_system(project_or_nil, system_id, prompt, [catalog_path], [allow_auto_exec], [execute_all], [execute_indices], [include_state_summary]): Asks one configured AI system"
         );
@@ -104,19 +106,35 @@ impl LuaInterface {
         println!(
             "  - prepare_genome(project, genome_id, [catalog_path], [cache_dir]): Engine op helper"
         );
-        println!("  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper");
-        println!("  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir]): Engine op helper");
-        println!("  - extend_genome_anchor(project, seq_id, side_5p_or_3p, length_bp, [output_id], [catalog_path], [cache_dir]): Engine op helper");
-        println!("  - import_genome_bed_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BED/BED.GZ overlay helper");
-        println!("  - import_genome_bigwig_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BigWig overlay helper");
-        println!("  - import_genome_vcf_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): VCF/VCF.GZ variant overlay helper");
-        println!("  - render_pool_gel_svg(project, ids_csv, output_svg, [ladders_csv]): Engine op helper");
+        println!(
+            "  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper"
+        );
+        println!(
+            "  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir]): Engine op helper"
+        );
+        println!(
+            "  - extend_genome_anchor(project, seq_id, side_5p_or_3p, length_bp, [output_id], [catalog_path], [cache_dir]): Engine op helper"
+        );
+        println!(
+            "  - import_genome_bed_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BED/BED.GZ overlay helper"
+        );
+        println!(
+            "  - import_genome_bigwig_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): BigWig overlay helper"
+        );
+        println!(
+            "  - import_genome_vcf_track(project, seq_id, path, [track_name], [min_score], [max_score], [clear_existing]): VCF/VCF.GZ variant overlay helper"
+        );
+        println!(
+            "  - render_pool_gel_svg(project, ids_csv, output_svg, [ladders_csv]): Engine op helper"
+        );
         println!(
             "  - import_pool(project, input_pool_json, [prefix]): Shared adapter helper (returns updated state + report)"
         );
         println!("  - sync_rebase(input, [output], [commercial_only]): Sync REBASE data");
         println!("  - sync_jaspar(input, [output]): Sync JASPAR motif data");
-        println!("A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites");
+        println!(
+            "A sequence has the following properties:\n- seq.restriction_enzymes\n- seq.restriction_enzyme_sites\n- seq.open_reading_frames\n- seq.methylation_sites"
+        );
     }
 
     fn write_gb(seq: DNAsequence, filename: String) -> LuaResult<bool> {

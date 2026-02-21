@@ -1,7 +1,7 @@
 use crate::DNA_LADDERS;
 use std::collections::{BTreeMap, BTreeSet};
-use svg::node::element::{Line, Rectangle, Text};
 use svg::Document;
+use svg::node::element::{Line, Rectangle, Text};
 
 const SVG_WIDTH: f32 = 1040.0;
 const SVG_HEIGHT: f32 = 760.0;
@@ -156,7 +156,11 @@ pub fn build_serial_gel_layout(
     }
 
     let pool_min = all_members.iter().map(|(_, bp)| *bp).min().unwrap_or(1);
-    let pool_max = all_members.iter().map(|(_, bp)| *bp).max().unwrap_or(pool_min);
+    let pool_max = all_members
+        .iter()
+        .map(|(_, bp)| *bp)
+        .max()
+        .unwrap_or(pool_min);
     let selected_ladders = resolve_ladder_names(requested_ladders, pool_min, pool_max);
     if selected_ladders.is_empty() {
         return Err("No DNA ladders available for pool-gel rendering".to_string());

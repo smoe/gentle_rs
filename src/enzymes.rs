@@ -1,5 +1,5 @@
 use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::fs;
 
 const RUNTIME_REBASE_PATH: &str = "data/resources/rebase.enzymes.json";
@@ -135,10 +135,12 @@ mod tests {
     #[test]
     fn test_from_json_file() {
         let enzymes = Enzymes::default();
-        assert!(enzymes
-            .restriction_enzymes
-            .iter()
-            .any(|e| e.name == "EcoRI"));
+        assert!(
+            enzymes
+                .restriction_enzymes
+                .iter()
+                .any(|e| e.name == "EcoRI")
+        );
         assert!(enzymes.proteases.iter().any(|e| e.name == "Clostripain"));
     }
 }

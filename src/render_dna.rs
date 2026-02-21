@@ -9,7 +9,7 @@ use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2,
 use gb_io::seq::Feature;
 use std::{
     fmt::Debug,
-    panic::{catch_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, RwLock},
 };
 
@@ -573,7 +573,14 @@ impl RenderDna {
         if kind == "GENE" {
             if let Some(name) = Self::first_nonempty_qualifier(
                 feature,
-                &["gene", "locus_tag", "gene_synonym", "label", "name", "standard_name"],
+                &[
+                    "gene",
+                    "locus_tag",
+                    "gene_synonym",
+                    "label",
+                    "name",
+                    "standard_name",
+                ],
             ) {
                 return name;
             }
@@ -653,7 +660,10 @@ impl RenderDna {
         lines
     }
 
-    pub fn feature_max_view_span_bp(feature: &Feature, regulatory_max_view_span_bp: usize) -> usize {
+    pub fn feature_max_view_span_bp(
+        feature: &Feature,
+        regulatory_max_view_span_bp: usize,
+    ) -> usize {
         if Self::is_source_feature(feature) {
             return 0;
         }

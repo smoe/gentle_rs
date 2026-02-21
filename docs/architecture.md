@@ -486,9 +486,12 @@ Important separation:
   GUI update loop: accepted and implemented
 - Defer for now: `import-pool` engine operation until first-class container
   semantics settle for stable import behavior across adapters.
-- Add guideRNA-design base layer (practical design-constraint filters + oligo/export
-  + macro-template workflow model): accepted and planned (spec draft in
-  `docs/rna_guides_spec.md`).
+- Add guideRNA-design base layer:
+  accepted and partially implemented as first-class engine operations
+  (`UpsertGuideSet`, `DeleteGuideSet`, `FilterGuidesPractical`,
+  `GenerateGuideOligos`, `ExportGuideOligos`, `ExportGuideProtocolText`) with
+  shared-shell/CLI exposure via `guides ...`; remaining phase covers off-target
+  ranking and macro-template packaging (`docs/rna_guides_spec.md`).
 - Add design-constraint filtering operation (`FilterByDesignConstraints`;
   GC bounds, homopolymer cap, U6 `TTTT` avoidance, forbidden motifs): accepted
   and implemented.

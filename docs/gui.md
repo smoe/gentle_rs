@@ -60,7 +60,8 @@ The project main window (lineage page) supports two views:
 
 - `Table`: tabular lineage view with per-sequence actions
 - `Graph`: node/edge lineage visualization
-- `Containers`: container list with kind/member-count and open actions
+- `Containers`: container list with kind/member-count, open actions, and per-container gel export
+- `Arrangements`: serial lane setups across containers, with arrangement-level gel export
 
 Global productivity controls:
 
@@ -168,7 +169,8 @@ Supported commands:
 - `render-rna-svg SEQ_ID OUTPUT.svg`
 - `rna-info SEQ_ID`
 - `render-lineage-svg OUTPUT.svg`
-- `render-pool-gel-svg IDS OUTPUT.svg [--ladders NAME[,NAME]]`
+- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
+- `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
 - `ladders list [--molecule dna|rna] [--filter TEXT]`
 - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
 - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
@@ -213,9 +215,26 @@ Supported commands:
 - `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `candidates template-list|template-show|template-put|template-delete|template-run ...`
+- `guides list`
+- `guides show GUIDE_SET_ID [--limit N] [--offset N]`
+- `guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)`
+- `guides delete GUIDE_SET_ID`
+- `guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]`
+- `guides filter-show GUIDE_SET_ID`
+- `guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]`
+- `guides oligos-list [--guide-set GUIDE_SET_ID]`
+- `guides oligos-show OLIGO_SET_ID`
+- `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
+- `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
 - `set-param NAME JSON_VALUE`
 - `op <operation-json-or-@file>`
 - `workflow <workflow-json-or-@file>`
+
+Status output note:
+
+- `genomes status` / `helpers status` include optional
+  `nucleotide_length_bp`, `molecular_mass_da`, and `molecular_mass_source`
+  alongside source-type/source-path fields.
 
 Screenshot command status:
 
@@ -494,15 +513,21 @@ Bin breaks are computed as follows:
   - `lo = min_bp + idx * bucket_size`
 - `hi = lo + bucket_size - 1`
 
-## Pool Gel (Ladder View)
+## Serial Gel (Ladder View)
 
-When pool members are available, Engine Ops also shows a virtual agarose-gel
-preview:
+When pool members are available, Engine Ops shows a virtual agarose-gel preview:
 
 - one or two DNA ladders are auto-selected to span the pool bp range
 - ladders are drawn in lanes next to a pool lane (bands from pool members)
 - pool-band labels show bp, with multiplicity when multiple members have the
   same length
+
+Serial gel export is available in two places:
+
+- Engine Ops (`Export Pool Gel SVG`) for current sequence-id inputs.
+- Main lineage page:
+  - `Containers` table: `Gel SVG` exports one lane for that container.
+  - `Arrangements` table: `Export Gel` exports all lanes defined in that arrangement.
 
 Ladder source:
 
@@ -666,6 +691,8 @@ Recommended flow:
    - open `Prepare Reference Genome...`
    - set `catalog` + `cache_dir`
    - select `genome` from dropdown values loaded from catalog JSON
+   - source summary line shows source types and, when available, nucleotide
+     length and molecular mass metadata
    - only genomes that are not yet prepared in the selected cache are shown
    - click `Prepare Genome`
    - this runs in background, shows live progress, and builds local FASTA, gene, and BLAST indexes

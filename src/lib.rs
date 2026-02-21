@@ -1,5 +1,5 @@
 use amino_acids::AminoAcids;
-use dna_ladder::{default_dna_ladders, default_rna_ladders, LadderCatalog};
+use dna_ladder::{LadderCatalog, default_dna_ladders, default_rna_ladders};
 use enzymes::Enzymes;
 use lazy_static::lazy_static;
 use translations::Translations;
