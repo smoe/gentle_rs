@@ -839,6 +839,20 @@ impl MainAreaDna {
         engine.describe_sequence_genome_anchor(seq_id).is_ok()
     }
 
+    fn active_sequence_genome_anchor_status(&self) -> Option<(String, bool)> {
+        let seq_id = self.seq_id.as_deref()?;
+        let engine = self.engine.as_ref()?;
+        let guard = engine.read().ok()?;
+        match guard.describe_sequence_genome_anchor(seq_id) {
+            Ok(anchor) => Some((format!("Genome anchor: {anchor}"), true)),
+            Err(_) => Some((
+                "Genome anchor: not set (anchorable via BLAST Genome Sequence / genome extraction)"
+                    .to_string(),
+                false,
+            )),
+        }
+    }
+
     fn active_sequence_has_gene_annotations(&self) -> bool {
         self.dna
             .read()
@@ -1553,20 +1567,6 @@ impl MainAreaDna {
             }
 
             ui.separator();
-            for preset in [
-                MapViewPreset::Anchored,
-                MapViewPreset::Cloning,
-                MapViewPreset::Annotation,
-                MapViewPreset::Signal,
-            ] {
-                if ui
-                    .small_button(preset.label())
-                    .on_hover_text(preset.hover_text())
-                    .clicked()
-                {
-                    self.apply_map_view_preset(preset);
-                }
-            }
             let declutter_label = if self.declutter_snapshot.is_some() {
                 "Restore View"
             } else {
@@ -1582,13 +1582,38 @@ impl MainAreaDna {
                     visible_layer_total
                 )
             };
-            if ui
-                .small_button(declutter_label)
-                .on_hover_text(declutter_hover)
-                .clicked()
-            {
-                self.apply_declutter_action(&layer_counts);
-            }
+            ui.menu_button("Display", |ui| {
+                ui.label("Map presets");
+                ui.separator();
+                for preset in [
+                    MapViewPreset::Anchored,
+                    MapViewPreset::Cloning,
+                    MapViewPreset::Annotation,
+                    MapViewPreset::Signal,
+                ] {
+                    if ui
+                        .button(preset.label())
+                        .on_hover_text(preset.hover_text())
+                        .clicked()
+                    {
+                        self.apply_map_view_preset(preset);
+                        ui.close_menu();
+                    }
+                }
+                ui.separator();
+                if ui
+                    .button(declutter_label)
+                    .on_hover_text(declutter_hover.clone())
+                    .clicked()
+                {
+                    self.apply_declutter_action(&layer_counts);
+                    ui.close_menu();
+                }
+            })
+            .response
+            .on_hover_text(
+                "Display presets and declutter actions for anchored/cloning/annotation/signal views",
+            );
 
             let (cds_active, cds_suppressed_for_genes) = self
                 .dna_display
@@ -1968,6 +1993,20 @@ impl MainAreaDna {
                 self.save_engine_ops_state();
             }
         });
+        if let Some((anchor_status, is_anchored)) = self.active_sequence_genome_anchor_status() {
+            let color = if is_anchored {
+                egui::Color32::from_rgb(26, 110, 43)
+            } else {
+                egui::Color32::from_rgb(90, 90, 90)
+            };
+            ui.add(
+                egui::Label::new(egui::RichText::new(anchor_status).color(color).monospace())
+                    .wrap(),
+            )
+            .on_hover_text(
+                "Genome anchor provenance for this sequence. Anchored sequences keep chromosome/genome coordinates through supported operations.",
+            );
+        }
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
         }
@@ -6207,7 +6246,7 @@ impl MainAreaDna {
                     .as_ref()
                     .map(|label| label.trim().to_ascii_uppercase());
                 let kind_label = if RenderDna::is_track_feature(feature) {
-                    "Tracks".to_string()
+                    "tracks".to_string()
                 } else {
                     feature.kind.to_string()
                 };

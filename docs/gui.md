@@ -730,6 +730,8 @@ Recommended flow:
    - open `Prepared References...`
    - review per-genome install size, readiness flags, source types, and short
      SHA-1 fingerprints
+   - use built-in `Chromosome inspector` to list all contigs/chromosomes for a
+     prepared genome as proportional line lengths
    - use `Retrieve` directly from an inspected row
 5. Overlay signal tracks (BED, BigWig, or VCF) onto an extracted sequence:
    - open `Genome -> Import Genome Track...`
@@ -746,10 +748,12 @@ Recommended flow:
      - `Track this file for auto-sync`
    - one-click preflight action:
      - `Apply To All Anchored Now`
-   - click one of:
-     - `Import To Selected`: import onto only the currently selected anchored sequence
-     - `Import To All Anchored (One-Time)`: import onto all currently anchored sequences without saving a subscription
-     - `Import To All Anchored + Track`: import onto all currently anchored sequences and save a tracked subscription for auto-sync to future anchored extracts
+  - selection-coupled import:
+    - `Import To Selected` sits next to the `sequence` selector
+    - keep the dialog open, switch `sequence`, and click `Import To Selected` again to reuse the same file/settings for another anchored sequence
+  - batch import options:
+    - `Import To All Anchored (One-Time)`: import onto all currently anchored sequences without saving a subscription
+    - `Import To All Anchored + Track`: import onto all currently anchored sequences and save a tracked subscription for auto-sync to future anchored extracts
    - import runs in a background task with live progress and can be cancelled
      from the same dialog (`Cancel Import`).
    - tracked files are listed in the same window and can be managed:

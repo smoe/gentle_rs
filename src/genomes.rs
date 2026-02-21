@@ -211,6 +211,12 @@ pub struct GenomeGeneRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeChromosomeRecord {
+    pub chromosome: String,
+    pub length_bp: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeSourcePlan {
     pub sequence_source: String,
     pub annotation_source: String,
@@ -850,9 +856,41 @@ impl GenomeCatalog {
             .iter()
             .find_map(|name| index.get(name))
             .ok_or_else(|| {
+                let mut tried_aliases = chr_candidates.clone();
+                tried_aliases.sort_unstable();
+                tried_aliases.dedup();
+
+                let mut available: Vec<String> = index.keys().cloned().collect();
+                available.sort_unstable();
+                let preview_limit = 12usize;
+                let preview_items = available
+                    .iter()
+                    .take(preview_limit)
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let mut preview = preview_items.join(", ");
+                let hidden = available.len().saturating_sub(preview_items.len());
+                if hidden > 0 {
+                    preview.push_str(&format!(", ... (+{hidden} more)"));
+                }
+                if preview.is_empty() {
+                    preview = "(none)".to_string();
+                }
+                let case_hint = available
+                    .iter()
+                    .find(|name| name.eq_ignore_ascii_case(chromosome))
+                    .map(|name| format!(" Case-sensitive match exists as '{name}'."))
+                    .unwrap_or_default();
                 format!(
-                    "Chromosome/contig '{}' not found in genome '{}'",
-                    chromosome, genome_id
+                    "Chromosome/contig '{}' not found in genome '{}'. Tried aliases: {}. \
+Available contigs ({}): {}. This can happen when prepared sequence/annotation naming differs \
+or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
+                    chromosome,
+                    genome_id,
+                    tried_aliases.join(", "),
+                    available.len(),
+                    preview,
+                    case_hint
                 )
             })?;
 
@@ -870,6 +908,46 @@ impl GenomeCatalog {
             start_1based as u64,
             end_1based as u64,
         )
+    }
+
+    pub fn list_chromosome_lengths(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Vec<GenomeChromosomeRecord>, String> {
+        let entry = self.entry(genome_id)?;
+        let manifest_path = self
+            .install_dir(genome_id, entry, cache_dir_override)
+            .join("manifest.json");
+        if !manifest_path.exists() {
+            return Err(format!(
+                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
+            ));
+        }
+        let manifest = Self::load_manifest(&manifest_path)?;
+        Self::validate_manifest_files(&manifest)?;
+        let index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
+        let mut chromosomes = index
+            .into_iter()
+            .map(|(chromosome, entry)| {
+                let length_bp = usize::try_from(entry.length).map_err(|_| {
+                    format!(
+                        "Chromosome/contig '{}' length exceeds supported platform range",
+                        chromosome
+                    )
+                })?;
+                Ok(GenomeChromosomeRecord {
+                    chromosome,
+                    length_bp,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        chromosomes.sort_by(|a, b| {
+            b.length_bp
+                .cmp(&a.length_bp)
+                .then(a.chromosome.cmp(&b.chromosome))
+        });
+        Ok(chromosomes)
     }
 
     pub fn list_gene_regions(
@@ -3648,6 +3726,99 @@ mod tests {
         assert_eq!(genes[0].gene_id.as_deref(), Some("GENE1"));
         assert_eq!(genes[0].gene_name.as_deref(), Some("MYGENE"));
         assert_eq!(genes[0].biotype.as_deref(), Some("protein_coding"));
+    }
+
+    #[test]
+    fn test_get_sequence_region_missing_contig_reports_aliases_and_available_contigs() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGT\n>chrM\nTTTT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let err = catalog
+            .get_sequence_region("ToyGenome", "17", 1, 4)
+            .expect_err("missing contig should fail");
+        assert!(err.contains("Chromosome/contig '17' not found in genome 'ToyGenome'"));
+        assert!(err.contains("Tried aliases:"));
+        assert!(err.contains("chr17"));
+        assert!(err.contains("Available contigs"));
+        assert!(err.contains("chr1"));
+        assert!(err.contains("PrepareGenome"));
+    }
+
+    #[test]
+    fn test_list_chromosome_lengths_reads_prepared_fasta_index() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGT\n>chrM\nTTTT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let chromosomes = catalog.list_chromosome_lengths("ToyGenome", None).unwrap();
+        assert_eq!(chromosomes.len(), 2);
+        assert_eq!(chromosomes[0].chromosome, "chr1");
+        assert_eq!(chromosomes[0].length_bp, 8);
+        assert_eq!(chromosomes[1].chromosome, "chrM");
+        assert_eq!(chromosomes[1].length_bp, 4);
     }
 
     #[test]

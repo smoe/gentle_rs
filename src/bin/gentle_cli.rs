@@ -473,6 +473,11 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli agents list [--catalog PATH]\n  \
   gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
+  gentle_cli ui intents\n  \
+  gentle_cli ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
+  gentle_cli ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
+  gentle_cli ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
+  gentle_cli ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
   gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
   gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
@@ -522,6 +527,7 @@ fn is_shell_forwarded_command(command: &str) -> bool {
         "genomes"
             | "helpers"
             | "agents"
+            | "ui"
             | "macros"
             | "resources"
             | "import-pool"
@@ -911,6 +917,7 @@ fn run() -> Result<(), String> {
     let cmd_idx = global.cmd_idx;
     let shell_options = ShellExecutionOptions {
         allow_screenshots: global.allow_screenshots,
+        allow_agent_commands: true,
     };
     if args.len() <= cmd_idx {
         usage();
@@ -2161,6 +2168,7 @@ T [ 0 0 0 10 ]
             "genomes",
             "helpers",
             "agents",
+            "ui",
             "macros",
             "resources",
             "import-pool",
@@ -2237,6 +2245,14 @@ T [ 0 0 0 10 ]
             macros_template_run,
             ShellCommand::MacrosTemplateRun { .. }
         ));
+
+        let ui_open = parse_shell_tokens(&[
+            "ui".to_string(),
+            "open".to_string(),
+            "prepared-references".to_string(),
+        ])
+        .expect("parse ui open");
+        assert!(matches!(ui_open, ShellCommand::UiIntent { .. }));
     }
 
     #[test]

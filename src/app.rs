@@ -28,14 +28,16 @@ use crate::{
         Operation, OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
+        ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
+        parse_shell_line,
     },
     enzymes,
     genomes::{
         BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
         DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
-        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, MAKEBLASTDB_ENV_BIN,
-        PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress, PreparedGenomeInspection,
+        GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan,
+        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress,
+        PreparedGenomeInspection,
     },
     icons::APP_ICON,
     resource_sync, tf_motifs, tool_overrides,
@@ -737,6 +739,14 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle Agent Assistant Viewport")
     }
 
+    fn command_palette_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Command Palette Viewport")
+    }
+
+    fn history_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Operation History Viewport")
+    }
+
     fn configuration_store_path() -> PathBuf {
         let home = env::var_os("HOME")
             .map(PathBuf::from)
@@ -1354,6 +1364,9 @@ impl GENtleApp {
     }
 
     fn open_command_palette_dialog(&mut self) {
+        if self.show_command_palette_dialog {
+            self.queue_focus_viewport(Self::command_palette_viewport_id());
+        }
         self.show_command_palette_dialog = true;
         self.command_palette_focus_query = true;
     }
@@ -2298,6 +2311,12 @@ impl GENtleApp {
         self.show_agent_assistant_dialog = true;
     }
 
+    fn track_name_default_from_path(path: &Path) -> String {
+        path.file_name()
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string())
+    }
+
     fn open_helper_genome_prepare_dialog(&mut self) {
         self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
         self.genome_cache_dir = "data/helper_genomes".to_string();
@@ -2909,20 +2928,41 @@ impl GENtleApp {
             }
         };
         if matches!(command, ShellCommand::AgentsAsk { .. }) {
-            self.agent_status =
-                format!("Suggestion #{index_1based} rejected: recursive 'agents ask' is blocked");
+            self.agent_status = format!(
+                "Suggestion #{index_1based} rejected: agent-to-agent 'agents ask' is blocked"
+            );
             self.agent_execution_log.push(AgentCommandExecutionRecord {
                 index_1based,
                 command: trimmed.to_string(),
                 trigger: trigger.to_string(),
                 ok: false,
                 state_changed: false,
-                summary: "recursive agents ask blocked".to_string(),
+                summary: "agent-to-agent agents ask blocked".to_string(),
                 executed_at_unix_ms: Self::now_unix_ms(),
             });
             return;
         }
-        let options = ShellExecutionOptions::default();
+        if let Some(summary) = self.try_apply_shell_ui_intent(&command) {
+            self.agent_status = format!("Suggestion #{index_1based}: {summary}");
+            self.agent_execution_log.push(AgentCommandExecutionRecord {
+                index_1based,
+                command: trimmed.to_string(),
+                trigger: trigger.to_string(),
+                ok: true,
+                state_changed: false,
+                summary,
+                executed_at_unix_ms: Self::now_unix_ms(),
+            });
+            if self.agent_execution_log.len() > 100 {
+                let drain = self.agent_execution_log.len() - 100;
+                self.agent_execution_log.drain(0..drain);
+            }
+            return;
+        }
+        let options = ShellExecutionOptions {
+            allow_screenshots: false,
+            allow_agent_commands: false,
+        };
         let run = {
             let mut guard = self.engine.write().unwrap();
             execute_shell_command_with_options(&mut guard, &command, &options)
@@ -2965,6 +3005,143 @@ impl GENtleApp {
             let drain = self.agent_execution_log.len() - 100;
             self.agent_execution_log.drain(0..drain);
         }
+    }
+
+    fn try_apply_shell_ui_intent(&mut self, command: &ShellCommand) -> Option<String> {
+        let ShellCommand::UiIntent {
+            action,
+            target,
+            genome_id,
+            helper_mode,
+            catalog_path,
+            cache_dir,
+            filter,
+            species,
+            latest,
+        } = command
+        else {
+            return None;
+        };
+        let mut selected_genome_id = genome_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string);
+        if matches!(target, UiIntentTarget::PreparedReferences) {
+            self.apply_prepared_reference_intent_scope(*helper_mode, catalog_path, cache_dir);
+            if selected_genome_id.is_none() {
+                match self.resolve_prepared_reference_intent_selection(
+                    *helper_mode,
+                    catalog_path.clone(),
+                    cache_dir.clone(),
+                    filter.clone(),
+                    species.clone(),
+                    *latest,
+                ) {
+                    Ok(Some(resolved)) => {
+                        selected_genome_id = Some(resolved);
+                    }
+                    Ok(None) => {}
+                    Err(err) => {
+                        self.app_status = format!(
+                            "Could not resolve prepared-reference selection for ui intent: {err}"
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(genome_id) = selected_genome_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            self.genome_id = genome_id.to_string();
+            self.invalidate_genome_genes();
+        }
+        match target {
+            UiIntentTarget::PreparedReferences => self.open_reference_genome_inspector_dialog(),
+            UiIntentTarget::PrepareReferenceGenome => self.open_reference_genome_prepare_dialog(),
+            UiIntentTarget::RetrieveGenomeSequence => self.open_reference_genome_retrieve_dialog(),
+            UiIntentTarget::BlastGenomeSequence => self.open_reference_genome_blast_dialog(),
+            UiIntentTarget::ImportGenomeTrack => self.open_genome_bed_track_dialog(),
+            UiIntentTarget::AgentAssistant => self.open_agent_assistant_dialog(),
+            UiIntentTarget::PrepareHelperGenome => self.open_helper_genome_prepare_dialog(),
+            UiIntentTarget::RetrieveHelperSequence => self.open_helper_genome_retrieve_dialog(),
+            UiIntentTarget::BlastHelperSequence => self.open_helper_genome_blast_dialog(),
+        }
+        let mut summary = format!("ui intent {} '{}'", action.as_str(), target.as_str());
+        if let Some(genome_id) = selected_genome_id {
+            summary.push_str(&format!(" (selected_genome_id={genome_id})"));
+        }
+        Some(summary)
+    }
+
+    fn apply_prepared_reference_intent_scope(
+        &mut self,
+        helper_mode: bool,
+        catalog_path: &Option<String>,
+        cache_dir: &Option<String>,
+    ) {
+        let normalized_catalog = catalog_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let normalized_cache = cache_dir
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let next_catalog = if helper_mode {
+            normalized_catalog.unwrap_or_else(|| DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string())
+        } else {
+            normalized_catalog.unwrap_or_else(|| self.genome_catalog_path.clone())
+        };
+        let next_cache = if helper_mode {
+            normalized_cache.unwrap_or_else(|| "data/helper_genomes".to_string())
+        } else {
+            normalized_cache.unwrap_or_else(|| self.genome_cache_dir.clone())
+        };
+        let catalog_changed = self.genome_catalog_path != next_catalog;
+        let cache_changed = self.genome_cache_dir != next_cache;
+        if catalog_changed {
+            self.genome_catalog_path = next_catalog;
+        }
+        if cache_changed {
+            self.genome_cache_dir = next_cache;
+        }
+        if catalog_changed || cache_changed {
+            self.invalidate_genome_genes();
+        }
+    }
+
+    fn resolve_prepared_reference_intent_selection(
+        &self,
+        helper_mode: bool,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        filter: Option<String>,
+        species: Option<String>,
+        latest: bool,
+    ) -> Result<Option<String>, String> {
+        let mut engine = self.engine.write().unwrap();
+        let run = execute_shell_command_with_options(
+            &mut engine,
+            &ShellCommand::UiPreparedGenomes {
+                helper_mode,
+                catalog_path,
+                cache_dir,
+                filter,
+                species,
+                latest,
+            },
+            &ShellExecutionOptions::default(),
+        )?;
+        Ok(run
+            .output
+            .get("selected_genome_id")
+            .and_then(|value| value.as_str())
+            .map(str::to_string))
     }
 
     fn execute_agent_auto_suggestions(&mut self, response: &AgentResponse) {
@@ -3303,6 +3480,75 @@ impl GENtleApp {
         }
         inspections.sort_by(|a, b| a.genome_id.cmp(&b.genome_id));
         Ok((inspections, errors))
+    }
+
+    fn prepared_genome_chromosome_records(
+        &self,
+        genome_id: &str,
+    ) -> Result<Vec<GenomeChromosomeRecord>, String> {
+        let catalog_path = self.genome_catalog_path_resolved();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path)?;
+        let cache_dir = self.genome_cache_dir_opt();
+        catalog.list_chromosome_lengths(genome_id, cache_dir.as_deref())
+    }
+
+    fn render_chromosome_length_lines(ui: &mut Ui, chromosomes: &[GenomeChromosomeRecord]) {
+        if chromosomes.is_empty() {
+            ui.small("No chromosomes/contigs found in FASTA index.");
+            return;
+        }
+        let longest_bp = chromosomes
+            .iter()
+            .map(|record| record.length_bp)
+            .max()
+            .unwrap_or(1)
+            .max(1);
+        let total_bp: u128 = chromosomes.iter().fold(0u128, |acc, record| {
+            acc.saturating_add(record.length_bp as u128)
+        });
+        ui.small(format!(
+            "contigs: {} | longest: {} ({} bp) | total span: {} bp",
+            chromosomes.len(),
+            chromosomes[0].chromosome,
+            chromosomes[0].length_bp,
+            total_bp
+        ));
+        egui::ScrollArea::vertical()
+            .max_height(280.0)
+            .show(ui, |ui| {
+                for record in chromosomes {
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [220.0, 0.0],
+                            egui::Label::new(
+                                egui::RichText::new(record.chromosome.clone()).monospace(),
+                            ),
+                        );
+                        ui.add_sized(
+                            [120.0, 0.0],
+                            egui::Label::new(format!("{} bp", record.length_bp)),
+                        );
+                        let width = ui.available_width().max(80.0);
+                        let (rect, response) =
+                            ui.allocate_exact_size(egui::vec2(width, 14.0), egui::Sense::hover());
+                        let ratio = (record.length_bp as f32 / longest_bp as f32).clamp(0.0, 1.0);
+                        let line_width = (rect.width() * ratio.max(0.005)).max(1.0);
+                        let y = rect.center().y;
+                        ui.painter().line_segment(
+                            [
+                                Pos2::new(rect.left(), y),
+                                Pos2::new(rect.left() + line_width, y),
+                            ],
+                            egui::Stroke::new(2.0, egui::Color32::from_rgb(80, 130, 175)),
+                        );
+                        response.on_hover_text(format!(
+                            "{} bp ({:.2}% of longest)",
+                            record.length_bp,
+                            ratio * 100.0
+                        ));
+                    });
+                }
+            });
     }
 
     fn format_bytes_compact(bytes: u64) -> String {
@@ -5399,6 +5645,57 @@ impl GENtleApp {
                                             }
                                         });
                                 });
+
+                            ui.separator();
+                            ui.label("Chromosome inspector");
+                            let prepared_ids: Vec<String> =
+                                inspections.iter().map(|i| i.genome_id.clone()).collect();
+                            if !prepared_ids.is_empty()
+                                && !prepared_ids.iter().any(|id| id == &self.genome_id)
+                            {
+                                self.genome_id = prepared_ids[0].clone();
+                            }
+                            ui.horizontal(|ui| {
+                                ui.label("genome");
+                                egui::ComboBox::from_id_salt("prepared_genome_chromosome_inspect")
+                                    .selected_text(if self.genome_id.trim().is_empty() {
+                                        "<select genome>"
+                                    } else {
+                                        self.genome_id.as_str()
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        for genome_id in &prepared_ids {
+                                            ui.selectable_value(
+                                                &mut self.genome_id,
+                                                genome_id.clone(),
+                                                genome_id,
+                                            );
+                                        }
+                                    });
+                                if ui
+                                    .small_button("Use In Retrieve")
+                                    .on_hover_text(
+                                        "Open retrieval dialog preselected for this genome",
+                                    )
+                                    .clicked()
+                                {
+                                    self.invalidate_genome_genes();
+                                    self.open_reference_genome_retrieve_dialog();
+                                }
+                            });
+                            if !self.genome_id.trim().is_empty() {
+                                match self.prepared_genome_chromosome_records(&self.genome_id) {
+                                    Ok(chromosomes) => {
+                                        Self::render_chromosome_length_lines(ui, &chromosomes);
+                                    }
+                                    Err(e) => {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(190, 70, 70),
+                                            format!("Chromosome inspector error: {e}"),
+                                        );
+                                    }
+                                }
+                            }
                         }
                         if !errors.is_empty() {
                             ui.separator();
@@ -5463,10 +5760,26 @@ impl GENtleApp {
                             );
                         }
                     });
+                let selected_resp = self.track_hover_status(
+                    ui.add_enabled(
+                        !anchored_seq_ids.is_empty() && !import_running,
+                        egui::Button::new("Import To Selected"),
+                    )
+                    .on_hover_text(
+                        "Import this BED/BigWig/VCF signal file onto only the currently selected anchored sequence.",
+                    ),
+                    "Genome Tracks > Import Selected",
+                );
+                if selected_resp.clicked() {
+                    self.import_genome_bed_track_for_selected_sequence();
+                }
             });
             if let Some(anchor) = self.describe_sequence_genome_anchor(&self.genome_track_seq_id) {
                 ui.small(format!("selected anchor: {anchor}"));
             }
+            ui.small(
+                "Tip: Keep this window open. Change 'sequence' and click 'Import To Selected' again to reuse the same track file for another anchored sequence.",
+            );
         }
 
         let detected_source = GenomeTrackSource::from_path(&self.genome_track_path);
@@ -5513,6 +5826,9 @@ impl GENtleApp {
                     .pick_file()
                 {
                     self.genome_track_path = path.display().to_string();
+                    if self.genome_track_name.trim().is_empty() {
+                        self.genome_track_name = Self::track_name_default_from_path(&path);
+                    }
                 }
             }
         });
@@ -5663,20 +5979,6 @@ impl GENtleApp {
             });
         }
         ui.horizontal(|ui| {
-            let selected_resp = self.track_hover_status(
-                ui.add_enabled(
-                    !anchored_seq_ids.is_empty() && !import_running,
-                    egui::Button::new("Import To Selected"),
-                )
-                .on_hover_text(
-                    "Import this BED/BigWig/VCF signal file onto only the currently selected anchored sequence.",
-                ),
-                "Genome Tracks > Import Selected",
-            );
-            if selected_resp.clicked()
-            {
-                self.import_genome_bed_track_for_selected_sequence();
-            }
             let all_once_resp = self.track_hover_status(
                 ui.add_enabled(
                     !anchored_seq_ids.is_empty() && !import_running,
@@ -6413,6 +6715,20 @@ impl GENtleApp {
                 detail: "GUI/CLI manual".to_string(),
             });
         }
+        if self.show_command_palette_dialog {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::command_palette_viewport_id(),
+                title: "Command Palette".to_string(),
+                detail: "Action launcher".to_string(),
+            });
+        }
+        if self.show_history_panel {
+            entries.push(OpenWindowEntry {
+                viewport_id: Self::history_viewport_id(),
+                title: "Operation History".to_string(),
+                detail: "Undo/redo operation log".to_string(),
+            });
+        }
         if self.show_reference_genome_prepare_dialog {
             entries.push(OpenWindowEntry {
                 viewport_id: Self::prepare_genome_viewport_id(),
@@ -6467,6 +6783,11 @@ impl GENtleApp {
             self.show_configuration_dialog = true;
         } else if viewport_id == Self::help_viewport_id() {
             self.show_help_dialog = true;
+        } else if viewport_id == Self::command_palette_viewport_id() {
+            self.show_command_palette_dialog = true;
+            self.command_palette_focus_query = true;
+        } else if viewport_id == Self::history_viewport_id() {
+            self.show_history_panel = true;
         } else if viewport_id == Self::prepare_genome_viewport_id() {
             self.show_reference_genome_prepare_dialog = true;
         } else if viewport_id == Self::blast_genome_viewport_id() {
@@ -6553,6 +6874,7 @@ impl GENtleApp {
                     self.request_project_action(ProjectAction::Close);
                     ui.close_menu();
                 }
+                ui.separator();
                 if ui
                     .button("Open Sequence...")
                     .on_hover_text("Import a sequence file into the current project")
@@ -8989,67 +9311,88 @@ impl GENtleApp {
 
         let mut open = self.show_command_palette_dialog;
         let mut execute_action: Option<CommandPaletteAction> = None;
-        egui::Window::new("Command Palette")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(760.0, 520.0))
-            .show(ctx, |ui| {
-                ui.label("Search actions, settings, and help topics");
-                let input_id = ui.make_persistent_id("gentle_command_palette_search");
-                let search_response = ui.add(
-                    egui::TextEdit::singleline(&mut self.command_palette_query)
-                        .id(input_id)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("Type action name (Cmd/Ctrl+K)"),
-                );
-                if self.command_palette_focus_query {
-                    search_response.request_focus();
-                    self.command_palette_focus_query = false;
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                    if !entries.is_empty() {
-                        self.command_palette_selected =
-                            (self.command_palette_selected + 1) % entries.len();
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Command Palette")
+            .with_inner_size([760.0, 520.0])
+            .with_min_inner_size([500.0, 320.0]);
+        ctx.show_viewport_immediate(
+            Self::command_palette_viewport_id(),
+            builder,
+            |ctx, class| {
+                let mut render_contents = |ui: &mut Ui| {
+                    ui.label("Search actions, settings, and help topics");
+                    let input_id = ui.make_persistent_id("gentle_command_palette_search");
+                    let search_response = ui.add(
+                        egui::TextEdit::singleline(&mut self.command_palette_query)
+                            .id(input_id)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("Type action name (Cmd/Ctrl+K)"),
+                    );
+                    if self.command_palette_focus_query {
+                        search_response.request_focus();
+                        self.command_palette_focus_query = false;
                     }
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
-                    if self.command_palette_selected == 0 {
-                        self.command_palette_selected = entries.len() - 1;
-                    } else {
-                        self.command_palette_selected -= 1;
+                    if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+                        if !entries.is_empty() {
+                            self.command_palette_selected =
+                                (self.command_palette_selected + 1) % entries.len();
+                        }
                     }
-                }
-                if ui.input(|i| i.key_pressed(Key::Enter))
-                    && !entries.is_empty()
-                    && self.command_palette_selected < entries.len()
-                {
-                    execute_action = Some(entries[self.command_palette_selected].action);
-                }
+                    if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
+                        if self.command_palette_selected == 0 {
+                            self.command_palette_selected = entries.len() - 1;
+                        } else {
+                            self.command_palette_selected -= 1;
+                        }
+                    }
+                    if ui.input(|i| i.key_pressed(Key::Enter))
+                        && !entries.is_empty()
+                        && self.command_palette_selected < entries.len()
+                    {
+                        execute_action = Some(entries[self.command_palette_selected].action);
+                    }
 
-                ui.separator();
-                if entries.is_empty() {
-                    ui.small("No matching commands");
+                    ui.separator();
+                    if entries.is_empty() {
+                        ui.small("No matching commands");
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(400.0)
+                            .show(ui, |ui| {
+                                for (idx, entry) in entries.iter().enumerate() {
+                                    let selected = self.command_palette_selected == idx;
+                                    let label = format!("{} — {}", entry.title, entry.detail);
+                                    let response = ui.selectable_label(selected, label);
+                                    if response.hovered() {
+                                        self.command_palette_selected = idx;
+                                        self.hover_status_name =
+                                            format!("Command palette: {}", entry.title);
+                                    }
+                                    if response.clicked() {
+                                        execute_action = Some(entry.action);
+                                    }
+                                }
+                            });
+                    }
+                };
+
+                if class == egui::ViewportClass::Embedded {
+                    egui::Window::new("Command Palette")
+                        .open(&mut open)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_size(Vec2::new(760.0, 520.0))
+                        .show(ctx, |ui| render_contents(ui));
                 } else {
-                    egui::ScrollArea::vertical()
-                        .max_height(400.0)
-                        .show(ui, |ui| {
-                            for (idx, entry) in entries.iter().enumerate() {
-                                let selected = self.command_palette_selected == idx;
-                                let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = ui.selectable_label(selected, label);
-                                if response.hovered() {
-                                    self.command_palette_selected = idx;
-                                    self.hover_status_name =
-                                        format!("Command palette: {}", entry.title);
-                                }
-                                if response.clicked() {
-                                    execute_action = Some(entry.action);
-                                }
-                            }
-                        });
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        render_contents(ui);
+                    });
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        open = false;
+                    }
                 }
-            });
+            },
+        );
 
         if let Some(action) = execute_action {
             self.execute_command_palette_action(ctx, action);
@@ -9279,12 +9622,12 @@ impl GENtleApp {
             (engine.undo_available(), engine.redo_available(), rows)
         };
 
-        egui::Window::new("Operation History")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(820.0, 520.0))
-            .show(ctx, |ui| {
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Operation History")
+            .with_inner_size([820.0, 520.0])
+            .with_min_inner_size([560.0, 320.0]);
+        ctx.show_viewport_immediate(Self::history_viewport_id(), builder, |ctx, class| {
+            let mut render_contents = |ui: &mut Ui| {
                 ui.label("Operation-level history with undo/redo");
                 ui.horizontal(|ui| {
                     if ui
@@ -9318,7 +9661,24 @@ impl GENtleApp {
                         }
                     });
                 }
-            });
+            };
+
+            if class == egui::ViewportClass::Embedded {
+                egui::Window::new("Operation History")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(820.0, 520.0))
+                    .show(ctx, |ui| render_contents(ui));
+            } else {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    render_contents(ui);
+                });
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    open = false;
+                }
+            }
+        });
         self.show_history_panel = open;
     }
 

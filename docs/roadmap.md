@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -87,6 +87,42 @@ Notes:
 - Standardized cloning protocol macros are not yet packaged as first-class
   reusable templates (restriction-only, Gibson, Golden Gate, Gateway, TOPO,
   TA/GC, In-Fusion, NEBuilder HiFi).
+- UI-intent command family exists for GUI routing, but mutating-intent guard
+  policy is not yet fully hardened for agent/voice-driven invocation paths.
+- Chromosomal-scale track overview is still missing: BED-derived features should
+  also be visualized at chromosome level, including an optional density view for
+  large regions.
+
+### Text/voice control track (new)
+
+Goal: make GUI behavior addressable through deterministic text commands first,
+then layer voice control on top of the same command plane.
+
+Current baseline:
+
+- `Prepared References...` exists and includes the chromosome line inspector.
+- Shell/agent UI-intent routing is implemented:
+  - `ui intents`
+  - `ui open|focus TARGET ...`
+  - `ui prepared-genomes ...`
+  - `ui latest-prepared SPECIES ...`
+- Prepared references supports one-shot disambiguation/open flow:
+  - `ui open prepared-references --species human --latest`
+  - explicit `--genome-id` still overrides query-based selection
+
+Planned work:
+
+1. Add guarded execution policy for mutating actions invoked via text/voice.
+2. Extend intent grammar/aliasing so natural language maps more reliably to
+   deterministic UI-intent commands without guessing.
+3. Add optional voice adapter path (STT/TTS) that emits/consumes the same
+   deterministic shell/UI intent contracts through the existing agent interface
+   execution path.
+
+Scope estimate:
+
+- Moderate (multi-phase): core shell/parser infrastructure already exists;
+  missing piece is UI-intent routing + capability discovery + voice adapter.
 
 ### SnapGene-parity benchmark track (new)
 
@@ -264,6 +300,14 @@ Planned upgrades:
 ### Phase B: GUI routing discipline
 
 - Keep UI logic thin; route business logic through engine operations only.
+- Add `ui ...` intent routing path so shell/agent commands can open/focus GUI
+  dialogs without bypassing existing `src/app.rs` dialog openers.
+- Keep prepared-reference discoverability strong:
+  - menu route (`File/Genome -> Prepared References...`)
+  - command-palette route (`Prepared References`)
+  - shell/agent route (`ui open prepared-references`)
+  - shell/agent one-shot disambiguation route
+    (`ui open prepared-references --species human --latest`).
 
 ### Phase C: shared view-model contract
 
@@ -276,6 +320,8 @@ Planned upgrades:
 - Richer error taxonomy and validation.
 - Operation provenance metadata (engine version/timestamps/input references).
 - Process-protocol export contract.
+- UI-intent protocol/versioning and compatibility guarantees for agent/voice
+  callers.
 - Keep screenshot re-enable work as the last item in this phase and only after
   explicit endpoint-security exception/approval.
 

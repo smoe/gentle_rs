@@ -34,8 +34,6 @@ const RE_LABEL_MAX_BP_PER_PX: f32 = 30.0;
 const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
 const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
 const ORF_MAX_BP_PER_PX: f32 = 18.0;
-const FEATURE_LABEL_PADDING_X: f32 = 3.0;
-const FEATURE_LABEL_MAX_EXPANSION_PX: f32 = 120.0;
 const REGULATORY_BASELINE_MARGIN: f32 = 5.0;
 const REGULATORY_FEATURE_GAP: f32 = 6.0;
 const REGULATORY_FEATURE_HEIGHT: f32 = 6.0;
@@ -68,6 +66,7 @@ struct FeaturePosition {
     from: usize,
     to: usize,
     label: String,
+    kind_upper: String,
     color: Color32,
     is_pointy: bool,
     is_reverse: bool,
@@ -249,11 +248,6 @@ impl RenderDnaLinear {
         }
     }
 
-    fn estimate_feature_label_width(label: &str) -> f32 {
-        let chars = label.chars().count().max(1) as f32;
-        chars * LABEL_CHAR_WIDTH + FEATURE_LABEL_PADDING_X * 2.0
-    }
-
     fn feature_label_color(fill: Color32) -> Color32 {
         let luminance = 0.299 * fill.r() as f32 + 0.587 * fill.g() as f32 + 0.114 * fill.b() as f32;
         if luminance < 145.0 {
@@ -383,7 +377,6 @@ impl RenderDnaLinear {
             return;
         }
         let bp_per_px = self.bp_per_px(viewport);
-        let show_feature_labels = bp_per_px <= FEATURE_LABEL_MAX_BP_PER_PX;
         let low_value_feature_min_width_px = Self::low_value_feature_min_width_px(bp_per_px);
 
         #[derive(Clone)]
@@ -395,6 +388,7 @@ impl RenderDnaLinear {
             x1: f32,
             x2: f32,
             label: String,
+            kind_upper: String,
             color: Color32,
             is_pointy: bool,
             is_reverse: bool,
@@ -540,37 +534,6 @@ impl RenderDnaLinear {
             }
             exon_segments.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
 
-            if show_feature_labels && !label.trim().is_empty() {
-                let wanted_width = Self::estimate_feature_label_width(&label);
-                if let Some((widest_idx, _)) = exon_segments
-                    .iter()
-                    .enumerate()
-                    .max_by(|(_, a), (_, b)| (a.1 - a.0).total_cmp(&(b.1 - b.0)))
-                {
-                    let (mut lx1, mut lx2) = exon_segments[widest_idx];
-                    let current_width = (lx2 - lx1).max(1.0);
-                    let capped_wanted_width =
-                        wanted_width.min(current_width + FEATURE_LABEL_MAX_EXPANSION_PX);
-                    if capped_wanted_width > current_width {
-                        let center = (lx1 + lx2) * 0.5;
-                        lx1 = center - capped_wanted_width * 0.5;
-                        lx2 = center + capped_wanted_width * 0.5;
-                        if lx1 < self.area.left() {
-                            lx2 += self.area.left() - lx1;
-                            lx1 = self.area.left();
-                        }
-                        if lx2 > self.area.right() {
-                            lx1 -= lx2 - self.area.right();
-                            lx2 = self.area.right();
-                            if lx1 < self.area.left() {
-                                lx1 = self.area.left();
-                            }
-                        }
-                        lx2 = lx2.max((lx1 + 1.0).min(self.area.right()));
-                        exon_segments[widest_idx] = (lx1, lx2);
-                    }
-                }
-            }
             let x1 = exon_segments
                 .iter()
                 .map(|(sx1, _)| *sx1)
@@ -596,6 +559,7 @@ impl RenderDnaLinear {
                 x1,
                 x2,
                 label,
+                kind_upper: kind.clone(),
                 color: RenderDna::feature_color(feature),
                 is_pointy: RenderDna::is_feature_pointy(feature),
                 is_reverse: feature_is_reverse(feature),
@@ -819,6 +783,7 @@ impl RenderDnaLinear {
                 from: seed.from,
                 to: seed.to,
                 label: seed.label,
+                kind_upper: seed.kind_upper,
                 color: seed.color,
                 is_pointy: seed.is_pointy && !seed.is_regulatory,
                 is_reverse: seed.is_reverse,
@@ -1233,6 +1198,9 @@ impl RenderDnaLinear {
                 continue;
             }
             if feature.label.trim().is_empty() {
+                continue;
+            }
+            if matches!(feature.kind_upper.as_str(), "MRNA" | "EXON") {
                 continue;
             }
             let label_rect = feature

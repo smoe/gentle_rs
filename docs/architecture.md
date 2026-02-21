@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-20
+Last updated: 2026-02-21
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -79,6 +79,11 @@ Discoverability rule:
   panel) so long-running work is visible and cancellable.
 - Hovered actionable controls should expose a stable human-readable name for
   shared debugging/support language.
+- Prepared-reference inspection must remain directly reachable from
+  `File -> Prepared References...` and `Genome -> Prepared References...`, and
+  searchable as `Prepared References` in Command Palette.
+- Chromosome inspection currently lives inside `Prepared References...` as an
+  embedded `Chromosome inspector` section (one proportional line per contig).
 
 ## 2. Core architecture rule
 
@@ -215,6 +220,11 @@ Practical rule:
   existing engine/adaptor actions (no duplicate logic path).
 - Keep anchored-data imports preflighted in UI (detected anchor, matching
   status, projected targets), while execution remains engine-owned.
+- Current GUI-only routing note:
+  - reference/helper status dialogs (including `Prepared References...`) are
+    opened via menu/command-palette actions in `src/app.rs`
+  - shared shell commands can query/prepare/extract, but cannot yet directly
+    open/focus GUI dialogs
 
 ### JavaScript/Lua shells
 
@@ -279,6 +289,41 @@ Practical rule:
     - if snapshot tests are intentionally desired again, run with explicit
       feature opt-in (example:
       `cargo test --features snapshot-tests -q render_export::tests::snapshot_`)
+
+### GUI intent command plane (implemented baseline)
+
+Current baseline:
+
+- Shared shell `ui ...` commands now exist:
+  - `ui intents`
+  - `ui open TARGET ...`
+  - `ui focus TARGET ...`
+  - `ui prepared-genomes ...`
+  - `ui latest-prepared SPECIES ...`
+- GUI-side intent handlers in `src/app.rs` now map `ui open|focus` intents to
+  existing dialog openers (Prepared References, prepare/retrieve/blast, track
+  import, agent assistant, helper-genome dialogs).
+- UI-intent capability/introspection output is available via `ui intents`.
+- Query helpers are implemented and can be composed with open/focus for
+  prepared-reference selection, for example:
+  - `ui open prepared-references --species human --latest`
+  - explicit `--genome-id` overrides query-based selection
+
+Remaining additions for full text/voice GUI control:
+
+1. Keep destructive operation confirmation semantics explicit when driven by
+   text/voice commands.
+2. Continue intent-grammar hardening for broader natural-language-to-intent
+   mapping while preserving deterministic execution.
+3. Add optional voice transport (STT/TTS) that emits/consumes the same
+   deterministic intent contracts through the existing agent interface.
+
+Voice path note:
+
+- Biology-by-voice should route through the same agent interface used for text
+  suggestions/execution, with voice as transport only
+  (STT -> agent prompt -> deterministic shell/UI intents -> TTS).
+- No biology logic should move into voice-specific code.
 
 ## 6. Protocol-first direction
 
@@ -479,6 +524,9 @@ Important separation:
 - Add agent-assistant bridge with catalog-driven transports, per-reply
   execution intents, shared-shell execution, and standalone GUI viewport:
   accepted and implemented
+- Add shared GUI intent command plane (`ui intents`, `ui open|focus`, prepared
+  query helpers) and wire it into GUI-host dialog openers with deterministic
+  prepared-reference selection: accepted and implemented (baseline)
 - Replace runtime process-environment mutation for tool-path overrides with a
   process-local override registry (`tool_overrides`) to keep Rust 2024-safe
   behavior without unsafe env writes: accepted and implemented
