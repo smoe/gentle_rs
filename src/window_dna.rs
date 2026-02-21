@@ -17,6 +17,22 @@ impl WindowDna {
 
     pub fn update(&mut self, ctx: &egui::Context) {
         let result = catch_unwind(AssertUnwindSafe(|| {
+            let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
+            egui::TopBottomPanel::top(nav_panel_id).show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Main")
+                        .on_hover_text("Bring the main project window to front")
+                        .clicked()
+                    {
+                        ctx.send_viewport_cmd_to(
+                            egui::ViewportId::ROOT,
+                            egui::ViewportCommand::Visible(true),
+                        );
+                        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
+                    }
+                });
+            });
             egui::CentralPanel::default().show(ctx, |ui| self.main_area.render(ctx, ui));
         }));
         if result.is_err() {

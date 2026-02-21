@@ -618,6 +618,8 @@ Agent bridge commands:
 - `agents list [--catalog PATH]`
   - Lists configured agent systems from catalog JSON.
   - Default catalog path: `assets/agent_systems.json`.
+  - Includes availability status (`available`, `availability_reason`) so callers
+    can skip systems that are not currently runnable.
 - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--no-state-summary` disables project-context injection in the request.
@@ -631,6 +633,12 @@ Agent bridge commands:
   - Failures use deterministic error prefixes for scripting, e.g.
     `AGENT_ADAPTER_UNAVAILABLE`, `AGENT_ADAPTER_TRANSIENT`,
     `AGENT_RESPONSE_PARSE`, `AGENT_RESPONSE_VALIDATION`.
+  - Supported transports:
+    - `builtin_echo` (offline/demo)
+    - `external_json_stdio` (local bridge executable)
+    - `native_openai` (built-in OpenAI HTTP adapter, requires `OPENAI_API_KEY`)
+    - `native_openai_compat` (built-in local OpenAI-compatible adapter for
+      Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
 
 Genome convenience commands:
 

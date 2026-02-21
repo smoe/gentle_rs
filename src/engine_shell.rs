@@ -1,29 +1,32 @@
 use crate::{
-    agent_bridge::{AgentExecutionIntent, invoke_agent_support, load_agent_system_catalog},
+    agent_bridge::{
+        agent_system_availability, invoke_agent_support, load_agent_system_catalog,
+        AgentExecutionIntent,
+    },
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
-        CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
-        CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, Engine, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Engine, GenomeAnchorSide,
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
-        ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
-        Workflow, WorkflowMacroTemplateParam,
+        ProjectState, RenderSvgMode, SequenceAnchor, Workflow, WorkflowMacroTemplateParam,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, GUIDE_DESIGN_METADATA_KEY,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
     },
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
-        GenomeGeneRecord,
+        GenomeCatalog, GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     resource_sync,
     shell_docs::{
-        HelpOutputFormat, shell_help_json as render_shell_help_json,
+        shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text,
+        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
     },
     tf_motifs,
 };
@@ -33,7 +36,7 @@ use objc2_app_kit::NSApplication;
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -6139,13 +6142,18 @@ pub fn execute_shell_command_with_options(
                 .systems
                 .iter()
                 .map(|system| {
+                    let availability = agent_system_availability(system);
                     json!({
                         "id": system.id,
                         "label": system.label,
                         "description": system.description,
                         "transport": system.transport.as_str(),
                         "command": system.command,
+                        "model": system.model,
+                        "base_url": system.base_url,
                         "working_dir": system.working_dir,
+                        "available": availability.available,
+                        "availability_reason": availability.reason,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -8886,12 +8894,10 @@ filter set1 set2 --metric score --min 10
         .expect("generate candidates");
         assert!(generated.state_changed);
         assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
-        assert!(
-            generated.output["result"]["messages"]
-                .as_array()
-                .map(|messages| !messages.is_empty())
-                .unwrap_or(false)
-        );
+        assert!(generated.output["result"]["messages"]
+            .as_array()
+            .map(|messages| !messages.is_empty())
+            .unwrap_or(false));
 
         let score_distance = execute_shell_command(
             &mut engine,
@@ -9257,12 +9263,10 @@ filter set1 set2 --metric score --min 10
         .expect("run template");
         assert!(run.state_changed);
         assert_eq!(run.output["template_name"].as_str(), Some("scan"));
-        assert!(
-            engine
-                .list_candidate_sets()
-                .iter()
-                .any(|set| set.name == "hits")
-        );
+        assert!(engine
+            .list_candidate_sets()
+            .iter()
+            .any(|set| set.name == "hits"));
     }
 
     #[test]
@@ -10013,11 +10017,9 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             .and_then(|v| v.get("created_seq_ids"))
             .and_then(|v| v.as_array())
             .expect("created_seq_ids");
-        assert!(
-            created
-                .iter()
-                .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false))
-        );
+        assert!(created
+            .iter()
+            .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false)));
         let seq = engine
             .state()
             .sequences

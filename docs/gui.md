@@ -11,6 +11,10 @@ cargo run --bin gentle -- path/to/project.gentle.json
 
 The GUI opens an empty project unless a project path is passed on startup.
 
+Example startup window:
+
+![GENtle main window (empty project)](screenshots/screenshot_GUI_main_empty.png)
+
 Screenshot capture policy:
 
 - Screenshot capture is currently disabled by security policy.
@@ -47,6 +51,11 @@ Persistence:
 - Configuration is persisted in an app settings file at `~/.gentle_gui_settings.json`.
 - Saved settings are restored on app startup.
 
+Configuration screenshots:
+
+![Configuration - External Applications](screenshots/screenshot_GUI_configuration_applications.png)
+![Configuration - Graphics](screenshots/screenshot_GUI_configuration_graphics.png)
+
 ## Main window layout
 
 A DNA window is split into two visual areas:
@@ -62,6 +71,14 @@ The project main window (lineage page) supports two views:
 - `Graph`: node/edge lineage visualization
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export
+
+Project overview screenshot:
+
+![GENtle main window (project loaded)](screenshots/screenshot_GUI_main_project_loaded.png)
+
+Sequence window screenshot:
+
+![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)
 
 Global productivity controls:
 
@@ -159,6 +176,11 @@ Behavior:
 
 Supported commands:
 
+- Full in-app reference with command explanations:
+  - open `Help -> Shell Commands`
+  - this view is generated from `docs/glossary.json` and includes usage + summary
+    per command
+
 - `help`
 - `capabilities`
 - `state-summary`
@@ -187,6 +209,7 @@ Supported commands:
 - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers list [--catalog PATH]`
 - `helpers validate-catalog [--catalog PATH]`
 - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -195,6 +218,7 @@ Supported commands:
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
 - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
 - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -256,6 +280,12 @@ Behavior:
 
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
 - system selection is a dropdown from catalog entries
+- dropdown disables systems that are currently unavailable and shows the reason
+- `OpenAI API key` field in this window is a session-only override
+  - enter your key as `sk-...`
+  - click `Clear Key` to remove it from current session
+  - the key is not persisted to disk by GENtle settings
+- if set, GUI key overrides `OPENAI_API_KEY` for requests started from this window
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - `Ask Agent` runs in background and reports status in `Background Jobs`
@@ -266,6 +296,39 @@ Behavior:
 - execution is always per suggestion (row-run, explicit all, or explicit auto);
   there is no global always-execute mode
 - each executed suggestion is logged with status/output in the same window
+
+OpenAI setup (explicit):
+
+1. Open `File -> Agent Assistant...`.
+2. Choose system `OpenAI GPT-5 (native HTTP)` from the dropdown.
+3. Paste your API key into `OpenAI API key` (format `sk-...`).
+4. Enter prompt text and click `Ask Agent`.
+5. If you prefer environment setup instead of GUI key field, launch GENtle with:
+
+```bash
+export OPENAI_API_KEY=sk-...
+cargo run --bin gentle
+```
+
+Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
+
+1. Open `File -> Agent Assistant...`.
+2. Select one of:
+   - `Local Llama (OpenAI-compatible)`
+   - `Jan Local (template)`
+   - `Msty Local (template)`
+3. Ensure `assets/agent_systems.json` has correct `base_url` and `model` for your local service.
+4. If your local service expects no key, keep `OpenAI API key` empty.
+5. Ask agent as usual.
+
+Common failure interpretation:
+
+- `AGENT_ADAPTER_UNAVAILABLE ... status=429 ... code=insufficient_quota`
+  - connection/auth path works, but OpenAI API project quota is exhausted
+  - fix billing/quota at:
+    - `https://platform.openai.com/usage`
+    - `https://platform.openai.com/settings/organization/billing/overview`
+  - this is separate from ChatGPT plan credits
 
 ## Candidate-Set Workflow (Engine Ops + GUI Shell)
 
@@ -362,6 +425,7 @@ The `Help` menu now includes:
 
 - `GUI Manual`: opens `docs/gui.md` in an in-app markdown viewer
 - `CLI Manual`: opens `docs/cli.md` in an in-app markdown viewer
+- `Shell Commands`: generated command reference from `docs/glossary.json` (usage + summary per command, filtered for GUI shell interface)
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 
@@ -369,6 +433,8 @@ Help content loading behavior:
 
 - if `docs/gui.md` / `docs/cli.md` exists at runtime, GUI loads those files
 - otherwise GUI falls back to embedded copies compiled into the app binary
+- shell-command help content is generated from the structured glossary source
+  `docs/glossary.json`
 
 Markdown image support:
 
@@ -378,6 +444,10 @@ Markdown image support:
 - `Reload` in the help window reloads markdown + images from disk
 - help viewer supports in-window text search (`Cmd/Ctrl+F` focuses search box)
 - search UI includes match count and `Prev`/`Next` navigation
+
+Help window screenshot:
+
+![GENtle help window](screenshots/screenshot_GUI_help_gui.png)
 
 ## Map interactions
 
@@ -761,6 +831,28 @@ Recommended flow:
      - `Remove`: delete one tracked subscription (already imported features remain)
      - `Clear Tracked Files`: delete all tracked subscriptions (already imported features remain)
 
+Track import screenshot:
+
+![Import Genome Tracks (BED)](screenshots/screenshot_GUI_import_genome_tracks_bed.png)
+
+How to enlarge the genomic span after extraction:
+
+- Zoom/pan controls only change visual magnification of the current sequence map.
+- To actually include additional genomic bases, run an anchor-extension command
+  (creates a new sequence with a wider genomic interval).
+- Current GUI path for this operation:
+  - open the extracted sequence window
+  - click `Shell` in the sequence toolbar
+  - run one of these commands:
+    - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- Example:
+  - `genomes extend-anchor grch38_tp53 5p 2000 --output-id grch38_tp53_plus2kb_5p`
+- Result behavior:
+  - original sequence remains unchanged
+  - a new derived sequence is created and opened
+  - lineage/provenance records include the extended genomic interval
+
 Equivalent workflow JSON (still supported via workflow runner):
 
 ```json
@@ -828,6 +920,29 @@ Notes:
 - `start_1based` and `end_1based` fields are constrained to numeric input and
   up to 10 digits.
 - Extracted regions are added to project state and opened in sequence windows.
+
+Anchor-extension direction semantics (`5p` / `3p`):
+
+- Direction is contextual to the anchored sequence strand, not purely to
+  chromosome left/right.
+- For anchor strand `+`:
+  - `5p` extends toward smaller genomic coordinates (decreases start)
+  - `3p` extends toward larger genomic coordinates (increases end)
+- For anchor strand `-`:
+  - `5p` extends toward larger genomic coordinates (increases end)
+  - `3p` extends toward smaller genomic coordinates (decreases start)
+- This means your observation is correct: on a negative-strand anchor, `5p`
+  moves the physical base-pair position upward.
+- If extension would cross chromosome start, GENtle clips at position `1` and
+  reports a warning.
+
+How to identify `SEQ_ID` and verify anchor context:
+
+- `SEQ_ID` is the sequence ID shown in the sequence window title / lineage table.
+- Genome-anchor status is shown in Engine Ops as:
+  - `Genome anchor: <genome_id>:<chromosome>:<start>..<end> (strand +/-)`
+- You can also inspect anchors in `Genome -> Import Genome Tracks...` preflight
+  (`selected anchor:` and `anchor: ... strand ...` lines).
 
 ## Engine Ops State Persistence
 

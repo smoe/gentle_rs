@@ -187,10 +187,28 @@ Agent bridge catalog schema (`gentle.agent_systems.v1`):
       "command": ["openai-agent-bridge", "--model", "gpt-5"],
       "env": {},
       "working_dir": null
+    },
+    {
+      "id": "openai_gpt5_native",
+      "label": "OpenAI GPT-5 (native HTTP)",
+      "transport": "native_openai",
+      "model": "gpt-5",
+      "base_url": "https://api.openai.com/v1",
+      "env": {}
     }
   ]
 }
 ```
+
+Transport notes:
+
+- `builtin_echo`: offline/demo transport.
+- `external_json_stdio`: requires local bridge executable from `command[0]`.
+- `native_openai`: built-in OpenAI HTTP adapter; requires `OPENAI_API_KEY`
+  (environment or system-level `env` override in catalog entry).
+- `native_openai_compat`: built-in OpenAI-compatible local HTTP adapter
+  (`/chat/completions`), intended for local services such as Jan/Msty/Ollama
+  when they expose an OpenAI-compatible endpoint. API key is optional.
 
 Agent request payload schema (`gentle.agent_request.v1`):
 
@@ -255,6 +273,8 @@ Failure-handling policy for external adapters:
 
 - Adapter invocations use bounded retry with exponential backoff for transient
   failures.
+- OpenAI `429` with `insufficient_quota` is treated as non-transient (no retry)
+  and returned with the original API error body plus billing/usage guidance.
 - Missing/unreachable adapter binaries fail gracefully with deterministic
   adapter-unavailable errors.
 - CLI/shell errors are stable and prefixed for scripting, e.g.:

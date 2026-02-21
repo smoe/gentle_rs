@@ -1,10 +1,11 @@
 use crate::engine::EngineStateSummary;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
     fs,
     io::{ErrorKind, Write},
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -20,6 +21,9 @@ const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
 const AGENT_INVOKE_RETRY_ATTEMPTS: usize = 3;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
+const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
+const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentBridgeErrorCode {
@@ -118,11 +122,128 @@ fn ensure_known_keys(
     Ok(())
 }
 
+fn has_path_separator(value: &str) -> bool {
+    value.contains(std::path::MAIN_SEPARATOR) || value.contains('/')
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return fs::metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn resolve_executable_path(program: &str) -> Option<PathBuf> {
+    let trimmed = program.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if has_path_separator(trimmed) {
+        let candidate = PathBuf::from(trimmed);
+        return is_executable_file(&candidate).then_some(candidate);
+    }
+    let path_var = std::env::var_os("PATH")?;
+    for entry in std::env::split_paths(&path_var) {
+        let candidate = entry.join(trimmed);
+        if is_executable_file(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
+    system
+        .env
+        .get(OPENAI_API_KEY_ENV)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var(OPENAI_API_KEY_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+}
+
+pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailability {
+    match system.transport {
+        AgentSystemTransport::BuiltinEcho => AgentSystemAvailability {
+            available: true,
+            reason: None,
+        },
+        AgentSystemTransport::ExternalJsonStdio => {
+            if system.command.is_empty() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some("no command configured".to_string()),
+                };
+            }
+            let program = system.command[0].trim();
+            if program.is_empty() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some("empty command executable".to_string()),
+                };
+            }
+            match resolve_executable_path(program) {
+                Some(path) => AgentSystemAvailability {
+                    available: true,
+                    reason: Some(format!("executable found at {}", path.display())),
+                },
+                None => AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!("executable '{}' not found on PATH", program)),
+                },
+            }
+        }
+        AgentSystemTransport::NativeOpenai => {
+            if resolve_api_key(system).is_none() {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!("{OPENAI_API_KEY_ENV} is not set")),
+                };
+            }
+            AgentSystemAvailability {
+                available: true,
+                reason: None,
+            }
+        }
+        AgentSystemTransport::NativeOpenaiCompat => {
+            let base_url = system
+                .base_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("http://127.0.0.1:11434/v1");
+            AgentSystemAvailability {
+                available: true,
+                reason: Some(format!(
+                    "expects OpenAI-compatible local server at {} (key optional)",
+                    base_url
+                )),
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentSystemTransport {
     #[default]
     ExternalJsonStdio,
+    NativeOpenai,
+    NativeOpenaiCompat,
     BuiltinEcho,
 }
 
@@ -130,6 +251,8 @@ impl AgentSystemTransport {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::ExternalJsonStdio => "external_json_stdio",
+            Self::NativeOpenai => "native_openai",
+            Self::NativeOpenaiCompat => "native_openai_compat",
             Self::BuiltinEcho => "builtin_echo",
         }
     }
@@ -143,8 +266,17 @@ pub struct AgentSystemSpec {
     pub description: Option<String>,
     pub transport: AgentSystemTransport,
     pub command: Vec<String>,
+    pub model: Option<String>,
+    pub base_url: Option<String>,
     pub env: HashMap<String, String>,
     pub working_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AgentSystemAvailability {
+    pub available: bool,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -805,6 +937,272 @@ fn invoke_external_json_stdio_once(
     Ok(output)
 }
 
+fn extract_openai_output_text(response_json: &Value) -> Option<String> {
+    if let Some(text) = response_json.get("output_text").and_then(Value::as_str) {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let output_items = response_json.get("output").and_then(Value::as_array)?;
+    let mut collected = String::new();
+    for item in output_items {
+        let Some(content) = item.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for block in content {
+            let text = block
+                .get("text")
+                .and_then(Value::as_str)
+                .or_else(|| block.get("output_text").and_then(Value::as_str));
+            if let Some(text) = text {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    if !collected.is_empty() {
+                        collected.push('\n');
+                    }
+                    collected.push_str(trimmed);
+                }
+            }
+        }
+    }
+    if collected.trim().is_empty() {
+        None
+    } else {
+        Some(collected)
+    }
+}
+
+fn extract_openai_chat_completions_text(response_json: &Value) -> Option<String> {
+    let choices = response_json.get("choices")?.as_array()?;
+    let first = choices.first()?;
+    let message = first.get("message")?;
+    if let Some(content) = message.get("content").and_then(Value::as_str) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let content_blocks = message.get("content").and_then(Value::as_array)?;
+    let mut collected = String::new();
+    for block in content_blocks {
+        if let Some(text) = block.get("text").and_then(Value::as_str) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                if !collected.is_empty() {
+                    collected.push('\n');
+                }
+                collected.push_str(trimmed);
+            }
+        }
+    }
+    if collected.trim().is_empty() {
+        None
+    } else {
+        Some(collected)
+    }
+}
+
+fn extract_openai_error_code(body: &str) -> Option<String> {
+    let value = serde_json::from_str::<Value>(body).ok()?;
+    let error = value.get("error")?;
+    error
+        .get("code")
+        .and_then(Value::as_str)
+        .or_else(|| error.get("type").and_then(Value::as_str))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> ExternalAttemptError {
+    let message_prefix = format!("OpenAI API error (status={}): {}", status, body.trim());
+    let error_code = extract_openai_error_code(body).unwrap_or_default();
+    if status.as_u16() == 429 && error_code.eq_ignore_ascii_case("insufficient_quota") {
+        return ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Unavailable,
+            message: format!(
+                "{message_prefix}\nHint: OpenAI reported insufficient quota. Check API project billing/usage at https://platform.openai.com/usage and https://platform.openai.com/settings/organization/billing/overview ."
+            ),
+        };
+    }
+    let kind = if status.is_server_error() || status.as_u16() == 429 {
+        ExternalAttemptErrorKind::Transient
+    } else if status.as_u16() == 401 || status.as_u16() == 403 {
+        ExternalAttemptErrorKind::Unavailable
+    } else {
+        ExternalAttemptErrorKind::Fatal
+    };
+    ExternalAttemptError {
+        kind,
+        message: message_prefix,
+    }
+}
+
+fn invoke_native_openai_once(
+    system: &AgentSystemSpec,
+    request_json: &str,
+) -> Result<(String, String), ExternalAttemptError> {
+    let api_key = resolve_api_key(system).ok_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Unavailable,
+        message: format!("{OPENAI_API_KEY_ENV} is not set"),
+    })?;
+    let model = system
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(OPENAI_DEFAULT_MODEL);
+    let base_url = system
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(OPENAI_DEFAULT_BASE_URL)
+        .trim_end_matches('/')
+        .to_string();
+    let endpoint = format!("{base_url}/responses");
+    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let payload = json!({
+        "model": model,
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    { "type": "input_text", "text": system_prompt }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": format!("GENtle agent request JSON:\n{request_json}")
+                    }
+                ]
+            }
+        ]
+    });
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not build OpenAI client: {e}"),
+        })?;
+    let response = client
+        .post(&endpoint)
+        .bearer_auth(api_key)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .map_err(|e| ExternalAttemptError {
+            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
+                ExternalAttemptErrorKind::Transient
+            } else {
+                ExternalAttemptErrorKind::Fatal
+            },
+            message: format!("OpenAI request failed: {e}"),
+        })?;
+    let status = response.status();
+    let body = response.text().map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("could not read OpenAI response body: {e}"),
+    })?;
+    if !status.is_success() {
+        return Err(classify_openai_http_error(status, &body));
+    }
+    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("OpenAI API returned invalid JSON: {e}"),
+    })?;
+    let text = extract_openai_output_text(&response_json).ok_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: "OpenAI API response did not contain output_text".to_string(),
+    })?;
+    Ok((text, body))
+}
+
+fn invoke_native_openai_compat_once(
+    system: &AgentSystemSpec,
+    request_json: &str,
+) -> Result<(String, String), ExternalAttemptError> {
+    let api_key = resolve_api_key(system);
+    let model = system
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("llama3.1");
+    let base_url = system
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("http://127.0.0.1:11434/v1")
+        .trim_end_matches('/')
+        .to_string();
+    let endpoint = format!("{base_url}/chat/completions");
+    let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
+    let payload = json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": format!("GENtle agent request JSON:\n{request_json}")
+            }
+        ],
+        "temperature": 0.2
+    });
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not build OpenAI-compatible client: {e}"),
+        })?;
+    let mut request = client
+        .post(&endpoint)
+        .header("Content-Type", "application/json");
+    if let Some(key) = api_key {
+        request = request.bearer_auth(key);
+    }
+    let response = request
+        .json(&payload)
+        .send()
+        .map_err(|e| ExternalAttemptError {
+            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
+                ExternalAttemptErrorKind::Transient
+            } else {
+                ExternalAttemptErrorKind::Fatal
+            },
+            message: format!("OpenAI-compatible request failed: {e}"),
+        })?;
+    let status = response.status();
+    let body = response.text().map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("could not read OpenAI-compatible response body: {e}"),
+    })?;
+    if !status.is_success() {
+        return Err(classify_openai_http_error(status, &body));
+    }
+    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("OpenAI-compatible API returned invalid JSON: {e}"),
+    })?;
+    let text = extract_openai_chat_completions_text(&response_json).ok_or_else(|| {
+        ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: "OpenAI-compatible response did not contain choices[0].message.content"
+                .to_string(),
+        }
+    })?;
+    Ok((text, body))
+}
+
 fn builtin_echo_response(prompt: &str) -> AgentResponse {
     let mut suggested: Vec<AgentSuggestedCommand> = vec![];
     for line in prompt.lines() {
@@ -854,11 +1252,12 @@ pub fn load_agent_system_catalog(
     Ok((resolved_path, catalog))
 }
 
-pub fn invoke_agent_support(
+pub fn invoke_agent_support_with_env_overrides(
     catalog_path: Option<&str>,
     system_id: &str,
     prompt: &str,
     state_summary: Option<&EngineStateSummary>,
+    env_overrides: Option<&HashMap<String, String>>,
 ) -> Result<AgentInvocationOutcome, String> {
     if prompt.trim().is_empty() {
         return Err(agent_err(
@@ -867,7 +1266,25 @@ pub fn invoke_agent_support(
         ));
     }
     let (resolved_catalog_path, catalog) = load_agent_system_catalog(catalog_path)?;
-    let system = catalog.resolve_system(system_id)?;
+    let mut system = catalog.resolve_system(system_id)?;
+    if let Some(overrides) = env_overrides {
+        for (key, value) in overrides {
+            let key = key.trim();
+            if key.is_empty() {
+                continue;
+            }
+            system.env.insert(key.to_string(), value.to_string());
+        }
+    }
+    let availability = agent_system_availability(&system);
+    if !availability.available {
+        return Err(agent_err(
+            AgentBridgeErrorCode::AdapterUnavailable,
+            availability
+                .reason
+                .unwrap_or_else(|| "agent system is not available".to_string()),
+        ));
+    }
     let (_payload, request_value, request_json) =
         build_agent_request(&system.id, prompt, state_summary)?;
     let start = std::time::Instant::now();
@@ -976,8 +1393,157 @@ pub fn invoke_agent_support(
                 elapsed_ms: start.elapsed().as_millis(),
             }
         }
+        AgentSystemTransport::NativeOpenai => {
+            let mut stdout: Option<String> = None;
+            let mut raw_body: Option<String> = None;
+            let mut last_transient_message: Option<String> = None;
+            for attempt in 1..=AGENT_INVOKE_RETRY_ATTEMPTS {
+                match invoke_native_openai_once(&system, &request_json) {
+                    Ok((result_text, raw_json_body)) => {
+                        stdout = Some(result_text);
+                        raw_body = Some(raw_json_body);
+                        break;
+                    }
+                    Err(error) => match error.kind {
+                        ExternalAttemptErrorKind::Unavailable => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterUnavailable,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Fatal => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterFailed,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Transient => {
+                            last_transient_message = Some(error.message.clone());
+                            if attempt >= AGENT_INVOKE_RETRY_ATTEMPTS {
+                                return Err(agent_err(
+                                    AgentBridgeErrorCode::AdapterTransient,
+                                    format!(
+                                        "native OpenAI call remained transiently unavailable after {} attempts: {}",
+                                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                                        error.message
+                                    ),
+                                ));
+                            }
+                            thread::sleep(retry_backoff_duration(attempt));
+                        }
+                    },
+                }
+            }
+            if stdout.is_none() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::AdapterTransient,
+                    format!(
+                        "native OpenAI call did not complete after {} attempts{}",
+                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                        last_transient_message
+                            .as_ref()
+                            .map(|value| format!(": {value}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+            let stdout = stdout.expect("checked is_some above");
+            let response = parse_agent_response(&stdout)?;
+            AgentInvocationOutcome {
+                catalog_path: resolved_catalog_path,
+                system_id: system.id,
+                system_label: system.label,
+                transport: system.transport.as_str().to_string(),
+                command: vec![],
+                request: request_value,
+                response,
+                raw_stdout: stdout,
+                raw_stderr: raw_body.unwrap_or_default(),
+                exit_code: Some(0),
+                elapsed_ms: start.elapsed().as_millis(),
+            }
+        }
+        AgentSystemTransport::NativeOpenaiCompat => {
+            let mut stdout: Option<String> = None;
+            let mut raw_body: Option<String> = None;
+            let mut last_transient_message: Option<String> = None;
+            for attempt in 1..=AGENT_INVOKE_RETRY_ATTEMPTS {
+                match invoke_native_openai_compat_once(&system, &request_json) {
+                    Ok((result_text, raw_json_body)) => {
+                        stdout = Some(result_text);
+                        raw_body = Some(raw_json_body);
+                        break;
+                    }
+                    Err(error) => match error.kind {
+                        ExternalAttemptErrorKind::Unavailable => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterUnavailable,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Fatal => {
+                            return Err(agent_err(
+                                AgentBridgeErrorCode::AdapterFailed,
+                                error.message,
+                            ));
+                        }
+                        ExternalAttemptErrorKind::Transient => {
+                            last_transient_message = Some(error.message.clone());
+                            if attempt >= AGENT_INVOKE_RETRY_ATTEMPTS {
+                                return Err(agent_err(
+                                    AgentBridgeErrorCode::AdapterTransient,
+                                    format!(
+                                        "native OpenAI-compatible call remained transiently unavailable after {} attempts: {}",
+                                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                                        error.message
+                                    ),
+                                ));
+                            }
+                            thread::sleep(retry_backoff_duration(attempt));
+                        }
+                    },
+                }
+            }
+            if stdout.is_none() {
+                return Err(agent_err(
+                    AgentBridgeErrorCode::AdapterTransient,
+                    format!(
+                        "native OpenAI-compatible call did not complete after {} attempts{}",
+                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                        last_transient_message
+                            .as_ref()
+                            .map(|value| format!(": {value}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+            let stdout = stdout.expect("checked is_some above");
+            let response = parse_agent_response(&stdout)?;
+            AgentInvocationOutcome {
+                catalog_path: resolved_catalog_path,
+                system_id: system.id,
+                system_label: system.label,
+                transport: system.transport.as_str().to_string(),
+                command: vec![],
+                request: request_value,
+                response,
+                raw_stdout: stdout,
+                raw_stderr: raw_body.unwrap_or_default(),
+                exit_code: Some(0),
+                elapsed_ms: start.elapsed().as_millis(),
+            }
+        }
     };
     Ok(outcome)
+}
+
+pub fn invoke_agent_support(
+    catalog_path: Option<&str>,
+    system_id: &str,
+    prompt: &str,
+    state_summary: Option<&EngineStateSummary>,
+) -> Result<AgentInvocationOutcome, String> {
+    invoke_agent_support_with_env_overrides(catalog_path, system_id, prompt, state_summary, None)
 }
 
 #[cfg(test)]
@@ -1049,5 +1615,76 @@ mod tests {
         )
         .expect_err("future schema major should fail");
         assert!(err.starts_with("AGENT_SCHEMA_UNSUPPORTED:"));
+    }
+
+    #[test]
+    fn availability_native_openai_uses_system_env_override() {
+        let mut system = AgentSystemSpec {
+            id: "openai_native".to_string(),
+            label: "OpenAI Native".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenai,
+            command: vec![],
+            model: Some("gpt-5".to_string()),
+            base_url: None,
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let unavailable = agent_system_availability(&system);
+        assert!(!unavailable.available);
+        system
+            .env
+            .insert(OPENAI_API_KEY_ENV.to_string(), "sk-test".to_string());
+        let available = agent_system_availability(&system);
+        assert!(available.available);
+    }
+
+    #[test]
+    fn availability_external_stdio_requires_command() {
+        let system = AgentSystemSpec {
+            id: "stdio".to_string(),
+            label: "stdio".to_string(),
+            description: None,
+            transport: AgentSystemTransport::ExternalJsonStdio,
+            command: vec![],
+            model: None,
+            base_url: None,
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let availability = agent_system_availability(&system);
+        assert!(!availability.available);
+    }
+
+    #[test]
+    fn availability_native_openai_compat_allows_missing_key() {
+        let system = AgentSystemSpec {
+            id: "local-compat".to_string(),
+            label: "local-compat".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenaiCompat,
+            command: vec![],
+            model: Some("llama3.1".to_string()),
+            base_url: Some("http://127.0.0.1:11434/v1".to_string()),
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let availability = agent_system_availability(&system);
+        assert!(availability.available);
+    }
+
+    #[test]
+    fn classify_openai_insufficient_quota_is_non_transient_with_hint() {
+        let body = r#"{
+  "error": {
+    "message": "You exceeded your current quota",
+    "type": "insufficient_quota",
+    "code": "insufficient_quota"
+  }
+}"#;
+        let err = classify_openai_http_error(reqwest::StatusCode::TOO_MANY_REQUESTS, body);
+        assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
+        assert!(err.message.contains("OpenAI API error (status=429"));
+        assert!(err.message.contains("insufficient quota"));
     }
 }

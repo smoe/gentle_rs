@@ -3,48 +3,55 @@ use std::{
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
-    panic::{AssertUnwindSafe, catch_unwind},
+    panic::{catch_unwind, AssertUnwindSafe},
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        Arc, RwLock,
         atomic::{AtomicBool, Ordering},
-        mpsc,
+        mpsc, Arc, RwLock,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
-    TRANSLATIONS, about,
+    about,
     agent_bridge::{
-        AgentExecutionIntent, AgentInvocationOutcome, AgentResponse, AgentSystemSpec,
-        DEFAULT_AGENT_SYSTEM_CATALOG_PATH, invoke_agent_support, load_agent_system_catalog,
+        agent_system_availability, invoke_agent_support_with_env_overrides,
+        load_agent_system_catalog, AgentExecutionIntent, AgentInvocationOutcome, AgentResponse,
+        AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+        OPENAI_API_KEY_ENV,
     },
     dna_sequence::{self, DNAsequence},
     engine::{
-        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
-        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GenomeTrackImportProgress,
-        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, OpResult,
-        Operation, OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
+        BlastHitFeatureInput, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
+        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+        GenomeTrackSyncReport, GentleEngine, OpResult, Operation, OperationProgress, ProjectState,
+        SequenceGenomeAnchorSummary, BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
     },
     engine_shell::{
-        ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
-        parse_shell_line,
+        execute_shell_command_with_options, parse_shell_line, ShellCommand, ShellExecutionOptions,
+        UiIntentTarget,
     },
     enzymes,
     genomes::{
-        BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
-        GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan,
-        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress,
-        PreparedGenomeInspection,
+        GenomeBlastReport, GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord,
+        GenomeSourcePlan, PrepareGenomeProgress, PreparedGenomeInspection, BLASTN_ENV_BIN,
+        DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN,
+        PREPARE_GENOME_TIMEOUT_SECS_ENV,
     },
     icons::APP_ICON,
-    resource_sync, tf_motifs, tool_overrides,
+    resource_sync,
+    shell_docs::{
+        shell_help_markdown as render_shell_help_markdown,
+        shell_help_markdown_from_glossary_json as render_shell_help_markdown_from_glossary_json,
+    },
+    tf_motifs, tool_overrides,
     window::Window,
+    TRANSLATIONS,
 };
-use anyhow::{Result, anyhow};
-use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId, menu};
+use anyhow::{anyhow, Result};
+use eframe::egui::{self, menu, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
@@ -143,11 +150,11 @@ pub struct GENtleApp {
     update_has_run_before: bool,
     show_about_dialog: bool,
     show_help_dialog: bool,
-    show_window_switcher_dialog: bool,
     help_doc: HelpDoc,
     help_markdown_cache: CommonMarkCache,
     help_gui_markdown: String,
     help_cli_markdown: String,
+    help_shell_markdown: String,
     help_search_query: String,
     help_search_matches: Vec<HelpSearchMatch>,
     help_search_selected: usize,
@@ -263,6 +270,7 @@ pub struct GENtleApp {
     agent_catalog_error: String,
     agent_systems: Vec<AgentSystemSpec>,
     agent_system_id: String,
+    agent_openai_api_key: String,
     agent_prompt: String,
     agent_include_state_summary: bool,
     agent_allow_auto_exec: bool,
@@ -284,6 +292,7 @@ enum ProjectAction {
 enum HelpDoc {
     Gui,
     Cli,
+    Shell,
 }
 
 #[derive(Clone, Debug)]
@@ -529,12 +538,12 @@ enum CommandPaletteAction {
     OpenPreparedInspector,
     OpenGuiManual,
     OpenCliManual,
+    OpenShellManual,
     ExportLineageSvg,
     ToggleJobsPanel,
     ToggleHistoryPanel,
     Undo,
     Redo,
-    OpenWindowsDialog,
     FocusViewport(ViewportId),
 }
 
@@ -582,11 +591,11 @@ impl Default for GENtleApp {
             update_has_run_before: false,
             show_about_dialog: false,
             show_help_dialog: false,
-            show_window_switcher_dialog: false,
             help_doc: HelpDoc::Gui,
             help_markdown_cache: CommonMarkCache::default(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
+            help_shell_markdown: Self::generate_shell_help_markdown(),
             help_search_query: String::new(),
             help_search_matches: vec![],
             help_search_selected: 0,
@@ -703,6 +712,7 @@ impl Default for GENtleApp {
             agent_catalog_error: String::new(),
             agent_systems: vec![],
             agent_system_id: "builtin_echo".to_string(),
+            agent_openai_api_key: String::new(),
             agent_prompt: String::new(),
             agent_include_state_summary: true,
             agent_allow_auto_exec: false,
@@ -1161,9 +1171,30 @@ impl GENtleApp {
         fallback.to_string()
     }
 
+    fn generate_shell_help_markdown() -> String {
+        if let Some(runtime_path) = Self::resolve_runtime_doc_path("docs/glossary.json") {
+            if let Ok(raw) = fs::read_to_string(runtime_path) {
+                if let Ok(markdown) =
+                    render_shell_help_markdown_from_glossary_json(&raw, Some("gui-shell"))
+                {
+                    return markdown;
+                }
+            }
+        }
+        match render_shell_help_markdown(Some("gui-shell")) {
+            Ok(markdown) => markdown,
+            Err(err) => format!(
+                "# GENtle Shell Command Reference\n\n\
+Could not render command glossary from `docs/glossary.json`.\n\n\
+Error: `{err}`"
+            ),
+        }
+    }
+
     fn refresh_help_docs(&mut self) {
         self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
         self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
+        self.help_shell_markdown = Self::generate_shell_help_markdown();
     }
 
     fn consume_native_help_request(&mut self) {
@@ -1180,7 +1211,7 @@ impl GENtleApp {
 
     fn consume_native_windows_request(&mut self) {
         if NATIVE_WINDOWS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
-            self.show_window_switcher_dialog = true;
+            self.queue_focus_viewport(ViewportId::ROOT);
         }
     }
 
@@ -1357,10 +1388,6 @@ impl GENtleApp {
         self.configuration_tab = ConfigurationTab::ExternalApplications;
         self.show_configuration_dialog = true;
         self.configuration_status.clear();
-    }
-
-    fn open_window_switcher_dialog(&mut self) {
-        self.show_window_switcher_dialog = true;
     }
 
     fn open_command_palette_dialog(&mut self) {
@@ -1648,6 +1675,12 @@ impl GENtleApp {
                 action: CommandPaletteAction::OpenCliManual,
             },
             CommandPaletteEntry {
+                title: "Shell Commands".to_string(),
+                detail: "Open in-app shell command reference".to_string(),
+                keywords: "help shell commands glossary docs".to_string(),
+                action: CommandPaletteAction::OpenShellManual,
+            },
+            CommandPaletteEntry {
                 title: "Export DALG SVG".to_string(),
                 detail: "Export lineage graph as SVG".to_string(),
                 keywords: "export lineage svg".to_string(),
@@ -1664,12 +1697,6 @@ impl GENtleApp {
                 detail: "Show or hide operation history".to_string(),
                 keywords: "history undo redo".to_string(),
                 action: CommandPaletteAction::ToggleHistoryPanel,
-            },
-            CommandPaletteEntry {
-                title: "Open Windows".to_string(),
-                detail: "Show window switcher".to_string(),
-                keywords: "window switcher".to_string(),
-                action: CommandPaletteAction::OpenWindowsDialog,
             },
         ];
         for entry in self.collect_open_window_entries() {
@@ -1708,6 +1735,7 @@ impl GENtleApp {
             }
             CommandPaletteAction::OpenGuiManual => self.open_help_doc(HelpDoc::Gui),
             CommandPaletteAction::OpenCliManual => self.open_help_doc(HelpDoc::Cli),
+            CommandPaletteAction::OpenShellManual => self.open_help_doc(HelpDoc::Shell),
             CommandPaletteAction::ExportLineageSvg => self.prompt_export_lineage_svg(),
             CommandPaletteAction::ToggleJobsPanel => {
                 self.show_jobs_panel = !self.show_jobs_panel;
@@ -1717,7 +1745,6 @@ impl GENtleApp {
             }
             CommandPaletteAction::Undo => self.undo_last_operation(),
             CommandPaletteAction::Redo => self.redo_last_operation(),
-            CommandPaletteAction::OpenWindowsDialog => self.open_window_switcher_dialog(),
             CommandPaletteAction::FocusViewport(viewport_id) => {
                 self.focus_window_viewport(ctx, viewport_id);
             }
@@ -1736,6 +1763,7 @@ impl GENtleApp {
         match self.help_doc {
             HelpDoc::Gui => "GUI Manual",
             HelpDoc::Cli => "CLI Manual",
+            HelpDoc::Shell => "Shell Commands",
         }
     }
 
@@ -1743,6 +1771,7 @@ impl GENtleApp {
         match self.help_doc {
             HelpDoc::Gui => &self.help_gui_markdown,
             HelpDoc::Cli => &self.help_cli_markdown,
+            HelpDoc::Shell => &self.help_shell_markdown,
         }
     }
 
@@ -2848,6 +2877,25 @@ impl GENtleApp {
             .cloned()
     }
 
+    fn selected_agent_system_availability(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> (bool, Option<String>) {
+        let availability = agent_system_availability(system);
+        if availability.available {
+            return (true, availability.reason);
+        }
+        if matches!(system.transport, AgentSystemTransport::NativeOpenai)
+            && !self.agent_openai_api_key.trim().is_empty()
+        {
+            return (
+                true,
+                Some("using GUI-supplied OpenAI API key for this session".to_string()),
+            );
+        }
+        (false, availability.reason)
+    }
+
     fn start_agent_assistant_request(&mut self) {
         if self.agent_task.is_some() {
             self.agent_status = "Agent request is already running".to_string();
@@ -2863,6 +2911,18 @@ impl GENtleApp {
             self.agent_status = "Select an agent system first".to_string();
             return;
         }
+        let Some(selected_system) = self.selected_agent_system() else {
+            self.agent_status = "Selected agent system is not available in catalog".to_string();
+            return;
+        };
+        let (available, reason) = self.selected_agent_system_availability(&selected_system);
+        if !available {
+            self.agent_status = format!(
+                "Selected agent system is unavailable: {}",
+                reason.unwrap_or_else(|| "unknown reason".to_string())
+            );
+            return;
+        }
         let prompt = self.agent_prompt.trim().to_string();
         if prompt.is_empty() {
             self.agent_status = "Agent prompt cannot be empty".to_string();
@@ -2875,6 +2935,7 @@ impl GENtleApp {
             None
         };
         let catalog_path = self.agent_catalog_path.trim().to_string();
+        let openai_api_key = self.agent_openai_api_key.trim().to_string();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
         self.agent_status = format!("Asking agent '{}' in background", system_id);
@@ -2890,11 +2951,20 @@ impl GENtleApp {
             receiver: rx,
         });
         std::thread::spawn(move || {
-            let result = invoke_agent_support(
+            let mut env_overrides = HashMap::new();
+            if !openai_api_key.is_empty() {
+                env_overrides.insert(OPENAI_API_KEY_ENV.to_string(), openai_api_key);
+            }
+            let result = invoke_agent_support_with_env_overrides(
                 Some(catalog_path.as_str()),
                 &system_id,
                 &prompt,
                 state_summary.as_ref(),
+                if env_overrides.is_empty() {
+                    None
+                } else {
+                    Some(&env_overrides)
+                },
             );
             let _ = tx.send(AgentAskTaskMessage::Done { job_id, result });
         });
@@ -4596,6 +4666,7 @@ impl GENtleApp {
 
     fn render_reference_genome_prepare_contents(&mut self, ui: &mut Ui) {
         self.refresh_genome_catalog_list();
+        self.render_specialist_window_nav(ui);
         ui.label("Download and index a reference genome once.");
         ui.horizontal(|ui| {
             ui.label("catalog");
@@ -4825,6 +4896,7 @@ impl GENtleApp {
             .default_size(Vec2::new(980.0, 760.0))
             .min_size(Vec2::new(860.0, 520.0))
             .show(ctx, |ui| {
+                self.render_specialist_window_nav(ui);
                 ui.label("Retrieve region sequences from a prepared genome.");
                 ui.horizontal(|ui| {
                     ui.label("catalog");
@@ -5177,6 +5249,7 @@ impl GENtleApp {
 
     fn render_reference_genome_blast_contents(&mut self, ui: &mut Ui) {
         self.refresh_genome_catalog_list();
+        self.render_specialist_window_nav(ui);
         let sequence_ids = self.project_sequence_ids_for_blast();
         if !sequence_ids.is_empty() && !sequence_ids.contains(&self.genome_blast_query_seq_id) {
             self.genome_blast_query_seq_id = sequence_ids[0].clone();
@@ -5516,6 +5589,7 @@ impl GENtleApp {
             .collapsible(false)
             .resizable(true)
             .show(ctx, |ui| {
+                self.render_specialist_window_nav(ui);
                 ui.label("Inspect prepared references and installation integrity metadata.");
                 ui.horizontal(|ui| {
                     ui.label("catalog");
@@ -5720,6 +5794,7 @@ impl GENtleApp {
     }
 
     fn render_genome_bed_track_contents(&mut self, ui: &mut Ui) {
+        self.render_specialist_window_nav(ui);
         let anchor_summaries = self.anchored_sequence_anchor_summaries_for_tracks();
         let anchored_seq_ids = anchor_summaries
             .iter()
@@ -6167,6 +6242,7 @@ impl GENtleApp {
 
     fn render_agent_assistant_contents(&mut self, ui: &mut Ui) {
         self.refresh_agent_system_catalog();
+        self.render_specialist_window_nav(ui);
         ui.label("Ask an agent system for project support, then execute suggested GENtle shell commands per reply.");
         ui.horizontal(|ui| {
             ui.label("catalog");
@@ -6202,15 +6278,31 @@ impl GENtleApp {
                 })
                 .show_ui(ui, |ui| {
                     for system in &self.agent_systems {
-                        ui.selectable_value(
-                            &mut self.agent_system_id,
-                            system.id.clone(),
-                            format!("{} ({})", system.label, system.id),
+                        let (available, reason) = self.selected_agent_system_availability(system);
+                        let label = if available {
+                            format!("{} ({})", system.label, system.id)
+                        } else {
+                            format!("{} ({}) [unavailable]", system.label, system.id)
+                        };
+                        let mut response = ui.add_enabled(
+                            available,
+                            egui::Button::new(label).selected(self.agent_system_id == system.id),
                         );
+                        if !available {
+                            response = response.on_hover_text(
+                                reason.unwrap_or_else(|| "agent system unavailable".to_string()),
+                            );
+                        }
+                        if response.clicked() {
+                            self.agent_system_id = system.id.clone();
+                        }
                     }
                 });
         });
+        let mut selected_available = false;
         if let Some(system) = self.selected_agent_system() {
+            let (available, reason) = self.selected_agent_system_availability(&system);
+            selected_available = available;
             if let Some(description) = system.description.as_deref() {
                 let trimmed = description.trim();
                 if !trimmed.is_empty() {
@@ -6221,9 +6313,36 @@ impl GENtleApp {
             if !system.command.is_empty() {
                 ui.small(format!("command: {}", system.command.join(" ")));
             }
+            if !available {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!(
+                        "Unavailable: {}",
+                        reason.unwrap_or_else(|| "unknown reason".to_string())
+                    ),
+                );
+            }
         } else if self.agent_systems.is_empty() {
             ui.small("No systems loaded from this catalog.");
         }
+        ui.horizontal(|ui| {
+            ui.label("OpenAI API key");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_openai_api_key)
+                    .password(true)
+                    .hint_text("sk-..."),
+            );
+            if ui
+                .button("Clear Key")
+                .on_hover_text("Clear session-only API key override")
+                .clicked()
+            {
+                self.agent_openai_api_key.clear();
+            }
+        });
+        ui.small(
+            "Session only: if set, this key overrides OPENAI_API_KEY for agent requests started from this GUI window.",
+        );
         ui.horizontal(|ui| {
             ui.checkbox(
                 &mut self.agent_include_state_summary,
@@ -6243,7 +6362,10 @@ impl GENtleApp {
         let running = self.agent_task.is_some();
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(!running, egui::Button::new("Ask Agent"))
+                .add_enabled(
+                    !running && selected_available,
+                    egui::Button::new("Ask Agent"),
+                )
                 .on_hover_text("Send prompt to selected agent system")
                 .clicked()
             {
@@ -6802,6 +6924,19 @@ impl GENtleApp {
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
     }
 
+    fn render_specialist_window_nav(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui
+                .button("Main")
+                .on_hover_text("Bring the main project window to front")
+                .clicked()
+            {
+                self.queue_focus_viewport(ViewportId::ROOT);
+            }
+        });
+        ui.separator();
+    }
+
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
         let open_window_entries = self.collect_open_window_entries();
         let (undo_count, redo_count) = {
@@ -7135,7 +7270,7 @@ impl GENtleApp {
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Window", |ui| {
+            ui.menu_button("Windows", |ui| {
                 let jobs_panel_resp = self.track_hover_status(
                     ui.button(if self.show_jobs_panel {
                         "Hide Background Jobs"
@@ -7160,15 +7295,6 @@ impl GENtleApp {
                 );
                 if history_panel_resp.clicked() {
                     self.show_history_panel = !self.show_history_panel;
-                    ui.close_menu();
-                }
-                ui.separator();
-                if ui
-                    .button("Open Windows…")
-                    .on_hover_text("Show all open GENtle windows and jump to one")
-                    .clicked()
-                {
-                    self.open_window_switcher_dialog();
                     ui.close_menu();
                 }
                 ui.separator();
@@ -7203,6 +7329,14 @@ impl GENtleApp {
                     .clicked()
                 {
                     self.open_help_doc(HelpDoc::Cli);
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Shell Commands")
+                    .on_hover_text("Open shell command reference generated from the glossary")
+                    .clicked()
+                {
+                    self.open_help_doc(HelpDoc::Shell);
                     ui.close_menu();
                 }
                 ui.separator();
@@ -9116,6 +9250,7 @@ impl GENtleApp {
     }
 
     fn render_configuration_contents(&mut self, ui: &mut Ui) {
+        self.render_specialist_window_nav(ui);
         ui.horizontal(|ui| {
             if ui
                 .selectable_label(
@@ -9252,41 +9387,6 @@ impl GENtleApp {
                     }
                 });
             });
-    }
-
-    fn render_window_switcher_dialog(&mut self, ctx: &egui::Context) {
-        if !self.show_window_switcher_dialog {
-            return;
-        }
-        let open_windows = self.collect_open_window_entries();
-        let mut open = self.show_window_switcher_dialog;
-        let mut selected_viewport: Option<ViewportId> = None;
-        egui::Window::new("Open Windows")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .default_size(Vec2::new(460.0, 360.0))
-            .show(ctx, |ui| {
-                ui.label(format!("{} open window(s)", open_windows.len()));
-                ui.separator();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for entry in &open_windows {
-                        let label = format!("{} — {}", entry.title, entry.detail);
-                        if ui
-                            .button(label)
-                            .on_hover_text("Raise this window to the front")
-                            .clicked()
-                        {
-                            selected_viewport = Some(entry.viewport_id);
-                        }
-                    }
-                });
-            });
-        if let Some(viewport_id) = selected_viewport {
-            self.focus_window_viewport(ctx, viewport_id);
-            open = false;
-        }
-        self.show_window_switcher_dialog = open;
     }
 
     fn render_command_palette_dialog(&mut self, ctx: &egui::Context) {
@@ -9759,6 +9859,14 @@ impl GENtleApp {
                 .clicked()
             {
                 self.help_doc = HelpDoc::Cli;
+                active_doc_changed = true;
+            }
+            if ui
+                .selectable_label(self.help_doc == HelpDoc::Shell, "Shell Commands")
+                .on_hover_text("Generated from docs/glossary.json")
+                .clicked()
+            {
+                self.help_doc = HelpDoc::Shell;
                 active_doc_changed = true;
             }
             ui.separator();
@@ -10362,7 +10470,6 @@ impl eframe::App for GENtleApp {
             }
             about::install_native_help_menu_bridge();
             about::install_native_settings_menu_bridge();
-            about::install_native_windows_menu_bridge();
             self.consume_native_help_request();
             self.consume_native_settings_request();
             self.consume_native_windows_request();
@@ -10398,7 +10505,7 @@ impl eframe::App for GENtleApp {
             let close_project =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::W);
             let open_configuration = KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma);
-            let open_window_switcher = KeyboardShortcut::new(Modifiers::COMMAND, Key::Backtick);
+            let focus_main_window = KeyboardShortcut::new(Modifiers::COMMAND, Key::Backtick);
             let open_command_palette = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
             let undo_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
             let redo_shortcut_shift =
@@ -10437,8 +10544,8 @@ impl eframe::App for GENtleApp {
             if ctx.input_mut(|i| i.consume_shortcut(&open_configuration)) {
                 self.open_configuration_dialog();
             }
-            if ctx.input_mut(|i| i.consume_shortcut(&open_window_switcher)) {
-                self.open_window_switcher_dialog();
+            if ctx.input_mut(|i| i.consume_shortcut(&focus_main_window)) {
+                self.queue_focus_viewport(ViewportId::ROOT);
             }
             if ctx.input_mut(|i| i.consume_shortcut(&open_command_palette)) {
                 self.open_command_palette_dialog();
@@ -10481,7 +10588,6 @@ impl eframe::App for GENtleApp {
             self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
             self.render_about_dialog(ctx);
-            self.render_window_switcher_dialog(ctx);
             self.render_command_palette_dialog(ctx);
             self.render_jobs_panel(ctx);
             self.render_history_panel(ctx);
@@ -10535,9 +10641,8 @@ mod tests {
     use std::{
         fs,
         sync::{
-            Arc,
             atomic::{AtomicBool, Ordering},
-            mpsc,
+            mpsc, Arc,
         },
         time::Instant,
     };
@@ -10659,13 +10764,12 @@ mod tests {
             })
             .count();
         assert_eq!(cancel_events, 1);
-        assert!(
-            app.genome_prepare_task
-                .as_ref()
-                .unwrap()
-                .cancel_requested
-                .load(Ordering::Relaxed)
-        );
+        assert!(app
+            .genome_prepare_task
+            .as_ref()
+            .unwrap()
+            .cancel_requested
+            .load(Ordering::Relaxed));
     }
 
     #[test]

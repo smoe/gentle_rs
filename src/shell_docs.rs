@@ -54,11 +54,15 @@ struct ShellCommandDoc {
 
 static GLOSSARY: OnceLock<Result<ShellGlossary, String>> = OnceLock::new();
 
+fn parse_glossary(raw: &str) -> Result<ShellGlossary, String> {
+    serde_json::from_str::<ShellGlossary>(raw)
+        .map_err(|e| format!("Could not parse docs/glossary.json: {e}"))
+}
+
 fn glossary() -> Result<&'static ShellGlossary, String> {
     match GLOSSARY.get_or_init(|| {
         let raw = include_str!("../docs/glossary.json");
-        serde_json::from_str::<ShellGlossary>(raw)
-            .map_err(|e| format!("Could not parse docs/glossary.json: {e}"))
+        parse_glossary(raw)
     }) {
         Ok(glossary) => Ok(glossary),
         Err(err) => Err(err.clone()),
@@ -110,6 +114,13 @@ fn docs_for_interface(
     interface_filter: Option<&str>,
 ) -> Result<Vec<&'static ShellCommandDoc>, String> {
     let glossary = glossary()?;
+    docs_for_interface_from_glossary(glossary, interface_filter)
+}
+
+fn docs_for_interface_from_glossary<'a>(
+    glossary: &'a ShellGlossary,
+    interface_filter: Option<&str>,
+) -> Result<Vec<&'a ShellCommandDoc>, String> {
     let interface_filter = normalize_interface_filter(interface_filter)?;
     Ok(glossary
         .commands
@@ -228,7 +239,10 @@ pub fn shell_help_text(interface_filter: Option<&str>) -> Result<String, String>
     let docs = docs_for_interface(interface_filter)?;
     let mut out = String::from("GENtle Shell commands:\n");
     for doc in docs {
+        out.push_str("- ");
         out.push_str(&doc.usage);
+        out.push_str("\n  ");
+        out.push_str(&doc.summary);
         out.push('\n');
     }
     out.push_str(
@@ -241,6 +255,20 @@ Use `--interface` to filter (`all|cli-direct|cli-shell|gui-shell|js|lua`).",
 
 pub fn shell_help_markdown(interface_filter: Option<&str>) -> Result<String, String> {
     let docs = docs_for_interface(interface_filter)?;
+    let mut out = String::from("# GENtle Shell Command Reference\n\n");
+    for doc in docs {
+        out.push_str(&render_topic_markdown(doc));
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+pub fn shell_help_markdown_from_glossary_json(
+    raw: &str,
+    interface_filter: Option<&str>,
+) -> Result<String, String> {
+    let glossary = parse_glossary(raw)?;
+    let docs = docs_for_interface_from_glossary(&glossary, interface_filter)?;
     let mut out = String::from("# GENtle Shell Command Reference\n\n");
     for doc in docs {
         out.push_str(&render_topic_markdown(doc));
