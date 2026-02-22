@@ -19,8 +19,8 @@ use crate::{
     agent_bridge::{
         AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, AgentExecutionIntent, AgentInvocationOutcome,
         AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
-        OPENAI_API_KEY_ENV, agent_system_availability, discover_openai_models,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
+        discover_openai_models, invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     dna_sequence::{self, DNAsequence},
     engine::{
@@ -65,10 +65,18 @@ const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace"
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
-const GUI_OPENAI_COMPAT_DEFAULT_MODEL: &str = "llama3.1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+fn normalize_agent_model_name(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(OPENAI_COMPAT_UNSPECIFIED_MODEL) {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
 
 fn default_prepare_timeout_secs_string() -> String {
     env::var(PREPARE_GENOME_TIMEOUT_SECS_ENV)
@@ -2971,8 +2979,15 @@ Error: `{err}`"
                 override_base_url.to_string(),
             );
         }
-        let override_model = self.agent_model_override.trim();
-        if !override_model.is_empty()
+        let selected_discovered_model =
+            normalize_agent_model_name(&self.agent_discovered_model_pick).filter(|picked| {
+                self.agent_discovered_models
+                    .iter()
+                    .any(|item| item == picked)
+            });
+        let override_model = normalize_agent_model_name(self.agent_model_override.trim())
+            .or(selected_discovered_model);
+        if let Some(override_model) = override_model
             && matches!(
                 resolved.transport,
                 AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
@@ -2980,7 +2995,7 @@ Error: `{err}`"
         {
             resolved
                 .env
-                .insert(AGENT_MODEL_ENV.to_string(), override_model.to_string());
+                .insert(AGENT_MODEL_ENV.to_string(), override_model);
         }
         resolved
     }
@@ -3130,27 +3145,45 @@ Error: `{err}`"
             self.agent_status = "Agent prompt cannot be empty".to_string();
             return;
         }
+        let mut model_override = normalize_agent_model_name(self.agent_model_override.trim());
+        let discovered_pick =
+            normalize_agent_model_name(&self.agent_discovered_model_pick).filter(|picked| {
+                self.agent_discovered_models
+                    .iter()
+                    .any(|item| item == picked)
+            });
+        if model_override.is_none() && discovered_pick.is_some() {
+            model_override = discovered_pick.clone();
+        }
         if matches!(
             selected_system.transport,
             AgentSystemTransport::NativeOpenaiCompat
-        ) && self.agent_model_override.trim().is_empty()
-            && !self.agent_discovered_models.is_empty()
+        ) && model_override.is_none()
         {
-            let catalog_model = selected_system
-                .model
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or(GUI_OPENAI_COMPAT_DEFAULT_MODEL);
-            if !self
-                .agent_discovered_models
-                .iter()
-                .any(|value| value == catalog_model)
-            {
-                self.agent_status = format!(
-                    "Catalog model '{catalog_model}' is not available on current endpoint. Select a discovered model and click 'Use Selected Model'."
+            if discovered_pick.is_some() {
+                model_override = discovered_pick;
+            } else {
+                let catalog_model = normalize_agent_model_name(
+                    selected_system.model.as_deref().unwrap_or_default(),
                 );
-                return;
+                if let Some(catalog_model) = catalog_model {
+                    if !self.agent_discovered_models.is_empty()
+                        && !self
+                            .agent_discovered_models
+                            .iter()
+                            .any(|value| value == &catalog_model)
+                    {
+                        self.agent_status = format!(
+                            "Catalog model '{catalog_model}' is not available on current endpoint. Select a discovered model or set Model override."
+                        );
+                        return;
+                    }
+                } else {
+                    self.agent_status =
+                        "Model is unspecified. Discover models and select one, or set Model override."
+                            .to_string();
+                    return;
+                }
             }
         }
 
@@ -3162,7 +3195,7 @@ Error: `{err}`"
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let openai_api_key = self.agent_openai_api_key.trim().to_string();
         let base_url_override = self.agent_base_url_override.trim().to_string();
-        let model_override = self.agent_model_override.trim().to_string();
+        let model_override = model_override.unwrap_or_default();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
         self.agent_status = format!("Asking agent '{}' in background", system_id);
@@ -3558,11 +3591,7 @@ Error: `{err}`"
                             .iter()
                             .any(|item| item == &self.agent_discovered_model_pick)
                         {
-                            self.agent_discovered_model_pick = self
-                                .agent_discovered_models
-                                .first()
-                                .cloned()
-                                .unwrap_or_default();
+                            self.agent_discovered_model_pick.clear();
                         }
                         self.agent_model_discovery_status = format!(
                             "Discovered {} model(s) in {:.1}s",
@@ -6583,8 +6612,7 @@ Error: `{err}`"
                         } else {
                             format!("{} ({}) [unavailable]", system.label, system.id)
                         };
-                        let mut response = ui.add_enabled(
-                            available,
+                        let mut response = ui.add(
                             egui::Button::new(label).selected(self.agent_system_id == system.id),
                         );
                         if !available {
@@ -6624,7 +6652,7 @@ Error: `{err}`"
                         self.agent_discovered_model_pick.clear();
                         self.agent_model_discovery_status.clear();
                     }
-                    if self.agent_model_override.trim().is_empty()
+                    if normalize_agent_model_name(self.agent_model_override.trim()).is_none()
                         && self.agent_model_discovery_task.is_none()
                         && self.agent_discovered_models.is_empty()
                     {
@@ -6649,15 +6677,20 @@ Error: `{err}`"
                     .model
                     .as_deref()
                     .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or("(transport default)");
-                if self.agent_model_override.trim().is_empty() {
-                    ui.small(format!("model: {catalog_model}"));
-                } else {
+                    .and_then(normalize_agent_model_name)
+                    .unwrap_or_else(|| OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string());
+                let model_override = normalize_agent_model_name(self.agent_model_override.trim());
+                if let Some(model_override) = model_override {
+                    ui.small(format!("model: {model_override} (session override)"));
+                } else if matches!(system.transport, AgentSystemTransport::NativeOpenaiCompat)
+                    && normalize_agent_model_name(&self.agent_discovered_model_pick).is_some()
+                {
                     ui.small(format!(
-                        "model: {} (session override)",
-                        self.agent_model_override.trim()
+                        "model: {} (selected discovered model)",
+                        self.agent_discovered_model_pick.trim()
                     ));
+                } else {
+                    ui.small(format!("model: {catalog_model}"));
                 }
             } else {
                 self.agent_model_discovery_task = None;
@@ -6710,8 +6743,7 @@ Error: `{err}`"
         ui.horizontal(|ui| {
             ui.label("Model override");
             ui.add(
-                egui::TextEdit::singleline(&mut self.agent_model_override)
-                    .hint_text("deepseek-r1:8b"),
+                egui::TextEdit::singleline(&mut self.agent_model_override).hint_text("unspecified"),
             );
             if ui
                 .button("Clear Model")
@@ -6760,17 +6792,10 @@ Error: `{err}`"
                                     );
                                 }
                             });
-                        if ui
-                            .button("Use Selected Model")
-                            .on_hover_text("Copy selected discovered model into Model override")
-                            .clicked()
-                        {
-                            let selected = self.agent_discovered_model_pick.trim();
-                            if !selected.is_empty() {
-                                self.agent_model_override = selected.to_string();
-                            }
-                        }
                     });
+                    ui.small(
+                        "If Model override is unspecified, the selected discovered model is used.",
+                    );
                 }
                 if !self.agent_model_discovery_status.trim().is_empty() {
                     ui.small(self.agent_model_discovery_status.clone());
@@ -6781,10 +6806,10 @@ Error: `{err}`"
             "Session only: if set, this key overrides OPENAI_API_KEY for agent requests started from this GUI window.",
         );
         ui.small(
-            "Session only: Base URL override applies to native_openai/native_openai_compat. For local Ollama-style roots (e.g. http://localhost:11964), GENtle also tries the /v1/chat/completions path.",
+            "Session only: Base URL override applies to native_openai/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL.",
         );
         ui.small(
-            "Session only: Model override applies to native_openai/native_openai_compat and maps to GENTLE_AGENT_MODEL.",
+            "Session only: Model override applies to native_openai/native_openai_compat and maps to GENTLE_AGENT_MODEL. Value 'unspecified' means no override.",
         );
         ui.horizontal(|ui| {
             ui.checkbox(

@@ -23,7 +23,8 @@ const AGENT_INVOKE_RETRY_ATTEMPTS: usize = 3;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-const OPENAI_COMPAT_DEFAULT_MODEL: &str = "llama3.1";
+pub const OPENAI_COMPAT_UNSPECIFIED_MODEL: &str = "unspecified";
+const OPENAI_COMPAT_DEFAULT_MODEL: &str = OPENAI_COMPAT_UNSPECIFIED_MODEL;
 const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
@@ -181,20 +182,28 @@ fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
 }
 
 fn resolve_model(system: &AgentSystemSpec, default: &str) -> String {
+    let normalize = |value: &str| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case(OPENAI_COMPAT_UNSPECIFIED_MODEL) {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    };
     system
         .env
         .get(AGENT_MODEL_ENV)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .or_else(|| {
-            system
-                .model
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| default.to_string())
+        .and_then(|value| normalize(value))
+        .or_else(|| system.model.as_deref().and_then(normalize))
+        .or_else(|| normalize(default))
+        .unwrap_or_else(|| default.trim().to_string())
+}
+
+fn is_model_unspecified(raw: &str) -> bool {
+    raw.trim().is_empty()
+        || raw
+            .trim()
+            .eq_ignore_ascii_case(OPENAI_COMPAT_UNSPECIFIED_MODEL)
 }
 
 fn normalize_base_url(raw: &str) -> Option<String> {
@@ -245,31 +254,7 @@ fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
 
 fn openai_compat_endpoint_candidates_for_system(system: &AgentSystemSpec) -> Vec<String> {
     let primary_base = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
-    let has_explicit_override = system
-        .env
-        .get(AGENT_BASE_URL_ENV)
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false);
-    let mut endpoints = openai_compat_endpoint_candidates(&primary_base);
-    if has_explicit_override {
-        return endpoints;
-    }
-    // For local OpenAI-compatible services, probe common host/port defaults
-    // when catalog defaults do not match the running daemon.
-    let local_base_candidates = [
-        "http://localhost:11964",
-        "http://127.0.0.1:11964",
-        "http://localhost:11434",
-        "http://127.0.0.1:11434",
-    ];
-    for base in local_base_candidates {
-        for endpoint in openai_compat_endpoint_candidates(base) {
-            if !endpoints.contains(&endpoint) {
-                endpoints.push(endpoint);
-            }
-        }
-    }
-    endpoints
+    openai_compat_endpoint_candidates(&primary_base)
 }
 
 fn openai_model_list_endpoint_candidates(base_url: &str) -> Vec<String> {
@@ -432,25 +417,26 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
             let endpoints = openai_compat_endpoint_candidates_for_system(system);
             let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
+            if is_model_unspecified(&model) {
+                return AgentSystemAvailability {
+                    available: false,
+                    reason: Some(format!(
+                        "model is unspecified; set catalog model or provide {} / --model",
+                        AGENT_MODEL_ENV
+                    )),
+                };
+            }
             let preview = endpoints
                 .iter()
                 .take(2)
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(" or ");
-            let extra = endpoints.len().saturating_sub(2);
             AgentSystemAvailability {
                 available: true,
                 reason: Some(format!(
-                    "expects OpenAI-compatible local server near {} (model '{}'; tries {}{}; key optional)",
-                    base_url,
-                    model,
-                    preview,
-                    if extra > 0 {
-                        format!(" + {} fallback endpoint(s)", extra)
-                    } else {
-                        String::new()
-                    }
+                    "expects OpenAI-compatible local server near {} (model '{}'; tries {}; key optional)",
+                    base_url, model, preview
                 )),
             }
         }
@@ -1336,6 +1322,15 @@ fn invoke_native_openai_compat_once(
 ) -> Result<(String, String), ExternalAttemptError> {
     let api_key = resolve_api_key(system);
     let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
+    if is_model_unspecified(&model) {
+        return Err(ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Unavailable,
+            message: format!(
+                "OpenAI-compatible model is unspecified; set '{}' in catalog or provide {} / --model",
+                OPENAI_COMPAT_UNSPECIFIED_MODEL, AGENT_MODEL_ENV
+            ),
+        });
+    }
     let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
     let endpoints = openai_compat_endpoint_candidates_for_system(system);
     let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
@@ -1928,6 +1923,29 @@ mod tests {
     }
 
     #[test]
+    fn availability_native_openai_compat_requires_model() {
+        let system = AgentSystemSpec {
+            id: "local-compat".to_string(),
+            label: "local-compat".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenaiCompat,
+            command: vec![],
+            model: Some(OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string()),
+            base_url: Some("http://127.0.0.1:11434/v1".to_string()),
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let availability = agent_system_availability(&system);
+        assert!(!availability.available);
+        assert!(
+            availability
+                .reason
+                .unwrap_or_default()
+                .contains("model is unspecified")
+        );
+    }
+
+    #[test]
     fn openai_compat_endpoint_candidates_include_v1_fallback_for_root_base() {
         let endpoints = openai_compat_endpoint_candidates("http://localhost:11964");
         assert_eq!(
@@ -1940,7 +1958,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_compat_endpoint_candidates_for_system_include_local_fallbacks_without_override() {
+    fn openai_compat_endpoint_candidates_for_system_use_resolved_base_only() {
         let system = AgentSystemSpec {
             id: "local-compat".to_string(),
             label: "local-compat".to_string(),
@@ -1953,42 +1971,9 @@ mod tests {
             working_dir: None,
         };
         let endpoints = openai_compat_endpoint_candidates_for_system(&system);
-        assert!(
-            endpoints
-                .iter()
-                .any(|value| value == "http://127.0.0.1:10000/v1/chat/completions")
-        );
-        assert!(
-            endpoints
-                .iter()
-                .any(|value| value == "http://localhost:11964/chat/completions")
-        );
-    }
-
-    #[test]
-    fn openai_compat_endpoint_candidates_for_system_respects_explicit_override() {
-        let mut system = AgentSystemSpec {
-            id: "local-compat".to_string(),
-            label: "local-compat".to_string(),
-            description: None,
-            transport: AgentSystemTransport::NativeOpenaiCompat,
-            command: vec![],
-            model: Some("llama3.1".to_string()),
-            base_url: Some("http://127.0.0.1:10000/v1".to_string()),
-            env: HashMap::new(),
-            working_dir: None,
-        };
-        system.env.insert(
-            AGENT_BASE_URL_ENV.to_string(),
-            "http://localhost:11964".to_string(),
-        );
-        let endpoints = openai_compat_endpoint_candidates_for_system(&system);
         assert_eq!(
             endpoints,
-            vec![
-                "http://localhost:11964/chat/completions".to_string(),
-                "http://localhost:11964/v1/chat/completions".to_string()
-            ]
+            vec!["http://127.0.0.1:10000/v1/chat/completions".to_string()]
         );
     }
 

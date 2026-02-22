@@ -224,7 +224,7 @@ Behavior:
 
 - loads systems from catalog JSON (default `assets/agent_systems.json`)
 - system selection is a dropdown from catalog entries
-- dropdown disables systems that are currently unavailable and shows the reason
+- unavailable systems remain selectable and show the reason
 - `OpenAI API key` field in this window is a session-only override
   - enter your key as `sk-...`
   - click `Clear Key` to remove it from current session
@@ -237,11 +237,13 @@ Behavior:
   - click `Clear URL` to remove it from current session
 - `Model override` field is a session-only model-name override for
   `native_openai` and `native_openai_compat`
-  - use this when local runtime does not provide the catalog model
+  - use this to force a concrete model id
+  - `unspecified` means no override
   - click `Clear Model` to remove it from current session
-- if no model override is set, GENtle can query available models from current
-  endpoint and present a dropdown to choose one (`Discover Models` /
-  `Use Selected Model`)
+- if model remains `unspecified`, GENtle blocks requests until you pick a
+  discovered model or set a concrete override
+- `Discover Models` queries the current endpoint and populates a model dropdown
+  for explicit selection
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - `Ask Agent` runs in background and reports status in `Background Jobs`
@@ -274,15 +276,14 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
    - `Jan Local (template)`
    - `Msty Local (template)`
 3. Set `Base URL override` to your local endpoint, e.g. `http://localhost:11964`.
-4. Set `Model override` to a model id available in your local runtime (for example `deepseek-r1:8b`).
-5. Optionally adjust `model` in `assets/agent_systems.json` if you want a persistent default.
+4. Click `Discover Models` and select one discovered model from the dropdown
+   (or set `Model override` directly, for example `deepseek-r1:8b`).
+5. Optionally set persistent defaults in `assets/agent_systems.json`.
 6. If your local service expects no key, keep `OpenAI API key` empty.
 7. Ask agent as usual.
 8. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
    - `/chat/completions`
    - `/v1/chat/completions`
-9. If no `Base URL override` is set, GENtle also probes common local Ollama-style
-   ports (`11964`, `11434`) before returning unavailable.
 
 Common failure interpretation:
 

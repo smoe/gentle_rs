@@ -217,8 +217,10 @@ Transport notes:
   per request for `native_openai` and `native_openai_compat`.
 - `GENTLE_AGENT_MODEL` (or CLI `--model`) overrides catalog `model` per request
   for `native_openai` and `native_openai_compat`.
-- Without explicit override, `native_openai_compat` additionally probes common
-  local loopback ports (`11964`, `11434`) for compatibility.
+- `native_openai_compat` requires a concrete model name; value `unspecified`
+  is treated as missing and the request is rejected until a model is provided.
+- `native_openai_compat` does not silently switch host/port; it uses catalog
+  `base_url` or explicit `GENTLE_AGENT_BASE_URL`.
 
 Agent request payload schema (`gentle.agent_request.v1`):
 

@@ -627,6 +627,8 @@ Agent bridge commands:
     `GENTLE_AGENT_BASE_URL`) for native transports.
   - `--model` sets a per-request model override (maps to `GENTLE_AGENT_MODEL`)
     for native transports.
+  - for `native_openai_compat`, model must resolve to a concrete value (catalog
+    model or `--model`); `unspecified` is rejected.
   - `--no-state-summary` disables project-context injection in the request.
   - External adapter responses must be strict `gentle.agent_response.v1` JSON.
   - Unknown canonical response fields are rejected (extensions must use `x_` or `x-` prefix).
@@ -644,8 +646,8 @@ Agent bridge commands:
     - `native_openai` (built-in OpenAI HTTP adapter, requires `OPENAI_API_KEY`)
     - `native_openai_compat` (built-in local OpenAI-compatible adapter for
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
-      - when `--base-url` is omitted, common local loopback ports (`11964`,
-        `11434`) are probed as compatibility fallbacks
+      - endpoint host/port come from catalog `base_url` (or `--base-url` if set);
+        GENtle does not silently switch to a different host/port
 
 Genome convenience commands:
 

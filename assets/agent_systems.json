@@ -38,26 +38,26 @@
     {
       "id": "local_llama_compat",
       "label": "Local Llama (OpenAI-compatible)",
-      "description": "Template for local OpenAI-compatible Llama services (e.g. Ollama/Jan/Msty gateway). Adjust base_url/model to your local setup. API key is optional.",
+      "description": "Template for local OpenAI-compatible Llama services (e.g. Ollama/Jan/Msty gateway). Keep model as 'unspecified' and select from discovered models, or set a concrete model override. API key is optional.",
       "transport": "native_openai_compat",
-      "model": "llama3.1",
+      "model": "unspecified",
       "base_url": "http://127.0.0.1:11434/v1"
     },
     {
       "id": "jan_local_compat_template",
       "label": "Jan Local (template)",
-      "description": "Template for Jan OpenAI-compatible local endpoint. Update base_url/model as needed for your Jan setup.",
+      "description": "Template for Jan OpenAI-compatible local endpoint. Keep model as 'unspecified' and pick from discovered models or provide an explicit override.",
       "transport": "native_openai_compat",
-      "model": "llama3.1",
+      "model": "unspecified",
       "base_url": "http://127.0.0.1:1337/v1"
     },
     {
       "id": "msty_local_compat_template",
       "label": "Msty Local (template)",
-      "description": "Template for Msty OpenAI-compatible local endpoint. Update base_url/model as needed for your Msty setup.",
+      "description": "Template for Msty OpenAI-compatible local endpoint. Keep model as 'unspecified' and pick from discovered models or provide an explicit override.",
       "transport": "native_openai_compat",
-      "model": "llama3.1",
-      "base_url": "http://127.0.0.1:10000/v1"
+      "model": "unspecified",
+      "base_url": "http://localhost:11964"
     }
   ]
 }

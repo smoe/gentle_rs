@@ -373,7 +373,10 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 - Catalog entries describe transport and invocation details:
   - `builtin_echo` (offline/demo transport)
   - `external_json_stdio` (external adapter command over stdin/stdout JSON)
-  - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL override)
+  - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL/model override)
+  - `native_openai_compat` requires explicit model resolution (catalog model or
+    per-request override; `unspecified` is rejected) and keeps endpoint host/port
+    deterministic (no hidden host fallback probing)
 - Agent request payload includes:
   - system id and prompt
   - optional project state summary context
