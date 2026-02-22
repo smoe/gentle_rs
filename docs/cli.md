@@ -385,6 +385,7 @@ cargo run --bin gentle_cli -- agents list
 cargo run --bin gentle_cli -- agents list --catalog assets/agent_systems.json
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "summarize current project state"
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "ask: Which sequence should I use?" --execute-index 1
+cargo run --bin gentle_cli -- agents ask local_llama_compat --prompt "summarize project context" --base-url http://localhost:11964 --model deepseek-r1:8b
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
@@ -476,7 +477,7 @@ Shared shell command:
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `agents list [--catalog PATH]`
-    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
     - `genomes list [--catalog PATH]`
     - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
@@ -620,8 +621,12 @@ Agent bridge commands:
   - Default catalog path: `assets/agent_systems.json`.
   - Includes availability status (`available`, `availability_reason`) so callers
     can skip systems that are not currently runnable.
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
+  - `--base-url` sets a per-request runtime endpoint override (maps to
+    `GENTLE_AGENT_BASE_URL`) for native transports.
+  - `--model` sets a per-request model override (maps to `GENTLE_AGENT_MODEL`)
+    for native transports.
   - `--no-state-summary` disables project-context injection in the request.
   - External adapter responses must be strict `gentle.agent_response.v1` JSON.
   - Unknown canonical response fields are rejected (extensions must use `x_` or `x-` prefix).
@@ -639,6 +644,8 @@ Agent bridge commands:
     - `native_openai` (built-in OpenAI HTTP adapter, requires `OPENAI_API_KEY`)
     - `native_openai_compat` (built-in local OpenAI-compatible adapter for
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
+      - when `--base-url` is omitted, common local loopback ports (`11964`,
+        `11434`) are probed as compatibility fallbacks
 
 Genome convenience commands:
 

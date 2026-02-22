@@ -1,6 +1,6 @@
 use crate::engine::EngineStateSummary;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -23,7 +23,11 @@ const AGENT_INVOKE_RETRY_ATTEMPTS: usize = 3;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+const OPENAI_COMPAT_DEFAULT_MODEL: &str = "llama3.1";
+const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
+pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
+pub const AGENT_MODEL_ENV: &str = "GENTLE_AGENT_MODEL";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentBridgeErrorCode {
@@ -176,6 +180,211 @@ fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
         })
 }
 
+fn resolve_model(system: &AgentSystemSpec, default: &str) -> String {
+    system
+        .env
+        .get(AGENT_MODEL_ENV)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            system
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn normalize_base_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let with_scheme = if trimmed.contains("://") {
+        trimmed.to_string()
+    } else {
+        format!("http://{trimmed}")
+    };
+    Some(with_scheme.trim_end_matches('/').to_string())
+}
+
+fn resolve_base_url(system: &AgentSystemSpec, default: &str) -> String {
+    system
+        .env
+        .get(AGENT_BASE_URL_ENV)
+        .and_then(|value| normalize_base_url(value))
+        .or_else(|| {
+            system
+                .base_url
+                .as_deref()
+                .and_then(|value| normalize_base_url(value))
+        })
+        .or_else(|| normalize_base_url(default))
+        .unwrap_or_else(|| default.trim_end_matches('/').to_string())
+}
+
+fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
+    let normalized = normalize_base_url(base_url)
+        .or_else(|| normalize_base_url(OPENAI_COMPAT_DEFAULT_BASE_URL))
+        .unwrap_or_else(|| {
+            OPENAI_COMPAT_DEFAULT_BASE_URL
+                .trim_end_matches('/')
+                .to_string()
+        });
+    let mut endpoints = vec![format!("{normalized}/chat/completions")];
+    if !normalized.ends_with("/v1") {
+        let v1 = format!("{normalized}/v1/chat/completions");
+        if !endpoints.contains(&v1) {
+            endpoints.push(v1);
+        }
+    }
+    endpoints
+}
+
+fn openai_compat_endpoint_candidates_for_system(system: &AgentSystemSpec) -> Vec<String> {
+    let primary_base = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
+    let has_explicit_override = system
+        .env
+        .get(AGENT_BASE_URL_ENV)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let mut endpoints = openai_compat_endpoint_candidates(&primary_base);
+    if has_explicit_override {
+        return endpoints;
+    }
+    // For local OpenAI-compatible services, probe common host/port defaults
+    // when catalog defaults do not match the running daemon.
+    let local_base_candidates = [
+        "http://localhost:11964",
+        "http://127.0.0.1:11964",
+        "http://localhost:11434",
+        "http://127.0.0.1:11434",
+    ];
+    for base in local_base_candidates {
+        for endpoint in openai_compat_endpoint_candidates(base) {
+            if !endpoints.contains(&endpoint) {
+                endpoints.push(endpoint);
+            }
+        }
+    }
+    endpoints
+}
+
+fn openai_model_list_endpoint_candidates(base_url: &str) -> Vec<String> {
+    let normalized = normalize_base_url(base_url)
+        .or_else(|| normalize_base_url(OPENAI_COMPAT_DEFAULT_BASE_URL))
+        .unwrap_or_else(|| {
+            OPENAI_COMPAT_DEFAULT_BASE_URL
+                .trim_end_matches('/')
+                .to_string()
+        });
+    let mut endpoints = vec![format!("{normalized}/models")];
+    if !normalized.ends_with("/v1") {
+        let v1 = format!("{normalized}/v1/models");
+        if !endpoints.contains(&v1) {
+            endpoints.push(v1);
+        }
+    }
+    endpoints
+}
+
+fn extract_models_from_openai_models_payload(value: &Value) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut push = |raw: &str| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if seen.insert(trimmed.to_string()) {
+            out.push(trimmed.to_string());
+        }
+    };
+    if let Some(data) = value.get("data").and_then(Value::as_array) {
+        for item in data {
+            if let Some(id) = item.get("id").and_then(Value::as_str) {
+                push(id);
+            }
+        }
+    }
+    if let Some(models) = value.get("models").and_then(Value::as_array) {
+        for item in models {
+            if let Some(id) = item.get("id").and_then(Value::as_str) {
+                push(id);
+                continue;
+            }
+            if let Some(name) = item.get("name").and_then(Value::as_str) {
+                push(name);
+            }
+        }
+    }
+    if let Some(items) = value.as_array() {
+        for item in items {
+            if let Some(id) = item.as_str() {
+                push(id);
+            }
+        }
+    }
+    out
+}
+
+pub fn discover_openai_models(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let endpoints = openai_model_list_endpoint_candidates(base_url);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("could not build OpenAI model-discovery client: {e}"))?;
+    let mut first_error: Option<String> = None;
+    for endpoint in endpoints {
+        let mut request = client.get(&endpoint);
+        if let Some(key) = api_key.map(str::trim).filter(|value| !value.is_empty()) {
+            request = request.bearer_auth(key);
+        }
+        match request.send() {
+            Ok(response) => {
+                let status = response.status();
+                let body = response
+                    .text()
+                    .map_err(|e| format!("could not read model discovery response body: {e}"))?;
+                if !status.is_success() {
+                    if (status.as_u16() == 404 || status.as_u16() == 405) && first_error.is_none() {
+                        first_error = Some(format!(
+                            "model discovery endpoint not supported at {endpoint} (status={status})"
+                        ));
+                        continue;
+                    }
+                    return Err(format!(
+                        "model discovery failed at {endpoint} (status={status}): {}",
+                        body.trim()
+                    ));
+                }
+                let value = serde_json::from_str::<Value>(&body).map_err(|e| {
+                    format!("model discovery endpoint returned invalid JSON at {endpoint}: {e}")
+                })?;
+                let models = extract_models_from_openai_models_payload(&value);
+                if models.is_empty() {
+                    return Err(format!(
+                        "model discovery at {endpoint} succeeded but returned no model ids"
+                    ));
+                }
+                return Ok(models);
+            }
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(format!("request failed at {endpoint}: {e}"));
+                }
+            }
+        }
+    }
+    Err(first_error
+        .unwrap_or_else(|| "model discovery failed: no endpoint candidate succeeded".to_string()))
+}
+
 pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailability {
     match system.transport {
         AgentSystemTransport::BuiltinEcho => AgentSystemAvailability {
@@ -220,17 +429,28 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             }
         }
         AgentSystemTransport::NativeOpenaiCompat => {
-            let base_url = system
-                .base_url
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or("http://127.0.0.1:11434/v1");
+            let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
+            let endpoints = openai_compat_endpoint_candidates_for_system(system);
+            let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
+            let preview = endpoints
+                .iter()
+                .take(2)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" or ");
+            let extra = endpoints.len().saturating_sub(2);
             AgentSystemAvailability {
                 available: true,
                 reason: Some(format!(
-                    "expects OpenAI-compatible local server at {} (key optional)",
-                    base_url
+                    "expects OpenAI-compatible local server near {} (model '{}'; tries {}{}; key optional)",
+                    base_url,
+                    model,
+                    preview,
+                    if extra > 0 {
+                        format!(" + {} fallback endpoint(s)", extra)
+                    } else {
+                        String::new()
+                    }
                 )),
             }
         }
@@ -1046,20 +1266,8 @@ fn invoke_native_openai_once(
         kind: ExternalAttemptErrorKind::Unavailable,
         message: format!("{OPENAI_API_KEY_ENV} is not set"),
     })?;
-    let model = system
-        .model
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(OPENAI_DEFAULT_MODEL);
-    let base_url = system
-        .base_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(OPENAI_DEFAULT_BASE_URL)
-        .trim_end_matches('/')
-        .to_string();
+    let model = resolve_model(system, OPENAI_DEFAULT_MODEL);
+    let base_url = resolve_base_url(system, OPENAI_DEFAULT_BASE_URL);
     let endpoint = format!("{base_url}/responses");
     let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
     let payload = json!({
@@ -1127,21 +1335,9 @@ fn invoke_native_openai_compat_once(
     request_json: &str,
 ) -> Result<(String, String), ExternalAttemptError> {
     let api_key = resolve_api_key(system);
-    let model = system
-        .model
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("llama3.1");
-    let base_url = system
-        .base_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("http://127.0.0.1:11434/v1")
-        .trim_end_matches('/')
-        .to_string();
-    let endpoint = format!("{base_url}/chat/completions");
+    let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
+    let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
+    let endpoints = openai_compat_endpoint_candidates_for_system(system);
     let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
     let payload = json!({
         "model": model,
@@ -1164,43 +1360,75 @@ fn invoke_native_openai_compat_once(
             kind: ExternalAttemptErrorKind::Fatal,
             message: format!("could not build OpenAI-compatible client: {e}"),
         })?;
-    let mut request = client
-        .post(&endpoint)
-        .header("Content-Type", "application/json");
-    if let Some(key) = api_key {
-        request = request.bearer_auth(key);
-    }
-    let response = request
-        .json(&payload)
-        .send()
-        .map_err(|e| ExternalAttemptError {
-            kind: if e.is_timeout() || e.is_connect() || e.is_request() {
-                ExternalAttemptErrorKind::Transient
-            } else {
-                ExternalAttemptErrorKind::Fatal
-            },
-            message: format!("OpenAI-compatible request failed: {e}"),
-        })?;
-    let status = response.status();
-    let body = response.text().map_err(|e| ExternalAttemptError {
-        kind: ExternalAttemptErrorKind::Fatal,
-        message: format!("could not read OpenAI-compatible response body: {e}"),
-    })?;
-    if !status.is_success() {
-        return Err(classify_openai_http_error(status, &body));
-    }
-    let response_json = serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
-        kind: ExternalAttemptErrorKind::Fatal,
-        message: format!("OpenAI-compatible API returned invalid JSON: {e}"),
-    })?;
-    let text = extract_openai_chat_completions_text(&response_json).ok_or_else(|| {
-        ExternalAttemptError {
-            kind: ExternalAttemptErrorKind::Fatal,
-            message: "OpenAI-compatible response did not contain choices[0].message.content"
-                .to_string(),
+    let mut first_path_error: Option<ExternalAttemptError> = None;
+    for (idx, endpoint) in endpoints.iter().enumerate() {
+        let mut request = client
+            .post(endpoint)
+            .header("Content-Type", "application/json");
+        if let Some(key) = api_key.as_deref() {
+            request = request.bearer_auth(key);
         }
-    })?;
-    Ok((text, body))
+        let response = match request.json(&payload).send() {
+            Ok(response) => response,
+            Err(e) => {
+                let kind = if e.is_timeout() || e.is_connect() || e.is_request() {
+                    ExternalAttemptErrorKind::Transient
+                } else {
+                    ExternalAttemptErrorKind::Fatal
+                };
+                let error = ExternalAttemptError {
+                    kind,
+                    message: format!("OpenAI-compatible request failed ({endpoint}): {e}"),
+                };
+                let can_try_fallback = matches!(kind, ExternalAttemptErrorKind::Transient)
+                    && idx + 1 < endpoints.len();
+                if can_try_fallback {
+                    if first_path_error.is_none() {
+                        first_path_error = Some(error);
+                    }
+                    continue;
+                }
+                return Err(error);
+            }
+        };
+        let status = response.status();
+        let body = response.text().map_err(|e| ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!("could not read OpenAI-compatible response body: {e}"),
+        })?;
+        if !status.is_success() {
+            let classified = classify_openai_http_error(status, &body);
+            let can_try_fallback = (status.as_u16() == 404 || status.as_u16() == 405)
+                && idx + 1 < endpoints.len()
+                && !matches!(classified.kind, ExternalAttemptErrorKind::Unavailable);
+            if can_try_fallback {
+                if first_path_error.is_none() {
+                    first_path_error = Some(classified);
+                }
+                continue;
+            }
+            return Err(classified);
+        }
+        let response_json =
+            serde_json::from_str::<Value>(&body).map_err(|e| ExternalAttemptError {
+                kind: ExternalAttemptErrorKind::Fatal,
+                message: format!("OpenAI-compatible API returned invalid JSON: {e}"),
+            })?;
+        let text = extract_openai_chat_completions_text(&response_json).ok_or_else(|| {
+            ExternalAttemptError {
+                kind: ExternalAttemptErrorKind::Fatal,
+                message: "OpenAI-compatible response did not contain choices[0].message.content"
+                    .to_string(),
+            }
+        })?;
+        return Ok((text, body));
+    }
+    Err(first_path_error.unwrap_or_else(|| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!(
+            "OpenAI-compatible call failed before receiving a response body (base_url={base_url})"
+        ),
+    }))
 }
 
 fn builtin_echo_response(prompt: &str) -> AgentResponse {
@@ -1424,8 +1652,7 @@ pub fn invoke_agent_support_with_env_overrides(
                                     AgentBridgeErrorCode::AdapterTransient,
                                     format!(
                                         "native OpenAI call remained transiently unavailable after {} attempts: {}",
-                                        AGENT_INVOKE_RETRY_ATTEMPTS,
-                                        error.message
+                                        AGENT_INVOKE_RETRY_ATTEMPTS, error.message
                                     ),
                                 ));
                             }
@@ -1494,8 +1721,7 @@ pub fn invoke_agent_support_with_env_overrides(
                                     AgentBridgeErrorCode::AdapterTransient,
                                     format!(
                                         "native OpenAI-compatible call remained transiently unavailable after {} attempts: {}",
-                                        AGENT_INVOKE_RETRY_ATTEMPTS,
-                                        error.message
+                                        AGENT_INVOKE_RETRY_ATTEMPTS, error.message
                                     ),
                                 ));
                             }
@@ -1671,6 +1897,115 @@ mod tests {
         };
         let availability = agent_system_availability(&system);
         assert!(availability.available);
+    }
+
+    #[test]
+    fn availability_native_openai_compat_uses_env_base_url_override() {
+        let mut system = AgentSystemSpec {
+            id: "local-compat".to_string(),
+            label: "local-compat".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenaiCompat,
+            command: vec![],
+            model: Some("llama3.1".to_string()),
+            base_url: Some("http://127.0.0.1:11434/v1".to_string()),
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        system.env.insert(
+            AGENT_BASE_URL_ENV.to_string(),
+            "http://localhost:11964".to_string(),
+        );
+        system
+            .env
+            .insert(AGENT_MODEL_ENV.to_string(), "deepseek-r1:8b".to_string());
+        let availability = agent_system_availability(&system);
+        let reason = availability.reason.unwrap_or_default();
+        assert!(availability.available);
+        assert!(reason.contains("localhost:11964"));
+        assert!(reason.contains("deepseek-r1:8b"));
+        assert!(reason.contains("/v1/chat/completions"));
+    }
+
+    #[test]
+    fn openai_compat_endpoint_candidates_include_v1_fallback_for_root_base() {
+        let endpoints = openai_compat_endpoint_candidates("http://localhost:11964");
+        assert_eq!(
+            endpoints,
+            vec![
+                "http://localhost:11964/chat/completions".to_string(),
+                "http://localhost:11964/v1/chat/completions".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn openai_compat_endpoint_candidates_for_system_include_local_fallbacks_without_override() {
+        let system = AgentSystemSpec {
+            id: "local-compat".to_string(),
+            label: "local-compat".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenaiCompat,
+            command: vec![],
+            model: Some("llama3.1".to_string()),
+            base_url: Some("http://127.0.0.1:10000/v1".to_string()),
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        let endpoints = openai_compat_endpoint_candidates_for_system(&system);
+        assert!(
+            endpoints
+                .iter()
+                .any(|value| value == "http://127.0.0.1:10000/v1/chat/completions")
+        );
+        assert!(
+            endpoints
+                .iter()
+                .any(|value| value == "http://localhost:11964/chat/completions")
+        );
+    }
+
+    #[test]
+    fn openai_compat_endpoint_candidates_for_system_respects_explicit_override() {
+        let mut system = AgentSystemSpec {
+            id: "local-compat".to_string(),
+            label: "local-compat".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenaiCompat,
+            command: vec![],
+            model: Some("llama3.1".to_string()),
+            base_url: Some("http://127.0.0.1:10000/v1".to_string()),
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        system.env.insert(
+            AGENT_BASE_URL_ENV.to_string(),
+            "http://localhost:11964".to_string(),
+        );
+        let endpoints = openai_compat_endpoint_candidates_for_system(&system);
+        assert_eq!(
+            endpoints,
+            vec![
+                "http://localhost:11964/chat/completions".to_string(),
+                "http://localhost:11964/v1/chat/completions".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_models_from_openai_models_payload_reads_standard_data_shape() {
+        let value = serde_json::json!({
+            "object": "list",
+            "data": [
+                {"id":"deepseek-r1:8b"},
+                {"id":"qwen3:0.6b"}
+            ]
+        });
+        let models = extract_models_from_openai_models_payload(&value);
+        assert_eq!(
+            models,
+            vec!["deepseek-r1:8b".to_string(), "qwen3:0.6b".to_string()]
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-21
+Last updated: 2026-02-22
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -79,6 +79,11 @@ Discoverability rule:
   panel) so long-running work is visible and cancellable.
 - Hovered actionable controls should expose a stable human-readable name for
   shared debugging/support language.
+- Command discoverability and documentation should be glossary-driven:
+  - shell command help is generated from `docs/glossary.json` (single source of truth)
+  - the help viewer should support interface/language filtering (GUI shell,
+    CLI shell, CLI direct, JS, Lua, or all) to avoid duplicated manuals while
+    keeping context-specific views.
 - Prepared-reference inspection must remain directly reachable from
   `File -> Prepared References...` and `Genome -> Prepared References...`, and
   searchable as `Prepared References` in Command Palette.
@@ -363,11 +368,12 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 
 - Shared shell commands:
   - `agents list [--catalog PATH]`
-  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
 - Catalog source defaults to `assets/agent_systems.json`.
 - Catalog entries describe transport and invocation details:
   - `builtin_echo` (offline/demo transport)
   - `external_json_stdio` (external adapter command over stdin/stdout JSON)
+  - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL override)
 - Agent request payload includes:
   - system id and prompt
   - optional project state summary context

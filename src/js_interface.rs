@@ -139,6 +139,8 @@ fn ask_agent_system_impl(
         system_id: system_id.to_string(),
         prompt: prompt.to_string(),
         catalog_path: empty_to_none(catalog_path).map(str::to_string),
+        base_url_override: None,
+        model_override: None,
         include_state_summary,
         allow_auto_exec,
         execute_all,

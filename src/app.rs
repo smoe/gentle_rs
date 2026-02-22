@@ -3,42 +3,43 @@ use std::{
     env, fs,
     hash::{Hash, Hasher},
     io::ErrorKind,
-    panic::{catch_unwind, AssertUnwindSafe},
+    panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     process::Command,
     sync::{
+        Arc, RwLock,
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, RwLock,
+        mpsc,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
-    about,
+    TRANSLATIONS, about,
     agent_bridge::{
-        agent_system_availability, invoke_agent_support_with_env_overrides,
-        load_agent_system_catalog, AgentExecutionIntent, AgentInvocationOutcome, AgentResponse,
-        AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
-        OPENAI_API_KEY_ENV,
+        AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, AgentExecutionIntent, AgentInvocationOutcome,
+        AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+        OPENAI_API_KEY_ENV, agent_system_availability, discover_openai_models,
+        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     dna_sequence::{self, DNAsequence},
     engine::{
-        BlastHitFeatureInput, DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode,
-        GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
-        GenomeTrackSyncReport, GentleEngine, OpResult, Operation, OperationProgress, ProjectState,
-        SequenceGenomeAnchorSummary, BIGWIG_TO_BEDGRAPH_ENV_BIN, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
+        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GenomeTrackImportProgress,
+        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, OpResult,
+        Operation, OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
     },
     engine_shell::{
-        execute_shell_command_with_options, parse_shell_line, ShellCommand, ShellExecutionOptions,
-        UiIntentTarget,
+        ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
+        parse_shell_line,
     },
     enzymes,
     genomes::{
-        GenomeBlastReport, GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord,
-        GenomeSourcePlan, PrepareGenomeProgress, PreparedGenomeInspection, BLASTN_ENV_BIN,
-        DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, MAKEBLASTDB_ENV_BIN,
-        PREPARE_GENOME_TIMEOUT_SECS_ENV,
+        BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN, DEFAULT_GENOME_CACHE_DIR, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_MAKEBLASTDB_BIN, GenomeBlastReport,
+        GenomeCatalog, GenomeChromosomeRecord, GenomeGeneRecord, GenomeSourcePlan,
+        MAKEBLASTDB_ENV_BIN, PREPARE_GENOME_TIMEOUT_SECS_ENV, PrepareGenomeProgress,
+        PreparedGenomeInspection,
     },
     icons::APP_ICON,
     resource_sync,
@@ -48,10 +49,9 @@ use crate::{
     },
     tf_motifs, tool_overrides,
     window::Window,
-    TRANSLATIONS,
 };
-use anyhow::{anyhow, Result};
-use eframe::egui::{self, menu, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId};
+use anyhow::{Result, anyhow};
+use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId, menu};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use pulldown_cmark::{Event, LinkType, Parser, Tag};
 use regex::{Regex, RegexBuilder};
@@ -63,6 +63,9 @@ const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
+const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
+const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+const GUI_OPENAI_COMPAT_DEFAULT_MODEL: &str = "llama3.1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -155,6 +158,7 @@ pub struct GENtleApp {
     help_gui_markdown: String,
     help_cli_markdown: String,
     help_shell_markdown: String,
+    help_shell_interface: ShellHelpInterface,
     help_search_query: String,
     help_search_matches: Vec<HelpSearchMatch>,
     help_search_selected: usize,
@@ -271,6 +275,13 @@ pub struct GENtleApp {
     agent_systems: Vec<AgentSystemSpec>,
     agent_system_id: String,
     agent_openai_api_key: String,
+    agent_base_url_override: String,
+    agent_model_override: String,
+    agent_discovered_models: Vec<String>,
+    agent_discovered_model_pick: String,
+    agent_model_discovery_status: String,
+    agent_model_discovery_source_key: String,
+    agent_model_discovery_task: Option<AgentModelDiscoveryTask>,
     agent_prompt: String,
     agent_include_state_summary: bool,
     agent_allow_auto_exec: bool,
@@ -293,6 +304,40 @@ enum HelpDoc {
     Gui,
     Cli,
     Shell,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShellHelpInterface {
+    All,
+    GuiShell,
+    CliShell,
+    CliDirect,
+    Js,
+    Lua,
+}
+
+impl ShellHelpInterface {
+    fn label(self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::GuiShell => "GUI shell",
+            Self::CliShell => "CLI shell",
+            Self::CliDirect => "CLI direct",
+            Self::Js => "JS",
+            Self::Lua => "Lua",
+        }
+    }
+
+    fn glossary_filter(self) -> Option<&'static str> {
+        match self {
+            Self::All => None,
+            Self::GuiShell => Some("gui-shell"),
+            Self::CliShell => Some("cli-shell"),
+            Self::CliDirect => Some("cli-direct"),
+            Self::Js => Some("js"),
+            Self::Lua => Some("lua"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -464,6 +509,19 @@ enum AgentAskTaskMessage {
     },
 }
 
+struct AgentModelDiscoveryTask {
+    started: Instant,
+    source_key: String,
+    receiver: mpsc::Receiver<AgentModelDiscoveryTaskMessage>,
+}
+
+enum AgentModelDiscoveryTaskMessage {
+    Done {
+        source_key: String,
+        result: Result<Vec<String>, String>,
+    },
+}
+
 #[derive(Clone)]
 struct AgentCommandExecutionRecord {
     index_1based: usize,
@@ -596,6 +654,7 @@ impl Default for GENtleApp {
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
             help_shell_markdown: Self::generate_shell_help_markdown(),
+            help_shell_interface: ShellHelpInterface::GuiShell,
             help_search_query: String::new(),
             help_search_matches: vec![],
             help_search_selected: 0,
@@ -713,6 +772,13 @@ impl Default for GENtleApp {
             agent_systems: vec![],
             agent_system_id: "builtin_echo".to_string(),
             agent_openai_api_key: String::new(),
+            agent_base_url_override: String::new(),
+            agent_model_override: String::new(),
+            agent_discovered_models: vec![],
+            agent_discovered_model_pick: String::new(),
+            agent_model_discovery_status: String::new(),
+            agent_model_discovery_source_key: String::new(),
+            agent_model_discovery_task: None,
             agent_prompt: String::new(),
             agent_include_state_summary: true,
             agent_allow_auto_exec: false,
@@ -1171,17 +1237,18 @@ impl GENtleApp {
         fallback.to_string()
     }
 
-    fn generate_shell_help_markdown() -> String {
+    fn generate_shell_help_markdown_for(interface: ShellHelpInterface) -> String {
+        let interface_filter = interface.glossary_filter();
         if let Some(runtime_path) = Self::resolve_runtime_doc_path("docs/glossary.json") {
             if let Ok(raw) = fs::read_to_string(runtime_path) {
                 if let Ok(markdown) =
-                    render_shell_help_markdown_from_glossary_json(&raw, Some("gui-shell"))
+                    render_shell_help_markdown_from_glossary_json(&raw, interface_filter)
                 {
                     return markdown;
                 }
             }
         }
-        match render_shell_help_markdown(Some("gui-shell")) {
+        match render_shell_help_markdown(interface_filter) {
             Ok(markdown) => markdown,
             Err(err) => format!(
                 "# GENtle Shell Command Reference\n\n\
@@ -1191,10 +1258,15 @@ Error: `{err}`"
         }
     }
 
+    fn generate_shell_help_markdown() -> String {
+        Self::generate_shell_help_markdown_for(ShellHelpInterface::GuiShell)
+    }
+
     fn refresh_help_docs(&mut self) {
         self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
         self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
-        self.help_shell_markdown = Self::generate_shell_help_markdown();
+        self.help_shell_markdown =
+            Self::generate_shell_help_markdown_for(self.help_shell_interface);
     }
 
     fn consume_native_help_request(&mut self) {
@@ -2171,9 +2243,14 @@ Error: `{err}`"
         self.genome_track_autosync_status.clear();
         self.tracked_autosync_last_op_count = None;
         self.agent_task = None;
+        self.agent_model_discovery_task = None;
         self.agent_status.clear();
         self.agent_last_invocation = None;
         self.agent_execution_log.clear();
+        self.agent_discovered_models.clear();
+        self.agent_discovered_model_pick.clear();
+        self.agent_model_discovery_status.clear();
+        self.agent_model_discovery_source_key.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.mark_clean_snapshot();
@@ -2877,11 +2954,136 @@ Error: `{err}`"
             .cloned()
     }
 
+    fn selected_agent_system_with_session_overrides(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> AgentSystemSpec {
+        let mut resolved = system.clone();
+        let override_base_url = self.agent_base_url_override.trim();
+        if !override_base_url.is_empty()
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved.env.insert(
+                AGENT_BASE_URL_ENV.to_string(),
+                override_base_url.to_string(),
+            );
+        }
+        let override_model = self.agent_model_override.trim();
+        if !override_model.is_empty()
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved
+                .env
+                .insert(AGENT_MODEL_ENV.to_string(), override_model.to_string());
+        }
+        resolved
+    }
+
+    fn selected_agent_runtime_base_url(&self, system: &AgentSystemSpec) -> Option<String> {
+        if !matches!(
+            system.transport,
+            AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+        ) {
+            return None;
+        }
+        let override_base_url = self.agent_base_url_override.trim();
+        if !override_base_url.is_empty() {
+            return Some(override_base_url.to_string());
+        }
+        if let Some(catalog_base_url) = system
+            .base_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(catalog_base_url.to_string());
+        }
+        Some(match system.transport {
+            AgentSystemTransport::NativeOpenai => GUI_OPENAI_DEFAULT_BASE_URL.to_string(),
+            AgentSystemTransport::NativeOpenaiCompat => {
+                GUI_OPENAI_COMPAT_DEFAULT_BASE_URL.to_string()
+            }
+            _ => return None,
+        })
+    }
+
+    fn selected_agent_model_discovery_source_key(
+        &self,
+        system: &AgentSystemSpec,
+    ) -> Option<String> {
+        let base_url = self.selected_agent_runtime_base_url(system)?;
+        let key_state = if self.agent_openai_api_key.trim().is_empty() {
+            "nokey"
+        } else {
+            "key"
+        };
+        Some(format!(
+            "{}|{}|{}|{}",
+            system.id,
+            system.transport.as_str(),
+            base_url,
+            key_state
+        ))
+    }
+
+    fn start_agent_model_discovery_task(&mut self, system: &AgentSystemSpec, force: bool) {
+        if !matches!(
+            system.transport,
+            AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+        ) {
+            return;
+        }
+        let Some(base_url) = self.selected_agent_runtime_base_url(system) else {
+            return;
+        };
+        let Some(source_key) = self.selected_agent_model_discovery_source_key(system) else {
+            return;
+        };
+        if !force {
+            if let Some(task) = &self.agent_model_discovery_task {
+                if task.source_key == source_key {
+                    return;
+                }
+            }
+            if self.agent_model_discovery_source_key == source_key
+                && !self.agent_discovered_models.is_empty()
+            {
+                return;
+            }
+        }
+        self.agent_model_discovery_source_key = source_key.clone();
+        self.agent_model_discovery_status = format!("Discovering models at {base_url} ...");
+        self.agent_model_discovery_task = None;
+        let api_key = self.agent_openai_api_key.trim().to_string();
+        let api_key = if api_key.is_empty() {
+            None
+        } else {
+            Some(api_key)
+        };
+        let (tx, rx) = mpsc::channel::<AgentModelDiscoveryTaskMessage>();
+        self.agent_model_discovery_task = Some(AgentModelDiscoveryTask {
+            started: Instant::now(),
+            source_key: source_key.clone(),
+            receiver: rx,
+        });
+        std::thread::spawn(move || {
+            let result = discover_openai_models(&base_url, api_key.as_deref());
+            let _ = tx.send(AgentModelDiscoveryTaskMessage::Done { source_key, result });
+        });
+    }
+
     fn selected_agent_system_availability(
         &self,
         system: &AgentSystemSpec,
     ) -> (bool, Option<String>) {
-        let availability = agent_system_availability(system);
+        let resolved = self.selected_agent_system_with_session_overrides(system);
+        let availability = agent_system_availability(&resolved);
         if availability.available {
             return (true, availability.reason);
         }
@@ -2928,6 +3130,29 @@ Error: `{err}`"
             self.agent_status = "Agent prompt cannot be empty".to_string();
             return;
         }
+        if matches!(
+            selected_system.transport,
+            AgentSystemTransport::NativeOpenaiCompat
+        ) && self.agent_model_override.trim().is_empty()
+            && !self.agent_discovered_models.is_empty()
+        {
+            let catalog_model = selected_system
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(GUI_OPENAI_COMPAT_DEFAULT_MODEL);
+            if !self
+                .agent_discovered_models
+                .iter()
+                .any(|value| value == catalog_model)
+            {
+                self.agent_status = format!(
+                    "Catalog model '{catalog_model}' is not available on current endpoint. Select a discovered model and click 'Use Selected Model'."
+                );
+                return;
+            }
+        }
 
         let state_summary = if self.agent_include_state_summary {
             Some(self.engine.read().unwrap().summarize_state())
@@ -2936,6 +3161,8 @@ Error: `{err}`"
         };
         let catalog_path = self.agent_catalog_path.trim().to_string();
         let openai_api_key = self.agent_openai_api_key.trim().to_string();
+        let base_url_override = self.agent_base_url_override.trim().to_string();
+        let model_override = self.agent_model_override.trim().to_string();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
         self.agent_status = format!("Asking agent '{}' in background", system_id);
@@ -2954,6 +3181,12 @@ Error: `{err}`"
             let mut env_overrides = HashMap::new();
             if !openai_api_key.is_empty() {
                 env_overrides.insert(OPENAI_API_KEY_ENV.to_string(), openai_api_key);
+            }
+            if !base_url_override.is_empty() {
+                env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url_override);
+            }
+            if !model_override.is_empty() {
+                env_overrides.insert(AGENT_MODEL_ENV.to_string(), model_override);
             }
             let result = invoke_agent_support_with_env_overrides(
                 Some(catalog_path.as_str()),
@@ -3277,6 +3510,72 @@ Error: `{err}`"
                         Some(job_id),
                         format!("Agent request failed in {:.1}s: {}", elapsed, err),
                     );
+                }
+            }
+        }
+    }
+
+    fn poll_agent_model_discovery_task(&mut self, ctx: &egui::Context) {
+        if self.agent_model_discovery_task.is_none() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let mut done: Option<(String, Result<Vec<String>, String>)> = None;
+        if let Some(task) = &self.agent_model_discovery_task {
+            match task.receiver.try_recv() {
+                Ok(AgentModelDiscoveryTaskMessage::Done { source_key, result }) => {
+                    done = Some((source_key, result));
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    done = Some((
+                        task.source_key.clone(),
+                        Err("Model discovery worker disconnected".to_string()),
+                    ));
+                }
+            }
+        }
+        if let Some((source_key, result)) = done {
+            let elapsed = self
+                .agent_model_discovery_task
+                .as_ref()
+                .map(|task| task.started.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            self.agent_model_discovery_task = None;
+            if source_key != self.agent_model_discovery_source_key {
+                return;
+            }
+            match result {
+                Ok(models) => {
+                    self.agent_discovered_models = models;
+                    if self.agent_discovered_models.is_empty() {
+                        self.agent_model_discovery_status =
+                            format!("Model discovery returned no models ({:.1}s)", elapsed);
+                        self.agent_discovered_model_pick.clear();
+                    } else {
+                        if !self
+                            .agent_discovered_models
+                            .iter()
+                            .any(|item| item == &self.agent_discovered_model_pick)
+                        {
+                            self.agent_discovered_model_pick = self
+                                .agent_discovered_models
+                                .first()
+                                .cloned()
+                                .unwrap_or_default();
+                        }
+                        self.agent_model_discovery_status = format!(
+                            "Discovered {} model(s) in {:.1}s",
+                            self.agent_discovered_models.len(),
+                            elapsed
+                        );
+                    }
+                }
+                Err(err) => {
+                    self.agent_discovered_models.clear();
+                    self.agent_discovered_model_pick.clear();
+                    self.agent_model_discovery_status =
+                        format!("Model discovery failed after {:.1}s: {}", elapsed, err);
                 }
             }
         }
@@ -6313,6 +6612,60 @@ Error: `{err}`"
             if !system.command.is_empty() {
                 ui.small(format!("command: {}", system.command.join(" ")));
             }
+            if matches!(
+                system.transport,
+                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            ) {
+                if let Some(source_key) = self.selected_agent_model_discovery_source_key(&system) {
+                    if self.agent_model_discovery_source_key != source_key {
+                        self.agent_model_discovery_source_key = source_key;
+                        self.agent_model_discovery_task = None;
+                        self.agent_discovered_models.clear();
+                        self.agent_discovered_model_pick.clear();
+                        self.agent_model_discovery_status.clear();
+                    }
+                    if self.agent_model_override.trim().is_empty()
+                        && self.agent_model_discovery_task.is_none()
+                        && self.agent_discovered_models.is_empty()
+                    {
+                        self.start_agent_model_discovery_task(&system, false);
+                    }
+                }
+                let catalog_base_url = system
+                    .base_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("(transport default)");
+                if self.agent_base_url_override.trim().is_empty() {
+                    ui.small(format!("base URL: {catalog_base_url}"));
+                } else {
+                    ui.small(format!(
+                        "base URL: {} (session override)",
+                        self.agent_base_url_override.trim()
+                    ));
+                }
+                let catalog_model = system
+                    .model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("(transport default)");
+                if self.agent_model_override.trim().is_empty() {
+                    ui.small(format!("model: {catalog_model}"));
+                } else {
+                    ui.small(format!(
+                        "model: {} (session override)",
+                        self.agent_model_override.trim()
+                    ));
+                }
+            } else {
+                self.agent_model_discovery_task = None;
+                self.agent_discovered_models.clear();
+                self.agent_discovered_model_pick.clear();
+                self.agent_model_discovery_source_key.clear();
+                self.agent_model_discovery_status.clear();
+            }
             if !available {
                 ui.colored_label(
                     egui::Color32::from_rgb(190, 70, 70),
@@ -6340,8 +6693,98 @@ Error: `{err}`"
                 self.agent_openai_api_key.clear();
             }
         });
+        ui.horizontal(|ui| {
+            ui.label("Base URL override");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_base_url_override)
+                    .hint_text("http://localhost:11964/v1"),
+            );
+            if ui
+                .button("Clear URL")
+                .on_hover_text("Clear session-only base URL override")
+                .clicked()
+            {
+                self.agent_base_url_override.clear();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Model override");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_model_override)
+                    .hint_text("deepseek-r1:8b"),
+            );
+            if ui
+                .button("Clear Model")
+                .on_hover_text("Clear session-only model override")
+                .clicked()
+            {
+                self.agent_model_override.clear();
+            }
+        });
+        if let Some(system) = self.selected_agent_system() {
+            if matches!(
+                system.transport,
+                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            ) {
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Discover Models")
+                        .on_hover_text("Query local/server model list from current base URL")
+                        .clicked()
+                    {
+                        self.start_agent_model_discovery_task(&system, true);
+                    }
+                    if let Some(task) = &self.agent_model_discovery_task {
+                        ui.add(egui::Spinner::new());
+                        ui.small(format!(
+                            "Discovering models ({:.1}s)",
+                            task.started.elapsed().as_secs_f32()
+                        ));
+                    }
+                });
+                if !self.agent_discovered_models.is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.label("Discovered model");
+                        egui::ComboBox::from_id_salt("agent_discovered_model_combo")
+                            .selected_text(if self.agent_discovered_model_pick.trim().is_empty() {
+                                "(choose model)"
+                            } else {
+                                self.agent_discovered_model_pick.as_str()
+                            })
+                            .show_ui(ui, |ui| {
+                                for model in &self.agent_discovered_models {
+                                    ui.selectable_value(
+                                        &mut self.agent_discovered_model_pick,
+                                        model.clone(),
+                                        model,
+                                    );
+                                }
+                            });
+                        if ui
+                            .button("Use Selected Model")
+                            .on_hover_text("Copy selected discovered model into Model override")
+                            .clicked()
+                        {
+                            let selected = self.agent_discovered_model_pick.trim();
+                            if !selected.is_empty() {
+                                self.agent_model_override = selected.to_string();
+                            }
+                        }
+                    });
+                }
+                if !self.agent_model_discovery_status.trim().is_empty() {
+                    ui.small(self.agent_model_discovery_status.clone());
+                }
+            }
+        }
         ui.small(
             "Session only: if set, this key overrides OPENAI_API_KEY for agent requests started from this GUI window.",
+        );
+        ui.small(
+            "Session only: Base URL override applies to native_openai/native_openai_compat. For local Ollama-style roots (e.g. http://localhost:11964), GENtle also tries the /v1/chat/completions path.",
+        );
+        ui.small(
+            "Session only: Model override applies to native_openai/native_openai_compat and maps to GENTLE_AGENT_MODEL.",
         );
         ui.horizontal(|ui| {
             ui.checkbox(
@@ -6683,9 +7126,14 @@ Error: `{err}`"
         self.windows_to_close.write().unwrap().clear();
         self.pending_focus_viewports.clear();
         self.agent_task = None;
+        self.agent_model_discovery_task = None;
         self.agent_status.clear();
         self.agent_last_invocation = None;
         self.agent_execution_log.clear();
+        self.agent_discovered_models.clear();
+        self.agent_discovered_model_pick.clear();
+        self.agent_model_discovery_status.clear();
+        self.agent_model_discovery_source_key.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
 
@@ -9869,6 +10317,34 @@ Error: `{err}`"
                 self.help_doc = HelpDoc::Shell;
                 active_doc_changed = true;
             }
+            if self.help_doc == HelpDoc::Shell {
+                ui.separator();
+                ui.label("Interface:");
+                let options = [
+                    ShellHelpInterface::All,
+                    ShellHelpInterface::GuiShell,
+                    ShellHelpInterface::CliShell,
+                    ShellHelpInterface::CliDirect,
+                    ShellHelpInterface::Js,
+                    ShellHelpInterface::Lua,
+                ];
+                let mut shell_filter_changed = false;
+                for option in options {
+                    if ui
+                        .selectable_label(self.help_shell_interface == option, option.label())
+                        .clicked()
+                    {
+                        self.help_shell_interface = option;
+                        shell_filter_changed = true;
+                    }
+                }
+                if shell_filter_changed {
+                    self.help_shell_markdown =
+                        Self::generate_shell_help_markdown_for(self.help_shell_interface);
+                    self.help_markdown_cache = CommonMarkCache::default();
+                    active_doc_changed = true;
+                }
+            }
             ui.separator();
             if ui
                 .button("Reload")
@@ -10563,6 +11039,7 @@ impl eframe::App for GENtleApp {
             self.poll_reference_genome_blast_task(ctx);
             self.poll_genome_track_import_task(ctx);
             self.poll_agent_assistant_task(ctx);
+            self.poll_agent_model_discovery_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
 
             // Show menu bar
@@ -10641,8 +11118,9 @@ mod tests {
     use std::{
         fs,
         sync::{
+            Arc,
             atomic::{AtomicBool, Ordering},
-            mpsc, Arc,
+            mpsc,
         },
         time::Instant,
     };
@@ -10764,12 +11242,13 @@ mod tests {
             })
             .count();
         assert_eq!(cancel_events, 1);
-        assert!(app
-            .genome_prepare_task
-            .as_ref()
-            .unwrap()
-            .cancel_requested
-            .load(Ordering::Relaxed));
+        assert!(
+            app.genome_prepare_task
+                .as_ref()
+                .unwrap()
+                .cancel_requested
+                .load(Ordering::Relaxed)
+        );
     }
 
     #[test]

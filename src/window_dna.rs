@@ -29,7 +29,10 @@ impl WindowDna {
                             egui::ViewportId::ROOT,
                             egui::ViewportCommand::Visible(true),
                         );
-                        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus);
+                        ctx.send_viewport_cmd_to(
+                            egui::ViewportId::ROOT,
+                            egui::ViewportCommand::Focus,
+                        );
                     }
                 });
             });

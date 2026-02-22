@@ -1,32 +1,32 @@
 use crate::{
     agent_bridge::{
-        agent_system_availability, invoke_agent_support, load_agent_system_catalog,
-        AgentExecutionIntent,
+        AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, AgentExecutionIntent, agent_system_availability,
+        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
-        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
-        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Engine, GenomeAnchorSide,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
+        CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
+        CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
+        CandidateWeightedObjectiveTerm, Engine, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
-        ProjectState, RenderSvgMode, SequenceAnchor, Workflow, WorkflowMacroTemplateParam,
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, GUIDE_DESIGN_METADATA_KEY,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
+        ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
+        Workflow, WorkflowMacroTemplateParam,
     },
     genomes::{
-        GenomeCatalog, GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH,
-        DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
+        GenomeGeneRecord,
     },
     resource_sync,
     shell_docs::{
-        shell_help_json as render_shell_help_json,
+        HelpOutputFormat, shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
+        shell_topic_help_text as render_shell_topic_help_text,
     },
     tf_motifs,
 };
@@ -36,7 +36,7 @@ use objc2_app_kit::NSApplication;
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -205,6 +205,8 @@ pub enum ShellCommand {
         system_id: String,
         prompt: String,
         catalog_path: Option<String>,
+        base_url_override: Option<String>,
+        model_override: Option<String>,
         include_state_summary: bool,
         allow_auto_exec: bool,
         execute_all: bool,
@@ -1006,6 +1008,8 @@ impl ShellCommand {
                 system_id,
                 prompt,
                 catalog_path,
+                base_url_override,
+                model_override,
                 include_state_summary,
                 allow_auto_exec,
                 execute_all,
@@ -1023,8 +1027,18 @@ impl ShellCommand {
                 } else {
                     "none".to_string()
                 };
+                let base_url = base_url_override
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                let model = model_override
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
                 format!(
-                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, execute={execute_mode})",
+                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, base_url_override={base_url}, model_override={model}, execute={execute_mode})",
                     prompt.len(),
                     include_state_summary
                 )
@@ -4169,7 +4183,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "ask" => {
             if tokens.len() < 3 {
                 return Err(
-                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
+                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
                 );
             }
             let system_id = tokens[2].trim().to_string();
@@ -4179,6 +4193,8 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
 
             let mut prompt: Option<String> = None;
             let mut catalog_path: Option<String> = None;
+            let mut base_url_override: Option<String> = None;
+            let mut model_override: Option<String> = None;
             let mut include_state_summary = true;
             let mut allow_auto_exec = false;
             let mut execute_all = false;
@@ -4199,6 +4215,22 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--catalog",
+                            "agents ask",
+                        )?);
+                    }
+                    "--base-url" => {
+                        base_url_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--base-url",
+                            "agents ask",
+                        )?);
+                    }
+                    "--model" => {
+                        model_override = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--model",
                             "agents ask",
                         )?);
                     }
@@ -4244,6 +4276,8 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 system_id,
                 prompt,
                 catalog_path,
+                base_url_override,
+                model_override,
                 include_state_summary,
                 allow_auto_exec,
                 execute_all,
@@ -6172,6 +6206,8 @@ pub fn execute_shell_command_with_options(
             system_id,
             prompt,
             catalog_path,
+            base_url_override,
+            model_override,
             include_state_summary,
             allow_auto_exec,
             execute_all,
@@ -6188,11 +6224,31 @@ pub fn execute_shell_command_with_options(
             } else {
                 None
             };
-            let invocation = invoke_agent_support(
+            let mut env_overrides = HashMap::new();
+            if let Some(base_url) = base_url_override
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                env_overrides.insert(AGENT_BASE_URL_ENV.to_string(), base_url.to_string());
+            }
+            if let Some(model) = model_override
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                env_overrides.insert(AGENT_MODEL_ENV.to_string(), model.to_string());
+            }
+            let invocation = invoke_agent_support_with_env_overrides(
                 catalog_path.as_deref(),
                 system_id,
                 prompt,
                 state_summary.as_ref(),
+                if env_overrides.is_empty() {
+                    None
+                } else {
+                    Some(&env_overrides)
+                },
             )?;
             let suggested = invocation.response.suggested_commands.clone();
             let suggested_count = suggested.len();
@@ -6235,6 +6291,8 @@ pub fn execute_shell_command_with_options(
                         "allow_auto_exec": allow_auto_exec,
                         "execute_all": execute_all,
                         "execute_indices": execute_indices,
+                        "base_url_override": base_url_override,
+                        "model_override": model_override,
                         "invalid_execute_indices": invalid_execute_indices,
                     },
                     "summary": {
@@ -8894,10 +8952,12 @@ filter set1 set2 --metric score --min 10
         .expect("generate candidates");
         assert!(generated.state_changed);
         assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
-        assert!(generated.output["result"]["messages"]
-            .as_array()
-            .map(|messages| !messages.is_empty())
-            .unwrap_or(false));
+        assert!(
+            generated.output["result"]["messages"]
+                .as_array()
+                .map(|messages| !messages.is_empty())
+                .unwrap_or(false)
+        );
 
         let score_distance = execute_shell_command(
             &mut engine,
@@ -9263,10 +9323,12 @@ filter set1 set2 --metric score --min 10
         .expect("run template");
         assert!(run.state_changed);
         assert_eq!(run.output["template_name"].as_str(), Some("scan"));
-        assert!(engine
-            .list_candidate_sets()
-            .iter()
-            .any(|set| set.name == "hits"));
+        assert!(
+            engine
+                .list_candidate_sets()
+                .iter()
+                .any(|set| set.name == "hits")
+        );
     }
 
     #[test]
@@ -9591,7 +9653,7 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
     #[test]
     fn parse_agents_ask_command() {
         let cmd = parse_shell_line(
-            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --allow-auto-exec --execute-index 2 --no-state-summary",
+            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11964 --model deepseek-r1:8b --allow-auto-exec --execute-index 2 --no-state-summary",
         )
         .expect("parse agents ask");
         match cmd {
@@ -9599,6 +9661,8 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 system_id,
                 prompt,
                 catalog_path,
+                base_url_override,
+                model_override,
                 include_state_summary,
                 allow_auto_exec,
                 execute_all,
@@ -9607,6 +9671,8 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 assert_eq!(system_id, "builtin_echo");
                 assert_eq!(prompt, "auto: state-summary");
                 assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
+                assert_eq!(base_url_override.as_deref(), Some("http://localhost:11964"));
+                assert_eq!(model_override.as_deref(), Some("deepseek-r1:8b"));
                 assert!(!include_state_summary);
                 assert!(allow_auto_exec);
                 assert!(!execute_all);
@@ -9639,6 +9705,8 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 system_id: "builtin_echo".to_string(),
                 prompt: "auto: state-summary\nask: capabilities".to_string(),
                 catalog_path: Some(catalog_path.display().to_string()),
+                base_url_override: None,
+                model_override: None,
                 include_state_summary: true,
                 allow_auto_exec: true,
                 execute_all: false,
@@ -9676,6 +9744,8 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 system_id: "builtin_echo".to_string(),
                 prompt: "ask: state-summary".to_string(),
                 catalog_path: Some(catalog_path.display().to_string()),
+                base_url_override: None,
+                model_override: None,
                 include_state_summary: true,
                 allow_auto_exec: false,
                 execute_all: false,
@@ -9717,6 +9787,8 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 prompt: "auto: macros run 'agents ask builtin_echo --prompt \"ask: capabilities\"'"
                     .to_string(),
                 catalog_path: Some(catalog_path.display().to_string()),
+                base_url_override: None,
+                model_override: None,
                 include_state_summary: true,
                 allow_auto_exec: true,
                 execute_all: false,
@@ -10017,9 +10089,11 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             .and_then(|v| v.get("created_seq_ids"))
             .and_then(|v| v.as_array())
             .expect("created_seq_ids");
-        assert!(created
-            .iter()
-            .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false)));
+        assert!(
+            created
+                .iter()
+                .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false))
+        );
         let seq = engine
             .state()
             .sequences

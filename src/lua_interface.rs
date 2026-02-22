@@ -244,6 +244,8 @@ impl LuaInterface {
                 .map(str::trim)
                 .filter(|v| !v.is_empty())
                 .map(str::to_string),
+            base_url_override: None,
+            model_override: None,
             include_state_summary: include_state_summary.unwrap_or(true),
             allow_auto_exec: allow_auto_exec.unwrap_or(false),
             execute_all: execute_all.unwrap_or(false),

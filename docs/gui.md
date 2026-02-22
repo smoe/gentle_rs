@@ -176,83 +176,27 @@ Behavior:
 
 Supported commands:
 
-- Full in-app reference with command explanations:
-  - open `Help -> Shell Commands`
-  - this view is generated from `docs/glossary.json` and includes usage + summary
-    per command
+- Open `Help -> Shell Commands`.
+- This reference is generated from `docs/glossary.json` and shows both:
+  - usage syntax
+  - task summary/description
+- Use the `Interface` selector in that view to filter commands by language/access path:
+  - `All`
+  - `GUI shell`
+  - `CLI shell`
+  - `CLI direct`
+  - `JS`
+  - `Lua`
 
-- `help`
-- `capabilities`
-- `state-summary`
-- `load-project PATH`
-- `save-project PATH`
-- `screenshot-window OUTPUT.png` (currently disabled by security policy)
-- `render-svg SEQ_ID linear|circular OUTPUT.svg`
-- `render-rna-svg SEQ_ID OUTPUT.svg`
-- `rna-info SEQ_ID`
-- `render-lineage-svg OUTPUT.svg`
-- `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
-- `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
-- `ladders list [--molecule dna|rna] [--filter TEXT]`
-- `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
-- `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
-- `import-pool INPUT.pool.gentle.json [PREFIX]`
-- `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
-- `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
-- `agents list [--catalog PATH]`
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
-- `genomes list [--catalog PATH]`
-- `genomes validate-catalog [--catalog PATH]`
-- `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
-- `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
-- `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
-- `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
-- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-- `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-- `helpers list [--catalog PATH]`
-- `helpers validate-catalog [--catalog PATH]`
-- `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
-- `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
-- `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
-- `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
-- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-- `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-- `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
-- `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
-- `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
-- `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
-- `macros template-list|template-show|template-put|template-delete|template-run ...`
-- `candidates list`
-- `candidates delete SET_NAME`
-- `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--limit N]`
-- `candidates generate-between-anchors SET_NAME SEQ_ID --length N (--anchor-a-pos N|--anchor-a-json JSON) (--anchor-b-pos N|--anchor-b-json JSON) [--step N] [--limit N]`
-- `candidates show SET_NAME [--limit N] [--offset N]`
-- `candidates metrics SET_NAME`
-- `candidates score SET_NAME METRIC_NAME EXPRESSION`
-- `candidates score-distance SET_NAME METRIC_NAME [--feature-kind KIND] [--feature-label-regex REGEX]`
-- `candidates score-weighted SET_NAME METRIC_NAME --term METRIC:WEIGHT[:max|min] [--term ...] [--normalize|--no-normalize]`
-- `candidates top-k INPUT_SET OUTPUT_SET --metric METRIC_NAME --k N [--direction max|min] [--tie-break ...]`
-- `candidates pareto INPUT_SET OUTPUT_SET --objective METRIC[:max|min] [--objective ...] [--max-candidates N] [--tie-break ...]`
-- `candidates filter INPUT_SET OUTPUT_SET --metric METRIC_NAME [--min N] [--max N] [--min-quantile Q] [--max-quantile Q]`
-- `candidates set-op union|intersect|subtract LEFT_SET RIGHT_SET OUTPUT_SET`
-- `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
-- `candidates template-list|template-show|template-put|template-delete|template-run ...`
-- `guides list`
-- `guides show GUIDE_SET_ID [--limit N] [--offset N]`
-- `guides put GUIDE_SET_ID (--json JSON|@FILE|--file PATH)`
-- `guides delete GUIDE_SET_ID`
-- `guides filter GUIDE_SET_ID [--config JSON|@FILE] [--config-file PATH] [--output-set GUIDE_SET_ID]`
-- `guides filter-show GUIDE_SET_ID`
-- `guides oligos-generate GUIDE_SET_ID TEMPLATE_ID [--apply-5prime-g-extension] [--output-oligo-set ID] [--passed-only]`
-- `guides oligos-list [--guide-set GUIDE_SET_ID]`
-- `guides oligos-show OLIGO_SET_ID`
-- `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
-- `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
-- `set-param NAME JSON_VALUE`
-- `op <operation-json-or-@file>`
-- `workflow <workflow-json-or-@file>`
+Common examples:
+
+- `help` — show help catalog or command-specific help.
+- `state-summary` — summarize loaded sequences/containers/metadata.
+- `render-svg SEQ_ID linear|circular OUTPUT.svg` — export map SVG.
+- `genomes prepare GENOME_ID ...` — prepare reference genome cache/index.
+- `tracks import-bed SEQ_ID PATH ...` — project BED track onto anchored sequence.
+- `candidates generate SET_NAME SEQ_ID --length N ...` — create candidate set.
+- `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
 
 Status output note:
 
@@ -286,6 +230,18 @@ Behavior:
   - click `Clear Key` to remove it from current session
   - the key is not persisted to disk by GENtle settings
 - if set, GUI key overrides `OPENAI_API_KEY` for requests started from this window
+- `Base URL override` field is a session-only endpoint override for
+  `native_openai` and `native_openai_compat`
+  - use this for local endpoints such as `http://localhost:11964` or
+    `http://localhost:11964/v1`
+  - click `Clear URL` to remove it from current session
+- `Model override` field is a session-only model-name override for
+  `native_openai` and `native_openai_compat`
+  - use this when local runtime does not provide the catalog model
+  - click `Clear Model` to remove it from current session
+- if no model override is set, GENtle can query available models from current
+  endpoint and present a dropdown to choose one (`Discover Models` /
+  `Use Selected Model`)
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - `Ask Agent` runs in background and reports status in `Background Jobs`
@@ -317,9 +273,16 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
    - `Local Llama (OpenAI-compatible)`
    - `Jan Local (template)`
    - `Msty Local (template)`
-3. Ensure `assets/agent_systems.json` has correct `base_url` and `model` for your local service.
-4. If your local service expects no key, keep `OpenAI API key` empty.
-5. Ask agent as usual.
+3. Set `Base URL override` to your local endpoint, e.g. `http://localhost:11964`.
+4. Set `Model override` to a model id available in your local runtime (for example `deepseek-r1:8b`).
+5. Optionally adjust `model` in `assets/agent_systems.json` if you want a persistent default.
+6. If your local service expects no key, keep `OpenAI API key` empty.
+7. Ask agent as usual.
+8. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
+   - `/chat/completions`
+   - `/v1/chat/completions`
+9. If no `Base URL override` is set, GENtle also probes common local Ollama-style
+   ports (`11964`, `11434`) before returning unavailable.
 
 Common failure interpretation:
 
@@ -408,16 +371,13 @@ The custom window and CLI `--version` share the same text payload.
 
 ## Open windows and focus
 
-GENtle now tracks open native windows and can raise a selected one to front.
+GENtle tracks open native windows and can raise a selected one to front.
 
-- Main project window menu: `Window -> Open Windows…`
-- Main project window menu: `Window -> <window name>` jumps directly to that window
-- Shortcut: `Cmd+Backtick` opens the window switcher dialog
-- macOS native menu bridge: `Window -> GENtle Open Windows…` opens the same switcher
-
-The switcher lists the project window, sequence windows, and open auxiliary
-native windows (Help, Configuration, Prepare Genome, BLAST, Track Import,
-Agent Assistant).
+- Main project window menu: `Windows -> <window name>` jumps directly to that window
+- `Windows` includes project, sequence/pool, and auxiliary windows
+  (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
+  Agent Assistant, Operation History)
+- Shortcut: `Cmd+Backtick` focuses the main project window
 
 ## Help manuals
 
@@ -425,9 +385,17 @@ The `Help` menu now includes:
 
 - `GUI Manual`: opens `docs/gui.md` in an in-app markdown viewer
 - `CLI Manual`: opens `docs/cli.md` in an in-app markdown viewer
-- `Shell Commands`: generated command reference from `docs/glossary.json` (usage + summary per command, filtered for GUI shell interface)
+- `Shell Commands`: generated command reference from `docs/glossary.json`
+  (usage + task summary per command)
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
+- Shell command reference includes an `Interface` selector:
+  - `All`
+  - `GUI shell`
+  - `CLI shell`
+  - `CLI direct`
+  - `JS`
+  - `Lua`
 
 Help content loading behavior:
 

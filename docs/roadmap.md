@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-21
+Last updated: 2026-02-22
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -49,6 +49,8 @@ order. Durable architecture constraints and decisions remain in
   toggles persisted through display state.
 - Scrollable/resizable Engine Ops area and shared-shell panel.
 - Context-sensitive hover descriptions on actionable controls.
+- Help-window shell command reference generated from `docs/glossary.json` with
+  interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
 
 ### High-level parity snapshot
 

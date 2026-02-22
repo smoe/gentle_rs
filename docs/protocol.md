@@ -168,8 +168,12 @@ Adapter utility contracts (current, non-engine operations):
   - Lists configured agent systems from catalog JSON.
   - Default catalog: `assets/agent_systems.json`.
 
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
+  - `--base-url` applies a per-request runtime base URL override for native
+    transports (`native_openai`, `native_openai_compat`).
+  - `--model` applies a per-request runtime model override for native
+    transports (`native_openai`, `native_openai_compat`).
   - `--no-state-summary` suppresses project context injection.
   - Suggested-command execution is per-suggestion only (no global always-execute).
 
@@ -209,6 +213,12 @@ Transport notes:
 - `native_openai_compat`: built-in OpenAI-compatible local HTTP adapter
   (`/chat/completions`), intended for local services such as Jan/Msty/Ollama
   when they expose an OpenAI-compatible endpoint. API key is optional.
+- `GENTLE_AGENT_BASE_URL` (or CLI `--base-url`) overrides catalog `base_url`
+  per request for `native_openai` and `native_openai_compat`.
+- `GENTLE_AGENT_MODEL` (or CLI `--model`) overrides catalog `model` per request
+  for `native_openai` and `native_openai_compat`.
+- Without explicit override, `native_openai_compat` additionally probes common
+  local loopback ports (`11964`, `11434`) for compatibility.
 
 Agent request payload schema (`gentle.agent_request.v1`):
 
