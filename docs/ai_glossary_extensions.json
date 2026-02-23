@@ -1,0 +1,139 @@
+{
+  "schema": "gentle.ai_glossary_extensions.v1",
+  "description": "Compact domain bootstrap terms for AI assistants used with GENtle.",
+  "terms": [
+    {
+      "term": "vector",
+      "definition": "Carrier DNA backbone used to host an insert.",
+      "synonyms": ["backbone", "plasmid vector"],
+      "not_confused_with": ["container"],
+      "prompt_hint": "Ask for vector name, host context, and required cloning constraints."
+    },
+    {
+      "term": "insert",
+      "definition": "Sequence fragment intended to be introduced into a vector.",
+      "synonyms": ["payload", "fragment"],
+      "not_confused_with": ["feature annotation"],
+      "prompt_hint": "Ask for exact sequence ID or coordinate range."
+    },
+    {
+      "term": "CDS",
+      "definition": "Coding sequence expected to preserve reading frame.",
+      "synonyms": ["coding region"],
+      "not_confused_with": ["gene"],
+      "prompt_hint": "Confirm strand/orientation before frame-sensitive suggestions."
+    },
+    {
+      "term": "gene",
+      "definition": "Annotated genomic unit that may include multiple transcripts.",
+      "synonyms": ["locus"],
+      "not_confused_with": ["transcript", "CDS"],
+      "prompt_hint": "If transcript ambiguity exists, ask user to disambiguate."
+    },
+    {
+      "term": "promoter",
+      "definition": "Regulatory region influencing transcription initiation.",
+      "synonyms": ["5-prime regulatory region"],
+      "not_confused_with": ["enhancer"],
+      "prompt_hint": "Confirm desired upstream/downstream orientation and strand context."
+    },
+    {
+      "term": "restriction site",
+      "definition": "Recognition sequence for a restriction endonuclease.",
+      "synonyms": ["enzyme site"],
+      "not_confused_with": ["motif hit"],
+      "prompt_hint": "Ask for required and forbidden enzyme sites."
+    },
+    {
+      "term": "overhang",
+      "definition": "Single-stranded end produced or designed for assembly.",
+      "synonyms": ["sticky end"],
+      "not_confused_with": ["homology arm"],
+      "prompt_hint": "Confirm compatible overhang directionality before ligation suggestions."
+    },
+    {
+      "term": "ligation",
+      "definition": "Joining DNA ends into one continuous molecule.",
+      "synonyms": ["ligation step"],
+      "not_confused_with": ["recombination"],
+      "prompt_hint": "Use as conceptual step; keep recommendations in-silico unless requested."
+    },
+    {
+      "term": "Gibson assembly",
+      "definition": "Overlap-based DNA assembly method.",
+      "synonyms": ["Gibson"],
+      "not_confused_with": ["Golden Gate"],
+      "prompt_hint": "Ask for overlap length and fragment order if assembly planning is needed."
+    },
+    {
+      "term": "Golden Gate",
+      "definition": "Type IIS restriction-based modular assembly method.",
+      "synonyms": ["Golden Gate assembly"],
+      "not_confused_with": ["Gibson assembly"],
+      "prompt_hint": "Ask for enzyme choice and forbidden internal sites."
+    },
+    {
+      "term": "local sequence anchor",
+      "definition": "In-sequence positional reference used to define local intervals.",
+      "synonyms": ["SequenceAnchor"],
+      "not_confused_with": ["genome anchoring", "AnchoredRegionAnchor"],
+      "prompt_hint": "Use for between-anchor extraction and candidate generation on one sequence."
+    },
+    {
+      "term": "genome anchoring",
+      "definition": "Provenance mapping of a sequence to assembly coordinates.",
+      "synonyms": ["anchored region provenance"],
+      "not_confused_with": ["local sequence anchor"],
+      "prompt_hint": "Required for genome track import and genome extension workflows."
+    },
+    {
+      "term": "candidate set",
+      "definition": "Explicit set of windows/subsequences with per-candidate metrics.",
+      "synonyms": ["candidate pool"],
+      "not_confused_with": ["container"],
+      "prompt_hint": "Prefer set algebra and explicit filters instead of ad-hoc ranking prose."
+    },
+    {
+      "term": "weighted objective",
+      "definition": "Composite score from metrics with weights and optimization directions.",
+      "synonyms": ["priority score"],
+      "not_confused_with": ["single metric threshold"],
+      "prompt_hint": "State metric direction per term (max/min)."
+    },
+    {
+      "term": "Pareto frontier",
+      "definition": "Set of non-dominated candidates across multiple objectives.",
+      "synonyms": ["non-dominated set"],
+      "not_confused_with": ["top-k"],
+      "prompt_hint": "Use when objectives conflict and weighted tradeoff is uncertain."
+    },
+    {
+      "term": "BLAST specificity",
+      "definition": "Sequence similarity search to assess uniqueness/off-target risk.",
+      "synonyms": ["blast check"],
+      "not_confused_with": ["alignment-only map view"],
+      "prompt_hint": "Ask for target catalog (genome/helper), max hits, and task mode."
+    },
+    {
+      "term": "BED track",
+      "definition": "Interval-based external evidence projected onto anchored sequence.",
+      "synonyms": ["peak track"],
+      "not_confused_with": ["regulatory feature annotation"],
+      "prompt_hint": "Not all BED records are regulatory; keep neutral TRACK grouping."
+    },
+    {
+      "term": "BigWig track",
+      "definition": "Continuous signal track (coverage/enrichment) projected on sequence.",
+      "synonyms": ["signal track"],
+      "not_confused_with": ["BED interval track"],
+      "prompt_hint": "Use for quantitative context; convert to intervals only when needed."
+    },
+    {
+      "term": "execution policy",
+      "definition": "Per-request mode for agent actions: chat-only, ask-before-run, auto.",
+      "synonyms": ["run policy"],
+      "not_confused_with": ["global always-execute"],
+      "prompt_hint": "Always require explicit user choice for risky operations."
+    }
+  ]
+}

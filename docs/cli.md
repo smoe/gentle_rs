@@ -247,9 +247,9 @@ Exit methods:
 
 1. `load_dna(filename)`
    - Loads a DNA sequence from file.
-2. `write_gb(filename, seq)`
+2. `write_gb(seq, filename)`
    - Writes a sequence object to a GenBank file.
-3. `load_project(filename)` / `save_project(filename, project)`
+3. `load_project(filename)` / `save_project(state, filename)`
    - Loads/saves GENtle project JSON.
 4. `capabilities()`
    - Returns shared-engine capabilities.
@@ -424,6 +424,7 @@ cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_
 cargo run --bin gentle_cli -- guides oligos-export tp73_guides exports/tp73_guides.csv --format csv_table --oligo-set tp73_lenti
 cargo run --bin gentle_cli -- guides protocol-export tp73_guides exports/tp73_guides.protocol.txt --oligo-set tp73_lenti
 cargo run --bin gentle_cli -- shell 'macros template-list'
+cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns.json'
 cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_flow.gsh'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
@@ -477,7 +478,7 @@ Shared shell command:
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
     - `agents list [--catalog PATH]`
-    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+    - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
     - `genomes list [--catalog PATH]`
     - `genomes validate-catalog [--catalog PATH]`
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
@@ -502,6 +503,7 @@ Shared shell command:
     - `macros template-show TEMPLATE_NAME`
     - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
     - `macros template-delete TEMPLATE_NAME`
+    - `macros template-import PATH`
     - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
     - `candidates list`
     - `candidates delete SET_NAME`
@@ -621,12 +623,22 @@ Agent bridge commands:
   - Default catalog path: `assets/agent_systems.json`.
   - Includes availability status (`available`, `availability_reason`) so callers
     can skip systems that are not currently runnable.
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system and returns message/questions/suggested shell commands.
   - `--base-url` sets a per-request runtime endpoint override (maps to
     `GENTLE_AGENT_BASE_URL`) for native transports.
   - `--model` sets a per-request model override (maps to `GENTLE_AGENT_MODEL`)
     for native transports.
+  - `--timeout-secs` sets per-request timeout override (maps to
+    `GENTLE_AGENT_TIMEOUT_SECS`) for stdio/native transports.
+  - `--connect-timeout-secs` sets per-request HTTP connect timeout (maps to
+    `GENTLE_AGENT_CONNECT_TIMEOUT_SECS`) for native transports.
+  - `--read-timeout-secs` sets per-request read timeout (maps to
+    `GENTLE_AGENT_READ_TIMEOUT_SECS`) for stdio/native transports.
+  - `--max-retries` sets per-request transient retry budget (maps to
+    `GENTLE_AGENT_MAX_RETRIES`; `0` means no retries).
+  - `--max-response-bytes` caps adapter response size per attempt (maps to
+    `GENTLE_AGENT_MAX_RESPONSE_BYTES`).
   - for `native_openai_compat`, model must resolve to a concrete value (catalog
     model or `--model`); `unspecified` is rejected.
   - `--no-state-summary` disables project-context injection in the request.
@@ -648,6 +660,43 @@ Agent bridge commands:
       Jan/Msty/Ollama-style `/chat/completions` endpoints; key optional)
       - endpoint host/port come from catalog `base_url` (or `--base-url` if set);
         GENtle does not silently switch to a different host/port
+
+Prompting users should send to agents:
+
+- Prefer compact structured prompts so local models stay reliable.
+- Use this template:
+
+```text
+Objective:
+<one clear goal>
+
+Context:
+<sequence/genome/helper ids>
+
+Inputs:
+- anchors/coordinates:
+- feature labels/kinds:
+
+Constraints:
+- length:
+- GC range:
+- motifs/sites:
+- strand assumptions:
+
+Output wanted:
+- exact commands
+- validation checklist
+
+Execution policy:
+chat-only | ask-before-run | allow-auto-exec
+```
+
+- For local models without cloning background, preload:
+  - `docs/ai_cloning_primer.md`
+  - `docs/ai_task_playbooks.md`
+  - `docs/ai_prompt_contract.md`
+  - `docs/examples/ai_cloning_examples.md`
+  - optional: `docs/ai_glossary_extensions.json`
 
 Genome convenience commands:
 
@@ -718,9 +767,25 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Placeholders in script use `${param_name}` and must be declared via `--param`.
 - `macros template-delete TEMPLATE_NAME`
   - Deletes one persisted workflow template.
+- `macros template-import PATH`
+  - Imports one JSON pattern pack (`gentle.cloning_patterns.v1`) and upserts all
+    templates in one transactional batch.
+  - If one template fails validation, no imported template changes are kept.
 - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
   - Expands a named template with provided bindings/defaults, then executes it as
     a workflow macro script.
+
+Shipped starter pack:
+
+- `assets/cloning_patterns.json`
+  - Contains reusable workflow templates, including:
+    - digest/ligation/extract cloning
+    - branch + reverse-complement branching
+    - PCR-with-tail/site-insertion helper flow
+    - guide-RNA candidate scan templates
+    - practical guide filtering + oligo generation
+- Import command:
+  - `gentle_cli shell 'macros template-import assets/cloning_patterns.json'`
 
 Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candidates ...'`):
 

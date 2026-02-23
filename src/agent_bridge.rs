@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub const DEFAULT_AGENT_SYSTEM_CATALOG_PATH: &str = "assets/agent_systems.json";
@@ -19,8 +19,13 @@ const AGENT_SYSTEMS_SCHEMA_PREFIX: &str = "gentle.agent_systems.v";
 const AGENT_REQUEST_SCHEMA_PREFIX: &str = "gentle.agent_request.v";
 const AGENT_RESPONSE_SCHEMA_PREFIX: &str = "gentle.agent_response.v";
 const AGENT_SCHEMA_SUPPORTED_MAJOR: u32 = 1;
-const AGENT_INVOKE_RETRY_ATTEMPTS: usize = 3;
 const AGENT_INVOKE_RETRY_BASE_DELAY_MS: u64 = 250;
+const AGENT_REQUEST_TIMEOUT_SECS_DEFAULT: u64 = 180;
+const AGENT_CONNECT_TIMEOUT_SECS_DEFAULT: u64 = 10;
+const AGENT_MAX_RETRIES_DEFAULT: usize = 2;
+const AGENT_MAX_RETRIES_HARD_MAX: usize = 16;
+const AGENT_MAX_RESPONSE_BYTES_DEFAULT: usize = 1_048_576;
+const AGENT_MAX_RESPONSE_BYTES_HARD_MAX: usize = 64 * 1024 * 1024;
 const OPENAI_DEFAULT_MODEL: &str = "gpt-5";
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 pub const OPENAI_COMPAT_UNSPECIFIED_MODEL: &str = "unspecified";
@@ -29,6 +34,11 @@ const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 pub const AGENT_BASE_URL_ENV: &str = "GENTLE_AGENT_BASE_URL";
 pub const AGENT_MODEL_ENV: &str = "GENTLE_AGENT_MODEL";
+pub const AGENT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_TIMEOUT_SECS";
+pub const AGENT_CONNECT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_CONNECT_TIMEOUT_SECS";
+pub const AGENT_READ_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_READ_TIMEOUT_SECS";
+pub const AGENT_MAX_RETRIES_ENV: &str = "GENTLE_AGENT_MAX_RETRIES";
+pub const AGENT_MAX_RESPONSE_BYTES_ENV: &str = "GENTLE_AGENT_MAX_RESPONSE_BYTES";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentBridgeErrorCode {
@@ -179,6 +189,105 @@ fn resolve_api_key(system: &AgentSystemSpec) -> Option<String> {
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
         })
+}
+
+fn parse_positive_u64(raw: &str) -> Option<u64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    trimmed.parse::<u64>().ok().filter(|value| *value > 0)
+}
+
+fn parse_positive_usize(raw: &str) -> Option<usize> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    trimmed.parse::<usize>().ok().filter(|value| *value > 0)
+}
+
+fn parse_nonnegative_usize(raw: &str) -> Option<usize> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    trimmed.parse::<usize>().ok()
+}
+
+fn resolve_u64_override(system: &AgentSystemSpec, key: &str) -> Option<u64> {
+    system
+        .env
+        .get(key)
+        .and_then(|value| parse_positive_u64(value))
+        .or_else(|| {
+            std::env::var(key)
+                .ok()
+                .and_then(|value| parse_positive_u64(&value))
+        })
+}
+
+fn resolve_usize_override(system: &AgentSystemSpec, key: &str) -> Option<usize> {
+    system
+        .env
+        .get(key)
+        .and_then(|value| parse_positive_usize(value))
+        .or_else(|| {
+            std::env::var(key)
+                .ok()
+                .and_then(|value| parse_positive_usize(&value))
+        })
+}
+
+fn resolve_nonnegative_usize_override(system: &AgentSystemSpec, key: &str) -> Option<usize> {
+    system
+        .env
+        .get(key)
+        .and_then(|value| parse_nonnegative_usize(value))
+        .or_else(|| {
+            std::env::var(key)
+                .ok()
+                .and_then(|value| parse_nonnegative_usize(&value))
+        })
+}
+
+fn resolve_agent_runtime_config(system: &AgentSystemSpec) -> AgentRuntimeConfig {
+    let timeout_secs = resolve_u64_override(system, AGENT_TIMEOUT_SECS_ENV)
+        .unwrap_or(AGENT_REQUEST_TIMEOUT_SECS_DEFAULT);
+    let connect_timeout_secs = resolve_u64_override(system, AGENT_CONNECT_TIMEOUT_SECS_ENV)
+        .unwrap_or(AGENT_CONNECT_TIMEOUT_SECS_DEFAULT);
+    let read_timeout_secs =
+        resolve_u64_override(system, AGENT_READ_TIMEOUT_SECS_ENV).unwrap_or(timeout_secs);
+    let max_retries = resolve_nonnegative_usize_override(system, AGENT_MAX_RETRIES_ENV)
+        .map(|value| value.min(AGENT_MAX_RETRIES_HARD_MAX))
+        .unwrap_or(AGENT_MAX_RETRIES_DEFAULT);
+    let max_response_bytes = resolve_usize_override(system, AGENT_MAX_RESPONSE_BYTES_ENV)
+        .map(|value| value.min(AGENT_MAX_RESPONSE_BYTES_HARD_MAX))
+        .unwrap_or(AGENT_MAX_RESPONSE_BYTES_DEFAULT);
+    AgentRuntimeConfig {
+        timeout_secs,
+        connect_timeout_secs,
+        read_timeout_secs,
+        max_retries,
+        max_response_bytes,
+    }
+}
+
+fn effective_attempt_limit(runtime: &AgentRuntimeConfig) -> usize {
+    runtime.max_retries.saturating_add(1).max(1)
+}
+
+fn runtime_summary(runtime: &AgentRuntimeConfig) -> AgentInvocationRuntime {
+    AgentInvocationRuntime {
+        timeout_secs: runtime.timeout_secs,
+        connect_timeout_secs: Some(runtime.connect_timeout_secs),
+        read_timeout_secs: Some(runtime.read_timeout_secs),
+        max_retries: runtime.max_retries,
+        max_response_bytes: runtime.max_response_bytes,
+        endpoint_candidates: vec![],
+        attempted_endpoints: vec![],
+        selected_endpoint: None,
+    }
 }
 
 fn resolve_model(system: &AgentSystemSpec, default: &str) -> String {
@@ -417,6 +526,7 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
             let endpoints = openai_compat_endpoint_candidates_for_system(system);
             let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
+            let runtime = resolve_agent_runtime_config(system);
             if is_model_unspecified(&model) {
                 return AgentSystemAvailability {
                     available: false,
@@ -435,8 +545,15 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             AgentSystemAvailability {
                 available: true,
                 reason: Some(format!(
-                    "expects OpenAI-compatible local server near {} (model '{}'; tries {}; key optional)",
-                    base_url, model, preview
+                    "expects OpenAI-compatible local server near {} (model '{}'; timeout={}s; connect={}s; read={}s; max_retries={}; max_response_bytes={}; tries {}; key optional)",
+                    base_url,
+                    model,
+                    runtime.timeout_secs,
+                    runtime.connect_timeout_secs,
+                    runtime.read_timeout_secs,
+                    runtime.max_retries,
+                    runtime.max_response_bytes,
+                    preview
                 )),
             }
         }
@@ -685,6 +802,38 @@ pub struct AgentInvocationOutcome {
     pub raw_stderr: String,
     pub exit_code: Option<i32>,
     pub elapsed_ms: u128,
+    #[serde(default)]
+    pub runtime: AgentInvocationRuntime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct AgentInvocationRuntime {
+    pub timeout_secs: u64,
+    pub connect_timeout_secs: Option<u64>,
+    pub read_timeout_secs: Option<u64>,
+    pub max_retries: usize,
+    pub max_response_bytes: usize,
+    pub endpoint_candidates: Vec<String>,
+    pub attempted_endpoints: Vec<String>,
+    pub selected_endpoint: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AgentRuntimeConfig {
+    timeout_secs: u64,
+    connect_timeout_secs: u64,
+    read_timeout_secs: u64,
+    max_retries: usize,
+    max_response_bytes: usize,
+}
+
+#[derive(Debug, Clone)]
+struct NativeHttpInvokeResult {
+    text: String,
+    raw_body: String,
+    attempted_endpoints: Vec<String>,
+    selected_endpoint: Option<String>,
 }
 
 fn now_unix_ms() -> u128 {
@@ -1074,10 +1223,55 @@ fn retry_backoff_duration(attempt: usize) -> Duration {
     Duration::from_millis(AGENT_INVOKE_RETRY_BASE_DELAY_MS.saturating_mul(multiplier))
 }
 
+fn read_response_body_limited(
+    mut response: reqwest::blocking::Response,
+    max_response_bytes: usize,
+    context: &str,
+) -> Result<String, ExternalAttemptError> {
+    use std::io::Read;
+    let mut body: Vec<u8> = vec![];
+    response
+        .by_ref()
+        .take(max_response_bytes as u64 + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| ExternalAttemptError {
+            kind: classify_io_error_kind(e.kind()),
+            message: format!("could not read {context} body: {e}"),
+        })?;
+    if body.len() > max_response_bytes {
+        return Err(ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!(
+                "{context} body exceeded {} bytes (set {} to increase)",
+                max_response_bytes, AGENT_MAX_RESPONSE_BYTES_ENV
+            ),
+        });
+    }
+    String::from_utf8(body).map_err(|e| ExternalAttemptError {
+        kind: ExternalAttemptErrorKind::Fatal,
+        message: format!("{context} body is not valid UTF-8: {e}"),
+    })
+}
+
+fn lossy_with_cap(bytes: &[u8], cap: usize) -> String {
+    let limit = cap.max(1);
+    let clipped = if bytes.len() > limit {
+        &bytes[..limit]
+    } else {
+        bytes
+    };
+    let mut out = String::from_utf8_lossy(clipped).to_string();
+    if bytes.len() > limit {
+        out.push_str(" ...[truncated]");
+    }
+    out
+}
+
 fn invoke_external_json_stdio_once(
     system: &AgentSystemSpec,
     rendered_command: &[String],
     request_json: &str,
+    runtime: &AgentRuntimeConfig,
 ) -> Result<Output, ExternalAttemptError> {
     let mut cmd = Command::new(&rendered_command[0]);
     if rendered_command.len() > 1 {
@@ -1114,13 +1308,55 @@ fn invoke_external_json_stdio_once(
                 message: format!("could not write request JSON to agent stdin: {e}"),
             })?;
     }
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if started.elapsed() >= Duration::from_secs(runtime.read_timeout_secs) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(ExternalAttemptError {
+                        kind: ExternalAttemptErrorKind::Transient,
+                        message: format!(
+                            "agent command timed out after {}s (set {} or {} to increase)",
+                            runtime.read_timeout_secs,
+                            AGENT_READ_TIMEOUT_SECS_ENV,
+                            AGENT_TIMEOUT_SECS_ENV
+                        ),
+                    });
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                return Err(ExternalAttemptError {
+                    kind: classify_io_error_kind(e.kind()),
+                    message: format!("could not wait for agent process: {e}"),
+                });
+            }
+        }
+    }
     let output = child.wait_with_output().map_err(|e| ExternalAttemptError {
         kind: classify_io_error_kind(e.kind()),
-        message: format!("could not wait for agent process: {e}"),
+        message: format!("could not collect agent process output: {e}"),
     })?;
+    if output.stdout.len() > runtime.max_response_bytes
+        || output.stderr.len() > runtime.max_response_bytes
+    {
+        return Err(ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Fatal,
+            message: format!(
+                "agent command output exceeded {} bytes (stdout={}, stderr={}; set {} to increase)",
+                runtime.max_response_bytes,
+                output.stdout.len(),
+                output.stderr.len(),
+                AGENT_MAX_RESPONSE_BYTES_ENV
+            ),
+        });
+    }
     if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = lossy_with_cap(&output.stdout, runtime.max_response_bytes);
+        let stderr = lossy_with_cap(&output.stderr, runtime.max_response_bytes);
         let kind = if is_transient_exit_code(output.status.code()) {
             ExternalAttemptErrorKind::Transient
         } else {
@@ -1247,7 +1483,8 @@ fn classify_openai_http_error(status: reqwest::StatusCode, body: &str) -> Extern
 fn invoke_native_openai_once(
     system: &AgentSystemSpec,
     request_json: &str,
-) -> Result<(String, String), ExternalAttemptError> {
+) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
+    let runtime = resolve_agent_runtime_config(system);
     let api_key = resolve_api_key(system).ok_or_else(|| ExternalAttemptError {
         kind: ExternalAttemptErrorKind::Unavailable,
         message: format!("{OPENAI_API_KEY_ENV} is not set"),
@@ -1277,7 +1514,8 @@ fn invoke_native_openai_once(
         ]
     });
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
+        .connect_timeout(Duration::from_secs(runtime.connect_timeout_secs))
+        .timeout(Duration::from_secs(runtime.read_timeout_secs))
         .build()
         .map_err(|e| ExternalAttemptError {
             kind: ExternalAttemptErrorKind::Fatal,
@@ -1298,10 +1536,7 @@ fn invoke_native_openai_once(
             message: format!("OpenAI request failed: {e}"),
         })?;
     let status = response.status();
-    let body = response.text().map_err(|e| ExternalAttemptError {
-        kind: ExternalAttemptErrorKind::Fatal,
-        message: format!("could not read OpenAI response body: {e}"),
-    })?;
+    let body = read_response_body_limited(response, runtime.max_response_bytes, "OpenAI response")?;
     if !status.is_success() {
         return Err(classify_openai_http_error(status, &body));
     }
@@ -1313,13 +1548,19 @@ fn invoke_native_openai_once(
         kind: ExternalAttemptErrorKind::Fatal,
         message: "OpenAI API response did not contain output_text".to_string(),
     })?;
-    Ok((text, body))
+    Ok(NativeHttpInvokeResult {
+        text,
+        raw_body: body,
+        attempted_endpoints: vec![endpoint.clone()],
+        selected_endpoint: Some(endpoint),
+    })
 }
 
 fn invoke_native_openai_compat_once(
     system: &AgentSystemSpec,
     request_json: &str,
-) -> Result<(String, String), ExternalAttemptError> {
+) -> Result<NativeHttpInvokeResult, ExternalAttemptError> {
+    let runtime = resolve_agent_runtime_config(system);
     let api_key = resolve_api_key(system);
     let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
     if is_model_unspecified(&model) {
@@ -1349,14 +1590,17 @@ fn invoke_native_openai_compat_once(
         "temperature": 0.2
     });
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
+        .connect_timeout(Duration::from_secs(runtime.connect_timeout_secs))
+        .timeout(Duration::from_secs(runtime.read_timeout_secs))
         .build()
         .map_err(|e| ExternalAttemptError {
             kind: ExternalAttemptErrorKind::Fatal,
             message: format!("could not build OpenAI-compatible client: {e}"),
         })?;
     let mut first_path_error: Option<ExternalAttemptError> = None;
+    let mut attempted_endpoints: Vec<String> = vec![];
     for (idx, endpoint) in endpoints.iter().enumerate() {
+        attempted_endpoints.push(endpoint.clone());
         let mut request = client
             .post(endpoint)
             .header("Content-Type", "application/json");
@@ -1387,10 +1631,11 @@ fn invoke_native_openai_compat_once(
             }
         };
         let status = response.status();
-        let body = response.text().map_err(|e| ExternalAttemptError {
-            kind: ExternalAttemptErrorKind::Fatal,
-            message: format!("could not read OpenAI-compatible response body: {e}"),
-        })?;
+        let body = read_response_body_limited(
+            response,
+            runtime.max_response_bytes,
+            "OpenAI-compatible response",
+        )?;
         if !status.is_success() {
             let classified = classify_openai_http_error(status, &body);
             let can_try_fallback = (status.as_u16() == 404 || status.as_u16() == 405)
@@ -1416,7 +1661,12 @@ fn invoke_native_openai_compat_once(
                     .to_string(),
             }
         })?;
-        return Ok((text, body));
+        return Ok(NativeHttpInvokeResult {
+            text,
+            raw_body: body,
+            attempted_endpoints,
+            selected_endpoint: Some(endpoint.clone()),
+        });
     }
     Err(first_path_error.unwrap_or_else(|| ExternalAttemptError {
         kind: ExternalAttemptErrorKind::Fatal,
@@ -1511,6 +1761,8 @@ pub fn invoke_agent_support_with_env_overrides(
     let (_payload, request_value, request_json) =
         build_agent_request(&system.id, prompt, state_summary)?;
     let start = std::time::Instant::now();
+    let runtime = resolve_agent_runtime_config(&system);
+    let attempt_limit = effective_attempt_limit(&runtime);
 
     let outcome = match system.transport {
         AgentSystemTransport::BuiltinEcho => {
@@ -1527,6 +1779,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 raw_stderr: String::new(),
                 exit_code: Some(0),
                 elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary(&runtime),
             }
         }
         AgentSystemTransport::ExternalJsonStdio => {
@@ -1550,8 +1803,13 @@ pub fn invoke_agent_support_with_env_overrides(
                 .collect::<Vec<_>>();
             let mut output: Option<Output> = None;
             let mut last_transient_message: Option<String> = None;
-            for attempt in 1..=AGENT_INVOKE_RETRY_ATTEMPTS {
-                match invoke_external_json_stdio_once(&system, &rendered_command, &request_json) {
+            for attempt in 1..=attempt_limit {
+                match invoke_external_json_stdio_once(
+                    &system,
+                    &rendered_command,
+                    &request_json,
+                    &runtime,
+                ) {
                     Ok(result) => {
                         output = Some(result);
                         break;
@@ -1571,12 +1829,12 @@ pub fn invoke_agent_support_with_env_overrides(
                         }
                         ExternalAttemptErrorKind::Transient => {
                             last_transient_message = Some(error.message.clone());
-                            if attempt >= AGENT_INVOKE_RETRY_ATTEMPTS {
+                            if attempt >= attempt_limit {
                                 return Err(agent_err(
                                     AgentBridgeErrorCode::AdapterTransient,
                                     format!(
-                                        "agent command remained transiently unavailable after {} attempts: {}",
-                                        AGENT_INVOKE_RETRY_ATTEMPTS, error.message
+                                        "agent command remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
                                     ),
                                 ));
                             }
@@ -1589,8 +1847,9 @@ pub fn invoke_agent_support_with_env_overrides(
                 return Err(agent_err(
                     AgentBridgeErrorCode::AdapterTransient,
                     format!(
-                        "agent command did not complete after {} attempts{}",
-                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                        "agent command did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
                         last_transient_message
                             .as_ref()
                             .map(|value| format!(": {value}"))
@@ -1614,17 +1873,22 @@ pub fn invoke_agent_support_with_env_overrides(
                 raw_stderr: stderr,
                 exit_code: output.status.code(),
                 elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary(&runtime),
             }
         }
         AgentSystemTransport::NativeOpenai => {
             let mut stdout: Option<String> = None;
             let mut raw_body: Option<String> = None;
+            let mut attempted_endpoints: Vec<String> = vec![];
+            let mut selected_endpoint: Option<String> = None;
             let mut last_transient_message: Option<String> = None;
-            for attempt in 1..=AGENT_INVOKE_RETRY_ATTEMPTS {
+            for attempt in 1..=attempt_limit {
                 match invoke_native_openai_once(&system, &request_json) {
-                    Ok((result_text, raw_json_body)) => {
-                        stdout = Some(result_text);
-                        raw_body = Some(raw_json_body);
+                    Ok(result) => {
+                        stdout = Some(result.text);
+                        raw_body = Some(result.raw_body);
+                        attempted_endpoints = result.attempted_endpoints;
+                        selected_endpoint = result.selected_endpoint;
                         break;
                     }
                     Err(error) => match error.kind {
@@ -1642,12 +1906,12 @@ pub fn invoke_agent_support_with_env_overrides(
                         }
                         ExternalAttemptErrorKind::Transient => {
                             last_transient_message = Some(error.message.clone());
-                            if attempt >= AGENT_INVOKE_RETRY_ATTEMPTS {
+                            if attempt >= attempt_limit {
                                 return Err(agent_err(
                                     AgentBridgeErrorCode::AdapterTransient,
                                     format!(
-                                        "native OpenAI call remained transiently unavailable after {} attempts: {}",
-                                        AGENT_INVOKE_RETRY_ATTEMPTS, error.message
+                                        "native OpenAI call remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
                                     ),
                                 ));
                             }
@@ -1660,8 +1924,9 @@ pub fn invoke_agent_support_with_env_overrides(
                 return Err(agent_err(
                     AgentBridgeErrorCode::AdapterTransient,
                     format!(
-                        "native OpenAI call did not complete after {} attempts{}",
-                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                        "native OpenAI call did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
                         last_transient_message
                             .as_ref()
                             .map(|value| format!(": {value}"))
@@ -1671,6 +1936,13 @@ pub fn invoke_agent_support_with_env_overrides(
             }
             let stdout = stdout.expect("checked is_some above");
             let response = parse_agent_response(&stdout)?;
+            let mut runtime_summary = runtime_summary(&runtime);
+            runtime_summary.endpoint_candidates = vec![format!(
+                "{}/responses",
+                resolve_base_url(&system, OPENAI_DEFAULT_BASE_URL)
+            )];
+            runtime_summary.attempted_endpoints = attempted_endpoints;
+            runtime_summary.selected_endpoint = selected_endpoint;
             AgentInvocationOutcome {
                 catalog_path: resolved_catalog_path,
                 system_id: system.id,
@@ -1683,17 +1955,22 @@ pub fn invoke_agent_support_with_env_overrides(
                 raw_stderr: raw_body.unwrap_or_default(),
                 exit_code: Some(0),
                 elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary,
             }
         }
         AgentSystemTransport::NativeOpenaiCompat => {
             let mut stdout: Option<String> = None;
             let mut raw_body: Option<String> = None;
+            let mut attempted_endpoints: Vec<String> = vec![];
+            let mut selected_endpoint: Option<String> = None;
             let mut last_transient_message: Option<String> = None;
-            for attempt in 1..=AGENT_INVOKE_RETRY_ATTEMPTS {
+            for attempt in 1..=attempt_limit {
                 match invoke_native_openai_compat_once(&system, &request_json) {
-                    Ok((result_text, raw_json_body)) => {
-                        stdout = Some(result_text);
-                        raw_body = Some(raw_json_body);
+                    Ok(result) => {
+                        stdout = Some(result.text);
+                        raw_body = Some(result.raw_body);
+                        attempted_endpoints = result.attempted_endpoints;
+                        selected_endpoint = result.selected_endpoint;
                         break;
                     }
                     Err(error) => match error.kind {
@@ -1711,12 +1988,12 @@ pub fn invoke_agent_support_with_env_overrides(
                         }
                         ExternalAttemptErrorKind::Transient => {
                             last_transient_message = Some(error.message.clone());
-                            if attempt >= AGENT_INVOKE_RETRY_ATTEMPTS {
+                            if attempt >= attempt_limit {
                                 return Err(agent_err(
                                     AgentBridgeErrorCode::AdapterTransient,
                                     format!(
-                                        "native OpenAI-compatible call remained transiently unavailable after {} attempts: {}",
-                                        AGENT_INVOKE_RETRY_ATTEMPTS, error.message
+                                        "native OpenAI-compatible call remained transiently unavailable after {} attempts (max_retries={}): {}",
+                                        attempt_limit, runtime.max_retries, error.message
                                     ),
                                 ));
                             }
@@ -1729,8 +2006,9 @@ pub fn invoke_agent_support_with_env_overrides(
                 return Err(agent_err(
                     AgentBridgeErrorCode::AdapterTransient,
                     format!(
-                        "native OpenAI-compatible call did not complete after {} attempts{}",
-                        AGENT_INVOKE_RETRY_ATTEMPTS,
+                        "native OpenAI-compatible call did not complete after {} attempts (max_retries={}){}",
+                        attempt_limit,
+                        runtime.max_retries,
                         last_transient_message
                             .as_ref()
                             .map(|value| format!(": {value}"))
@@ -1740,6 +2018,11 @@ pub fn invoke_agent_support_with_env_overrides(
             }
             let stdout = stdout.expect("checked is_some above");
             let response = parse_agent_response(&stdout)?;
+            let mut runtime_summary = runtime_summary(&runtime);
+            runtime_summary.endpoint_candidates =
+                openai_compat_endpoint_candidates_for_system(&system);
+            runtime_summary.attempted_endpoints = attempted_endpoints;
+            runtime_summary.selected_endpoint = selected_endpoint;
             AgentInvocationOutcome {
                 catalog_path: resolved_catalog_path,
                 system_id: system.id,
@@ -1752,6 +2035,7 @@ pub fn invoke_agent_support_with_env_overrides(
                 raw_stderr: raw_body.unwrap_or_default(),
                 exit_code: Some(0),
                 elapsed_ms: start.elapsed().as_millis(),
+                runtime: runtime_summary,
             }
         }
     };
@@ -2006,5 +2290,26 @@ mod tests {
         assert_eq!(err.kind, ExternalAttemptErrorKind::Unavailable);
         assert!(err.message.contains("OpenAI API error (status=429"));
         assert!(err.message.contains("insufficient quota"));
+    }
+
+    #[test]
+    fn runtime_config_allows_zero_max_retries_override() {
+        let mut system = AgentSystemSpec {
+            id: "local-compat".to_string(),
+            label: "local-compat".to_string(),
+            description: None,
+            transport: AgentSystemTransport::NativeOpenaiCompat,
+            command: vec![],
+            model: Some("deepseek-r1:8b".to_string()),
+            base_url: Some("http://localhost:11964/v1".to_string()),
+            env: HashMap::new(),
+            working_dir: None,
+        };
+        system
+            .env
+            .insert(AGENT_MAX_RETRIES_ENV.to_string(), "0".to_string());
+        let runtime = resolve_agent_runtime_config(&system);
+        assert_eq!(runtime.max_retries, 0);
+        assert_eq!(effective_attempt_limit(&runtime), 1);
     }
 }

@@ -368,7 +368,7 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
 
 - Shared shell commands:
   - `agents list [--catalog PATH]`
-  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+  - `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
 - Catalog source defaults to `assets/agent_systems.json`.
 - Catalog entries describe transport and invocation details:
   - `builtin_echo` (offline/demo transport)
@@ -377,6 +377,8 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - `native_openai_compat` requires explicit model resolution (catalog model or
     per-request override; `unspecified` is rejected) and keeps endpoint host/port
     deterministic (no hidden host fallback probing)
+  - runtime guardrails are overrideable per request (timeout/connect/read,
+    retry budget, max response bytes) and surfaced in invocation telemetry
 - Agent request payload includes:
   - system id and prompt
   - optional project state summary context
@@ -408,6 +410,12 @@ Minimal-success rollout profile (recommended):
   tightly allowlisted low-risk commands.
 - Include compact machine context (`state_summary`) instead of large free-form
   project dumps to keep prompts deterministic and understandable.
+- For local/small models, provide a domain bootstrap package:
+  - `docs/ai_cloning_primer.md`
+  - `docs/ai_task_playbooks.md`
+  - `docs/ai_prompt_contract.md`
+  - `docs/examples/ai_cloning_examples.md`
+  - optional term extension: `docs/ai_glossary_extensions.json`
 
 ### Candidate query/optimization command contract (current)
 
@@ -433,10 +441,11 @@ Command surface:
 - `candidates filter INPUT_SET OUTPUT_SET --metric METRIC ...`
 - `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
 - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
-- `macros template-list|template-show|template-put|template-delete|template-run ...`
+- `macros template-list|template-show|template-put|template-delete|template-import|template-run ...`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `candidates template-list|template-show|template-put|template-delete|template-run ...`
 - `set-param NAME JSON_VALUE`
+- Starter cloning-pattern pack: `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
 
 This enables reusable query composition:
 

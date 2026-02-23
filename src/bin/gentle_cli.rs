@@ -472,14 +472,18 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
   gentle_cli agents list [--catalog PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
+  gentle_cli [--state PATH|--project PATH] agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]\n\n  \
   gentle_cli ui intents\n  \
   gentle_cli ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
   gentle_cli ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
   gentle_cli ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
   gentle_cli ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-list\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-show TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-delete TEMPLATE_NAME\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-import PATH\n  \
   gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
   gentle_cli [--state PATH|--project PATH] candidates list\n  \
   gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
@@ -2246,6 +2250,17 @@ T [ 0 0 0 10 ]
             ShellCommand::MacrosTemplateRun { .. }
         ));
 
+        let macros_template_import = parse_shell_tokens(&[
+            "macros".to_string(),
+            "template-import".to_string(),
+            "assets/cloning_patterns.json".to_string(),
+        ])
+        .expect("parse macros template-import");
+        assert!(matches!(
+            macros_template_import,
+            ShellCommand::MacrosTemplateImport { .. }
+        ));
+
         let ui_open = parse_shell_tokens(&[
             "ui".to_string(),
             "open".to_string(),
@@ -2304,6 +2319,23 @@ T [ 0 0 0 10 ]
                 assert_eq!(name, "clone");
                 assert_eq!(bindings.get("seq_id").map(String::as_str), Some("seqA"));
                 assert!(transactional);
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_macros_template_import() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "macros".to_string(),
+            "template-import".to_string(),
+            "assets/cloning_patterns.json".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::MacrosTemplateImport { path }) => {
+                assert_eq!(path, "assets/cloning_patterns.json");
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

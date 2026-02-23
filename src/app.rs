@@ -17,8 +17,10 @@ use std::{
 use crate::{
     TRANSLATIONS, about,
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, AgentExecutionIntent, AgentInvocationOutcome,
-        AgentResponse, AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
+        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
+        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
+        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, AgentInvocationOutcome, AgentResponse,
+        AgentSystemSpec, AgentSystemTransport, DEFAULT_AGENT_SYSTEM_CATALOG_PATH,
         OPENAI_API_KEY_ENV, OPENAI_COMPAT_UNSPECIFIED_MODEL, agent_system_availability,
         discover_openai_models, invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
@@ -78,8 +80,192 @@ fn normalize_agent_model_name(raw: &str) -> Option<String> {
     }
 }
 
+const AGENT_PROMPT_TEMPLATE_DEFAULT_ID: &str = "structured";
+
+fn agent_prompt_template_options() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("structured", "Structured (recommended)"),
+        ("candidate_anchors", "Candidate between anchors"),
+        ("blast_specificity", "BLAST specificity check"),
+        ("track_intersection", "Track import + prioritization"),
+        ("macro_template", "Macro/template authoring"),
+    ]
+}
+
+fn agent_prompt_template_label(id: &str) -> &'static str {
+    agent_prompt_template_options()
+        .iter()
+        .find(|(value, _)| *value == id)
+        .map(|(_, label)| *label)
+        .unwrap_or("Structured (recommended)")
+}
+
+fn agent_prompt_template_text(id: &str) -> &'static str {
+    match id {
+        "candidate_anchors" => {
+            r#"Objective:
+Generate candidate windows between two local anchors and rank them.
+
+Context:
+Project sequence ID: <SEQ_ID>
+
+Inputs:
+- seq_id: <SEQ_ID>
+- anchor A: <feature boundary or absolute position>
+- anchor B: <feature boundary or absolute position>
+
+Constraints:
+- length: 20
+- step: 1
+- GC range: 40-80%
+- additional constraints: <motifs/sites/strand>
+
+Output wanted:
+- exact `gentle_cli shell "candidates ..."` commands
+- scoring + filter + top-k steps
+- validation checklist
+
+Execution policy:
+ask-before-run"#
+        }
+        "blast_specificity" => {
+            r#"Objective:
+Run a specificity check for one sequence with BLAST.
+
+Context:
+Target catalog: genomes | helpers
+
+Inputs:
+- genome_id/helper_id: <ID>
+- query_sequence: <ACGT...>
+
+Constraints:
+- max_hits: 20
+- task: blastn-short
+
+Output wanted:
+- exact BLAST command
+- concise interpretation checklist for top hits
+
+Execution policy:
+chat-only"#
+        }
+        "track_intersection" => {
+            r#"Objective:
+Import external track evidence and prioritize candidates near track features.
+
+Context:
+Anchored sequence ID: <SEQ_ID>
+
+Inputs:
+- seq_id: <SEQ_ID>
+- track file path: <BED/BED.GZ/BIGWIG/VCF path>
+
+Constraints:
+- keep imported features in TRACK groups
+- do not modify original sequence content
+
+Output wanted:
+- exact track-import commands
+- candidate generation/scoring/filter commands near imported TRACK features
+- validation checklist
+
+Execution policy:
+ask-before-run"#
+        }
+        "macro_template" => {
+            r#"Objective:
+Create or update a reusable candidate macro template and run it with bindings.
+
+Context:
+Template name: <NAME>
+
+Inputs:
+- template parameters: <param list>
+- script intent: <generate/score/filter/top-k/...>
+
+Constraints:
+- transactional run enabled
+- deterministic tie-break policy where applicable
+
+Output wanted:
+- `candidates template-put` and `candidates template-run` commands
+- brief note on expected outputs and rollback behavior
+
+Execution policy:
+ask-before-run"#
+        }
+        _ => {
+            r#"Objective:
+<one clear goal>
+
+Context:
+<sequence/genome/helper IDs and short background>
+
+Inputs:
+- seq_id / genome_id / helper_id: ...
+- anchors or coordinates: ...
+- feature labels/kinds: ...
+
+Constraints:
+- length: ...
+- GC range: ...
+- motifs/sites to require or avoid: ...
+- strand assumptions: ...
+
+Output wanted:
+- plan
+- exact gentle_cli commands
+- validation checklist
+
+Execution policy:
+chat-only | ask-before-run | allow-auto-exec"#
+        }
+    }
+}
+
 fn default_prepare_timeout_secs_string() -> String {
     env::var(PREPARE_GENOME_TIMEOUT_SECS_ENV)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
+fn default_agent_timeout_secs_string() -> String {
+    env::var(AGENT_TIMEOUT_SECS_ENV)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
+fn default_agent_connect_timeout_secs_string() -> String {
+    env::var(AGENT_CONNECT_TIMEOUT_SECS_ENV)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
+fn default_agent_read_timeout_secs_string() -> String {
+    env::var(AGENT_READ_TIMEOUT_SECS_ENV)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
+fn default_agent_max_retries_string() -> String {
+    env::var(AGENT_MAX_RETRIES_ENV)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
+fn default_agent_max_response_bytes_string() -> String {
+    env::var(AGENT_MAX_RESPONSE_BYTES_ENV)
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -285,11 +471,17 @@ pub struct GENtleApp {
     agent_openai_api_key: String,
     agent_base_url_override: String,
     agent_model_override: String,
+    agent_timeout_secs: String,
+    agent_connect_timeout_secs: String,
+    agent_read_timeout_secs: String,
+    agent_max_retries: String,
+    agent_max_response_bytes: String,
     agent_discovered_models: Vec<String>,
     agent_discovered_model_pick: String,
     agent_model_discovery_status: String,
     agent_model_discovery_source_key: String,
     agent_model_discovery_task: Option<AgentModelDiscoveryTask>,
+    agent_prompt_template_id: String,
     agent_prompt: String,
     agent_include_state_summary: bool,
     agent_allow_auto_exec: bool,
@@ -782,11 +974,17 @@ impl Default for GENtleApp {
             agent_openai_api_key: String::new(),
             agent_base_url_override: String::new(),
             agent_model_override: String::new(),
+            agent_timeout_secs: default_agent_timeout_secs_string(),
+            agent_connect_timeout_secs: default_agent_connect_timeout_secs_string(),
+            agent_read_timeout_secs: default_agent_read_timeout_secs_string(),
+            agent_max_retries: default_agent_max_retries_string(),
+            agent_max_response_bytes: default_agent_max_response_bytes_string(),
             agent_discovered_models: vec![],
             agent_discovered_model_pick: String::new(),
             agent_model_discovery_status: String::new(),
             agent_model_discovery_source_key: String::new(),
             agent_model_discovery_task: None,
+            agent_prompt_template_id: AGENT_PROMPT_TEMPLATE_DEFAULT_ID.to_string(),
             agent_prompt: String::new(),
             agent_include_state_summary: true,
             agent_allow_auto_exec: false,
@@ -2997,6 +3195,94 @@ Error: `{err}`"
                 .env
                 .insert(AGENT_MODEL_ENV.to_string(), override_model);
         }
+        let timeout_override = self
+            .agent_timeout_secs
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0);
+        if let Some(timeout_override) = timeout_override
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::ExternalJsonStdio
+                    | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved.env.insert(
+                AGENT_TIMEOUT_SECS_ENV.to_string(),
+                timeout_override.to_string(),
+            );
+        }
+        let connect_timeout_override = self
+            .agent_connect_timeout_secs
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0);
+        if let Some(connect_timeout_override) = connect_timeout_override
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::NativeOpenai | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved.env.insert(
+                AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
+                connect_timeout_override.to_string(),
+            );
+        }
+        let read_timeout_override = self
+            .agent_read_timeout_secs
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0);
+        if let Some(read_timeout_override) = read_timeout_override
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::ExternalJsonStdio
+                    | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved.env.insert(
+                AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
+                read_timeout_override.to_string(),
+            );
+        }
+        let max_retries_override = self.agent_max_retries.trim().parse::<usize>().ok();
+        if let Some(max_retries_override) = max_retries_override
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::ExternalJsonStdio
+                    | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved.env.insert(
+                AGENT_MAX_RETRIES_ENV.to_string(),
+                max_retries_override.to_string(),
+            );
+        }
+        let max_response_bytes_override = self
+            .agent_max_response_bytes
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|value| *value > 0);
+        if let Some(max_response_bytes_override) = max_response_bytes_override
+            && matches!(
+                resolved.transport,
+                AgentSystemTransport::ExternalJsonStdio
+                    | AgentSystemTransport::NativeOpenai
+                    | AgentSystemTransport::NativeOpenaiCompat
+            )
+        {
+            resolved.env.insert(
+                AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
+                max_response_bytes_override.to_string(),
+            );
+        }
         resolved
     }
 
@@ -3045,6 +3331,73 @@ Error: `{err}`"
             base_url,
             key_state
         ))
+    }
+
+    fn parse_agent_timeout_seconds(&self) -> Result<Option<u64>, String> {
+        let raw = self.agent_timeout_secs.trim();
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let parsed = raw
+            .parse::<u64>()
+            .map_err(|e| format!("Invalid timeout_sec '{}': {}", raw, e))?;
+        if parsed == 0 {
+            return Ok(None);
+        }
+        Ok(Some(parsed))
+    }
+
+    fn parse_agent_connect_timeout_seconds(&self) -> Result<Option<u64>, String> {
+        let raw = self.agent_connect_timeout_secs.trim();
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let parsed = raw
+            .parse::<u64>()
+            .map_err(|e| format!("Invalid connect_timeout_sec '{}': {}", raw, e))?;
+        if parsed == 0 {
+            return Ok(None);
+        }
+        Ok(Some(parsed))
+    }
+
+    fn parse_agent_read_timeout_seconds(&self) -> Result<Option<u64>, String> {
+        let raw = self.agent_read_timeout_secs.trim();
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let parsed = raw
+            .parse::<u64>()
+            .map_err(|e| format!("Invalid read_timeout_sec '{}': {}", raw, e))?;
+        if parsed == 0 {
+            return Ok(None);
+        }
+        Ok(Some(parsed))
+    }
+
+    fn parse_agent_max_retries(&self) -> Result<Option<usize>, String> {
+        let raw = self.agent_max_retries.trim();
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let parsed = raw
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid max_retries '{}': {}", raw, e))?;
+        Ok(Some(parsed))
+    }
+
+    fn parse_agent_max_response_bytes(&self) -> Result<Option<usize>, String> {
+        let raw = self.agent_max_response_bytes.trim();
+        if raw.is_empty() {
+            return Ok(None);
+        }
+        let parsed = raw
+            .parse::<usize>()
+            .map_err(|e| format!("Invalid max_response_bytes '{}': {}", raw, e))?;
+        if parsed == 0 {
+            return Ok(None);
+        }
+        Ok(Some(parsed))
     }
 
     fn start_agent_model_discovery_task(&mut self, system: &AgentSystemSpec, force: bool) {
@@ -3145,6 +3498,41 @@ Error: `{err}`"
             self.agent_status = "Agent prompt cannot be empty".to_string();
             return;
         }
+        let timeout_seconds = match self.parse_agent_timeout_seconds() {
+            Ok(value) => value,
+            Err(err) => {
+                self.agent_status = err;
+                return;
+            }
+        };
+        let connect_timeout_seconds = match self.parse_agent_connect_timeout_seconds() {
+            Ok(value) => value,
+            Err(err) => {
+                self.agent_status = err;
+                return;
+            }
+        };
+        let read_timeout_seconds = match self.parse_agent_read_timeout_seconds() {
+            Ok(value) => value,
+            Err(err) => {
+                self.agent_status = err;
+                return;
+            }
+        };
+        let max_retries = match self.parse_agent_max_retries() {
+            Ok(value) => value,
+            Err(err) => {
+                self.agent_status = err;
+                return;
+            }
+        };
+        let max_response_bytes = match self.parse_agent_max_response_bytes() {
+            Ok(value) => value,
+            Err(err) => {
+                self.agent_status = err;
+                return;
+            }
+        };
         let mut model_override = normalize_agent_model_name(self.agent_model_override.trim());
         let discovered_pick =
             normalize_agent_model_name(&self.agent_discovered_model_pick).filter(|picked| {
@@ -3196,9 +3584,33 @@ Error: `{err}`"
         let openai_api_key = self.agent_openai_api_key.trim().to_string();
         let base_url_override = self.agent_base_url_override.trim().to_string();
         let model_override = model_override.unwrap_or_default();
+        let timeout_override = timeout_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let connect_timeout_override = connect_timeout_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let read_timeout_override = read_timeout_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let max_retries_override = max_retries
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let max_response_bytes_override = max_response_bytes
+            .map(|value| value.to_string())
+            .unwrap_or_default();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<AgentAskTaskMessage>();
-        self.agent_status = format!("Asking agent '{}' in background", system_id);
+        self.agent_status = if let Some(timeout) = timeout_seconds {
+            format!(
+                "Asking agent '{}' in background (timeout={}s, retries={})",
+                system_id,
+                timeout,
+                max_retries.unwrap_or(2)
+            )
+        } else {
+            format!("Asking agent '{}' in background", system_id)
+        };
         self.push_job_event(
             BackgroundJobKind::AgentAssist,
             BackgroundJobEventPhase::Started,
@@ -3220,6 +3632,30 @@ Error: `{err}`"
             }
             if !model_override.is_empty() {
                 env_overrides.insert(AGENT_MODEL_ENV.to_string(), model_override);
+            }
+            if !timeout_override.is_empty() {
+                env_overrides.insert(AGENT_TIMEOUT_SECS_ENV.to_string(), timeout_override);
+            }
+            if !connect_timeout_override.is_empty() {
+                env_overrides.insert(
+                    AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
+                    connect_timeout_override,
+                );
+            }
+            if !read_timeout_override.is_empty() {
+                env_overrides.insert(
+                    AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
+                    read_timeout_override,
+                );
+            }
+            if !max_retries_override.is_empty() {
+                env_overrides.insert(AGENT_MAX_RETRIES_ENV.to_string(), max_retries_override);
+            }
+            if !max_response_bytes_override.is_empty() {
+                env_overrides.insert(
+                    AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
+                    max_response_bytes_override,
+                );
             }
             let result = invoke_agent_support_with_env_overrides(
                 Some(catalog_path.as_str()),
@@ -6753,6 +7189,65 @@ Error: `{err}`"
                 self.agent_model_override.clear();
             }
         });
+        ui.horizontal(|ui| {
+            ui.label("timeout_sec");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_timeout_secs)
+                    .desired_width(100.0)
+                    .hint_text("default"),
+            );
+            if ui
+                .button("Clear Timeout")
+                .on_hover_text("Use default timeout")
+                .clicked()
+            {
+                self.agent_timeout_secs.clear();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("connect_timeout_sec");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_connect_timeout_secs)
+                    .desired_width(90.0)
+                    .hint_text("default"),
+            );
+            ui.label("read_timeout_sec");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_read_timeout_secs)
+                    .desired_width(90.0)
+                    .hint_text("default"),
+            );
+            if ui
+                .button("Clear HTTP Timeouts")
+                .on_hover_text("Use default connect/read timeouts")
+                .clicked()
+            {
+                self.agent_connect_timeout_secs.clear();
+                self.agent_read_timeout_secs.clear();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("max_retries");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_max_retries)
+                    .desired_width(90.0)
+                    .hint_text("default"),
+            );
+            ui.label("max_response_bytes");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.agent_max_response_bytes)
+                    .desired_width(120.0)
+                    .hint_text("default"),
+            );
+            if ui
+                .button("Clear Limits")
+                .on_hover_text("Use default retry/response-size limits")
+                .clicked()
+            {
+                self.agent_max_retries.clear();
+                self.agent_max_response_bytes.clear();
+            }
+        });
         if let Some(system) = self.selected_agent_system() {
             if matches!(
                 system.transport,
@@ -6811,6 +7306,15 @@ Error: `{err}`"
         ui.small(
             "Session only: Model override applies to native_openai/native_openai_compat and maps to GENTLE_AGENT_MODEL. Value 'unspecified' means no override.",
         );
+        ui.small(
+            "Session only: timeout_sec maps to GENTLE_AGENT_TIMEOUT_SECS and applies to agent requests (stdio and native transports).",
+        );
+        ui.small(
+            "Session only: connect_timeout_sec/read_timeout_sec map to GENTLE_AGENT_CONNECT_TIMEOUT_SECS/GENTLE_AGENT_READ_TIMEOUT_SECS.",
+        );
+        ui.small(
+            "Session only: max_retries/max_response_bytes map to GENTLE_AGENT_MAX_RETRIES/GENTLE_AGENT_MAX_RESPONSE_BYTES.",
+        );
         ui.horizontal(|ui| {
             ui.checkbox(
                 &mut self.agent_include_state_summary,
@@ -6820,6 +7324,50 @@ Error: `{err}`"
                 &mut self.agent_allow_auto_exec,
                 "Auto-run suggestions marked as 'auto'",
             );
+        });
+        if !agent_prompt_template_options()
+            .iter()
+            .any(|(id, _)| *id == self.agent_prompt_template_id)
+        {
+            self.agent_prompt_template_id = AGENT_PROMPT_TEMPLATE_DEFAULT_ID.to_string();
+        }
+        ui.horizontal(|ui| {
+            ui.label("Prompt template");
+            egui::ComboBox::from_id_salt("agent_prompt_template_combo")
+                .selected_text(agent_prompt_template_label(&self.agent_prompt_template_id))
+                .show_ui(ui, |ui| {
+                    for (id, label) in agent_prompt_template_options() {
+                        ui.selectable_value(
+                            &mut self.agent_prompt_template_id,
+                            (*id).to_string(),
+                            *label,
+                        );
+                    }
+                });
+            if ui
+                .button("Insert")
+                .on_hover_text("Replace current prompt with selected template")
+                .clicked()
+            {
+                self.agent_prompt =
+                    agent_prompt_template_text(&self.agent_prompt_template_id).to_string();
+            }
+            if ui
+                .button("Append")
+                .on_hover_text("Append selected template below current prompt")
+                .clicked()
+            {
+                let template_text = agent_prompt_template_text(&self.agent_prompt_template_id);
+                if self.agent_prompt.trim().is_empty() {
+                    self.agent_prompt = template_text.to_string();
+                } else {
+                    if !self.agent_prompt.ends_with('\n') {
+                        self.agent_prompt.push('\n');
+                    }
+                    self.agent_prompt.push('\n');
+                    self.agent_prompt.push_str(template_text);
+                }
+            }
         });
         ui.label("Prompt");
         ui.add(
@@ -6886,6 +7434,29 @@ Error: `{err}`"
                 "elapsed={} ms | transport={} | exit_code={:?}",
                 invocation.elapsed_ms, invocation.transport, invocation.exit_code
             ));
+            ui.small(format!(
+                "runtime: timeout={}s | connect={:?}s | read={:?}s | max_retries={} | max_response_bytes={}",
+                invocation.runtime.timeout_secs,
+                invocation.runtime.connect_timeout_secs,
+                invocation.runtime.read_timeout_secs,
+                invocation.runtime.max_retries,
+                invocation.runtime.max_response_bytes
+            ));
+            if !invocation.runtime.endpoint_candidates.is_empty() {
+                ui.small(format!(
+                    "endpoint candidates: {}",
+                    invocation.runtime.endpoint_candidates.join(" | ")
+                ));
+            }
+            if !invocation.runtime.attempted_endpoints.is_empty() {
+                ui.small(format!(
+                    "attempted endpoints: {}",
+                    invocation.runtime.attempted_endpoints.join(" | ")
+                ));
+            }
+            if let Some(selected_endpoint) = invocation.runtime.selected_endpoint.as_deref() {
+                ui.small(format!("selected endpoint: {}", selected_endpoint));
+            }
             if !invocation.response.assistant_message.trim().is_empty() {
                 ui.group(|ui| {
                     ui.strong("Agent message");

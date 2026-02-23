@@ -1,0 +1,39 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "load_branch_reverse_complement_pgex_fasta",
+  "title": "Load FASTA, branch, and reverse-complement",
+  "summary": "Demonstrates a simple branch lineage workflow on a local FASTA sequence.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX_3X.fa"
+  ],
+  "tags": [
+    "dna",
+    "branch",
+    "reverse_complement",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_load_branch_reverse_complement_pgex_fasta",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX_3X.fa",
+          "as_id": "pgex_fasta"
+        }
+      },
+      {
+        "Branch": {
+          "input": "pgex_fasta",
+          "output_id": "pgex_fasta_branch"
+        }
+      },
+      {
+        "ReverseComplement": {
+          "input": "pgex_fasta_branch",
+          "output_id": "pgex_fasta_branch_rc"
+        }
+      }
+    ]
+  }
+}

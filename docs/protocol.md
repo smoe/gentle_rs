@@ -150,10 +150,12 @@ Adapter utility contracts (current, non-engine operations):
   - `--format json` renders machine-readable help catalog/topic payload
   - `--format markdown` renders documentation-ready markdown
 
-- `macros run/template-list/template-show/template-put/template-delete/template-run`
+- `macros run/template-list/template-show/template-put/template-delete/template-import/template-run`
   - shared-shell macro adapter family for full operation/workflow scripting
   - template persistence is backed by engine operations
     `UpsertWorkflowMacroTemplate`/`DeleteWorkflowMacroTemplate`
+  - `template-import` accepts JSON packs with schema
+    `gentle.cloning_patterns.v1` and upserts all templates transactionally
   - expanded scripts can execute `op ...` and `workflow ...` statements and
     optionally roll back via `--transactional`
 
@@ -168,12 +170,22 @@ Adapter utility contracts (current, non-engine operations):
   - Lists configured agent systems from catalog JSON.
   - Default catalog: `assets/agent_systems.json`.
 
-- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
+- `agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]`
   - Invokes one configured agent system via catalog transport.
   - `--base-url` applies a per-request runtime base URL override for native
     transports (`native_openai`, `native_openai_compat`).
   - `--model` applies a per-request runtime model override for native
     transports (`native_openai`, `native_openai_compat`).
+  - `--timeout-secs` applies a per-request timeout override for stdio/native
+    transports (maps to `GENTLE_AGENT_TIMEOUT_SECS`).
+  - `--connect-timeout-secs` applies a per-request HTTP connect timeout override
+    for native transports (maps to `GENTLE_AGENT_CONNECT_TIMEOUT_SECS`).
+  - `--read-timeout-secs` applies a per-request read timeout override for
+    stdio/native transports (maps to `GENTLE_AGENT_READ_TIMEOUT_SECS`).
+  - `--max-retries` applies a per-request transient retry budget override
+    (maps to `GENTLE_AGENT_MAX_RETRIES`; `0` disables retries).
+  - `--max-response-bytes` applies a per-request response body/output cap
+    override (maps to `GENTLE_AGENT_MAX_RESPONSE_BYTES`).
   - `--no-state-summary` suppresses project context injection.
   - Suggested-command execution is per-suggestion only (no global always-execute).
 
@@ -217,6 +229,16 @@ Transport notes:
   per request for `native_openai` and `native_openai_compat`.
 - `GENTLE_AGENT_MODEL` (or CLI `--model`) overrides catalog `model` per request
   for `native_openai` and `native_openai_compat`.
+- `GENTLE_AGENT_TIMEOUT_SECS` (or CLI `--timeout-secs`) overrides request
+  timeout per attempt for agent transports.
+- `GENTLE_AGENT_CONNECT_TIMEOUT_SECS` (or CLI `--connect-timeout-secs`)
+  overrides HTTP connect timeout for native transports.
+- `GENTLE_AGENT_READ_TIMEOUT_SECS` (or CLI `--read-timeout-secs`) overrides
+  read timeout for stdio/native transports.
+- `GENTLE_AGENT_MAX_RETRIES` (or CLI `--max-retries`) overrides transient retry
+  count (`0` disables retries).
+- `GENTLE_AGENT_MAX_RESPONSE_BYTES` (or CLI `--max-response-bytes`) overrides
+  response-size cap per attempt (stdout/stderr or HTTP body).
 - `native_openai_compat` requires a concrete model name; value `unspecified`
   is treated as missing and the request is rejected until a model is provided.
 - `native_openai_compat` does not silently switch host/port; it uses catalog
@@ -426,9 +448,11 @@ Candidate-set semantics:
     (`gentle.cloning_macro_template.v1`) so cloning-operation macro intent is
     explicit at engine level
   - template expansion/binding is exposed through adapter command surfaces
-    (`macros template-*`)
+    (`macros template-*`, including `macros template-import PATH`)
   - expanded scripts run through shared shell execution (`macros run`) and can
     orchestrate full cloning operations via `op ...` or `workflow ...` payloads
+  - shipped starter pack path:
+    `assets/cloning_patterns.json` (schema `gentle.cloning_patterns.v1`)
 - Candidate macro templates are persisted in project metadata:
   - `UpsertCandidateMacroTemplate` stores/replaces named templates
   - `DeleteCandidateMacroTemplate` removes templates

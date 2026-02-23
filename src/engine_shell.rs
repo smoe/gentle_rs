@@ -1,6 +1,8 @@
 use crate::{
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_MODEL_ENV, AgentExecutionIntent, agent_system_availability,
+        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
+        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
+        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, agent_system_availability,
         invoke_agent_support_with_env_overrides, load_agent_system_catalog,
     },
     dna_ladder::LadderMolecule,
@@ -45,6 +47,33 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs,
 };
+
+const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+struct CloningPatternFile {
+    schema: String,
+    templates: Vec<CloningPatternTemplate>,
+}
+
+impl Default for CloningPatternFile {
+    fn default() -> Self {
+        Self {
+            schema: CLONING_PATTERN_FILE_SCHEMA.to_string(),
+            templates: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct CloningPatternTemplate {
+    name: String,
+    description: Option<String>,
+    parameters: Vec<WorkflowMacroTemplateParam>,
+    script: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UiIntentAction {
@@ -207,6 +236,11 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         base_url_override: Option<String>,
         model_override: Option<String>,
+        timeout_seconds: Option<u64>,
+        connect_timeout_seconds: Option<u64>,
+        read_timeout_seconds: Option<u64>,
+        max_retries: Option<usize>,
+        max_response_bytes: Option<usize>,
         include_state_summary: bool,
         allow_auto_exec: bool,
         execute_all: bool,
@@ -370,6 +404,9 @@ pub enum ShellCommand {
     },
     MacrosTemplateDelete {
         name: String,
+    },
+    MacrosTemplateImport {
+        path: String,
     },
     MacrosTemplateRun {
         name: String,
@@ -842,6 +879,41 @@ fn parse_template_binding(raw: &str) -> Result<(String, String), String> {
     Ok((key.to_string(), value.to_string()))
 }
 
+fn load_cloning_pattern_file(path: &str) -> Result<CloningPatternFile, String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("Could not read pattern file '{path}': {e}"))?;
+    let file: CloningPatternFile = serde_json::from_str(&raw)
+        .map_err(|e| format!("Could not parse pattern file '{path}' as JSON: {e}"))?;
+    let schema = file.schema.trim();
+    if !schema.eq_ignore_ascii_case(CLONING_PATTERN_FILE_SCHEMA) {
+        return Err(format!(
+            "Unsupported pattern file schema '{}' in '{}' (expected '{}')",
+            file.schema, path, CLONING_PATTERN_FILE_SCHEMA
+        ));
+    }
+    if file.templates.is_empty() {
+        return Err(format!(
+            "Pattern file '{}' does not contain any templates",
+            path
+        ));
+    }
+    for template in &file.templates {
+        if template.name.trim().is_empty() {
+            return Err(format!(
+                "Pattern file '{}' contains a template with empty name",
+                path
+            ));
+        }
+        if template.script.trim().is_empty() {
+            return Err(format!(
+                "Pattern file '{}' template '{}' has empty script",
+                path, template.name
+            ));
+        }
+    }
+    Ok(file)
+}
+
 fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAnchor, String> {
     serde_json::from_str::<SequenceAnchor>(raw)
         .map_err(|e| format!("Invalid {} JSON '{}': {}", option_name, raw, e))
@@ -1010,6 +1082,11 @@ impl ShellCommand {
                 catalog_path,
                 base_url_override,
                 model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
                 execute_all,
@@ -1037,8 +1114,23 @@ impl ShellCommand {
                     .map(str::trim)
                     .filter(|v| !v.is_empty())
                     .unwrap_or("-");
+                let timeout = timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let connect_timeout = connect_timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let read_timeout = read_timeout_seconds
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let retries = max_retries
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let max_bytes = max_response_bytes
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, base_url_override={base_url}, model_override={model}, execute={execute_mode})",
+                    "ask agent '{system_id}' (catalog='{catalog}', prompt_len={}, include_state_summary={}, base_url_override={base_url}, model_override={model}, timeout_secs={timeout}, connect_timeout_secs={connect_timeout}, read_timeout_secs={read_timeout}, max_retries={retries}, max_response_bytes={max_bytes}, execute={execute_mode})",
                     prompt.len(),
                     include_state_summary
                 )
@@ -1440,6 +1532,9 @@ impl ShellCommand {
             Self::MacrosTemplateDelete { name } => {
                 format!("delete workflow macro template '{}'", name)
             }
+            Self::MacrosTemplateImport { path } => {
+                format!("import workflow macro templates from '{}'", path)
+            }
             Self::MacrosTemplateRun {
                 name,
                 bindings,
@@ -1840,6 +1935,7 @@ impl ShellCommand {
                 | Self::MacrosRun { .. }
                 | Self::MacrosTemplateUpsert { .. }
                 | Self::MacrosTemplateDelete { .. }
+                | Self::MacrosTemplateImport { .. }
                 | Self::MacrosTemplateRun { .. }
                 | Self::CandidatesDelete { .. }
                 | Self::CandidatesGenerate { .. }
@@ -3968,7 +4064,7 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "macros requires a subcommand: run, template-list, template-show, template-put, template-delete, template-run"
+            "macros requires a subcommand: run, template-list, template-show, template-put, template-delete, template-import, template-run"
                 .to_string(),
         );
     }
@@ -4110,6 +4206,14 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 name: tokens[2].clone(),
             })
         }
+        "template-import" => {
+            if tokens.len() != 3 {
+                return Err("macros template-import requires PATH".to_string());
+            }
+            Ok(ShellCommand::MacrosTemplateImport {
+                path: tokens[2].clone(),
+            })
+        }
         "template-run" => {
             if tokens.len() < 3 {
                 return Err(
@@ -4150,7 +4254,7 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown macros subcommand '{other}' (expected run, template-list, template-show, template-put, template-delete, template-run)"
+            "Unknown macros subcommand '{other}' (expected run, template-list, template-show, template-put, template-delete, template-import, template-run)"
         )),
     }
 }
@@ -4183,7 +4287,7 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "ask" => {
             if tokens.len() < 3 {
                 return Err(
-                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
+                    "agents ask requires SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]".to_string(),
                 );
             }
             let system_id = tokens[2].trim().to_string();
@@ -4195,6 +4299,11 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut catalog_path: Option<String> = None;
             let mut base_url_override: Option<String> = None;
             let mut model_override: Option<String> = None;
+            let mut timeout_seconds: Option<u64> = None;
+            let mut connect_timeout_seconds: Option<u64> = None;
+            let mut read_timeout_seconds: Option<u64> = None;
+            let mut max_retries: Option<usize> = None;
+            let mut max_response_bytes: Option<usize> = None;
             let mut include_state_summary = true;
             let mut allow_auto_exec = false;
             let mut execute_all = false;
@@ -4233,6 +4342,74 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "--model",
                             "agents ask",
                         )?);
+                    }
+                    "--timeout-secs" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--timeout-secs", "agents ask")?;
+                        let parsed = raw
+                            .parse::<u64>()
+                            .map_err(|e| format!("Invalid --timeout-secs value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            timeout_seconds = None;
+                        } else {
+                            timeout_seconds = Some(parsed);
+                        }
+                    }
+                    "--connect-timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--connect-timeout-secs",
+                            "agents ask",
+                        )?;
+                        let parsed = raw.parse::<u64>().map_err(|e| {
+                            format!("Invalid --connect-timeout-secs value '{raw}': {e}")
+                        })?;
+                        if parsed == 0 {
+                            connect_timeout_seconds = None;
+                        } else {
+                            connect_timeout_seconds = Some(parsed);
+                        }
+                    }
+                    "--read-timeout-secs" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--read-timeout-secs",
+                            "agents ask",
+                        )?;
+                        let parsed = raw.parse::<u64>().map_err(|e| {
+                            format!("Invalid --read-timeout-secs value '{raw}': {e}")
+                        })?;
+                        if parsed == 0 {
+                            read_timeout_seconds = None;
+                        } else {
+                            read_timeout_seconds = Some(parsed);
+                        }
+                    }
+                    "--max-retries" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--max-retries", "agents ask")?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-retries value '{raw}': {e}"))?;
+                        max_retries = Some(parsed);
+                    }
+                    "--max-response-bytes" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-response-bytes",
+                            "agents ask",
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --max-response-bytes value '{raw}': {e}")
+                        })?;
+                        if parsed == 0 {
+                            max_response_bytes = None;
+                        } else {
+                            max_response_bytes = Some(parsed);
+                        }
                     }
                     "--allow-auto-exec" => {
                         allow_auto_exec = true;
@@ -4278,6 +4455,11 @@ fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 catalog_path,
                 base_url_override,
                 model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
                 execute_all,
@@ -6208,6 +6390,11 @@ pub fn execute_shell_command_with_options(
             catalog_path,
             base_url_override,
             model_override,
+            timeout_seconds,
+            connect_timeout_seconds,
+            read_timeout_seconds,
+            max_retries,
+            max_response_bytes,
             include_state_summary,
             allow_auto_exec,
             execute_all,
@@ -6238,6 +6425,35 @@ pub fn execute_shell_command_with_options(
                 .filter(|value| !value.is_empty())
             {
                 env_overrides.insert(AGENT_MODEL_ENV.to_string(), model.to_string());
+            }
+            if let Some(timeout_seconds) = timeout_seconds.filter(|value| *value > 0) {
+                env_overrides.insert(
+                    AGENT_TIMEOUT_SECS_ENV.to_string(),
+                    timeout_seconds.to_string(),
+                );
+            }
+            if let Some(connect_timeout_seconds) =
+                connect_timeout_seconds.filter(|value| *value > 0)
+            {
+                env_overrides.insert(
+                    AGENT_CONNECT_TIMEOUT_SECS_ENV.to_string(),
+                    connect_timeout_seconds.to_string(),
+                );
+            }
+            if let Some(read_timeout_seconds) = read_timeout_seconds.filter(|value| *value > 0) {
+                env_overrides.insert(
+                    AGENT_READ_TIMEOUT_SECS_ENV.to_string(),
+                    read_timeout_seconds.to_string(),
+                );
+            }
+            if let Some(max_retries) = max_retries {
+                env_overrides.insert(AGENT_MAX_RETRIES_ENV.to_string(), max_retries.to_string());
+            }
+            if let Some(max_response_bytes) = max_response_bytes.filter(|value| *value > 0) {
+                env_overrides.insert(
+                    AGENT_MAX_RESPONSE_BYTES_ENV.to_string(),
+                    max_response_bytes.to_string(),
+                );
             }
             let invocation = invoke_agent_support_with_env_overrides(
                 catalog_path.as_deref(),
@@ -6293,6 +6509,11 @@ pub fn execute_shell_command_with_options(
                         "execute_indices": execute_indices,
                         "base_url_override": base_url_override,
                         "model_override": model_override,
+                        "timeout_seconds": timeout_seconds,
+                        "connect_timeout_seconds": connect_timeout_seconds,
+                        "read_timeout_seconds": read_timeout_seconds,
+                        "max_retries": max_retries,
+                        "max_response_bytes": max_response_bytes,
                         "invalid_execute_indices": invalid_execute_indices,
                     },
                     "summary": {
@@ -7109,6 +7330,39 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "name": name,
                     "result": op_result
+                }),
+            }
+        }
+        ShellCommand::MacrosTemplateImport { path } => {
+            let pattern_file = load_cloning_pattern_file(path)?;
+            let before = engine.state().clone();
+            let mut imported_names: Vec<String> = vec![];
+            for template in &pattern_file.templates {
+                let script = load_workflow_macro_script(&template.script)?;
+                let op = Operation::UpsertWorkflowMacroTemplate {
+                    name: template.name.clone(),
+                    description: template.description.clone(),
+                    parameters: template.parameters.clone(),
+                    script,
+                };
+                if let Err(err) = engine.apply(op) {
+                    *engine.state_mut() = before;
+                    return Err(format!(
+                        "Failed to import template '{}' from '{}': {}",
+                        template.name, path, err.message
+                    ));
+                }
+                imported_names.push(template.name.clone());
+            }
+            imported_names.sort();
+            imported_names.dedup();
+            ShellRunResult {
+                state_changed: !imported_names.is_empty(),
+                output: json!({
+                    "schema": pattern_file.schema,
+                    "path": path,
+                    "imported_count": imported_names.len(),
+                    "templates": imported_names,
                 }),
             }
         }
@@ -8869,6 +9123,15 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+
+        let import = parse_shell_line("macros template-import assets/cloning_patterns.json")
+            .expect("parse macros template-import");
+        match import {
+            ShellCommand::MacrosTemplateImport { path } => {
+                assert_eq!(path, "assets/cloning_patterns.json");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]
@@ -9414,6 +9677,109 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_macros_template_import_file_and_run() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let tmp = tempdir().expect("tempdir");
+        let pattern_path = tmp.path().join("patterns.json");
+        fs::write(
+            &pattern_path,
+            r#"{
+  "schema": "gentle.cloning_patterns.v1",
+  "templates": [
+    {
+      "name": "reverse_default",
+      "description": "reverse one sequence",
+      "parameters": [
+        { "name": "seq_id", "default_value": "seqA", "required": false },
+        { "name": "output_id", "default_value": "seqA_rev", "required": false }
+      ],
+      "script": "op {\"Reverse\":{\"input\":\"${seq_id}\",\"output_id\":\"${output_id}\"}}"
+    }
+  ]
+}"#,
+        )
+        .expect("write patterns file");
+
+        let import = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateImport {
+                path: pattern_path.to_string_lossy().to_string(),
+            },
+        )
+        .expect("import patterns");
+        assert!(import.state_changed);
+        assert_eq!(import.output["imported_count"].as_u64(), Some(1));
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "reverse_default".to_string(),
+                bindings: HashMap::new(),
+                transactional: false,
+            },
+        )
+        .expect("run imported template");
+        assert!(run.state_changed);
+        assert!(engine.state().sequences.contains_key("seqA_rev"));
+    }
+
+    #[test]
+    fn execute_macros_template_import_builtin_patterns_and_run_template() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let path = format!("{}/assets/cloning_patterns.json", env!("CARGO_MANIFEST_DIR"));
+        let import = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateImport { path },
+        )
+        .expect("import built-in patterns");
+        assert!(import.state_changed);
+        assert!(import.output["imported_count"].as_u64().unwrap_or(0) >= 6);
+        let templates = import
+            .output
+            .get("templates")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(templates.iter().any(|v| {
+            v.as_str()
+                .map(|s| s == "grna_candidate_priority_scan")
+                .unwrap_or(false)
+        }));
+
+        let mut bindings = HashMap::new();
+        bindings.insert("seq_id".to_string(), "seqA".to_string());
+        bindings.insert("branch_copy_id".to_string(), "seqA_branch".to_string());
+        bindings.insert(
+            "reverse_complement_id".to_string(),
+            "seqA_branch_rc".to_string(),
+        );
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "branch_reverse_complement".to_string(),
+                bindings,
+                transactional: false,
+            },
+        )
+        .expect("run imported branch template");
+        assert!(run.state_changed);
+        assert!(engine.state().sequences.contains_key("seqA_branch"));
+        assert!(engine.state().sequences.contains_key("seqA_branch_rc"));
+    }
+
+    #[test]
     fn execute_candidates_macro_runs_multiple_statements() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -9653,7 +10019,7 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
     #[test]
     fn parse_agents_ask_command() {
         let cmd = parse_shell_line(
-            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11964 --model deepseek-r1:8b --allow-auto-exec --execute-index 2 --no-state-summary",
+            "agents ask builtin_echo --prompt 'auto: state-summary' --catalog catalog.json --base-url http://localhost:11964 --model deepseek-r1:8b --timeout-secs 600 --connect-timeout-secs 20 --read-timeout-secs 900 --max-retries 4 --max-response-bytes 2097152 --allow-auto-exec --execute-index 2 --no-state-summary",
         )
         .expect("parse agents ask");
         match cmd {
@@ -9663,6 +10029,11 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 catalog_path,
                 base_url_override,
                 model_override,
+                timeout_seconds,
+                connect_timeout_seconds,
+                read_timeout_seconds,
+                max_retries,
+                max_response_bytes,
                 include_state_summary,
                 allow_auto_exec,
                 execute_all,
@@ -9673,6 +10044,11 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
                 assert_eq!(base_url_override.as_deref(), Some("http://localhost:11964"));
                 assert_eq!(model_override.as_deref(), Some("deepseek-r1:8b"));
+                assert_eq!(timeout_seconds, Some(600));
+                assert_eq!(connect_timeout_seconds, Some(20));
+                assert_eq!(read_timeout_seconds, Some(900));
+                assert_eq!(max_retries, Some(4));
+                assert_eq!(max_response_bytes, Some(2_097_152));
                 assert!(!include_state_summary);
                 assert!(allow_auto_exec);
                 assert!(!execute_all);
@@ -9707,6 +10083,11 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 catalog_path: Some(catalog_path.display().to_string()),
                 base_url_override: None,
                 model_override: None,
+                timeout_seconds: None,
+                connect_timeout_seconds: None,
+                read_timeout_seconds: None,
+                max_retries: None,
+                max_response_bytes: None,
                 include_state_summary: true,
                 allow_auto_exec: true,
                 execute_all: false,
@@ -9746,6 +10127,11 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 catalog_path: Some(catalog_path.display().to_string()),
                 base_url_override: None,
                 model_override: None,
+                timeout_seconds: None,
+                connect_timeout_seconds: None,
+                read_timeout_seconds: None,
+                max_retries: None,
+                max_response_bytes: None,
                 include_state_summary: true,
                 allow_auto_exec: false,
                 execute_all: false,
@@ -9789,6 +10175,11 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 catalog_path: Some(catalog_path.display().to_string()),
                 base_url_override: None,
                 model_override: None,
+                timeout_seconds: None,
+                connect_timeout_seconds: None,
+                read_timeout_seconds: None,
+                max_retries: None,
+                max_response_bytes: None,
                 include_state_summary: true,
                 allow_auto_exec: true,
                 execute_all: false,

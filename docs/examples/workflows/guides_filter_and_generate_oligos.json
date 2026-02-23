@@ -1,0 +1,87 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "guides_filter_and_generate_oligos",
+  "title": "Guide practical filtering and oligo generation",
+  "summary": "Creates a guide set, applies practical filtering, and generates oligos from passed guides.",
+  "test_mode": "always",
+  "required_files": [],
+  "tags": [
+    "grna",
+    "guides",
+    "oligos",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_guides_filter_and_generate_oligos",
+    "ops": [
+      {
+        "UpsertGuideSet": {
+          "guide_set_id": "tp73_guides",
+          "guides": [
+            {
+              "guide_id": "g1",
+              "seq_id": "tp73",
+              "start_0based": 100,
+              "end_0based_exclusive": 120,
+              "strand": "+",
+              "protospacer": "GACCTGTTGACGATGTTCCA",
+              "pam": "AGG",
+              "nuclease": "SpCas9",
+              "cut_offset_from_protospacer_start": 17,
+              "rank": 1
+            },
+            {
+              "guide_id": "g2",
+              "seq_id": "tp73",
+              "start_0based": 220,
+              "end_0based_exclusive": 240,
+              "strand": "+",
+              "protospacer": "TTTTGCCATGTTGACCTGAA",
+              "pam": "TGG",
+              "nuclease": "SpCas9",
+              "cut_offset_from_protospacer_start": 17,
+              "rank": 2
+            },
+            {
+              "guide_id": "g3",
+              "seq_id": "tp73",
+              "start_0based": 340,
+              "end_0based_exclusive": 360,
+              "strand": "-",
+              "protospacer": "GGTACCGATGTTGCCAGTAA",
+              "pam": "CGG",
+              "nuclease": "SpCas9",
+              "cut_offset_from_protospacer_start": 17,
+              "rank": 3
+            }
+          ]
+        }
+      },
+      {
+        "FilterGuidesPractical": {
+          "guide_set_id": "tp73_guides",
+          "config": {
+            "gc_min": 0.3,
+            "gc_max": 0.7,
+            "max_homopolymer_run": 4,
+            "reject_ambiguous_bases": true,
+            "avoid_u6_terminator_tttt": true,
+            "u6_terminator_window": "spacer_plus_tail",
+            "required_5prime_base": "G",
+            "allow_5prime_g_extension": true
+          },
+          "output_guide_set_id": "tp73_guides_pass"
+        }
+      },
+      {
+        "GenerateGuideOligos": {
+          "guide_set_id": "tp73_guides",
+          "template_id": "lenti_bsmbi_u6_default",
+          "apply_5prime_g_extension": true,
+          "output_oligo_set_id": "tp73_lenti",
+          "passed_only": true
+        }
+      }
+    ]
+  }
+}

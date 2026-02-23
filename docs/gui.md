@@ -240,10 +240,23 @@ Behavior:
   - use this to force a concrete model id
   - `unspecified` means no override
   - click `Clear Model` to remove it from current session
+- `timeout_sec` is a session-only request timeout override
+  - applies to stdio and native agent transports
+  - maps to `GENTLE_AGENT_TIMEOUT_SECS`
+  - empty/`0` means default timeout
+- `connect_timeout_sec` / `read_timeout_sec` are session-only transport controls
+  - map to `GENTLE_AGENT_CONNECT_TIMEOUT_SECS` and `GENTLE_AGENT_READ_TIMEOUT_SECS`
+  - empty/`0` keeps defaults
+- `max_retries` / `max_response_bytes` are session-only guardrails
+  - map to `GENTLE_AGENT_MAX_RETRIES` and `GENTLE_AGENT_MAX_RESPONSE_BYTES`
+  - `max_retries=0` disables retries for the request
+  - empty keeps defaults
 - if model remains `unspecified`, GENtle blocks requests until you pick a
   discovered model or set a concrete override
 - `Discover Models` queries the current endpoint and populates a model dropdown
   for explicit selection
+- prompt templates are available via one-click `Insert` / `Append` buttons
+  before the prompt editor
 - optional `Include state summary` injects current project summary context
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
 - `Ask Agent` runs in background and reports status in `Background Jobs`
@@ -276,12 +289,13 @@ Local LLM setup (Jan/Msty/OpenAI-compatible endpoint):
    - `Jan Local (template)`
    - `Msty Local (template)`
 3. Set `Base URL override` to your local endpoint, e.g. `http://localhost:11964`.
-4. Click `Discover Models` and select one discovered model from the dropdown
+4. Optionally set `timeout_sec` for slow local models (for example `600`).
+5. Click `Discover Models` and select one discovered model from the dropdown
    (or set `Model override` directly, for example `deepseek-r1:8b`).
-5. Optionally set persistent defaults in `assets/agent_systems.json`.
-6. If your local service expects no key, keep `OpenAI API key` empty.
-7. Ask agent as usual.
-8. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
+6. Optionally set persistent defaults in `assets/agent_systems.json`.
+7. If your local service expects no key, keep `OpenAI API key` empty.
+8. Ask agent as usual.
+9. For local root URLs (such as `http://localhost:11964`), GENtle will try both:
    - `/chat/completions`
    - `/v1/chat/completions`
 
@@ -293,6 +307,51 @@ Common failure interpretation:
     - `https://platform.openai.com/usage`
     - `https://platform.openai.com/settings/organization/billing/overview`
   - this is separate from ChatGPT plan credits
+
+What to send the agent (recommended):
+
+- Domain bootstrap docs for local models:
+  - `docs/ai_cloning_primer.md`
+  - `docs/ai_task_playbooks.md`
+  - `docs/ai_prompt_contract.md`
+  - `docs/examples/ai_cloning_examples.md`
+- Optional compact glossary extension:
+  - `docs/ai_glossary_extensions.json`
+
+Copy/paste prompt template for users:
+
+```text
+Objective:
+<what you want, in one sentence>
+
+Context:
+<project sequence/genome/helper IDs and why this region matters>
+
+Inputs:
+- seq_id / genome_id / helper_id: ...
+- anchors or coordinates: ...
+- feature labels/kinds: ...
+
+Constraints:
+- length: ...
+- GC range: ...
+- motifs/restriction sites to require/avoid: ...
+- strand assumptions: ...
+
+Output wanted:
+- plan
+- exact gentle_cli shell commands
+- verification checks
+
+Execution policy:
+chat-only | ask-before-run | allow-auto-exec
+```
+
+Prompt examples:
+
+- \"Generate 20 bp candidates between TP53 start/end on `grch38_tp53`, keep GC 40-80%, maximize distance from CDS boundaries, return top 25 with exact commands, ask-before-run.\"
+- \"Check BLAST specificity for sequence `ACGT...` against `homo_sapiens_grch38_ensembl_116`, task `blastn-short`, max hits 20, chat-only.\"
+- \"Import `/path/peaks.bed.gz` onto anchored `tp53_region`, then keep candidates within 200 bp of imported track features, provide commands and stop before execution.\"
 
 ## Candidate-Set Workflow (Engine Ops + GUI Shell)
 
@@ -342,6 +401,7 @@ Recommended flow in one sequence window:
 10. Optional full-operation workflow macros:
    - Shell equivalents:
      - `macros template-put ...`
+     - `macros template-import assets/cloning_patterns.json`
      - `macros template-run ...`
      - `macros run --file cloning_flow.gsh --transactional`
    - These scripts can orchestrate non-candidate operations through `op ...` and

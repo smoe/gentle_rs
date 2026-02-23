@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "guides_export_csv_and_protocol",
+  "title": "Guide oligo export (CSV + protocol)",
+  "summary": "Demonstrates oligo and protocol export operations for one guide set.",
+  "test_mode": "skip",
+  "required_files": [],
+  "tags": [
+    "grna",
+    "guides",
+    "export"
+  ],
+  "workflow": {
+    "run_id": "example_guides_export_csv_and_protocol",
+    "ops": [
+      {
+        "UpsertGuideSet": {
+          "guide_set_id": "demo_guides",
+          "guides": [
+            {
+              "guide_id": "demo_1",
+              "seq_id": "target_demo",
+              "start_0based": 10,
+              "end_0based_exclusive": 30,
+              "strand": "+",
+              "protospacer": "GACCTGTTGACGATGTTCCA",
+              "pam": "AGG",
+              "nuclease": "SpCas9",
+              "cut_offset_from_protospacer_start": 17,
+              "rank": 1
+            }
+          ]
+        }
+      },
+      {
+        "GenerateGuideOligos": {
+          "guide_set_id": "demo_guides",
+          "template_id": "lenti_bsmbi_u6_default",
+          "apply_5prime_g_extension": true,
+          "output_oligo_set_id": "demo_lenti",
+          "passed_only": false
+        }
+      },
+      {
+        "ExportGuideOligos": {
+          "guide_set_id": "demo_guides",
+          "oligo_set_id": "demo_lenti",
+          "format": "csv_table",
+          "path": "exports/demo_guides.csv"
+        }
+      },
+      {
+        "ExportGuideProtocolText": {
+          "guide_set_id": "demo_guides",
+          "oligo_set_id": "demo_lenti",
+          "path": "exports/demo_guides.protocol.txt",
+          "include_qc_checklist": true
+        }
+      }
+    ]
+  }
+}

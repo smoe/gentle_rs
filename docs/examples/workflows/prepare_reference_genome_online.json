@@ -1,0 +1,27 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "prepare_reference_genome_online",
+  "title": "Prepare a reference genome cache (online)",
+  "summary": "Illustrates a network/tooling-dependent example that is tested only when explicitly enabled.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "genome",
+    "online"
+  ],
+  "workflow": {
+    "run_id": "example_prepare_reference_genome_online",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes",
+          "timeout_secs": 3600
+        }
+      }
+    ]
+  }
+}

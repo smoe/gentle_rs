@@ -1,0 +1,36 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "load_and_digest_pgex",
+  "title": "Load pGEX and digest with BamHI/EcoRI",
+  "summary": "Imports a local GenBank plasmid and produces digest fragments in memory.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX-3X.gb"
+  ],
+  "tags": [
+    "dna",
+    "digest",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_load_and_digest_pgex",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX-3X.gb",
+          "as_id": "pgex"
+        }
+      },
+      {
+        "Digest": {
+          "input": "pgex",
+          "enzymes": [
+            "BamHI",
+            "EcoRI"
+          ],
+          "output_prefix": "frag"
+        }
+      }
+    ]
+  }
+}

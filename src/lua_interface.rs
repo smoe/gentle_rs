@@ -65,9 +65,9 @@ impl LuaInterface {
         println!("Interactive Lua Shell (type 'exit' to quit)");
         println!("Available Rust functions:");
         println!("  - load_dna(filename): Loads a DNA sequence from a file");
-        println!("  - write_gb(filename,seq): Writes a DNA sequence to a GenBank file");
+        println!("  - write_gb(seq, filename): Writes a DNA sequence to a GenBank file");
         println!("  - load_project(filename): Loads a GENtle project JSON");
-        println!("  - save_project(filename,project): Saves a GENtle project JSON");
+        println!("  - save_project(state, filename): Saves a GENtle project JSON");
         println!("  - capabilities(): Returns engine capabilities");
         println!("  - state_summary(project): Returns sequence/container summary");
         println!("  - inspect_dna_ladders([name_filter]): Returns built-in DNA ladder catalog");
@@ -246,6 +246,11 @@ impl LuaInterface {
                 .map(str::to_string),
             base_url_override: None,
             model_override: None,
+            timeout_seconds: None,
+            connect_timeout_seconds: None,
+            read_timeout_seconds: None,
+            max_retries: None,
+            max_response_bytes: None,
             include_state_summary: include_state_summary.unwrap_or(true),
             allow_auto_exec: allow_auto_exec.unwrap_or(false),
             execute_all: execute_all.unwrap_or(false),
@@ -425,7 +430,10 @@ impl LuaInterface {
         self.lua.globals().set(
             "write_gb",
             self.lua
-                .create_function(|_lua, (filename, seq): (String, DNAsequence)| {
+                .create_function(|lua, (seq_value, filename): (Value, String)| {
+                    let seq: DNAsequence = lua
+                        .from_value(seq_value)
+                        .map_err(|e| Self::err(&format!("Invalid sequence value: {e}")))?;
                     Self::write_gb(seq, filename)
                 })?,
         )?;
@@ -442,7 +450,7 @@ impl LuaInterface {
         self.lua.globals().set(
             "save_project",
             self.lua
-                .create_function(|lua, (filename, state): (String, Value)| {
+                .create_function(|lua, (state, filename): (Value, String)| {
                     let state: ProjectState = lua
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;

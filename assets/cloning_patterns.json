@@ -1,0 +1,312 @@
+{
+  "schema": "gentle.cloning_patterns.v1",
+  "templates": [
+    {
+      "name": "digest_ligate_extract_sticky",
+      "description": "Digest one sequence with two enzymes, ligate two selected fragments (sticky protocol), and extract one region from the first ligation product.",
+      "parameters": [
+        {
+          "name": "seq_id",
+          "required": true
+        },
+        {
+          "name": "enzyme_a",
+          "default_value": "BamHI",
+          "required": false
+        },
+        {
+          "name": "enzyme_b",
+          "default_value": "EcoRI",
+          "required": false
+        },
+        {
+          "name": "digest_prefix",
+          "default_value": "digest",
+          "required": false
+        },
+        {
+          "name": "left_fragment",
+          "default_value": "1",
+          "required": false
+        },
+        {
+          "name": "right_fragment",
+          "default_value": "2",
+          "required": false
+        },
+        {
+          "name": "ligation_prefix",
+          "default_value": "ligation",
+          "required": false
+        },
+        {
+          "name": "extract_from",
+          "default_value": "0",
+          "required": false
+        },
+        {
+          "name": "extract_to",
+          "default_value": "300",
+          "required": false
+        },
+        {
+          "name": "output_id",
+          "default_value": "ligated_extract",
+          "required": false
+        }
+      ],
+      "script": "op {\"Digest\":{\"input\":\"${seq_id}\",\"enzymes\":[\"${enzyme_a}\",\"${enzyme_b}\"],\"output_prefix\":\"${digest_prefix}\"}}\nop {\"Ligation\":{\"inputs\":[\"${digest_prefix}_${left_fragment}\",\"${digest_prefix}_${right_fragment}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${ligation_prefix}\",\"unique\":false}}\nop {\"ExtractRegion\":{\"input\":\"${ligation_prefix}_1\",\"from\":${extract_from},\"to\":${extract_to},\"output_id\":\"${output_id}\"}}"
+    },
+    {
+      "name": "branch_reverse_complement",
+      "description": "Create one branch copy and reverse-complement that branch.",
+      "parameters": [
+        {
+          "name": "seq_id",
+          "required": true
+        },
+        {
+          "name": "branch_copy_id",
+          "default_value": "seq_branch",
+          "required": false
+        },
+        {
+          "name": "reverse_complement_id",
+          "default_value": "seq_branch_rc",
+          "required": false
+        }
+      ],
+      "script": "op {\"Branch\":{\"input\":\"${seq_id}\",\"output_id\":\"${branch_copy_id}\"}}\nop {\"ReverseComplement\":{\"input\":\"${branch_copy_id}\",\"output_id\":\"${reverse_complement_id}\"}}"
+    },
+    {
+      "name": "pcr_site_insertion_then_digest",
+      "description": "Run PCR with explicit primer constraints (supports tail additions/site insertion) and digest the amplicon with one enzyme.",
+      "parameters": [
+        {
+          "name": "template_seq_id",
+          "required": true
+        },
+        {
+          "name": "forward_primer",
+          "required": true
+        },
+        {
+          "name": "reverse_primer",
+          "required": true
+        },
+        {
+          "name": "forward_anneal_len",
+          "default_value": "20",
+          "required": false
+        },
+        {
+          "name": "reverse_anneal_len",
+          "default_value": "20",
+          "required": false
+        },
+        {
+          "name": "forward_max_mismatches",
+          "default_value": "1",
+          "required": false
+        },
+        {
+          "name": "reverse_max_mismatches",
+          "default_value": "1",
+          "required": false
+        },
+        {
+          "name": "forward_require_3p_exact",
+          "default_value": "4",
+          "required": false
+        },
+        {
+          "name": "reverse_require_3p_exact",
+          "default_value": "4",
+          "required": false
+        },
+        {
+          "name": "amplicon_id",
+          "default_value": "amplicon",
+          "required": false
+        },
+        {
+          "name": "unique",
+          "default_value": "true",
+          "required": false
+        },
+        {
+          "name": "digest_enzyme",
+          "default_value": "BamHI",
+          "required": false
+        },
+        {
+          "name": "digest_prefix",
+          "default_value": "amplicon_digest",
+          "required": false
+        }
+      ],
+      "script": "op {\"PcrAdvanced\":{\"template\":\"${template_seq_id}\",\"forward_primer\":{\"sequence\":\"${forward_primer}\",\"anneal_len\":${forward_anneal_len},\"max_mismatches\":${forward_max_mismatches},\"require_3prime_exact_bases\":${forward_require_3p_exact}},\"reverse_primer\":{\"sequence\":\"${reverse_primer}\",\"anneal_len\":${reverse_anneal_len},\"max_mismatches\":${reverse_max_mismatches},\"require_3prime_exact_bases\":${reverse_require_3p_exact}},\"output_id\":\"${amplicon_id}\",\"unique\":${unique}}}\nop {\"Digest\":{\"input\":\"${amplicon_id}\",\"enzymes\":[\"${digest_enzyme}\"],\"output_prefix\":\"${digest_prefix}\"}}"
+    },
+    {
+      "name": "grna_candidate_priority_scan",
+      "description": "Guide-RNA candidate preselection by sequence windows, GC/distance scoring, quantile+range filtering, and top-k extraction.",
+      "parameters": [
+        {
+          "name": "seq_id",
+          "required": true
+        },
+        {
+          "name": "set_name",
+          "default_value": "grna_seed",
+          "required": false
+        },
+        {
+          "name": "length_bp",
+          "default_value": "20",
+          "required": false
+        },
+        {
+          "name": "step_bp",
+          "default_value": "1",
+          "required": false
+        },
+        {
+          "name": "limit",
+          "default_value": "20000",
+          "required": false
+        },
+        {
+          "name": "distance_feature_kind",
+          "default_value": "gene",
+          "required": false
+        },
+        {
+          "name": "weight_gc",
+          "default_value": "0.6",
+          "required": false
+        },
+        {
+          "name": "weight_distance",
+          "default_value": "0.4",
+          "required": false
+        },
+        {
+          "name": "gc_min",
+          "default_value": "0.35",
+          "required": false
+        },
+        {
+          "name": "gc_max",
+          "default_value": "0.75",
+          "required": false
+        },
+        {
+          "name": "priority_min_quantile",
+          "default_value": "0.8",
+          "required": false
+        },
+        {
+          "name": "top_k",
+          "default_value": "50",
+          "required": false
+        },
+        {
+          "name": "filtered_set",
+          "default_value": "grna_filtered",
+          "required": false
+        },
+        {
+          "name": "output_set",
+          "default_value": "grna_top",
+          "required": false
+        }
+      ],
+      "script": "candidates generate ${set_name} ${seq_id} --length ${length_bp} --step ${step_bp} --limit ${limit}\ncandidates score ${set_name} gc_balance '100 * (gc_fraction - at_fraction)'\ncandidates score-distance ${set_name} dist_feature --feature-kind ${distance_feature_kind} --feature-geometry feature_boundaries --feature-boundary start --strand-relation same\ncandidates score-weighted ${set_name} priority --term gc_fraction:${weight_gc}:max --term dist_feature:${weight_distance}:min --normalize\ncandidates filter ${set_name} ${filtered_set} --metric gc_fraction --min ${gc_min} --max ${gc_max}\ncandidates filter ${filtered_set} ${output_set} --metric priority --min-quantile ${priority_min_quantile}\ncandidates top-k ${output_set} ${output_set} --metric priority --k ${top_k} --direction max"
+    },
+    {
+      "name": "grna_anchor_window_scan",
+      "description": "Guide-RNA candidate preselection constrained to a region between two local anchor positions.",
+      "parameters": [
+        {
+          "name": "seq_id",
+          "required": true
+        },
+        {
+          "name": "set_name",
+          "default_value": "grna_anchor_seed",
+          "required": false
+        },
+        {
+          "name": "anchor_a_pos",
+          "required": true
+        },
+        {
+          "name": "anchor_b_pos",
+          "required": true
+        },
+        {
+          "name": "length_bp",
+          "default_value": "20",
+          "required": false
+        },
+        {
+          "name": "step_bp",
+          "default_value": "1",
+          "required": false
+        },
+        {
+          "name": "limit",
+          "default_value": "20000",
+          "required": false
+        }
+      ],
+      "script": "candidates generate-between-anchors ${set_name} ${seq_id} --length ${length_bp} --anchor-a-pos ${anchor_a_pos} --anchor-b-pos ${anchor_b_pos} --step ${step_bp} --limit ${limit}\ncandidates metrics ${set_name}\ncandidates show ${set_name} --limit 25 --offset 0"
+    },
+    {
+      "name": "grna_practical_filter_and_oligos",
+      "description": "Apply practical guide filters and generate cloning oligos from a guide set.",
+      "parameters": [
+        {
+          "name": "guide_set_id",
+          "required": true
+        },
+        {
+          "name": "filtered_guide_set_id",
+          "default_value": "guides_pass",
+          "required": false
+        },
+        {
+          "name": "gc_min",
+          "default_value": "0.3",
+          "required": false
+        },
+        {
+          "name": "gc_max",
+          "default_value": "0.8",
+          "required": false
+        },
+        {
+          "name": "max_homopolymer_run",
+          "default_value": "4",
+          "required": false
+        },
+        {
+          "name": "avoid_u6_terminator_tttt",
+          "default_value": "true",
+          "required": false
+        },
+        {
+          "name": "template_id",
+          "default_value": "lenti_bsmbi_u6_default",
+          "required": false
+        },
+        {
+          "name": "oligo_set_id",
+          "default_value": "guides_oligos",
+          "required": false
+        }
+      ],
+      "script": "guides filter ${guide_set_id} --config '{\"gc_min\":${gc_min},\"gc_max\":${gc_max},\"max_homopolymer_run\":${max_homopolymer_run},\"avoid_u6_terminator_tttt\":${avoid_u6_terminator_tttt}}' --output-set ${filtered_guide_set_id}\nguides oligos-generate ${filtered_guide_set_id} ${template_id} --apply-5prime-g-extension --output-oligo-set ${oligo_set_id} --passed-only\nguides oligos-show ${oligo_set_id}"
+    }
+  ]
+}

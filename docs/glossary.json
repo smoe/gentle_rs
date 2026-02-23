@@ -223,7 +223,7 @@
          ],
          "path": "agents ask",
          "summary": "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
-         "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
+         "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
       },
       {
          "aliases": [],
@@ -1000,6 +1000,18 @@
          "path": "macros template-delete",
          "summary": "Delete one persisted workflow macro template.",
          "usage": "macros template-delete TEMPLATE_NAME"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros template-import",
+         "summary": "Import workflow macro templates from a cloning-pattern JSON file.",
+         "usage": "macros template-import PATH"
       },
       {
          "aliases": [],
@@ -1815,7 +1827,7 @@
          ],
          "path": "save_project",
          "summary": "Save a project state table to a GENtle project JSON file.",
-         "usage": "save_project(filename, state)"
+         "usage": "save_project(state, filename)"
       },
       {
          "aliases": [],
@@ -1879,7 +1891,7 @@
          ],
          "path": "write_gb",
          "summary": "Write a DNAsequence object to GenBank format.",
-         "usage": "write_gb(filename, seq)"
+         "usage": "write_gb(seq, filename)"
       }
    ],
    "description": "Structured shell/CLI command glossary for GENtle interfaces.",
