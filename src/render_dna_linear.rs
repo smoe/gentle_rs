@@ -98,6 +98,7 @@ pub struct RenderDnaLinear {
     features: Vec<FeaturePosition>,
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
+    selected_enzyme: Option<RestrictionEnzymePosition>,
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
 }
@@ -114,6 +115,7 @@ impl RenderDnaLinear {
             features: vec![],
             restriction_enzyme_sites: vec![],
             selected_feature_number: None,
+            selected_enzyme: None,
             hovered_feature_number: None,
             hover_enzyme: None,
         }
@@ -813,8 +815,23 @@ impl RenderDnaLinear {
         self.hovered_feature_number
     }
 
+    pub fn selected_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
+        self.selected_enzyme.clone()
+    }
+
+    pub fn select_restriction_enzyme(&mut self, selected: Option<RestrictionEnzymePosition>) {
+        let has_selected = selected.is_some();
+        self.selected_enzyme = selected;
+        if has_selected {
+            self.selected_feature_number = None;
+        }
+    }
+
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
         self.selected_feature_number = feature_number;
+        if feature_number.is_some() {
+            self.selected_enzyme = None;
+        }
     }
 
     pub fn coordinate_to_basepair(&self, x: f32) -> Result<i64, String> {
@@ -833,7 +850,13 @@ impl RenderDnaLinear {
 
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
-            self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            if let Some(feature) = self.get_clicked_feature(pos) {
+                self.selected_feature_number = Some(feature.feature_number);
+                self.selected_enzyme = None;
+            } else {
+                self.selected_feature_number = None;
+                self.selected_enzyme = self.get_re_site_for_positon(pos);
+            }
         }
     }
 
@@ -843,12 +866,19 @@ impl RenderDnaLinear {
         }
 
         if let Some(pos) = pointer_state.latest_pos() {
-            if let Some(feature) = self.get_clicked_feature(pos) {
-                let selection = Selection::new(feature.from, feature.to, self.sequence_length);
+            if let Some((feature_number, feature_from, feature_to)) = self
+                .get_clicked_feature(pos)
+                .map(|feature| (feature.feature_number, feature.from, feature.to))
+            {
+                self.selected_feature_number = Some(feature_number);
+                self.selected_enzyme = None;
+                let selection = Selection::new(feature_from, feature_to, self.sequence_length);
                 if let Ok(mut display) = self.display.write() {
                     display.select(selection);
                 }
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
+                self.selected_feature_number = None;
+                self.selected_enzyme = Some(re_pos.clone());
                 let selection = Selection::new(
                     re_pos.key().from() as usize,
                     re_pos.key().to() as usize,
@@ -1275,11 +1305,20 @@ impl RenderDnaLinear {
             }
             let x = self.bp_to_x(pos, viewport);
             let y = self.baseline_y();
-            let color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
+            let mut color = DnaDisplay::restriction_enzyme_group_color(key.number_of_cuts());
+            let selected_here = self
+                .selected_enzyme
+                .as_ref()
+                .map(|selected| selected.key == *key)
+                .unwrap_or(false);
+            if selected_here {
+                color = Color32::BLACK;
+            }
+            let stroke_width = if selected_here { 2.0 } else { 1.0 };
 
             painter.line_segment(
                 [Pos2::new(x, y - 8.0), Pos2::new(x, y + 8.0)],
-                Stroke::new(1.0, color),
+                Stroke::new(stroke_width, color),
             );
 
             if let Some(hovered) = &self.hover_enzyme {

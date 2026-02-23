@@ -110,6 +110,7 @@ pub struct RenderDnaCircular {
     features: Vec<FeaturePosition>,
     restriction_enzyme_sites: Vec<RestrictionEnzymePosition>,
     selected_feature_number: Option<usize>,
+    selected_enzyme: Option<RestrictionEnzymePosition>,
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
 }
@@ -127,6 +128,7 @@ impl RenderDnaCircular {
             features: vec![],
             restriction_enzyme_sites: vec![],
             selected_feature_number: None,
+            selected_enzyme: None,
             hovered_feature_number: None,
             hover_enzyme: None,
         }
@@ -148,7 +150,13 @@ impl RenderDnaCircular {
     /// Handles click events to select features.
     pub fn on_click(&mut self, pointer_state: PointerState) {
         if let Some(pos) = pointer_state.latest_pos() {
-            self.selected_feature_number = self.get_clicked_feature(pos).map(|f| f.feature_number);
+            if let Some(feature) = self.get_clicked_feature(pos) {
+                self.selected_feature_number = Some(feature.feature_number);
+                self.selected_enzyme = None;
+            } else {
+                self.selected_feature_number = None;
+                self.selected_enzyme = self.get_re_site_for_positon(pos);
+            }
         } else {
             println!("I RenderDnaCircular::on_click: Could not select any feature.");
         }
@@ -168,15 +176,22 @@ impl RenderDnaCircular {
     pub fn on_double_click(&mut self, pointer_state: PointerState) {
         self.display.write().unwrap().deselect();
         if let Some(pos) = pointer_state.latest_pos() {
-            if let Some(feature) = self.get_clicked_feature(pos) {
+            if let Some((feature_number, feature_from, feature_to)) = self
+                .get_clicked_feature(pos)
+                .map(|feature| (feature.feature_number, feature.from, feature.to))
+            {
+                self.selected_feature_number = Some(feature_number);
+                self.selected_enzyme = None;
                 // println!("Double-clicked {:?}", feature);
                 let selection = Selection::new(
-                    feature.from as usize,
-                    feature.to as usize,
+                    feature_from as usize,
+                    feature_to as usize,
                     self.sequence_length as usize,
                 );
                 self.display.write().unwrap().select(selection);
             } else if let Some(re_pos) = self.get_re_site_for_positon(pos) {
+                self.selected_feature_number = None;
+                self.selected_enzyme = Some(re_pos.clone());
                 println!("Double-clicked {re_pos:?}");
                 let selection = Selection::new(
                     re_pos.key().from() as usize,
@@ -225,8 +240,23 @@ impl RenderDnaCircular {
         self.hovered_feature_number
     }
 
+    pub fn selected_restriction_enzyme(&self) -> Option<RestrictionEnzymePosition> {
+        self.selected_enzyme.clone()
+    }
+
+    pub fn select_restriction_enzyme(&mut self, selected: Option<RestrictionEnzymePosition>) {
+        let has_selected = selected.is_some();
+        self.selected_enzyme = selected;
+        if has_selected {
+            self.selected_feature_number = None;
+        }
+    }
+
     pub fn select_feature(&mut self, feature_number: Option<usize>) {
         self.selected_feature_number = feature_number;
+        if feature_number.is_some() {
+            self.selected_enzyme = None;
+        }
     }
 
     fn layout_needs_recomputing(&self) -> bool {
@@ -1046,7 +1076,15 @@ impl RenderDnaCircular {
                 format!("{label} {pos}")
             };
             let cuts = restriction_enzyme_key.number_of_cuts();
-            let font_color = DnaDisplay::restriction_enzyme_group_color(cuts);
+            let mut font_color = DnaDisplay::restriction_enzyme_group_color(cuts);
+            let selected_here = self
+                .selected_enzyme
+                .as_ref()
+                .map(|selected| selected.key == restriction_enzyme_key)
+                .unwrap_or(false);
+            if selected_here {
+                font_color = Color32::BLACK;
+            }
 
             let p1 = self.pos2xy(pos, self.radius);
             let p2 = self.pos2xy(pos, self.radius * 1.15);
@@ -1076,6 +1114,9 @@ impl RenderDnaCircular {
                 if he.key == restriction_enzyme_key {
                     painter.rect_filled(he.area, 0.0, Color32::LIGHT_YELLOW);
                 }
+            }
+            if selected_here {
+                painter.line_segment([p1, p2], Stroke::new(2.0, Color32::BLACK));
             }
             last_rect = painter.text(p4, align, label, font_tick.to_owned(), font_color);
             self.restriction_enzyme_sites

@@ -1,7 +1,10 @@
 use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
-    engine::{Engine, EngineStateSummary, GentleEngine, Operation, ProjectState, Workflow},
+    engine::{
+        Engine, EngineStateSummary, FeatureExpertTarget, GentleEngine, Operation, ProjectState,
+        Workflow,
+    },
     engine_shell::{ShellCommand, execute_shell_command},
     enzymes::active_restriction_enzymes,
     methylation_sites::MethylationMode,
@@ -426,6 +429,19 @@ fn apply_workflow(
     })
 }
 
+#[op2]
+#[serde]
+fn inspect_feature_expert(
+    #[serde] state: ProjectState,
+    #[string] seq_id: &str,
+    #[string] target_json: &str,
+) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+    let target: FeatureExpertTarget = serde_json::from_str(target_json)?;
+    let engine = GentleEngine::from_state(state);
+    let view = engine.inspect_feature_expert(seq_id, &target)?;
+    serde_json::to_value(view).map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+}
+
 pub struct JavaScriptInterface {
     runtime: JsRuntime,
 }
@@ -452,6 +468,7 @@ impl JavaScriptInterface {
         const BLAST_HELPER_GENOME: OpDecl = blast_helper_genome();
         const APPLY_OPERATION: OpDecl = apply_operation();
         const APPLY_WORKFLOW: OpDecl = apply_workflow();
+        const INSPECT_FEATURE_EXPERT: OpDecl = inspect_feature_expert();
         const SYNC_REBASE_RESOURCE: OpDecl = sync_rebase_resource();
         const SYNC_JASPAR_RESOURCE: OpDecl = sync_jaspar_resource();
         const IMPORT_POOL: OpDecl = import_pool();
@@ -477,6 +494,7 @@ impl JavaScriptInterface {
                 BLAST_HELPER_GENOME,
                 APPLY_OPERATION,
                 APPLY_WORKFLOW,
+                INSPECT_FEATURE_EXPERT,
                 SYNC_REBASE_RESOURCE,
                 SYNC_JASPAR_RESOURCE,
                 IMPORT_POOL,
@@ -597,10 +615,23 @@ impl JavaScriptInterface {
 	          		}
 	          		return { state: currentState, result: lastResult };
 	          	}
-	          	function apply_workflow(state, workflow) {
-	          		const payload = (typeof workflow === "string") ? workflow : JSON.stringify(workflow);
-	          		return Deno.core.ops.apply_workflow(state, payload);
-	          	}
+          	function apply_workflow(state, workflow) {
+          		const payload = (typeof workflow === "string") ? workflow : JSON.stringify(workflow);
+          		return Deno.core.ops.apply_workflow(state, payload);
+          	}
+          	function inspect_feature_expert(state, seq_id, target) {
+          		const payload = (typeof target === "string") ? target : JSON.stringify(target);
+          		return Deno.core.ops.inspect_feature_expert(state, seq_id, payload);
+          	}
+          	function render_feature_expert_svg(state, seq_id, target, path) {
+          		return apply_operation(state, {
+          			RenderFeatureExpertSvg: {
+          				seq_id: seq_id,
+          				target: (typeof target === "string") ? JSON.parse(target) : target,
+          				path: path
+          			}
+          		});
+          	}
           	function sync_rebase(input, output, commercial_only) {
           		return Deno.core.ops.sync_rebase_resource(input, output ?? "", commercial_only ?? false);
           	}

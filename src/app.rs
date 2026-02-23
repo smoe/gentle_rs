@@ -51,6 +51,7 @@ use crate::{
     },
     tf_motifs, tool_overrides,
     window::Window,
+    window_backdrop::{self, WindowBackdropKind, WindowBackdropSettings},
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId, menu};
@@ -292,6 +293,7 @@ struct PersistedConfiguration {
     blastn_executable: String,
     bigwig_to_bedgraph_executable: String,
     graphics_defaults: DisplaySettings,
+    window_backdrops: WindowBackdropSettings,
     recent_projects: Vec<String>,
 }
 
@@ -303,6 +305,7 @@ impl Default for PersistedConfiguration {
             blastn_executable: String::new(),
             bigwig_to_bedgraph_executable: String::new(),
             graphics_defaults: DisplaySettings::default(),
+            window_backdrops: WindowBackdropSettings::default(),
             recent_projects: vec![],
         }
     }
@@ -369,6 +372,9 @@ pub struct GENtleApp {
     configuration_blast_validation_message: String,
     configuration_graphics: DisplaySettings,
     configuration_graphics_dirty: bool,
+    window_backdrops: WindowBackdropSettings,
+    configuration_window_backdrops: WindowBackdropSettings,
+    configuration_window_backdrops_dirty: bool,
     configuration_status: String,
     current_project_path: Option<String>,
     recent_project_paths: Vec<String>,
@@ -872,6 +878,9 @@ impl Default for GENtleApp {
             configuration_blast_validation_message: String::new(),
             configuration_graphics: DisplaySettings::default(),
             configuration_graphics_dirty: false,
+            window_backdrops: WindowBackdropSettings::default(),
+            configuration_window_backdrops: WindowBackdropSettings::default(),
+            configuration_window_backdrops_dirty: false,
             configuration_status: String::new(),
             current_project_path: None,
             recent_project_paths: vec![],
@@ -1063,6 +1072,7 @@ impl GENtleApp {
                 .trim()
                 .to_string(),
             graphics_defaults: self.configuration_graphics.clone(),
+            window_backdrops: self.window_backdrops.clone(),
             recent_projects: self.recent_project_paths.clone(),
         };
         let json = serde_json::to_string_pretty(&payload)
@@ -1250,6 +1260,10 @@ impl GENtleApp {
             saved.bigwig_to_bedgraph_executable.trim().to_string();
         self.sync_runtime_tool_overrides_from_configuration();
         self.configuration_graphics = saved.graphics_defaults;
+        self.window_backdrops = saved.window_backdrops.clone();
+        self.configuration_window_backdrops = saved.window_backdrops;
+        self.configuration_window_backdrops_dirty = false;
+        window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
@@ -1657,6 +1671,8 @@ Error: `{err}`"
             self.configuration_graphics = engine.state().display.clone();
             self.configuration_graphics_dirty = false;
         }
+        self.configuration_window_backdrops = self.window_backdrops.clone();
+        self.configuration_window_backdrops_dirty = false;
         self.clear_rnapkin_validation();
         self.clear_blast_validation();
     }
@@ -2103,6 +2119,7 @@ Error: `{err}`"
 
     pub fn new() -> Self {
         let mut app = Self::default();
+        window_backdrop::set_window_backdrop_settings(app.window_backdrops.clone());
         app.refresh_help_docs();
         app.load_persisted_configuration(true);
         app.load_bed_track_subscriptions_from_state();
@@ -9990,6 +10007,52 @@ Error: `{err}`"
         self.configuration_graphics_dirty = true;
     }
 
+    fn apply_configuration_window_backdrops(&mut self) {
+        self.window_backdrops = self.configuration_window_backdrops.clone();
+        window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
+        self.configuration_window_backdrops_dirty = false;
+        self.configuration_status = "Window styling settings applied".to_string();
+        match self.write_persisted_configuration_to_disk() {
+            Ok(()) => {
+                self.configuration_status
+                    .push_str(" | persisted to app settings");
+            }
+            Err(e) => {
+                self.configuration_status
+                    .push_str(&format!(" | persistence failed: {e}"));
+            }
+        }
+    }
+
+    fn reset_configuration_window_backdrops_to_defaults(&mut self) {
+        self.configuration_window_backdrops = WindowBackdropSettings::default();
+        self.configuration_window_backdrops_dirty = true;
+    }
+
+    fn render_window_backdrop_path_row(
+        ui: &mut Ui,
+        label: &str,
+        value: &mut String,
+        changed: &mut bool,
+    ) {
+        ui.horizontal(|ui| {
+            ui.label(label);
+            if ui
+                .add(
+                    egui::TextEdit::singleline(value)
+                        .desired_width(360.0)
+                        .hint_text("/absolute/path/to/image.png"),
+                )
+                .on_hover_text(
+                    "Optional absolute or working-directory-relative image path for this window type",
+                )
+                .changed()
+            {
+                *changed = true;
+            }
+        });
+    }
+
     fn refresh_open_sequence_windows(&mut self, ctx: &egui::Context) -> usize {
         let mut refreshed = 0usize;
         for window in self.windows.values() {
@@ -10147,6 +10210,7 @@ Error: `{err}`"
         ui.label("Configure project-level graphics visibility defaults.");
         ui.separator();
         let mut changed = false;
+        let mut backdrop_changed = false;
 
         ui.heading("Panels");
         changed |= ui
@@ -10247,8 +10311,97 @@ Error: `{err}`"
             )
             .changed();
 
+        ui.separator();
+        ui.heading("Window Styling (experimental)");
+        backdrop_changed |= ui
+            .checkbox(
+                &mut self.configuration_window_backdrops.enabled,
+                "Enable themed window backdrops",
+            )
+            .on_hover_text("Apply subtle per-window-type color/image styling")
+            .changed();
+        backdrop_changed |= ui
+            .checkbox(
+                &mut self.configuration_window_backdrops.draw_images,
+                "Use background images",
+            )
+            .on_hover_text("Render optional image watermark per window type")
+            .changed();
+        backdrop_changed |= ui
+            .checkbox(
+                &mut self.configuration_window_backdrops.show_text_watermark,
+                "Show text watermark fallback",
+            )
+            .on_hover_text("Show low-contrast type text when no image is configured")
+            .changed();
+        ui.horizontal(|ui| {
+            ui.label("Tint opacity");
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.configuration_window_backdrops.tint_opacity,
+                        0.0..=0.25,
+                    )
+                    .show_value(true),
+                )
+                .on_hover_text("Background color intensity behind UI content")
+                .changed()
+            {
+                backdrop_changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Image opacity");
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.configuration_window_backdrops.image_opacity,
+                        0.0..=0.25,
+                    )
+                    .show_value(true),
+                )
+                .on_hover_text("Image watermark intensity")
+                .changed()
+            {
+                backdrop_changed = true;
+            }
+        });
+        Self::render_window_backdrop_path_row(
+            ui,
+            "Main window image",
+            &mut self.configuration_window_backdrops.main_image_path,
+            &mut backdrop_changed,
+        );
+        Self::render_window_backdrop_path_row(
+            ui,
+            "Sequence window image",
+            &mut self.configuration_window_backdrops.sequence_image_path,
+            &mut backdrop_changed,
+        );
+        Self::render_window_backdrop_path_row(
+            ui,
+            "Pool window image",
+            &mut self.configuration_window_backdrops.pool_image_path,
+            &mut backdrop_changed,
+        );
+        Self::render_window_backdrop_path_row(
+            ui,
+            "Configuration window image",
+            &mut self.configuration_window_backdrops.configuration_image_path,
+            &mut backdrop_changed,
+        );
+        Self::render_window_backdrop_path_row(
+            ui,
+            "Help window image",
+            &mut self.configuration_window_backdrops.help_image_path,
+            &mut backdrop_changed,
+        );
+
         if changed {
             self.configuration_graphics_dirty = true;
+        }
+        if backdrop_changed {
+            self.configuration_window_backdrops_dirty = true;
         }
 
         ui.horizontal(|ui| {
@@ -10282,6 +10435,23 @@ Error: `{err}`"
                 ));
             }
             if ui
+                .button("Reset Window Styling")
+                .on_hover_text("Reset themed backdrop settings to defaults")
+                .clicked()
+            {
+                self.reset_configuration_window_backdrops_to_defaults();
+            }
+            if ui
+                .add_enabled(
+                    self.configuration_window_backdrops_dirty,
+                    egui::Button::new("Apply Window Styling"),
+                )
+                .on_hover_text("Apply themed backdrop settings to all windows")
+                .clicked()
+            {
+                self.apply_configuration_window_backdrops();
+            }
+            if ui
                 .button("Reload Current")
                 .on_hover_text("Reload graphics settings from current project state")
                 .clicked()
@@ -10294,6 +10464,11 @@ Error: `{err}`"
     }
 
     fn render_configuration_contents(&mut self, ui: &mut Ui) {
+        window_backdrop::paint_window_backdrop(
+            ui,
+            WindowBackdropKind::Configuration,
+            &self.window_backdrops,
+        );
         self.render_specialist_window_nav(ui);
         ui.horizontal(|ui| {
             if ui
@@ -10884,6 +11059,7 @@ Error: `{err}`"
     }
 
     fn render_help_contents(&mut self, ui: &mut Ui) {
+        window_backdrop::paint_window_backdrop(ui, WindowBackdropKind::Help, &self.window_backdrops);
         let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
         if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
             self.help_focus_search_box = true;
@@ -11645,6 +11821,11 @@ impl eframe::App for GENtleApp {
 
             // Show main window
             egui::CentralPanel::default().show(ctx, |ui| {
+                window_backdrop::paint_window_backdrop(
+                    ui,
+                    WindowBackdropKind::Main,
+                    &self.window_backdrops,
+                );
                 self.render_main_lineage(ui);
                 if project_dirty {
                     ui.label("Status: unsaved changes");

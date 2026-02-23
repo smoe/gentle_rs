@@ -7,6 +7,7 @@ use crate::{
         ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation, OperationProgress,
         PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
     },
+    feature_expert::{FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, TfbsExpertView},
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
         shell_help_text,
@@ -15,7 +16,7 @@ use crate::{
     icons::*,
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
-    render_dna::RenderDna,
+    render_dna::{RenderDna, RestrictionEnzymePosition},
     render_sequence::RenderSequence,
     tf_motifs,
 };
@@ -572,6 +573,7 @@ pub struct MainAreaDna {
     declutter_snapshot: Option<DeclutterSnapshot>,
     op_status: String,
     op_error_popup: Option<String>,
+    opened_from_pool_context: bool,
     last_created_seq_ids: Vec<String>,
     container_digest_id: String,
     container_merge_ids: String,
@@ -596,11 +598,14 @@ pub struct MainAreaDna {
     focused_feature_id: Option<usize>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
+    description_cache_selected_restriction_key: Option<String>,
     description_cache_seq_len: usize,
     description_cache_feature_count: usize,
     description_cache_title: String,
     description_cache_range: Option<String>,
     description_cache_details: Vec<String>,
+    description_cache_expert_view: Option<FeatureExpertView>,
+    description_cache_expert_error: Option<String>,
 }
 
 impl MainAreaDna {
@@ -781,6 +786,7 @@ impl MainAreaDna {
             declutter_snapshot: None,
             op_status: String::new(),
             op_error_popup: None,
+            opened_from_pool_context: false,
             last_created_seq_ids: vec![],
             container_digest_id: String::new(),
             container_merge_ids: String::new(),
@@ -805,11 +811,14 @@ impl MainAreaDna {
             focused_feature_id: None,
             description_cache_initialized: false,
             description_cache_selected_id: None,
+            description_cache_selected_restriction_key: None,
             description_cache_seq_len: 0,
             description_cache_feature_count: 0,
             description_cache_title: String::new(),
             description_cache_range: None,
             description_cache_details: Vec::new(),
+            description_cache_expert_view: None,
+            description_cache_expert_error: None,
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -821,10 +830,15 @@ impl MainAreaDna {
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {
+        self.opened_from_pool_context = true;
         self.last_created_seq_ids = pool_seq_ids.clone();
         self.export_pool_inputs_text = pool_seq_ids.join(", ");
         self.show_engine_ops = true;
         self.op_status = "Opened from lineage pool node".to_string();
+    }
+
+    pub fn opened_from_pool_context(&self) -> bool {
+        self.opened_from_pool_context
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
@@ -3674,6 +3688,290 @@ impl MainAreaDna {
             .deselect();
     }
 
+    fn clear_feature_focus_keep_map_selection(&mut self) {
+        self.focused_feature_id = None;
+        self.pending_feature_tree_scroll_to = None;
+        self.dna_display
+            .write()
+            .expect("DNA display lock poisoned")
+            .deselect();
+    }
+
+    fn inspect_feature_expert_target(
+        &self,
+        target: &FeatureExpertTarget,
+    ) -> Result<FeatureExpertView, String> {
+        let seq_id = self
+            .seq_id
+            .as_deref()
+            .ok_or_else(|| "Sequence id is unavailable for expert view".to_string())?;
+        let engine = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "Engine is unavailable for expert view".to_string())?;
+        let guard = engine
+            .read()
+            .map_err(|_| "Engine lock poisoned while preparing expert view".to_string())?;
+        guard
+            .inspect_feature_expert(seq_id, target)
+            .map_err(|e| e.to_string())
+    }
+
+    fn tfbs_base_color(base_idx: usize) -> egui::Color32 {
+        match base_idx {
+            0 => egui::Color32::from_rgb(43, 138, 62), // A
+            1 => egui::Color32::from_rgb(29, 78, 216), // C
+            2 => egui::Color32::from_rgb(217, 119, 6), // G
+            3 => egui::Color32::from_rgb(185, 28, 28), // T
+            _ => egui::Color32::GRAY,
+        }
+    }
+
+    fn render_tfbs_expert_view_ui(&self, ui: &mut egui::Ui, view: &TfbsExpertView) {
+        ui.label(
+            egui::RichText::new(format!(
+                "{} ({})  {}:{}..{}  strand {}",
+                view.tf_name.clone().unwrap_or_else(|| view.tf_id.clone()),
+                view.tf_id,
+                view.seq_id,
+                view.start_1based,
+                view.end_1based,
+                view.strand
+            ))
+            .monospace()
+            .size(self.feature_details_font_size()),
+        );
+        ui.label(
+            egui::RichText::new(format!(
+                "matched={}  llr_bits={:.4}  true_log_odds_bits={:.4}",
+                view.matched_sequence,
+                view.llr_total_bits.unwrap_or_default(),
+                view.true_log_odds_total_bits.unwrap_or_default()
+            ))
+            .monospace()
+            .size(self.feature_details_font_size()),
+        );
+
+        let desired_width = (view.columns.len() as f32 * 24.0 + 90.0).max(ui.available_width());
+        let desired_height = 220.0;
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            let (rect, response) = ui.allocate_exact_size(
+                egui::Vec2::new(desired_width, desired_height),
+                egui::Sense::hover(),
+            );
+            response.on_hover_text(view.instruction.as_str());
+            let painter = ui.painter_at(rect);
+
+            let left = rect.left() + 38.0;
+            let right = rect.right() - 10.0;
+            let chart_top = rect.top() + 10.0;
+            let chart_bottom = rect.bottom() - 50.0;
+            let baseline = chart_bottom;
+            let n = view.columns.len().max(1);
+            let step = ((right - left) / n as f32).max(8.0);
+            let bar_width = (step * 0.72).clamp(5.0, 16.0);
+            let scale = (chart_bottom - chart_top) / 2.0;
+
+            painter.line_segment(
+                [egui::pos2(left, baseline), egui::pos2(right, baseline)],
+                egui::Stroke::new(1.0, egui::Color32::from_gray(60)),
+            );
+            for tick in [0.0_f32, 1.0, 2.0] {
+                let y = baseline - tick * scale;
+                painter.line_segment(
+                    [egui::pos2(left - 4.0, y), egui::pos2(right, y)],
+                    egui::Stroke::new(
+                        1.0,
+                        if tick == 0.0 {
+                            egui::Color32::from_gray(70)
+                        } else {
+                            egui::Color32::from_gray(220)
+                        },
+                    ),
+                );
+                painter.text(
+                    egui::pos2(left - 6.0, y),
+                    egui::Align2::RIGHT_CENTER,
+                    format!("{tick:.0}"),
+                    egui::FontId::monospace(9.0),
+                    egui::Color32::from_gray(80),
+                );
+            }
+
+            let mut match_points: Vec<egui::Pos2> = Vec::new();
+            for (idx, col) in view.columns.iter().enumerate() {
+                let x_center = left + step * (idx as f32 + 0.5);
+                let x = x_center - bar_width / 2.0;
+                let ic = col.information_content_bits.clamp(0.0, 2.0) as f32;
+                let full_height = ic * scale;
+                let mut y_cursor = baseline;
+                let match_idx = match col.match_base.map(|c| c.to_ascii_uppercase()) {
+                    Some('A') => Some(0usize),
+                    Some('C') => Some(1usize),
+                    Some('G') => Some(2usize),
+                    Some('T') => Some(3usize),
+                    _ => None,
+                };
+                let mut match_y: Option<f32> = None;
+                for base_idx in 0..4 {
+                    let freq = col.frequencies[base_idx].clamp(0.0, 1.0) as f32;
+                    let segment_h = full_height * freq;
+                    if segment_h <= 0.0 {
+                        continue;
+                    }
+                    let y_top = y_cursor - segment_h;
+                    painter.rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(x, y_top),
+                            egui::vec2(bar_width, segment_h),
+                        ),
+                        0.0,
+                        Self::tfbs_base_color(base_idx),
+                    );
+                    if match_idx == Some(base_idx) {
+                        match_y = Some(y_top + segment_h * 0.5);
+                    }
+                    y_cursor = y_top;
+                }
+                if let Some(y) = match_y {
+                    match_points.push(egui::pos2(x_center, y));
+                }
+                if idx % 2 == 0 || n <= 24 {
+                    painter.text(
+                        egui::pos2(x_center, baseline + 11.0),
+                        egui::Align2::CENTER_TOP,
+                        (idx + 1).to_string(),
+                        egui::FontId::monospace(8.0),
+                        egui::Color32::from_gray(70),
+                    );
+                }
+                if let Some(base) = col.match_base {
+                    painter.text(
+                        egui::pos2(x_center, baseline + 24.0),
+                        egui::Align2::CENTER_TOP,
+                        base.to_ascii_uppercase(),
+                        egui::FontId::monospace(9.0),
+                        egui::Color32::BLACK,
+                    );
+                }
+            }
+
+            if match_points.len() >= 2 {
+                painter.add(egui::Shape::line(
+                    match_points.clone(),
+                    egui::Stroke::new(1.8, egui::Color32::BLACK),
+                ));
+                for p in match_points {
+                    painter.circle_filled(p, 2.0, egui::Color32::BLACK);
+                }
+            }
+        });
+    }
+
+    fn render_restriction_expert_view_ui(&self, ui: &mut egui::Ui, view: &RestrictionSiteExpertView) {
+        ui.label(
+            egui::RichText::new(format!(
+                "{} | cut={} | {}:{}..{}",
+                view.selected_enzyme
+                    .clone()
+                    .unwrap_or_else(|| view.enzyme_names.join(",")),
+                view.cut_pos_1based,
+                view.seq_id,
+                view.recognition_start_1based,
+                view.recognition_end_1based
+            ))
+            .monospace()
+            .size(self.feature_details_font_size()),
+        );
+        if let Some(pattern) = &view.recognition_iupac {
+            ui.label(
+                egui::RichText::new(format!("recognition_iupac={pattern}"))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+        }
+        let top = if view.site_sequence.is_empty() {
+            view.recognition_iupac.clone().unwrap_or_default()
+        } else {
+            view.site_sequence.clone()
+        };
+        let bottom = view.site_sequence_complement.clone();
+
+        let desired_width = (top.chars().count() as f32 * 24.0 + 110.0).max(ui.available_width());
+        let desired_height = 130.0;
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            let (rect, response) = ui.allocate_exact_size(
+                egui::Vec2::new(desired_width, desired_height),
+                egui::Sense::hover(),
+            );
+            response.on_hover_text(view.instruction.as_str());
+            let painter = ui.painter_at(rect);
+            let n = top.chars().count().max(1);
+            let step = ((rect.width() - 90.0) / n as f32).clamp(14.0, 24.0);
+            let total = step * n as f32;
+            let start_x = rect.left() + (rect.width() - total) * 0.5;
+            let top_y = rect.top() + 38.0;
+            let bottom_y = rect.top() + 78.0;
+            let rail_left = start_x - 10.0;
+            let rail_right = start_x + total + 10.0;
+
+            painter.line_segment(
+                [egui::pos2(rail_left, top_y - 8.0), egui::pos2(rail_right, top_y - 8.0)],
+                egui::Stroke::new(1.4, egui::Color32::BLACK),
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(rail_left, bottom_y + 8.0),
+                    egui::pos2(rail_right, bottom_y + 8.0),
+                ],
+                egui::Stroke::new(1.4, egui::Color32::BLACK),
+            );
+
+            for (idx, ch) in top.chars().enumerate() {
+                let x = start_x + step * (idx as f32 + 0.5);
+                painter.text(
+                    egui::pos2(x, top_y),
+                    egui::Align2::CENTER_CENTER,
+                    ch,
+                    egui::FontId::monospace(18.0),
+                    egui::Color32::from_rgb(17, 24, 39),
+                );
+            }
+            for (idx, ch) in bottom.chars().enumerate() {
+                let x = start_x + step * (idx as f32 + 0.5);
+                painter.text(
+                    egui::pos2(x, bottom_y),
+                    egui::Align2::CENTER_CENTER,
+                    ch,
+                    egui::FontId::monospace(18.0),
+                    egui::Color32::from_rgb(51, 65, 85),
+                );
+            }
+            let cut_x = start_x + step * view.cut_index_0based as f32;
+            painter.line_segment(
+                [
+                    egui::pos2(cut_x, top_y - 28.0),
+                    egui::pos2(cut_x, bottom_y + 24.0),
+                ],
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(185, 28, 28)),
+            );
+            painter.text(
+                egui::pos2(cut_x + 4.0, top_y - 30.0),
+                egui::Align2::LEFT_BOTTOM,
+                "cut",
+                egui::FontId::monospace(9.0),
+                egui::Color32::from_rgb(185, 28, 28),
+            );
+        });
+    }
+
+    fn render_feature_expert_view_ui(&self, ui: &mut egui::Ui, view: &FeatureExpertView) {
+        match view {
+            FeatureExpertView::Tfbs(tfbs) => self.render_tfbs_expert_view_ui(ui, tfbs),
+            FeatureExpertView::RestrictionSite(re) => self.render_restriction_expert_view_ui(ui, re),
+        }
+    }
+
     fn apply_sequence_derivation(&mut self, op: Operation) {
         let Some(engine) = &self.engine else {
             return;
@@ -6102,6 +6400,10 @@ impl MainAreaDna {
         self.map_dna.get_selected_feature_id()
     }
 
+    fn get_selected_restriction_site(&self) -> Option<RestrictionEnzymePosition> {
+        self.map_dna.get_selected_restriction_site()
+    }
+
     pub fn sequence_name(&self) -> Option<String> {
         self.dna
             .read()
@@ -6401,13 +6703,19 @@ impl MainAreaDna {
 
     fn refresh_description_cache(&mut self) {
         let selected_id = self.get_selected_feature_id();
+        let selected_restriction = self.get_selected_restriction_site();
+        let selected_restriction_key = selected_restriction
+            .as_ref()
+            .map(|site| site.key.to_string());
         let mut clear_invalid_selection = false;
+        let mut expert_target: Option<FeatureExpertTarget> = None;
         {
             let dna = self.dna.read().expect("DNA lock poisoned");
             let seq_len = dna.len();
             let feature_count = dna.features().len();
             let needs_refresh = !self.description_cache_initialized
                 || self.description_cache_selected_id != selected_id
+                || self.description_cache_selected_restriction_key != selected_restriction_key
                 || self.description_cache_seq_len != seq_len
                 || self.description_cache_feature_count != feature_count;
             if !needs_refresh {
@@ -6416,8 +6724,11 @@ impl MainAreaDna {
 
             self.description_cache_initialized = true;
             self.description_cache_selected_id = selected_id;
+            self.description_cache_selected_restriction_key = selected_restriction_key.clone();
             self.description_cache_seq_len = seq_len;
             self.description_cache_feature_count = feature_count;
+            self.description_cache_expert_view = None;
+            self.description_cache_expert_error = None;
 
             if let Some(id) = selected_id {
                 if let Some(feature) = dna.features().get(id) {
@@ -6429,6 +6740,9 @@ impl MainAreaDna {
                     };
                     self.description_cache_range = Some(RenderDna::feature_range_text(feature));
                     self.description_cache_details = RenderDna::feature_detail_lines(feature);
+                    if RenderDna::is_tfbs_feature(feature) {
+                        expert_target = Some(FeatureExpertTarget::TfbsFeature { feature_id: id });
+                    }
                 } else {
                     clear_invalid_selection = true;
                     self.description_cache_selected_id = None;
@@ -6436,6 +6750,39 @@ impl MainAreaDna {
                     self.description_cache_range = None;
                     self.description_cache_details.clear();
                 }
+            } else if let Some(selected_site) = selected_restriction.as_ref() {
+                let key = selected_site.key();
+                let mut names = dna
+                    .restriction_enzyme_groups()
+                    .get(key)
+                    .cloned()
+                    .unwrap_or_default();
+                names.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+                names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+                let enzyme_label = if names.is_empty() {
+                    "Restriction site".to_string()
+                } else {
+                    format!("Restriction site: {}", names.join(","))
+                };
+                self.description_cache_title = enzyme_label;
+                self.description_cache_range = Some(format!(
+                    "{}..{} (cut at {} bp)",
+                    key.from().max(0) + 1,
+                    key.to().max(0),
+                    key.pos().max(0) + 1
+                ));
+                self.description_cache_details = vec![
+                    format!("cuts_for_enzyme: {}", key.number_of_cuts()),
+                    format!("cut_offset_0based: {}", key.cut_size()),
+                    format!("site_from_1based: {}", key.from().max(0) + 1),
+                    format!("site_to_1based: {}", key.to().max(0)),
+                ];
+                expert_target = Some(FeatureExpertTarget::RestrictionSite {
+                    cut_pos_1based: key.pos().max(0) as usize + 1,
+                    enzyme: names.first().cloned(),
+                    recognition_start_1based: Some(key.from().max(0) as usize + 1),
+                    recognition_end_1based: Some(key.to().max(0) as usize),
+                });
             } else {
                 self.description_cache_title = dna.description().join("\n");
                 self.description_cache_range = None;
@@ -6444,6 +6791,18 @@ impl MainAreaDna {
         }
         if clear_invalid_selection {
             self.clear_feature_focus();
+        }
+        if let Some(target) = expert_target {
+            match self.inspect_feature_expert_target(&target) {
+                Ok(view) => {
+                    self.description_cache_expert_view = Some(view);
+                    self.description_cache_expert_error = None;
+                }
+                Err(err) => {
+                    self.description_cache_expert_view = None;
+                    self.description_cache_expert_error = Some(err);
+                }
+            }
         }
     }
 
@@ -6462,6 +6821,22 @@ impl MainAreaDna {
             for detail in &self.description_cache_details {
                 ui.label(
                     egui::RichText::new(detail)
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+            }
+            if let Some(view) = &self.description_cache_expert_view {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("Expert view")
+                        .strong()
+                        .size(self.feature_details_font_size()),
+                );
+                self.render_feature_expert_view_ui(ui, view);
+            } else if let Some(err) = &self.description_cache_expert_error {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(format!("Expert view unavailable: {err}"))
                         .monospace()
                         .size(self.feature_details_font_size()),
                 );
@@ -6577,29 +6952,53 @@ impl MainAreaDna {
 
             if response.clicked() {
                 let previous_selected = self.map_dna.get_selected_feature_id();
+                let previous_restriction = self
+                    .map_dna
+                    .get_selected_restriction_site()
+                    .map(|site| site.key.to_string());
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_click(pointer_state);
                 let next_selected = self.map_dna.get_selected_feature_id();
+                let next_restriction = self
+                    .map_dna
+                    .get_selected_restriction_site()
+                    .map(|site| site.key.to_string());
                 if next_selected != previous_selected {
                     if let Some(feature_id) = next_selected {
                         self.focus_feature(feature_id);
+                    } else if next_restriction.is_some() {
+                        self.clear_feature_focus_keep_map_selection();
                     } else {
                         self.clear_feature_focus();
                     }
+                } else if next_restriction != previous_restriction && next_restriction.is_some() {
+                    self.clear_feature_focus_keep_map_selection();
                 }
             }
 
             if response.double_clicked() {
                 let previous_selected = self.map_dna.get_selected_feature_id();
+                let previous_restriction = self
+                    .map_dna
+                    .get_selected_restriction_site()
+                    .map(|site| site.key.to_string());
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
                 self.map_dna.on_double_click(pointer_state);
                 let next_selected = self.map_dna.get_selected_feature_id();
+                let next_restriction = self
+                    .map_dna
+                    .get_selected_restriction_site()
+                    .map(|site| site.key.to_string());
                 if next_selected != previous_selected {
                     if let Some(feature_id) = next_selected {
                         self.focus_feature(feature_id);
+                    } else if next_restriction.is_some() {
+                        self.clear_feature_focus_keep_map_selection();
                     } else {
                         self.clear_feature_focus();
                     }
+                } else if next_restriction != previous_restriction && next_restriction.is_some() {
+                    self.clear_feature_focus_keep_map_selection();
                 }
             }
         });

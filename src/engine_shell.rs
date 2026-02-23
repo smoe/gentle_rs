@@ -15,7 +15,7 @@ use crate::{
         GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
         ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
-        Workflow, WorkflowMacroTemplateParam,
+        Workflow, WorkflowMacroTemplateParam, FeatureExpertTarget,
     },
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
@@ -175,6 +175,15 @@ pub enum ShellCommand {
     RenderSvg {
         seq_id: String,
         mode: RenderSvgMode,
+        output: String,
+    },
+    InspectFeatureExpert {
+        seq_id: String,
+        target: FeatureExpertTarget,
+    },
+    RenderFeatureExpertSvg {
+        seq_id: String,
+        target: FeatureExpertTarget,
         output: String,
     },
     RenderRnaSvg {
@@ -953,6 +962,17 @@ impl ShellCommand {
                 mode,
                 output,
             } => format!("render {mode:?} SVG for '{seq_id}' to '{output}'"),
+            Self::InspectFeatureExpert { seq_id, target } => {
+                format!("inspect feature expert view for '{seq_id}' target={}", target.describe())
+            }
+            Self::RenderFeatureExpertSvg {
+                seq_id,
+                target,
+                output,
+            } => format!(
+                "render feature expert SVG for '{seq_id}' target={} to '{output}'",
+                target.describe()
+            ),
             Self::RenderRnaSvg { seq_id, output } => {
                 format!("render RNA structure SVG for '{seq_id}' to '{output}'")
             }
@@ -2135,6 +2155,91 @@ fn parse_mode(mode: &str) -> Result<RenderSvgMode, String> {
         "circular" => Ok(RenderSvgMode::Circular),
         other => Err(format!(
             "Unknown render mode '{other}', expected 'linear' or 'circular'"
+        )),
+    }
+}
+
+fn parse_feature_expert_target_tokens(
+    tokens: &[String],
+    context: &str,
+) -> Result<FeatureExpertTarget, String> {
+    if tokens.len() < 2 {
+        return Err(format!(
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]"
+        ));
+    }
+    match tokens[0].trim().to_ascii_lowercase().as_str() {
+        "tfbs" => {
+            if tokens.len() != 2 {
+                return Err(format!(
+                    "{context} tfbs target expects exactly: tfbs FEATURE_ID"
+                ));
+            }
+            let feature_id = tokens[1]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid TFBS feature id '{}': {e}", tokens[1]))?;
+            Ok(FeatureExpertTarget::TfbsFeature { feature_id })
+        }
+        "restriction" | "re" => {
+            let cut_pos_1based = tokens[1]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid restriction cut position '{}': {e}", tokens[1]))?;
+            if cut_pos_1based == 0 {
+                return Err("Restriction cut position must be >= 1".to_string());
+            }
+            let mut enzyme: Option<String> = None;
+            let mut recognition_start_1based: Option<usize> = None;
+            let mut recognition_end_1based: Option<usize> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--enzyme" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--enzyme", context)?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            return Err("--enzyme value must not be empty".to_string());
+                        }
+                        enzyme = Some(trimmed.to_string());
+                    }
+                    "--start" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--start", context)?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --start value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--start must be >= 1".to_string());
+                        }
+                        recognition_start_1based = Some(parsed);
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--end", context)?;
+                        let parsed = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --end value '{raw}': {e}"))?;
+                        if parsed == 0 {
+                            return Err("--end must be >= 1".to_string());
+                        }
+                        recognition_end_1based = Some(parsed);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {context} restriction"));
+                    }
+                }
+            }
+            if let (Some(start), Some(end)) = (recognition_start_1based, recognition_end_1based) {
+                if start > end {
+                    return Err("--start must be <= --end".to_string());
+                }
+            }
+            Ok(FeatureExpertTarget::RestrictionSite {
+                cut_pos_1based,
+                enzyme,
+                recognition_start_1based,
+                recognition_end_1based,
+            })
+        }
+        other => Err(format!(
+            "Unknown feature target '{other}' (expected tfbs|restriction)"
         )),
     }
 }
@@ -4779,6 +4884,33 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 output: tokens[3].clone(),
             })
         }
+        "inspect-feature-expert" => {
+            if tokens.len() < 4 {
+                return Err(token_error(cmd));
+            }
+            let seq_id = tokens[1].clone();
+            let target = parse_feature_expert_target_tokens(
+                &tokens[2..],
+                "inspect-feature-expert",
+            )?;
+            Ok(ShellCommand::InspectFeatureExpert { seq_id, target })
+        }
+        "render-feature-expert-svg" => {
+            if tokens.len() < 5 {
+                return Err(token_error(cmd));
+            }
+            let seq_id = tokens[1].clone();
+            let output = tokens[tokens.len() - 1].clone();
+            let target = parse_feature_expert_target_tokens(
+                &tokens[2..tokens.len() - 1],
+                "render-feature-expert-svg",
+            )?;
+            Ok(ShellCommand::RenderFeatureExpertSvg {
+                seq_id,
+                target,
+                output,
+            })
+        }
         "render-rna-svg" => {
             if tokens.len() != 3 {
                 return Err(token_error(cmd));
@@ -6137,6 +6269,33 @@ pub fn execute_shell_command_with_options(
                 .apply(Operation::RenderSequenceSvg {
                     seq_id: seq_id.clone(),
                     mode: mode.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::InspectFeatureExpert { seq_id, target } => {
+            let view = engine
+                .inspect_feature_expert(seq_id, target)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize feature expert view: {e}"))?,
+            }
+        }
+        ShellCommand::RenderFeatureExpertSvg {
+            seq_id,
+            target,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderFeatureExpertSvg {
+                    seq_id: seq_id.clone(),
+                    target: target.clone(),
                     path: output.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -10822,6 +10981,95 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_feature_expert_commands() {
+        let inspect = parse_shell_line("inspect-feature-expert s tfbs 7")
+            .expect("parse inspect-feature-expert");
+        match inspect {
+            ShellCommand::InspectFeatureExpert { seq_id, target } => {
+                assert_eq!(seq_id, "s");
+                assert_eq!(target, FeatureExpertTarget::TfbsFeature { feature_id: 7 });
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let render = parse_shell_line(
+            "render-feature-expert-svg s restriction 123 --enzyme EcoRI --start 100 --end 106 out.svg",
+        )
+        .expect("parse render-feature-expert-svg");
+        match render {
+            ShellCommand::RenderFeatureExpertSvg {
+                seq_id,
+                target,
+                output,
+            } => {
+                assert_eq!(seq_id, "s");
+                assert_eq!(output, "out.svg");
+                assert_eq!(
+                    target,
+                    FeatureExpertTarget::RestrictionSite {
+                        cut_pos_1based: 123,
+                        enzyme: Some("EcoRI".to_string()),
+                        recognition_start_1based: Some(100),
+                        recognition_end_1based: Some(106),
+                    }
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_inspect_feature_expert_returns_view_json() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert(
+                "s".to_string(),
+                DNAsequence::from_sequence("TTTACGTAAACGTGGG").expect("valid dna"),
+            );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(0.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: Some(1),
+            })
+            .expect("annotate tfbs");
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .position(|feature| {
+                feature
+                    .qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .expect("tfbs feature");
+
+        let output = execute_shell_command(
+            &mut engine,
+            &ShellCommand::InspectFeatureExpert {
+                seq_id: "s".to_string(),
+                target: FeatureExpertTarget::TfbsFeature { feature_id },
+            },
+        )
+        .expect("execute inspect-feature-expert");
+        assert!(!output.state_changed);
+        assert_eq!(output.output["kind"].as_str(), Some("tfbs"));
+        assert_eq!(
+            output.output["data"]["feature_id"].as_u64(),
+            Some(feature_id as u64)
+        );
     }
 
     #[test]

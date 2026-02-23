@@ -906,6 +906,33 @@ mod tests {
     }
 
     #[test]
+    fn test_toy_small_cross_format_sequence_parity() {
+        let fasta = DNAsequence::from_fasta_file("test_files/data/toy.small.fa").unwrap();
+        let genbank = DNAsequence::from_genbank_file("test_files/data/toy.small.gb").unwrap();
+        let fasta = fasta.first().unwrap();
+        let genbank = genbank.first().unwrap();
+        assert_eq!(fasta.len(), 120);
+        assert_eq!(genbank.len(), 120);
+        assert_eq!(
+            fasta.get_forward_string().to_ascii_uppercase(),
+            genbank.get_forward_string().to_ascii_uppercase()
+        );
+        let gene_names: Vec<String> = genbank
+            .features()
+            .iter()
+            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .filter_map(|feature| {
+                feature
+                    .qualifier_values("gene".into())
+                    .next()
+                    .map(|value| value.to_string())
+            })
+            .collect();
+        assert!(gene_names.iter().any(|name| name == "toyA"));
+        assert!(gene_names.iter().any(|name| name == "toyB"));
+    }
+
+    #[test]
     fn test_pgex_3x_genbank() {
         let dna = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
         let dna = dna.first().unwrap();

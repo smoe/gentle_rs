@@ -1,6 +1,8 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
-use crate::engine::{Engine, GenomeAnchorSide, GentleEngine, Operation, ProjectState, Workflow};
+use crate::engine::{
+    Engine, FeatureExpertTarget, GenomeAnchorSide, GentleEngine, Operation, ProjectState, Workflow,
+};
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
 use crate::methylation_sites::MethylationMode;
@@ -84,6 +86,12 @@ impl LuaInterface {
             "  - set_vcf_display_filter(project, opts): Convenience helper for VCF display criteria updates"
         );
         println!("  - apply_workflow(project, wf): Applies a workflow (Lua table or JSON string)");
+        println!(
+            "  - inspect_feature_expert(project, seq_id, target): Returns TFBS/restriction expert JSON (target table or JSON string)"
+        );
+        println!(
+            "  - render_feature_expert_svg(project, seq_id, target, output_svg): Writes expert-view SVG via shared engine operation"
+        );
         println!("  - list_reference_genomes([catalog_path]): Lists catalog genome names");
         println!(
             "  - list_agent_systems([catalog_path]): Lists external/internal AI systems from agent catalog"
@@ -690,6 +698,51 @@ impl LuaInterface {
                     };
                     lua.to_value(&response)
                 })?,
+        )?;
+
+        self.lua.globals().set(
+            "inspect_feature_expert",
+            self.lua
+                .create_function(|lua, (state, seq_id, target): (Value, String, Value)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let target: FeatureExpertTarget = Self::parse_or_decode(lua, target)?;
+                    let engine = GentleEngine::from_state(state);
+                    let view = engine
+                        .inspect_feature_expert(&seq_id, &target)
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    lua.to_value(&view)
+                })?,
+        )?;
+
+        self.lua.globals().set(
+            "render_feature_expert_svg",
+            self.lua.create_function(
+                |lua, (state, seq_id, target, path): (Value, String, Value, String)| {
+                    let state: ProjectState = lua
+                        .from_value(state)
+                        .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let target: FeatureExpertTarget = Self::parse_or_decode(lua, target)?;
+                    let mut engine = GentleEngine::from_state(state);
+                    let result = engine
+                        .apply(Operation::RenderFeatureExpertSvg {
+                            seq_id,
+                            target,
+                            path,
+                        })
+                        .map_err(|e| Self::err(&e.to_string()))?;
+                    #[derive(Serialize)]
+                    struct Response {
+                        state: ProjectState,
+                        result: crate::engine::OpResult,
+                    }
+                    lua.to_value(&Response {
+                        state: engine.state().clone(),
+                        result,
+                    })
+                },
+            )?,
         )?;
 
         self.lua.globals().set(

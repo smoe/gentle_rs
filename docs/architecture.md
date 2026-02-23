@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-22
+Last updated: 2026-02-23
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -51,6 +51,37 @@ Strategic aims:
    (compile-time feature gate + explicit runtime opt-in).
 5. Provide context-sensitive hover descriptions for actionable GUI buttons so
    control intent is explicit and shared button references are unambiguous.
+6. Require explicit provenance documentation for all test data fixtures so
+   source/reconstruction and usage context are always clear.
+7. Support optional per-window-type visual identity cues (subtle monochrome
+   image backdrops + color accents) without harming scientific readability.
+
+Test-data provenance rule:
+
+- Every committed test fixture (for example under `test_files/` or `tests/`)
+  must have clear provenance documentation.
+- Documentation must include at least:
+  - exact upstream/source reference when known, or an explicit statement that
+    it is synthetic/hand-crafted
+  - deterministic self-creation/retrieval steps
+  - where in GENtle the fixture is used (runtime path, parser path, and/or
+    test names)
+- New fixture files are not considered done until this provenance note exists
+  in a nearby README or equivalent fixture manifest.
+
+Import-format policy (GenBank-first, XML additive):
+
+- GenBank remains the canonical annotation import format in current production
+  paths.
+- XML support is additive and must normalize to the same internal structures
+  used by GenBank import before touching business logic.
+- The first XML scope is sequence + feature/annotation import only (no
+  format-specific behavior divergence).
+- XML parser adapters should target explicit NCBI dialects (`GBSet/GBSeq`
+  first, `INSDSet/INSDSeq` second) and reject unknown dialects with clear
+  diagnostics.
+- Cross-format fixtures must remain small and paired (same biological content
+  across `.fa`, `.gb`, `.xml`) so parity tests can detect semantic drift.
 
 Tooltip coverage rule:
 
@@ -70,6 +101,15 @@ Visual consistency rule:
   the same change.
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
+
+Window visual identity rule:
+
+- Backdrop styling is decorative and optional; it must never reduce readability
+  of sequence/map labels, controls, or quantitative overlays.
+- Window-type coloring must remain stable (`main`, `sequence`, `pool`,
+  `configuration`, `help`) and should not encode scientific semantics.
+- Backdrop images are expected to be monochrome or monochrome-tinted in
+  rendering, with low opacity and a fast global disable path.
 
 Discoverability rule:
 
@@ -295,6 +335,19 @@ Practical rule:
       feature opt-in (example:
       `cargo test --features snapshot-tests -q render_export::tests::snapshot_`)
 
+Feature expert-view command baseline (implemented):
+
+- `inspect-feature-expert` (shared shell) returns a structured expert view for
+  a selected feature target.
+- `render-feature-expert-svg` renders the same expert view to SVG via engine
+  operation `RenderFeatureExpertSvg`.
+- Target kinds currently supported:
+  - TFBS feature by feature id
+  - restriction site by cut position (with optional enzyme/recognition span
+    hints)
+- Direct CLI (`gentle_cli`) forwards both commands, and JS/Lua wrappers expose
+  equivalent calls.
+
 ### GUI intent command plane (implemented baseline)
 
 Current baseline:
@@ -485,6 +538,45 @@ Important separation:
 - Image interpretation remains probabilistic and should output proposals,
   not direct mutations without confirmation
 
+### Feature expert view contract (implemented baseline)
+
+Expert plots for selected features are engine-owned view models, not GUI-local
+recomputations. This keeps GUI/CLI/JS/Lua behavior aligned.
+
+Shared view model:
+
+- `FeatureExpertTarget`: stable target selector (TFBS feature or restriction
+  site).
+- `FeatureExpertView`: typed payload with one of:
+  - `TfbsExpertView`
+  - `RestrictionSiteExpertView`
+
+TFBS expert semantics:
+
+- One motif column per PSSM position.
+- Column bar total height is information content:
+  - `IC_j = 2 + sum_b (p_j,b * log2(p_j,b))`
+  - convention: `0 * log2(0) = 0`
+- Nucleotide segments stack within each bar by their relative frequencies
+  (`p_j,A/C/G/T`).
+- The matched sequence instance is overlaid as a polyline crossing the chosen
+  base segment in each column.
+- Instruction text is part of the shared model so GUI and exported SVG can show
+  consistent explanatory wording.
+
+Restriction-site expert semantics:
+
+- Render a compact top/bottom strand view for the recognized site context.
+- Mark cleavage position explicitly.
+- Include enzyme/site metadata and shared instruction text.
+
+Export semantics:
+
+- `RenderFeatureExpertSvg` is the canonical engine export path.
+- GUI detail panel and shell/CLI scripting consume the same expert view
+  contract before/while exporting.
+- SVG output is therefore adapter-equivalent by construction.
+
 ## 9. Decision log (concise)
 
 - Adopt single shared engine for all frontends: accepted
@@ -561,8 +653,14 @@ Important separation:
 - Add design-constraint filtering operation (`FilterByDesignConstraints`;
   GC bounds, homopolymer cap, U6 `TTTT` avoidance, forbidden motifs): accepted
   and implemented.
+- Add feature expert-view model + SVG export contract (TFBS + restriction
+  sites) and expose through GUI/shell/CLI/JS/Lua:
+  accepted and implemented.
 - Add candidate-set scoring/filter/set-algebra workflow (derived expressions,
   value+quantile filters, and explicit set union/intersection/subtraction):
   accepted and implemented as first-class engine operations, exposed through
   first-class CLI (`gentle_cli candidates ...`), shared shell (`candidates`),
   and dedicated GUI Engine Ops candidate forms.
+- Add optional per-window-type visual identity backdrops with persisted app
+  settings and subtle tint/watermark rendering:
+  accepted and in progress (experimental GUI implementation).

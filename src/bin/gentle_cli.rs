@@ -438,6 +438,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] save-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] load-project PATH\n  \
   gentle_cli [--state PATH|--project PATH] render-svg SEQ_ID linear|circular OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
+  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
+  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
@@ -539,6 +543,8 @@ fn is_shell_forwarded_command(command: &str) -> bool {
             | "guides"
             | "tracks"
             | "screenshot-window"
+            | "inspect-feature-expert"
+            | "render-feature-expert-svg"
     )
 }
 

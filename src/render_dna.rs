@@ -110,6 +110,19 @@ impl RenderDna {
         }
     }
 
+    pub fn get_selected_restriction_site(&self) -> Option<RestrictionEnzymePosition> {
+        match self {
+            RenderDna::Circular(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_restriction_enzyme()),
+            RenderDna::Linear(renderer) => renderer
+                .read()
+                .ok()
+                .and_then(|r| r.selected_restriction_enzyme()),
+        }
+    }
+
     pub fn get_hovered_feature_id(&self) -> Option<usize> {
         match self {
             RenderDna::Circular(renderer) => renderer
@@ -128,11 +141,30 @@ impl RenderDna {
             RenderDna::Circular(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
                     renderer.select_feature(feature_number);
+                    renderer.select_restriction_enzyme(None);
                 }
             }
             RenderDna::Linear(renderer) => {
                 if let Ok(mut renderer) = renderer.write() {
                     renderer.select_feature(feature_number);
+                    renderer.select_restriction_enzyme(None);
+                }
+            }
+        }
+    }
+
+    pub fn select_restriction_site(&self, site: Option<RestrictionEnzymePosition>) {
+        match self {
+            RenderDna::Circular(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_restriction_enzyme(site.clone());
+                    renderer.select_feature(None);
+                }
+            }
+            RenderDna::Linear(renderer) => {
+                if let Ok(mut renderer) = renderer.write() {
+                    renderer.select_restriction_enzyme(site);
+                    renderer.select_feature(None);
                 }
             }
         }

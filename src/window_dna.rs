@@ -1,4 +1,11 @@
-use crate::{dna_sequence::DNAsequence, engine::GentleEngine, main_area_dna::MainAreaDna};
+use crate::{
+    dna_sequence::DNAsequence,
+    engine::GentleEngine,
+    main_area_dna::MainAreaDna,
+    window_backdrop::{
+        WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
+    },
+};
 use eframe::egui;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, RwLock};
@@ -36,7 +43,16 @@ impl WindowDna {
                     }
                 });
             });
-            egui::CentralPanel::default().show(ctx, |ui| self.main_area.render(ctx, ui));
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let kind = if self.main_area.opened_from_pool_context() {
+                    WindowBackdropKind::Pool
+                } else {
+                    WindowBackdropKind::Sequence
+                };
+                let settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, kind, &settings);
+                self.main_area.render(ctx, ui);
+            });
         }));
         if result.is_err() {
             eprintln!("E WindowDna: recovered from panic while rendering DNA window");

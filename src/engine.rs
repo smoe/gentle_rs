@@ -3,6 +3,7 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
+    feature_location::feature_is_reverse,
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
@@ -13,7 +14,8 @@ use crate::{
     methylation_sites::MethylationMode,
     pool_gel::{GelSampleInput, build_serial_gel_layout, export_pool_gel_svg},
     render_export::{export_circular_svg, export_linear_svg},
-    restriction_enzyme::RestrictionEnzyme,
+    render_feature_expert::render_feature_expert_svg,
+    restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
     tf_motifs,
 };
@@ -42,6 +44,10 @@ pub type OpId = String;
 pub type RunId = String;
 pub type NodeId = String;
 pub type ContainerId = String;
+pub use crate::feature_expert::{
+    FeatureExpertTarget, FeatureExpertView, RESTRICTION_EXPERT_INSTRUCTION,
+    RestrictionSiteExpertView, TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+};
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
 pub const GENOME_TRACK_SUBSCRIPTIONS_METADATA_KEY: &str = "genome_bed_track_subscriptions";
@@ -1684,6 +1690,11 @@ pub enum Operation {
         mode: RenderSvgMode,
         path: String,
     },
+    RenderFeatureExpertSvg {
+        seq_id: SeqId,
+        target: FeatureExpertTarget,
+        path: String,
+    },
     RenderRnaStructureSvg {
         seq_id: SeqId,
         path: String,
@@ -2870,6 +2881,7 @@ impl GentleEngine {
                 "LoadFile".to_string(),
                 "SaveFile".to_string(),
                 "RenderSequenceSvg".to_string(),
+                "RenderFeatureExpertSvg".to_string(),
                 "RenderRnaStructureSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
@@ -3108,6 +3120,475 @@ impl GentleEngine {
                 message: format!("Sequence '{seq_id}' not found"),
             })?;
         rna_structure::render_svg(dna, path).map_err(Self::map_rna_structure_error)
+    }
+
+    fn feature_qualifier_text(feature: &gb_io::seq::Feature, key: &str) -> Option<String> {
+        feature
+            .qualifier_values(key.into())
+            .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+            .map(|value| value.trim().to_string())
+            .find(|value| !value.is_empty())
+    }
+
+    fn feature_qualifier_f64(feature: &gb_io::seq::Feature, key: &str) -> Option<f64> {
+        feature
+            .qualifier_values(key.into())
+            .next()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+    }
+
+    fn first_nonempty_feature_qualifier(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Option<String> {
+        for key in keys {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                return Some(value);
+            }
+        }
+        None
+    }
+
+    fn is_tfbs_feature(feature: &gb_io::seq::Feature) -> bool {
+        matches!(
+            feature.kind.to_string().to_ascii_uppercase().as_str(),
+            "TFBS" | "TF_BINDING_SITE" | "PROTEIN_BIND"
+        )
+    }
+
+    fn feature_display_label(feature: &gb_io::seq::Feature, feature_id: usize) -> String {
+        let fallback = format!("{} #{}", feature.kind.to_string(), feature_id + 1);
+        let label = Self::first_nonempty_feature_qualifier(
+            feature,
+            &[
+                "label",
+                "name",
+                "standard_name",
+                "gene",
+                "protein_id",
+                "product",
+                "region_name",
+                "bound_moiety",
+            ],
+        )
+        .unwrap_or(fallback);
+        let trimmed = label.trim();
+        if trimmed.is_empty() {
+            format!("{} #{}", feature.kind.to_string(), feature_id + 1)
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn normalize_column_frequencies(counts: [f64; 4]) -> [f64; 4] {
+        let total = counts
+            .iter()
+            .copied()
+            .map(|v| if v.is_finite() && v > 0.0 { v } else { 0.0 })
+            .sum::<f64>();
+        if total <= 0.0 {
+            [0.25_f64, 0.25_f64, 0.25_f64, 0.25_f64]
+        } else {
+            [
+                (counts[0].max(0.0) / total).clamp(0.0, 1.0),
+                (counts[1].max(0.0) / total).clamp(0.0, 1.0),
+                (counts[2].max(0.0) / total).clamp(0.0, 1.0),
+                (counts[3].max(0.0) / total).clamp(0.0, 1.0),
+            ]
+        }
+    }
+
+    fn information_content_bits(frequencies: &[f64; 4]) -> f64 {
+        let entropy = frequencies
+            .iter()
+            .copied()
+            .filter(|p| *p > 0.0)
+            .map(|p| -p * p.log2())
+            .sum::<f64>();
+        (2.0 - entropy).clamp(0.0, 2.0)
+    }
+
+    fn resolve_tfbs_scoring_motif(
+        feature: &gb_io::seq::Feature,
+    ) -> Result<(String, Option<String>, Vec<[f64; 4]>), EngineError> {
+        let label = Self::feature_qualifier_text(feature, "label");
+        let mut tokens = vec![];
+        if let Some(tf_id) = Self::feature_qualifier_text(feature, "tf_id") {
+            tokens.push(tf_id);
+        }
+        if let Some(bound) = Self::first_nonempty_feature_qualifier(
+            feature,
+            &["bound_moiety", "standard_name", "gene", "name"],
+        ) {
+            tokens.push(bound);
+        }
+        if let Some(raw_label) = label {
+            let trimmed = raw_label.trim().to_string();
+            if !trimmed.is_empty() {
+                tokens.push(trimmed.clone());
+                let label_upper = trimmed.to_ascii_uppercase();
+                if let Some(stripped) = label_upper.strip_prefix("TFBS ") {
+                    tokens.push(stripped.trim().to_string());
+                }
+            }
+        }
+
+        let mut last_error: Option<EngineError> = None;
+        for token in tokens {
+            if token.trim().is_empty() {
+                continue;
+            }
+            match Self::resolve_tf_motif_for_scoring(&token) {
+                Ok((tf_id, tf_name, _, matrix_counts)) => {
+                    return Ok((tf_id, tf_name, matrix_counts));
+                }
+                Err(err) => {
+                    last_error = Some(err);
+                }
+            }
+        }
+        Err(last_error.unwrap_or(EngineError {
+            code: ErrorCode::InvalidInput,
+            message:
+                "Could not resolve TF motif for feature (missing tf_id/label resolvable in motif registry)"
+                    .to_string(),
+        }))
+    }
+
+    fn build_tfbs_expert_view(
+        &self,
+        seq_id: &str,
+        feature_id: usize,
+    ) -> Result<TfbsExpertView, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let feature = dna.features().get(feature_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!("Feature id '{}' was not found in sequence '{}'", feature_id, seq_id),
+        })?;
+        if !Self::is_tfbs_feature(feature) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Feature '{}' in '{}' is not a TFBS/protein-bind feature",
+                    feature_id, seq_id
+                ),
+            });
+        }
+        let (from, _to) = feature.location.find_bounds().map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not read TFBS feature range: {e}"),
+        })?;
+        if from < 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "TFBS feature has negative range bounds".to_string(),
+            });
+        }
+
+        let (tf_id, tf_name, matrix_counts) = Self::resolve_tfbs_scoring_motif(feature)?;
+        if matrix_counts.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Resolved motif '{tf_id}' has empty matrix"),
+            });
+        }
+        let motif_length = matrix_counts.len();
+        let start = from as usize;
+        let end = start.saturating_add(motif_length);
+        let mut matched_bytes = dna.get_range_safe(start..end).ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!(
+                "TFBS window {}..{} for feature '{}' exceeds sequence bounds",
+                start + 1,
+                end,
+                feature_id
+            ),
+        })?;
+        let is_reverse = feature_is_reverse(feature);
+        if is_reverse {
+            matched_bytes = Self::reverse_complement_bytes(&matched_bytes);
+        }
+        let matched_sequence = String::from_utf8_lossy(&matched_bytes).to_ascii_uppercase();
+
+        let (llr_matrix, true_log_odds_matrix) = Self::prepare_scoring_matrices(&matrix_counts);
+        let mut columns: Vec<TfbsExpertColumn> = Vec::with_capacity(motif_length);
+        for idx in 0..motif_length {
+            let counts = matrix_counts[idx];
+            let frequencies = Self::normalize_column_frequencies(counts);
+            let information_content_bits = Self::information_content_bits(&frequencies);
+            let match_base = matched_bytes.get(idx).map(|b| (*b as char).to_ascii_uppercase());
+            let match_idx = matched_bytes.get(idx).and_then(|b| Self::base_to_idx(*b));
+            let (match_frequency, llr_bits, true_log_odds_bits) = if let Some(base_idx) = match_idx
+            {
+                (
+                    Some(frequencies[base_idx]),
+                    Some(llr_matrix[idx][base_idx]),
+                    Some(true_log_odds_matrix[idx][base_idx]),
+                )
+            } else {
+                (None, None, None)
+            };
+            columns.push(TfbsExpertColumn {
+                index_1based: idx + 1,
+                counts,
+                frequencies,
+                information_content_bits,
+                match_base,
+                match_frequency,
+                llr_bits,
+                true_log_odds_bits,
+                llr_rank_desc: None,
+            });
+        }
+
+        let mut ranked = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, col)| col.llr_bits.map(|score| (idx, score)))
+            .collect::<Vec<_>>();
+        ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        for (rank_idx, (col_idx, _)) in ranked.iter().enumerate() {
+            if let Some(col) = columns.get_mut(*col_idx) {
+                col.llr_rank_desc = Some(rank_idx + 1);
+            }
+        }
+
+        let llr_from_columns = columns.iter().filter_map(|col| col.llr_bits).sum::<f64>();
+        let true_log_odds_from_columns = columns
+            .iter()
+            .filter_map(|col| col.true_log_odds_bits)
+            .sum::<f64>();
+        let llr_total_bits =
+            Self::feature_qualifier_f64(feature, "llr_bits").or(Some(llr_from_columns));
+        let llr_quantile = Self::feature_qualifier_f64(feature, "llr_quantile");
+        let true_log_odds_total_bits =
+            Self::feature_qualifier_f64(feature, "true_log_odds_bits")
+                .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_bits"))
+                .or(Some(true_log_odds_from_columns));
+        let true_log_odds_quantile = Self::feature_qualifier_f64(feature, "true_log_odds_quantile")
+            .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_quantile"));
+
+        Ok(TfbsExpertView {
+            seq_id: seq_id.to_string(),
+            feature_id,
+            feature_label: Self::feature_display_label(feature, feature_id),
+            tf_id,
+            tf_name,
+            strand: if is_reverse { "-".to_string() } else { "+".to_string() },
+            start_1based: start + 1,
+            end_1based: end,
+            motif_length,
+            matched_sequence,
+            llr_total_bits,
+            llr_quantile,
+            true_log_odds_total_bits,
+            true_log_odds_quantile,
+            instruction: TFBS_EXPERT_INSTRUCTION.to_string(),
+            columns,
+        })
+    }
+
+    fn resolve_restriction_site_target(
+        &self,
+        seq_id: &str,
+        cut_pos_1based: usize,
+        enzyme: Option<&str>,
+        recognition_start_1based: Option<usize>,
+        recognition_end_1based: Option<usize>,
+    ) -> Result<(RestrictionEnzymeKey, Vec<String>, Option<String>), EngineError> {
+        if cut_pos_1based == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Restriction-site cut_pos_1based must be >= 1".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let enzyme_filter = enzyme
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_ascii_uppercase());
+        let mut candidates: Vec<(RestrictionEnzymeKey, Vec<String>)> = Vec::new();
+        for (key, names) in dna.restriction_enzyme_groups() {
+            if key.pos() < 0 || (key.pos() as usize + 1) != cut_pos_1based {
+                continue;
+            }
+            if let Some(start) = recognition_start_1based {
+                if key.from() < 0 || (key.from() as usize + 1) != start {
+                    continue;
+                }
+            }
+            if let Some(end) = recognition_end_1based {
+                if key.to() < 0 || key.to() as usize != end {
+                    continue;
+                }
+            }
+            if let Some(filter) = &enzyme_filter {
+                if !names.iter().any(|name| name.to_ascii_uppercase() == *filter) {
+                    continue;
+                }
+            }
+            candidates.push((key.clone(), names.clone()));
+        }
+        if candidates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No restriction-site match found for cut position {} in '{}'",
+                    cut_pos_1based, seq_id
+                ),
+            });
+        }
+        if candidates.len() > 1 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Restriction-site target is ambiguous for cut position {} in '{}'; provide enzyme and/or recognition start/end",
+                    cut_pos_1based, seq_id
+                ),
+            });
+        }
+        let (key, mut names) = candidates.into_iter().next().unwrap_or_default();
+        names.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+        names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        let selected_enzyme = if let Some(filter) = enzyme_filter {
+            names
+                .iter()
+                .find(|name| name.to_ascii_uppercase() == filter)
+                .cloned()
+        } else {
+            names.first().cloned()
+        };
+        Ok((key, names, selected_enzyme))
+    }
+
+    fn complement_iupac_text(seq: &str) -> String {
+        seq.as_bytes()
+            .iter()
+            .map(|b| {
+                Self::iupac_letter_complement(*b)
+                    .unwrap_or(b'N')
+                    .to_ascii_uppercase() as char
+            })
+            .collect()
+    }
+
+    fn build_restriction_site_expert_view(
+        &self,
+        seq_id: &str,
+        cut_pos_1based: usize,
+        enzyme: Option<&str>,
+        recognition_start_1based: Option<usize>,
+        recognition_end_1based: Option<usize>,
+    ) -> Result<RestrictionSiteExpertView, EngineError> {
+        let (key, enzyme_names, selected_enzyme) = self.resolve_restriction_site_target(
+            seq_id,
+            cut_pos_1based,
+            enzyme,
+            recognition_start_1based,
+            recognition_end_1based,
+        )?;
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let start_1based = key.from().max(0) as usize + 1;
+        let end_1based = key.to().max(0) as usize;
+        let start0 = start_1based.saturating_sub(1);
+        let end0 = end_1based;
+        let mut site_sequence = dna
+            .get_range_safe(start0..end0)
+            .map(|bytes| String::from_utf8_lossy(&bytes).to_ascii_uppercase())
+            .unwrap_or_default();
+        let selected_enzyme_def = selected_enzyme.as_ref().and_then(|name| {
+            dna.restriction_enzymes()
+                .iter()
+                .find(|enzyme| enzyme.name.eq_ignore_ascii_case(name))
+        });
+        let recognition_iupac = selected_enzyme_def.map(|enzyme| enzyme.sequence.clone());
+        if site_sequence.is_empty() {
+            if let Some(iupac) = &recognition_iupac {
+                site_sequence = iupac.to_ascii_uppercase();
+            }
+        }
+        let site_sequence_complement = Self::complement_iupac_text(&site_sequence);
+        let max_cut = site_sequence.chars().count();
+        let cut_index_0based = key.cut_size().max(0) as usize;
+        let cut_index_0based = cut_index_0based.min(max_cut);
+
+        Ok(RestrictionSiteExpertView {
+            seq_id: seq_id.to_string(),
+            cut_pos_1based,
+            recognition_start_1based: start_1based,
+            recognition_end_1based: end_1based,
+            cut_index_0based,
+            number_of_cuts_for_enzyme: key.number_of_cuts(),
+            selected_enzyme,
+            enzyme_names,
+            recognition_iupac,
+            site_sequence,
+            site_sequence_complement,
+            overlap_bp: selected_enzyme_def.map(|enzyme| enzyme.overlap),
+            instruction: RESTRICTION_EXPERT_INSTRUCTION.to_string(),
+        })
+    }
+
+    pub fn inspect_feature_expert(
+        &self,
+        seq_id: &str,
+        target: &FeatureExpertTarget,
+    ) -> Result<FeatureExpertView, EngineError> {
+        match target {
+            FeatureExpertTarget::TfbsFeature { feature_id } => self
+                .build_tfbs_expert_view(seq_id, *feature_id)
+                .map(FeatureExpertView::Tfbs),
+            FeatureExpertTarget::RestrictionSite {
+                cut_pos_1based,
+                enzyme,
+                recognition_start_1based,
+                recognition_end_1based,
+            } => self
+                .build_restriction_site_expert_view(
+                    seq_id,
+                    *cut_pos_1based,
+                    enzyme.as_deref(),
+                    *recognition_start_1based,
+                    *recognition_end_1based,
+                )
+                .map(FeatureExpertView::RestrictionSite),
+        }
+    }
+
+    pub fn render_feature_expert_svg_to_path(
+        &self,
+        seq_id: &str,
+        target: &FeatureExpertTarget,
+        path: &str,
+    ) -> Result<FeatureExpertView, EngineError> {
+        let view = self.inspect_feature_expert(seq_id, target)?;
+        let svg = render_feature_expert_svg(&view);
+        std::fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write feature-expert SVG to '{path}': {e}"),
+        })?;
+        Ok(view)
     }
 
     fn open_reference_genome_catalog(
@@ -3419,6 +3900,7 @@ impl GentleEngine {
             op,
             Operation::SaveFile { .. }
                 | Operation::RenderSequenceSvg { .. }
+                | Operation::RenderFeatureExpertSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }
                 | Operation::RenderLineageSvg { .. }
                 | Operation::RenderPoolGelSvg { .. }
@@ -11616,6 +12098,19 @@ impl GentleEngine {
                     mode, seq_id, path
                 ));
             }
+            Operation::RenderFeatureExpertSvg {
+                seq_id,
+                target,
+                path,
+            } => {
+                self.render_feature_expert_svg_to_path(&seq_id, &target, &path)?;
+                result.messages.push(format!(
+                    "Wrote feature expert SVG for '{}' target={} to '{}'",
+                    seq_id,
+                    target.describe(),
+                    path
+                ));
+            }
             Operation::RenderRnaStructureSvg { seq_id, path } => {
                 let report = self.render_rna_structure_svg_to_path(&seq_id, &path)?;
                 result.messages.push(format!(
@@ -16804,6 +17299,155 @@ ORIGIN
             })
             .count();
         assert!(unlimited_count > capped_count);
+    }
+
+    #[test]
+    fn test_inspect_tfbs_feature_expert_view() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("TTTACGTAAACGTGGG"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(0.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: Some(1),
+            })
+            .unwrap();
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .position(|feature| {
+                feature
+                    .qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .expect("a tfbs feature should exist");
+        let view = engine
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::TfbsFeature { feature_id },
+            )
+            .unwrap();
+        match view {
+            FeatureExpertView::Tfbs(tfbs) => {
+                assert_eq!(tfbs.seq_id, "s");
+                assert_eq!(tfbs.feature_id, feature_id);
+                assert_eq!(tfbs.motif_length, 4);
+                assert_eq!(tfbs.columns.len(), 4);
+                assert_eq!(tfbs.matched_sequence.len(), 4);
+                assert_eq!(tfbs.instruction, TFBS_EXPERT_INSTRUCTION);
+                assert!(
+                    tfbs.columns
+                        .iter()
+                        .all(|column| column.information_content_bits.is_finite())
+                );
+            }
+            other => panic!("expected tfbs expert view, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_inspect_restriction_site_expert_view() {
+        let mut dna = seq("AAGAATTCTT");
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
+        dna.update_computed_features();
+        let (key, names) = dna
+            .restriction_enzyme_groups()
+            .iter()
+            .find(|(_, names)| names.iter().any(|name| name.eq_ignore_ascii_case("EcoRI")))
+            .map(|(key, names)| (key.clone(), names.clone()))
+            .expect("EcoRI site should exist in test sequence");
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), dna);
+        let engine = GentleEngine::from_state(state);
+        let view = engine
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::RestrictionSite {
+                    cut_pos_1based: key.pos() as usize + 1,
+                    enzyme: Some("EcoRI".to_string()),
+                    recognition_start_1based: Some(key.from() as usize + 1),
+                    recognition_end_1based: Some(key.to() as usize),
+                },
+            )
+            .unwrap();
+        match view {
+            FeatureExpertView::RestrictionSite(re) => {
+                assert_eq!(re.seq_id, "s");
+                assert_eq!(re.cut_pos_1based, key.pos() as usize + 1);
+                assert_eq!(re.recognition_start_1based, key.from() as usize + 1);
+                assert_eq!(re.recognition_end_1based, key.to() as usize);
+                assert!(re
+                    .enzyme_names
+                    .iter()
+                    .any(|name| name.eq_ignore_ascii_case("EcoRI")));
+                for name in names {
+                    assert!(re
+                        .enzyme_names
+                        .iter()
+                        .any(|entry| entry.eq_ignore_ascii_case(&name)));
+                }
+                assert_eq!(re.instruction, RESTRICTION_EXPERT_INSTRUCTION);
+            }
+            other => panic!("expected restriction expert view, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_render_feature_expert_svg_operation() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq("TTTACGTAAACGTGGG"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::AnnotateTfbs {
+                seq_id: "s".to_string(),
+                motifs: vec!["ACGT".to_string()],
+                min_llr_bits: Some(0.0),
+                min_llr_quantile: Some(0.0),
+                per_tf_thresholds: vec![],
+                clear_existing: Some(true),
+                max_hits: Some(1),
+            })
+            .unwrap();
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("s")
+            .unwrap()
+            .features()
+            .iter()
+            .position(|feature| {
+                feature
+                    .qualifier_values("gentle_generated".into())
+                    .any(|v| v.eq_ignore_ascii_case("tfbs"))
+            })
+            .expect("tfbs feature");
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("feature.expert.svg");
+        let path_text = path.display().to_string();
+        let result = engine
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id: "s".to_string(),
+                target: FeatureExpertTarget::TfbsFeature { feature_id },
+                path: path_text.clone(),
+            })
+            .unwrap();
+        assert!(result.messages.iter().any(|m| m.contains("feature expert")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("<svg"));
+        assert!(text.contains("TFBS expert"));
     }
 
     #[test]

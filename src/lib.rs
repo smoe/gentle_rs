@@ -14,6 +14,7 @@ pub mod dna_sequence;
 pub mod engine;
 pub mod engine_shell;
 pub mod enzymes;
+pub mod feature_expert;
 pub mod feature_location;
 pub mod gc_contents;
 pub mod genomes;
@@ -32,6 +33,7 @@ pub mod render_dna;
 pub mod render_dna_circular;
 pub mod render_dna_linear;
 pub mod render_export;
+pub mod render_feature_expert;
 pub mod render_sequence;
 pub mod resource_sync;
 pub mod restriction_enzyme;
@@ -47,6 +49,7 @@ pub mod translations;
 pub mod window;
 pub mod window_dna;
 pub mod workflow_examples;
+pub mod window_backdrop;
 
 lazy_static! {
     // Interface translations

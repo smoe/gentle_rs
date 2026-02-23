@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-22
+Last updated: 2026-02-23
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -32,6 +32,12 @@ order. Durable architecture constraints and decisions remain in
   and scripting adapters.
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
+- Feature expert-view pipeline for selected TFBS and restriction sites:
+  - shared expert payload generation in engine
+  - GUI-side expert panel rendering from engine payload
+  - SVG export via `RenderFeatureExpertSvg`
+  - shell/CLI/JS/Lua access (`inspect-feature-expert`,
+    `render-feature-expert-svg`)
 - VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)
@@ -51,6 +57,11 @@ order. Durable architecture constraints and decisions remain in
 - Context-sensitive hover descriptions on actionable controls.
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
+- Experimental window backdrop styling path:
+  - optional per-window-type accent tint (`main`, `sequence`, `pool`,
+    `configuration`, `help`)
+  - optional image watermark path per window type
+  - persisted in app settings and live-applied from Configuration -> Graphics
 
 ### High-level parity snapshot
 
@@ -60,6 +71,7 @@ order. Durable architecture constraints and decisions remain in
 | Export/render operations (sequence/lineage/pool gel) | Done |
 | Reference genome + track import surfaces | Done |
 | Shared shell parity across GUI/CLI | Done |
+| Feature expert views (TFBS/restriction) via shared engine model | Done |
 | Candidate strand-relation controls across adapters | Done |
 | Cloning-mode macro presets (SnapGene-style workflows) | Planned |
 | Gel simulation realism and arrangement modeling | Partial |
@@ -86,6 +98,12 @@ Notes:
 - Auto-updated documentation with embedded graphics remains postponed.
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
+- Backdrop-image ingest and UX hardening are still incomplete:
+  - no dedicated file picker yet for backdrop image paths
+  - monochrome conversion currently relies on tinting/asset choice and needs a
+    stricter renderer-side grayscale pass
+  - per-window readability guardrails (contrast checks, auto-dimming) are not
+    yet enforced
 - Standardized cloning protocol macros are not yet packaged as first-class
   reusable templates (restriction-only, Gibson, Golden Gate, Gateway, TOPO,
   TA/GC, In-Fusion, NEBuilder HiFi).
@@ -94,6 +112,49 @@ Notes:
 - Chromosomal-scale track overview is still missing: BED-derived features should
   also be visualized at chromosome level, including an optional density view for
   large regions.
+- Feature expert-view scope is currently targeted to TFBS and restriction
+  sites; future extension to additional feature classes should preserve the same
+  `FeatureExpertTarget -> FeatureExpertView -> SVG` contract.
+- XML sequence/annotation import is not yet integrated into the shared runtime
+  import paths; current primary format remains GenBank (+ FASTA for
+  sequence-only).
+
+### XML import integration track (GenBank-first)
+
+Goal: add XML import support without creating a second semantic model.
+
+Execution order:
+
+1. Parser scaffolding and format detection:
+   - Add explicit format detection at import boundaries (`LoadFile`,
+     annotation parser dispatch) with deterministic precedence:
+     GenBank -> FASTA -> XML.
+   - Introduce one normalized intermediate import record
+     (sequence, topology, feature list, source metadata) used by all formats.
+2. Sequence + annotation XML adapter (priority scope):
+   - Implement `GBSet/GBSeq` parsing first (smallest useful scope for NCBI
+     GenBank XML).
+   - Map XML fields to existing `DNAsequence` + feature qualifier structures so
+     downstream operations remain unchanged.
+   - Reuse the same annotation-to-`GenomeGeneRecord` extraction rules currently
+     used for GenBank feature normalization.
+3. Annotation-index and genome/helper pipeline integration:
+   - Extend annotation parser dispatch in `src/genomes.rs` so prepared
+     genome/helper workflows can ingest XML annotation sources.
+   - Keep GenBank as preferred catalog source and XML as optional, explicit
+     fallback.
+4. Adapter/UI exposure and diagnostics:
+   - Add XML file filters in GUI open dialogs and document support in CLI/GUI
+     manuals.
+   - Emit clear unsupported-dialect errors (for example native Bioseq XML when
+     only GBSeq adapter is enabled).
+5. Parity tests and fixture governance:
+   - Add cross-format parity tests based on tiny paired fixtures:
+     `test_files/data/toy.small.fa`, `test_files/data/toy.small.gb`,
+     `test_files/data/toy.small.gbseq.xml`.
+   - Assert equal sequence length/content and equivalent mapped gene intervals
+     across GenBank and XML imports.
+   - Keep large exploratory XML samples out of committed default fixtures.
 
 ### Text/voice control track (new)
 
@@ -224,6 +285,10 @@ Planned upgrades:
   can predict visual noise before enabling a layer.
 - Separate visual lanes more strictly (annotation rectangles vs predictive
   overlays vs signal tracks) to avoid overlap collisions.
+- Expand window visual identity from experimental to production-ready:
+  - add backdrop asset validation/file picker
+  - add preview panel for each window type
+  - enforce readability floor (contrast + max opacity caps)
 
 ### Post-delivery hardening backlog (shared)
 

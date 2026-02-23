@@ -43,6 +43,10 @@ Tabs:
   - Validate executable availability/version from within the UI.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
+  - Configure optional `Window Styling (experimental)`:
+    - enable subtle themed backdrops
+    - optional per-window image watermark paths (`main`, `sequence`, `pool`, `configuration`, `help`)
+    - tint/image opacity controls
   - Applies to sequence windows through the shared engine display state.
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
 
