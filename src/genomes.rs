@@ -1,3 +1,27 @@
+//! Genome and helper-genome infrastructure.
+//!
+//! This module centralizes catalog-driven sequence/annotation source resolution,
+//! one-time preparation (download/copy/index), gene-index extraction, region
+//! retrieval, BLAST integration, and inspection metadata used by GUI/CLI/JS/Lua.
+//!
+//! High-level responsibilities:
+//! - Validate and normalize genome catalog entries (`assets/genomes.json` and
+//!   helper catalogs).
+//! - Materialize prepared genome installs into cache directories with manifests.
+//! - Build and consume FASTA index (`.fai`) and gene-index sidecars.
+//! - Provide deterministic region extraction by chromosome and coordinate.
+//! - Parse annotation sources (GenBank plus tabular GFF/GTF) into shared gene
+//!   records with robust malformed-line reporting.
+//! - Resolve optional NCBI assembly/genbank accessions into concrete sources.
+//! - Expose prepared-install inspection primitives (size, checksum, source type,
+//!   chromosome lengths).
+//! - Provide BLAST report execution wrappers and parse results into typed hits.
+//!
+//! Design intent:
+//! - Keep source handling deterministic and auditable via manifest metadata.
+//! - Treat parsing/indexing as fault-tolerant but explicit (warnings are
+//!   surfaced, silent data loss is avoided).
+
 use crate::feature_location::feature_is_reverse;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
@@ -266,6 +290,10 @@ pub struct GenomeCatalog {
 }
 
 impl GenomeCatalog {
+    /// Load and validate a genome catalog JSON file.
+    ///
+    /// Validation enforces source consistency rules (local/remote/assembly/
+    /// accession combinations) so downstream preparation logic can stay strict.
     pub fn from_json_file(path: &str) -> Result<Self, String> {
         let text = fs::read_to_string(path)
             .map_err(|e| format!("Could not read genome catalog '{path}': {e}"))?;
@@ -288,6 +316,11 @@ impl GenomeCatalog {
         names
     }
 
+    /// Resolve concrete sequence/annotation sources for one genome entry.
+    ///
+    /// The returned plan captures normalized source paths/URLs, inferred source
+    /// types, and optional physical metadata (length/mass) including estimated
+    /// molecular mass when only nucleotide length is available.
     pub fn source_plan(
         &self,
         genome_id: &str,
@@ -352,6 +385,7 @@ impl GenomeCatalog {
         usize::try_from(total_bp).ok()
     }
 
+    /// Return whether a prepared install appears complete for this genome id.
     pub fn is_prepared(
         &self,
         genome_id: &str,
@@ -375,6 +409,9 @@ impl GenomeCatalog {
         Ok(gene_index_path.exists())
     }
 
+    /// Inspect prepared-install metadata and filesystem state.
+    ///
+    /// Returns `Ok(None)` when no install manifest exists yet.
     pub fn inspect_prepared_genome(
         &self,
         genome_id: &str,
@@ -460,10 +497,12 @@ impl GenomeCatalog {
         }))
     }
 
+    /// Prepare sequence+annotation+indexes once using catalog/default cache.
     pub fn prepare_genome_once(&self, genome_id: &str) -> Result<PrepareGenomeReport, String> {
         self.prepare_genome_once_with_cache(genome_id, None)
     }
 
+    /// Prepare sequence+annotation+indexes once with an explicit cache override.
     pub fn prepare_genome_once_with_cache(
         &self,
         genome_id: &str,
@@ -473,6 +512,9 @@ impl GenomeCatalog {
         self.prepare_genome_once_with_progress(genome_id, cache_dir_override, &mut noop)
     }
 
+    /// Prepare sequence+annotation+indexes while reporting progress.
+    ///
+    /// The callback is cooperative: returning `false` requests cancellation.
     pub fn prepare_genome_once_with_progress(
         &self,
         genome_id: &str,
@@ -803,6 +845,7 @@ impl GenomeCatalog {
         })
     }
 
+    /// Extract a 1-based inclusive genomic interval from prepared sequence.
     pub fn get_sequence_region(
         &self,
         genome_id: &str,
@@ -813,6 +856,10 @@ impl GenomeCatalog {
         self.get_sequence_region_with_cache(genome_id, chromosome, start_1based, end_1based, None)
     }
 
+    /// Extract a 1-based inclusive genomic interval with explicit cache
+    /// override.
+    ///
+    /// Chromosome aliases with/without `chr` prefix are tried automatically.
     pub fn get_sequence_region_with_cache(
         &self,
         genome_id: &str,
@@ -910,6 +957,7 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         )
     }
 
+    /// List prepared chromosome/contig lengths, sorted by descending size.
     pub fn list_chromosome_lengths(
         &self,
         genome_id: &str,
@@ -950,6 +998,10 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         Ok(chromosomes)
     }
 
+    /// List gene-like annotation records from the prepared gene index.
+    ///
+    /// If the index is missing but manifest files are valid, it is rebuilt from
+    /// the prepared annotation source.
     pub fn list_gene_regions(
         &self,
         genome_id: &str,
@@ -983,6 +1035,7 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         load_gene_index_file(&gene_index_path)
     }
 
+    /// Run BLASTN of query sequence against the prepared genome index.
     pub fn blast_sequence(
         &self,
         genome_id: &str,
@@ -2851,8 +2904,8 @@ fn read_fasta_slice(
             if *b == b'\n' || *b == b'\r' {
                 continue;
             }
-            out.push(*b);
-            if out.len() == target_len {
+            out.push(b.to_ascii_uppercase());
+            if out.len() >= target_len {
                 break;
             }
         }

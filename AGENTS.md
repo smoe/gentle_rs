@@ -79,3 +79,23 @@ References:
   - tests run,
   - any remaining risks or missing tests.
 
+## Source Documentation Plan
+
+- Goal: make `cargo doc` output useful at module/API level for every file under
+  `src/`.
+- Baseline requirement:
+  - each module/file should have a top-level `//!` summary,
+  - each `pub mod` in `src/lib.rs` should carry a short `///` description,
+  - key public structs/enums/functions should explain purpose + invariants.
+- Pilot module for style and scope:
+  - `src/genomes.rs` should document:
+    - catalog/source resolution model,
+    - preparation/indexing lifecycle and manifest side effects,
+    - annotation parsing behavior (formats + malformed-line policy),
+    - extraction/BLAST contracts and failure modes.
+- Rollout sequence:
+  1. Complete module-level docs in infrastructure-heavy modules
+     (`genomes`, `engine`, `engine_shell`).
+  2. Cover rendering and UI orchestration modules.
+  3. Cover adapter modules (`cli/js/lua`) and remaining utilities.
+  4. Keep docs updated in the same change whenever public behavior changes.

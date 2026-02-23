@@ -55,8 +55,8 @@
   },
   "LocalProject": {
     "description": "Local project training genome from AB011549.2",
-    "sequence_local": "../test_files/AB011549.2.fa",
-    "annotations_local": "../test_files/AB011549.2.gb",
+    "sequence_local": "../test_files/fixtures/genomes/AB011549.2.fa",
+    "annotations_local": "../test_files/fixtures/genomes/AB011549.2.gb",
     "cache_dir": "data/genomes"
   }
 }

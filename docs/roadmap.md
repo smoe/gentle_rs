@@ -150,8 +150,9 @@ Execution order:
      only GBSeq adapter is enabled).
 5. Parity tests and fixture governance:
    - Add cross-format parity tests based on tiny paired fixtures:
-     `test_files/data/toy.small.fa`, `test_files/data/toy.small.gb`,
-     `test_files/data/toy.small.gbseq.xml`.
+     `test_files/fixtures/import_parity/toy.small.fa`,
+     `test_files/fixtures/import_parity/toy.small.gb`,
+     `test_files/fixtures/import_parity/toy.small.gbseq.xml`.
    - Assert equal sequence length/content and equivalent mapped gene intervals
      across GenBank and XML imports.
    - Keep large exploratory XML samples out of committed default fixtures.

@@ -907,8 +907,11 @@ mod tests {
 
     #[test]
     fn test_toy_small_cross_format_sequence_parity() {
-        let fasta = DNAsequence::from_fasta_file("test_files/data/toy.small.fa").unwrap();
-        let genbank = DNAsequence::from_genbank_file("test_files/data/toy.small.gb").unwrap();
+        let fasta =
+            DNAsequence::from_fasta_file("test_files/fixtures/import_parity/toy.small.fa").unwrap();
+        let genbank =
+            DNAsequence::from_genbank_file("test_files/fixtures/import_parity/toy.small.gb")
+                .unwrap();
         let fasta = fasta.first().unwrap();
         let genbank = genbank.first().unwrap();
         assert_eq!(fasta.len(), 120);

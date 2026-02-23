@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn parses_rebase_edge_fixture_and_extracts_cut_geometry() {
-        let text = include_str!("../test_files/data/rebase.edge.withrefm");
+        let text = include_str!("../test_files/fixtures/resources/rebase.edge.withrefm");
         let enzymes = parse_rebase_withrefm(text, false);
         assert_eq!(enzymes.len(), 3);
 
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn rebase_commercial_filter_keeps_only_supplier_enzymes() {
-        let text = include_str!("../test_files/data/rebase.edge.withrefm");
+        let text = include_str!("../test_files/fixtures/resources/rebase.edge.withrefm");
         let enzymes = parse_rebase_withrefm(text, true);
         let names = enzymes.iter().map(|e| e.name.as_str()).collect::<Vec<_>>();
         assert_eq!(names, vec!["BsaI", "EcoRI"]);
@@ -493,7 +493,7 @@ mod tests {
 
     #[test]
     fn parses_jaspar_edge_fixture_with_consensus() {
-        let text = include_str!("../test_files/data/jaspar.edge.pfm");
+        let text = include_str!("../test_files/fixtures/resources/jaspar.edge.pfm");
         let motifs = parse_jaspar_motifs(text).expect("parse motifs");
         assert_eq!(motifs.len(), 2);
         assert_eq!(motifs[0].id, "MA0001.1");

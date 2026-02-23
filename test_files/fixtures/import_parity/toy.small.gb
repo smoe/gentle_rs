@@ -1,0 +1,24 @@
+LOCUS       TOY_SMALL_120             120 bp    DNA     linear   SYN 23-FEB-2026
+DEFINITION  Synthetic 120 bp test sequence for GENtle cross-format import checks.
+ACCESSION   TOY000001
+VERSION     TOY000001.1
+KEYWORDS    .
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+FEATURES             Location/Qualifiers
+     source          1..120
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     gene            5..30
+                     /gene="toyA"
+                     /locus_tag="toyA"
+     gene            complement(60..90)
+                     /gene="toyB"
+                     /locus_tag="toyB"
+     misc_feature    96..112
+                     /note="barcode"
+ORIGIN
+        1 atggccattg taatgggccg ctgaaagggt gcccgatagt taaccggttaa acccgggtt
+       61 taaacccggg tttaaaccgg atccggtacc gagctcgaat tcgcgtacga tcgtacgcta
+//

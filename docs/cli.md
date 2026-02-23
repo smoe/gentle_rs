@@ -1268,7 +1268,8 @@ Notes:
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
   Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Saccharomyces cerevisiae
   S288c (Ensembl 113 and 116), and `LocalProject` (backed by
-  `test_files/AB011549.2.fa` + `test_files/AB011549.2.gb`).
+  `test_files/fixtures/genomes/AB011549.2.fa` +
+  `test_files/fixtures/genomes/AB011549.2.gb`).
 - `cache_dir` is optional. If omitted, catalog/default cache settings are used.
 - `chromosome` accepts exact contig names and also tolerates `chr` prefix
   differences (`1` vs `chr1`).

@@ -906,7 +906,8 @@ Notes:
 - Bundled `assets/genomes.json` currently includes Human GRCh38 (Ensembl 113 and 116),
   Mouse GRCm39 Ensembl 116, Rat GRCr8 Ensembl 116, Saccharomyces cerevisiae
   S288c (Ensembl 113 and 116), and `LocalProject` (backed by
-  `test_files/AB011549.2.fa` + `test_files/AB011549.2.gb`).
+  `test_files/fixtures/genomes/AB011549.2.fa` +
+  `test_files/fixtures/genomes/AB011549.2.gb`).
 - A curated starter catalog for local helper systems is available at
   `assets/helper_genomes.json` (plasmid/lentivirus/adenovirus/AAV plus yeast/E. coli host references).
 - Catalog entries may specify `ncbi_assembly_accession` + `ncbi_assembly_name`
