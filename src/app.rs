@@ -2142,6 +2142,13 @@ Error: `{err}`"
         Ok(dna)
     }
 
+    fn load_dna_from_embl_file(filename: &str) -> Result<DNAsequence> {
+        let dna = dna_sequence::DNAsequence::from_embl_file(filename)?
+            .pop()
+            .ok_or_else(|| anyhow!("Could not read EMBL file {filename}"))?;
+        Ok(dna)
+    }
+
     fn load_dna_from_fasta_file(filename: &str) -> Result<DNAsequence> {
         let dna = dna_sequence::DNAsequence::from_fasta_file(filename)?
             .pop()
@@ -2232,6 +2239,8 @@ Error: `{err}`"
 
     pub fn load_from_file(path: &str) -> Result<DNAsequence> {
         if let Ok(dna) = Self::load_dna_from_genbank_file(path) {
+            Ok(dna)
+        } else if let Ok(dna) = Self::load_dna_from_embl_file(path) {
             Ok(dna)
         } else if let Ok(dna) = Self::load_dna_from_fasta_file(path) {
             Ok(dna)

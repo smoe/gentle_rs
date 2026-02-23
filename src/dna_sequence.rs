@@ -196,6 +196,12 @@ impl DNAsequence {
             .collect())
     }
 
+    pub fn from_embl_file(filename: &str) -> Result<Vec<DNAsequence>> {
+        let text = std::fs::read_to_string(filename)?;
+        let parsed = parse_embl_records(&text)?;
+        Ok(parsed.into_iter().map(DNAsequence::from_genbank_seq).collect())
+    }
+
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
         let file = File::create(filename)?;
         gb_io::writer::write(file, &self.seq)?;
@@ -790,6 +796,186 @@ impl DNAsequence {
     }
 }
 
+fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
+    let mut records: Vec<Seq> = vec![];
+    let mut current_lines: Vec<String> = vec![];
+    for line in text.lines() {
+        if line.trim() == "//" {
+            if !current_lines.is_empty() {
+                records.push(parse_embl_record(&current_lines)?);
+                current_lines.clear();
+            }
+            continue;
+        }
+        current_lines.push(line.to_string());
+    }
+    if !current_lines.is_empty() {
+        records.push(parse_embl_record(&current_lines)?);
+    }
+    if records.is_empty() {
+        return Err(anyhow::anyhow!("Could not parse EMBL file: no records found"));
+    }
+    Ok(records)
+}
+
+fn parse_embl_record(lines: &[String]) -> Result<Seq> {
+    let mut seq = Seq::empty();
+    let mut accession: Option<String> = None;
+    let mut version: Option<String> = None;
+    let mut definition_lines: Vec<String> = vec![];
+    let mut sequence_started = false;
+    let mut current_feature: Option<Feature> = None;
+    let mut last_qualifier_index: Option<usize> = None;
+
+    for raw_line in lines {
+        let line = raw_line.trim_end_matches('\r');
+        if sequence_started {
+            let chunk: String = line
+                .chars()
+                .filter(|ch| ch.is_ascii_alphabetic())
+                .map(|ch| ch.to_ascii_uppercase())
+                .collect();
+            if !chunk.is_empty() {
+                seq.seq.extend_from_slice(chunk.as_bytes());
+            }
+            continue;
+        }
+
+        if let Some(raw_id) = line.strip_prefix("ID") {
+            let id = raw_id.trim();
+            if let Some(name) = id.split(';').next().map(str::trim).filter(|v| !v.is_empty()) {
+                seq.name = Some(name.to_string());
+            }
+            let lower = id.to_ascii_lowercase();
+            if lower.contains("circular") {
+                seq.topology = Topology::Circular;
+            } else if lower.contains("linear") {
+                seq.topology = Topology::Linear;
+            }
+            continue;
+        }
+        if let Some(raw_de) = line.strip_prefix("DE") {
+            let value = raw_de.trim();
+            if !value.is_empty() {
+                definition_lines.push(value.to_string());
+            }
+            continue;
+        }
+        if let Some(raw_ac) = line.strip_prefix("AC") {
+            if accession.is_none() {
+                accession = raw_ac
+                    .split(';')
+                    .map(str::trim)
+                    .find(|part| !part.is_empty())
+                    .map(str::to_string);
+            }
+            continue;
+        }
+        if let Some(raw_sv) = line.strip_prefix("SV") {
+            if version.is_none() {
+                version = raw_sv
+                    .split(';')
+                    .map(str::trim)
+                    .find(|part| !part.is_empty())
+                    .map(str::to_string);
+            }
+            continue;
+        }
+        if line.starts_with("SQ") {
+            sequence_started = true;
+            continue;
+        }
+        if !line.starts_with("FT") {
+            continue;
+        }
+
+        let key = line.get(5..21).unwrap_or_default().trim();
+        let value = line.get(21..).unwrap_or_default().trim_end();
+        if !key.is_empty() {
+            if let Some(feature) = current_feature.take() {
+                seq.features.push(feature);
+            }
+            let location = gb_io::seq::Location::from_gb_format(value.trim()).map_err(|e| {
+                anyhow::anyhow!("Could not parse EMBL feature location '{value}': {e}")
+            })?;
+            current_feature = Some(Feature {
+                kind: gb_io::seq::FeatureKind::from(key),
+                location,
+                qualifiers: vec![],
+            });
+            last_qualifier_index = None;
+            continue;
+        }
+
+        let trimmed = value.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some(feature) = current_feature.as_mut() else {
+            return Err(anyhow::anyhow!(
+                "Encountered EMBL qualifier before any feature: '{trimmed}'"
+            ));
+        };
+        if let Some(raw_qualifier) = trimmed.strip_prefix('/') {
+            let (qk, qv) = if let Some((key, value)) = raw_qualifier.split_once('=') {
+                (key.trim(), Some(value.trim().to_string()))
+            } else {
+                (raw_qualifier.trim(), None)
+            };
+            feature.qualifiers.push((qk.into(), qv));
+            last_qualifier_index = Some(feature.qualifiers.len().saturating_sub(1));
+            continue;
+        }
+
+        if let Some(idx) = last_qualifier_index {
+            if let Some(existing) = feature.qualifiers.get_mut(idx).and_then(|(_, v)| v.as_mut()) {
+                if !existing.ends_with(' ') {
+                    existing.push(' ');
+                }
+                existing.push_str(trimmed);
+            }
+        }
+    }
+
+    if let Some(feature) = current_feature.take() {
+        seq.features.push(feature);
+    }
+    for feature in &mut seq.features {
+        for (_, value) in &mut feature.qualifiers {
+            if let Some(raw) = value.as_mut() {
+                *raw = normalize_embl_qualifier_value(raw);
+            }
+        }
+    }
+
+    seq.definition = (!definition_lines.is_empty()).then_some(definition_lines.join(" "));
+    seq.accession = accession.clone();
+    seq.version = match (accession, version) {
+        (_, Some(raw)) if raw.contains('.') => Some(raw),
+        (Some(acc), Some(raw)) if raw.chars().all(|ch| ch.is_ascii_digit()) => {
+            Some(format!("{acc}.{raw}"))
+        }
+        (_, Some(raw)) => Some(raw),
+        _ => None,
+    };
+    seq.len = Some(seq.seq.len());
+    if seq.seq.is_empty() {
+        return Err(anyhow::anyhow!(
+            "Could not parse EMBL record '{}': missing sequence data",
+            seq.name.clone().unwrap_or_else(|| "<unnamed>".to_string())
+        ));
+    }
+    Ok(seq)
+}
+
+fn normalize_embl_qualifier_value(raw: &str) -> String {
+    let mut value = raw.trim().to_string();
+    if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        value = value[1..value.len() - 1].to_string();
+    }
+    value.replace("\"\"", "\"")
+}
+
 impl fmt::Display for DNAsequence {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", String::from_utf8_lossy(self.forward()))
@@ -941,6 +1127,79 @@ mod tests {
         let dna = dna.first().unwrap();
         assert_eq!(dna.name().clone().unwrap(), "XXU13852");
         assert_eq!(dna.features().len(), 12);
+    }
+
+    #[test]
+    fn test_pgex_3x_genbank_embl_parity_sequence_and_feature_locations() {
+        let genbank = DNAsequence::from_genbank_file("test_files/pGEX-3X.gb").unwrap();
+        let embl = DNAsequence::from_embl_file("test_files/pGEX-3X.embl").unwrap();
+        let genbank = genbank.first().unwrap();
+        let embl = embl.first().unwrap();
+
+        assert_eq!(genbank.len(), embl.len());
+        assert_eq!(
+            genbank.get_forward_string().to_ascii_uppercase(),
+            embl.get_forward_string().to_ascii_uppercase()
+        );
+
+        let genbank_features: Vec<(String, (i64, i64))> = genbank
+            .features()
+            .iter()
+            .map(|feature| {
+                (
+                    feature.kind.to_string().to_ascii_lowercase(),
+                    feature
+                        .location
+                        .find_bounds()
+                        .expect("GenBank feature location should be bounded"),
+                )
+            })
+            .collect();
+        let embl_features: Vec<(String, (i64, i64))> = embl
+            .features()
+            .iter()
+            .map(|feature| {
+                (
+                    feature.kind.to_string().to_ascii_lowercase(),
+                    feature
+                        .location
+                        .find_bounds()
+                        .expect("EMBL feature location should be bounded"),
+                )
+            })
+            .collect();
+
+        let mut genbank_counts: HashMap<(String, (i64, i64)), usize> = HashMap::new();
+        for feature in genbank_features {
+            *genbank_counts.entry(feature).or_insert(0) += 1;
+        }
+        for feature in &embl_features {
+            let count = genbank_counts
+                .get_mut(feature)
+                .expect("EMBL feature location should exist in GenBank");
+            assert!(*count > 0);
+            *count -= 1;
+        }
+
+        let mut missing_from_embl: Vec<(String, (i64, i64))> = genbank_counts
+            .into_iter()
+            .filter_map(|(feature, count)| (count > 0).then_some(feature))
+            .collect();
+        missing_from_embl.sort();
+        assert_eq!(
+            missing_from_embl,
+            vec![
+                ("gene".to_string(), (1289, 2220)),
+                ("gene".to_string(), (3300, 4383))
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pgex_3x_embl_load_from_file() {
+        let dna = GENtleApp::load_from_file("test_files/pGEX-3X.embl").unwrap();
+        assert_eq!(dna.len(), 4952);
+        assert!(!dna.features().is_empty());
     }
 
     #[test]

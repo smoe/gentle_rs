@@ -10,6 +10,11 @@ live under `test_files/fixtures/`.
   - See `test_files/fixtures/README.md` for provenance and per-file usage.
 - `pGEX-3X.gb`, `pGEX_3X.fa`, `tp73.ncbi.gb`:
   - historical sequence fixtures still referenced by existing tests/examples.
+- `pGEX-3X.embl`:
+  - EMBL export of ENA accession `U13852` (`pGEX-3X cloning vector, complete
+    sequence`) from [https://www.ebi.ac.uk/ena/browser/view/U13852](https://www.ebi.ac.uk/ena/browser/view/U13852).
+  - used for EMBL parser parity tests against `pGEX-3X.gb` in
+    `src/dna_sequence.rs`.
 - `MA1234.1.jaspar`:
   - minimal motif fixture for focused parser behavior.
 - `demo_nonsensical.state.json`, `project.gentle.json`:
