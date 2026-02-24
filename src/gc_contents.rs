@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const MAX_SECTION_SIZE: usize = 100;
+pub const DEFAULT_SECTION_SIZE_BP: usize = 100;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GcRegion {
@@ -33,9 +33,13 @@ pub struct GcContents {
 
 impl GcContents {
     pub fn new_from_sequence(sequence: &[u8]) -> Self {
+        Self::new_from_sequence_with_bin_size(sequence, DEFAULT_SECTION_SIZE_BP)
+    }
+
+    pub fn new_from_sequence_with_bin_size(sequence: &[u8], bin_size_bp: usize) -> Self {
         let mut ret = Self::default();
         let mut pos = 0;
-        let section_size = Self::get_section_size(sequence);
+        let section_size = Self::get_section_size(sequence, bin_size_bp);
         while pos < sequence.len() {
             let to = sequence.len().min(pos + section_size);
             let gc = Self::calculate_gc(&sequence[pos..to]);
@@ -51,8 +55,8 @@ impl GcContents {
     }
 
     #[inline(always)]
-    fn get_section_size(sequence: &[u8]) -> usize {
-        sequence.len().min(MAX_SECTION_SIZE)
+    fn get_section_size(sequence: &[u8], bin_size_bp: usize) -> usize {
+        sequence.len().min(bin_size_bp.max(1))
     }
 
     #[inline(always)]
@@ -83,5 +87,23 @@ mod tests {
                 gc: 0.5
             }
         );
+    }
+
+    #[test]
+    fn test_gc_contents_custom_bin_size() {
+        let sequence = b"AAAAGGGGTTTTCCCC";
+        let gc_contents = GcContents::new_from_sequence_with_bin_size(sequence, 4);
+        assert_eq!(gc_contents.regions.len(), 4);
+        assert_eq!(gc_contents.regions[0].gc, 0.0);
+        assert_eq!(gc_contents.regions[1].gc, 1.0);
+        assert_eq!(gc_contents.regions[2].gc, 0.0);
+        assert_eq!(gc_contents.regions[3].gc, 1.0);
+    }
+
+    #[test]
+    fn test_gc_contents_zero_bin_size_is_clamped() {
+        let sequence = b"ATGC";
+        let gc_contents = GcContents::new_from_sequence_with_bin_size(sequence, 0);
+        assert_eq!(gc_contents.regions.len(), 4);
     }
 }

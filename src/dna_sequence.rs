@@ -292,9 +292,52 @@ impl DNAsequence {
         }
     }
 
+    pub fn extract_region_preserving_features(&self, from: usize, to: usize) -> Option<Self> {
+        if from == to || self.is_empty() {
+            return None;
+        }
+        let normalized_to = if self.is_circular() && to <= from {
+            to.saturating_add(self.len())
+        } else {
+            to
+        };
+        let extracted = self.get_range_safe(from..normalized_to)?;
+        let extracted_len = extracted.len();
+        if extracted_len == 0 {
+            return None;
+        }
+
+        let mut seq = if self.is_circular() {
+            let start = from % self.len();
+            let rotated = self.seq.set_origin(start as i64);
+            rotated.extract_range(0, extracted_len as i64)
+        } else {
+            self.seq
+                .extract_range(from as i64, from.saturating_add(extracted_len) as i64)
+        };
+        seq.topology = Topology::Linear;
+
+        Some(Self {
+            seq,
+            overhang: DNAoverhang::default(),
+            restriction_enzymes: vec![],
+            restriction_enzyme_sites: vec![],
+            restriction_enzyme_groups: HashMap::new(),
+            max_restriction_enzyme_sites: self.max_restriction_enzyme_sites,
+            open_reading_frames: vec![],
+            methylation_sites: MethylationSites::default(),
+            methylation_mode: self.methylation_mode.clone(),
+            gc_content: GcContents::default(),
+        })
+    }
+
     #[inline(always)]
     fn forward(&self) -> &Vec<u8> {
         &self.seq.seq
+    }
+
+    pub fn forward_bytes(&self) -> &[u8] {
+        self.forward().as_slice()
     }
 
     #[inline(always)]
@@ -1653,5 +1696,50 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             dna.get_inclusive_range_safe(1..=4),
             Some("TGCA".as_bytes().to_vec())
         ); // Wraps around 0 point
+    }
+
+    #[test]
+    fn test_extract_region_preserving_features_linear() {
+        let mut dna = DNAsequence::from("ATGCATGCATGC".to_string());
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(2, 8),
+            qualifiers: vec![],
+        });
+        let extracted = dna
+            .extract_region_preserving_features(2, 10)
+            .expect("extract with features");
+        assert_eq!(extracted.get_forward_string(), "GCATGCAT");
+        assert!(!extracted.is_circular());
+
+        let gene = extracted
+            .features()
+            .iter()
+            .find(|f| f.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("gene should be preserved");
+        assert_eq!(gene.location.find_bounds().expect("gene bounds"), (0, 6));
+    }
+
+    #[test]
+    fn test_extract_region_preserving_features_circular_wrap() {
+        let mut dna = DNAsequence::from("ATGCATGCAT".to_string());
+        dna.set_circular(true);
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(8, 9),
+            qualifiers: vec![],
+        });
+        let extracted = dna
+            .extract_region_preserving_features(8, 3)
+            .expect("wrap extract with features");
+        assert_eq!(extracted.get_forward_string(), "ATATG");
+        assert!(!extracted.is_circular());
+
+        let gene = extracted
+            .features()
+            .iter()
+            .find(|f| f.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("gene should be preserved");
+        assert_eq!(gene.location.find_bounds().expect("gene bounds"), (0, 1));
     }
 }

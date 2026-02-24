@@ -1,6 +1,6 @@
 use crate::{
     dna_sequence::DNAsequence, engine::DisplaySettings, feature_location::feature_is_reverse,
-    restriction_enzyme::RestrictionEnzymeKey,
+    gc_contents::GcContents, restriction_enzyme::RestrictionEnzymeKey,
 };
 use gb_io::seq::Feature;
 use std::collections::{HashMap, HashSet};
@@ -447,7 +447,11 @@ pub fn export_linear_svg(dna: &DNAsequence, display: &DisplaySettings) -> String
     let mut labels: Vec<Text> = vec![];
 
     if display.show_gc_contents {
-        for region in dna.gc_content().regions() {
+        let gc_contents = GcContents::new_from_sequence_with_bin_size(
+            dna.forward_bytes(),
+            display.gc_content_bin_size_bp,
+        );
+        for region in gc_contents.regions() {
             let x1 = bp_to_x(region.from(), len, left, right);
             let x2 = bp_to_x(region.to(), len, left, right).max(x1 + 1.0);
             let g = (region.gc() * 255.0).round() as u8;
@@ -896,7 +900,11 @@ pub fn export_circular_svg(dna: &DNAsequence, display: &DisplaySettings) -> Stri
     );
 
     if display.show_gc_contents {
-        for region in dna.gc_content().regions() {
+        let gc_contents = GcContents::new_from_sequence_with_bin_size(
+            dna.forward_bytes(),
+            display.gc_content_bin_size_bp,
+        );
+        for region in gc_contents.regions() {
             let (x1, y1) = pos2xy(region.from(), len, cx, cy, r * 0.72);
             let (x2, y2) = pos2xy(region.to(), len, cx, cy, r * 0.72);
             let g = (region.gc() * 255.0).round() as u8;

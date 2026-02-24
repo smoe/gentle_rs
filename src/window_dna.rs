@@ -1,4 +1,5 @@
 use crate::{
+    app::request_open_help_from_native_menu,
     dna_sequence::DNAsequence,
     engine::GentleEngine,
     main_area_dna::MainAreaDna,
@@ -24,9 +25,29 @@ impl WindowDna {
 
     pub fn update(&mut self, ctx: &egui::Context) {
         let result = catch_unwind(AssertUnwindSafe(|| {
+            let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
+            let open_help_ctrl_f1 =
+                egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::F1);
+            let open_help_cmd_shift_slash = egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::Slash,
+            );
+            if ctx.input_mut(|i| i.consume_shortcut(&open_help_f1))
+                || ctx.input_mut(|i| i.consume_shortcut(&open_help_ctrl_f1))
+                || ctx.input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
+            {
+                request_open_help_from_native_menu();
+            }
             let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
             egui::TopBottomPanel::top(nav_panel_id).show(ctx, |ui| {
                 ui.horizontal(|ui| {
+                    if ui
+                        .button("Help")
+                        .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
+                        .clicked()
+                    {
+                        request_open_help_from_native_menu();
+                    }
                     if ui
                         .button("Main")
                         .on_hover_text("Bring the main project window to front")

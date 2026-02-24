@@ -13,7 +13,7 @@ The GUI opens an empty project unless a project path is passed on startup.
 
 Example startup window:
 
-![GENtle main window (empty project)](screenshots/screenshot_GUI_main_empty.png)
+![GENtle main window (empty project)](screenshots/screenshot_GUI_main_empty.png)<br>
 *Figure: Main window after startup with an empty project.*
 
 Screenshot capture policy:
@@ -44,9 +44,12 @@ Tabs:
   - Validate executable availability/version from within the UI.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
+  - Configure GC-content bin size (`GC bin size`, default `100 bp`) used by
+    map overlays and SVG export.
   - Configure optional `Window Styling (experimental)`:
     - enable subtle themed backdrops
     - optional per-window image watermark paths (`main`, `sequence`, `pool`, `configuration`, `help`)
+    - image-path editor is a table (`Window`, `Path`, `Actions`) with vertical scrolling when needed
     - tint/image opacity controls
   - Applies to sequence windows through the shared engine display state.
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
@@ -58,9 +61,9 @@ Persistence:
 
 Configuration screenshots:
 
-![Configuration - External Applications](screenshots/screenshot_GUI_configuration_applications.png)
+![Configuration - External Applications](screenshots/screenshot_GUI_configuration_applications.png)<br>
 *Figure: Configuration window, External Applications tab.*
-![Configuration - Graphics](screenshots/screenshot_GUI_configuration_graphics.png)
+![Configuration - Graphics](screenshots/screenshot_GUI_configuration_graphics.png)<br>
 *Figure: Configuration window, Graphics tab.*
 
 ## Main window layout
@@ -81,12 +84,12 @@ The project main window (lineage page) supports two views:
 
 Project overview screenshot:
 
-![GENtle main window (project loaded)](screenshots/screenshot_GUI_main_project_loaded.png)
+![GENtle main window (project loaded)](screenshots/screenshot_GUI_main_project_loaded.png)<br>
 *Figure: Main lineage view with a loaded project.*
 
 Sequence window screenshot:
 
-![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)
+![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)<br>
 *Figure: Sequence window with map and sequence panels.*
 
 Linear map zoom detail:
@@ -94,6 +97,15 @@ Linear map zoom detail:
 - In linear mode, when the current viewport spans `500 bp` or less, GENtle
   overlays per-base DNA letters on the backbone so sequence context becomes
   directly readable while inspecting nearby features.
+
+Feature tree grouping:
+
+- The left-side feature tree includes an optional `Second-level grouping`
+  toggle.
+- When enabled, repeated labels (for example many RNA variants) are grouped
+  under each feature-kind section.
+- Group headings show counts as `visible/total` in linear mode (current stretch
+  shown in the map), and as total count in circular mode.
 
 Circular map label behavior:
 
@@ -146,6 +158,7 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Toggles restriction enzyme cut-site markers and labels.
 9. Show/Hide GC content
    - Toggles GC-content visualization overlay.
+   - Aggregation uses the configurable GC bin size (default `100 bp`).
 10. Show/Hide ORFs
    - Toggles open reading frame overlays.
 11. Show/Hide methylation sites
@@ -466,6 +479,14 @@ GENtle tracks open native windows and can raise a selected one to front.
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
   Agent Assistant, Operation History)
 - Shortcut: `Cmd+Backtick` focuses the main project window
+- Specialist windows (including DNA sequence windows) include a top-left nav
+  strip with:
+  - `Help`: opens the GUI manual
+  - `Main`: raises the main project window
+- Help shortcuts:
+  - `F1` (Windows/Linux)
+  - `Ctrl+F1` (fallback in function-key reserved environments)
+  - `Cmd+Shift+/` (macOS)
 
 ## Help manuals
 
@@ -505,7 +526,7 @@ Markdown image support:
 
 Help window screenshot:
 
-![GENtle help window](screenshots/screenshot_GUI_help_gui.png)
+![GENtle help window](screenshots/screenshot_GUI_help_gui.png)<br>
 *Figure: Help window with searchable in-app markdown manuals.*
 
 ## Map interactions
@@ -613,6 +634,16 @@ Current linear map conventions are:
 - Coordinate fallback labels are suppressed for unlabeled regulatory features
   to avoid clutter in dense tracks
 - Restriction enzyme labels are lane-packed to reduce overlap
+- Optional helical-compressed letter mode (linear map):
+  - active only when `Enable helical-compressed DNA letters` is on
+  - applies when current span is above the standard DNA-letter threshold and
+    at/below `Helical letters max span`
+  - transition is continuous:
+    - near the standard threshold, letters remain close to linear placement
+    - at the helical max span, horizontal projection reaches strong compaction
+      (`10 bp` occupies approximately the width of `2` letter cells)
+  - forward/reverse strand letter placement remains symmetric around the DNA
+    baseline (with optional upside-down reverse letters)
 
 ## Circular map conventions
 
@@ -892,7 +923,7 @@ Recommended flow:
 
 Track import screenshot:
 
-![Import Genome Tracks (BED)](screenshots/screenshot_GUI_import_genome_tracks_bed.png)
+![Import Genome Tracks (BED)](screenshots/screenshot_GUI_import_genome_tracks_bed.png)<br>
 *Figure: Import Genome Tracks dialog for BED/BigWig/VCF sources.*
 
 How to enlarge the genomic span after extraction:

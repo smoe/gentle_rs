@@ -12,9 +12,11 @@ use crate::{
         shell_help_text,
     },
     feature_expert::{
-        FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, TfbsExpertView,
+        FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, SplicingExpertView,
+        TfbsExpertView,
     },
     feature_location::collect_location_ranges_usize,
+    gc_contents::GcContents,
     icons::*,
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
@@ -316,6 +318,37 @@ struct EngineOpsUiState {
     export_pool_human_id: String,
     #[serde(default)]
     pool_gel_ladders: String,
+    #[serde(default)]
+    feature_tree_second_level_grouping: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MainAreaDna;
+
+    #[test]
+    fn feature_tree_count_label_shows_visible_over_total_for_linear_view() {
+        assert_eq!(
+            MainAreaDna::format_feature_tree_count_label("mRNA", 3, 7, true),
+            "mRNA (3/7)"
+        );
+    }
+
+    #[test]
+    fn feature_tree_count_label_uses_total_when_all_visible() {
+        assert_eq!(
+            MainAreaDna::format_feature_tree_count_label("mRNA", 4, 4, true),
+            "mRNA (4)"
+        );
+    }
+
+    #[test]
+    fn feature_tree_count_label_uses_total_for_non_linear_scope() {
+        assert_eq!(
+            MainAreaDna::format_feature_tree_count_label("mRNA", 3, 7, false),
+            "mRNA (7)"
+        );
+    }
 }
 
 fn default_true() -> bool {
@@ -596,6 +629,8 @@ pub struct MainAreaDna {
     export_pool_id: String,
     export_pool_human_id: String,
     pool_gel_ladders: String,
+    feature_tree_second_level_grouping: bool,
+    feature_tree_track_filter: String,
     pending_feature_tree_scroll_to: Option<usize>,
     focused_feature_id: Option<usize>,
     description_cache_initialized: bool,
@@ -608,6 +643,7 @@ pub struct MainAreaDna {
     description_cache_details: Vec<String>,
     description_cache_expert_view: Option<FeatureExpertView>,
     description_cache_expert_error: Option<String>,
+    linear_drag_selection_anchor_bp: Option<usize>,
 }
 
 impl MainAreaDna {
@@ -809,6 +845,8 @@ impl MainAreaDna {
             export_pool_id: String::new(),
             export_pool_human_id: String::new(),
             pool_gel_ladders: String::new(),
+            feature_tree_second_level_grouping: false,
+            feature_tree_track_filter: String::new(),
             pending_feature_tree_scroll_to: None,
             focused_feature_id: None,
             description_cache_initialized: false,
@@ -821,6 +859,7 @@ impl MainAreaDna {
             description_cache_details: Vec::new(),
             description_cache_expert_view: None,
             description_cache_expert_error: None,
+            linear_drag_selection_anchor_bp: None,
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -963,21 +1002,28 @@ impl MainAreaDna {
 
     fn compute_layer_visibility_counts(&self) -> LayerVisibilityCounts {
         let viewport = self.active_linear_viewport_range();
-        let (tfbs_display_criteria, vcf_display_criteria, regulatory_feature_max_view_span_bp) =
-            self.dna_display
-                .read()
-                .map(|display| {
-                    (
-                        display.tfbs_display_criteria(),
-                        display.vcf_display_criteria(),
-                        display.regulatory_feature_max_view_span_bp(),
-                    )
-                })
-                .unwrap_or((
-                    TfbsDisplayCriteria::default(),
-                    VcfDisplayCriteria::default(),
-                    50_000,
-                ));
+        let (
+            tfbs_display_criteria,
+            vcf_display_criteria,
+            regulatory_feature_max_view_span_bp,
+            gc_content_bin_size_bp,
+        ) = self
+            .dna_display
+            .read()
+            .map(|display| {
+                (
+                    display.tfbs_display_criteria(),
+                    display.vcf_display_criteria(),
+                    display.regulatory_feature_max_view_span_bp(),
+                    display.gc_content_bin_size_bp(),
+                )
+            })
+            .unwrap_or((
+                TfbsDisplayCriteria::default(),
+                VcfDisplayCriteria::default(),
+                50_000,
+                100,
+            ));
         let view_span_bp = viewport
             .map(|(start, end)| end.saturating_sub(start))
             .unwrap_or(0);
@@ -1039,17 +1085,17 @@ impl MainAreaDna {
                     }
                 })
                 .count();
-            counts.gc_region_count = dna
-                .gc_content()
-                .regions()
-                .iter()
-                .filter(|region| match viewport {
-                    Some((start, end)) => {
-                        Self::ranges_overlap(region.from(), region.to(), start, end)
-                    }
-                    None => true,
-                })
-                .count();
+            counts.gc_region_count = GcContents::new_from_sequence_with_bin_size(
+                dna.forward_bytes(),
+                gc_content_bin_size_bp,
+            )
+            .regions()
+            .iter()
+            .filter(|region| match viewport {
+                Some((start, end)) => Self::ranges_overlap(region.from(), region.to(), start, end),
+                None => true,
+            })
+            .count();
             counts.orf_count = dna
                 .open_reading_frames()
                 .iter()
@@ -1425,9 +1471,10 @@ impl MainAreaDna {
         egui::TopBottomPanel::top("dna_top_buttons").show(ctx, |ui| {
             self.render_top_panel(ui);
         });
+        let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
 
         if self.show_map {
-            if self.show_sequence {
+            if self.show_sequence && !auto_hidden_sequence_panel {
                 let full_height = ui.available_rect_before_wrap().height();
                 egui::TopBottomPanel::bottom("dna_sequence")
                     .resizable(true)
@@ -1439,6 +1486,10 @@ impl MainAreaDna {
                     });
                 let frame = Frame::default();
                 egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                    self.render_middle(ctx, ui);
+                });
+            } else if auto_hidden_sequence_panel {
+                egui::CentralPanel::default().show(ctx, |ui| {
                     self.render_middle(ctx, ui);
                 });
             } else {
@@ -1624,6 +1675,210 @@ impl MainAreaDna {
                 {
                     self.apply_declutter_action(&layer_counts);
                     ui.close_menu();
+                }
+
+                ui.separator();
+                let mut gc_bin_size_bp = self
+                    .dna_display
+                    .read()
+                    .map(|display| display.gc_content_bin_size_bp())
+                    .unwrap_or(100);
+                ui.horizontal(|ui| {
+                    ui.label("GC bin size");
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut gc_bin_size_bp)
+                                .range(1..=5_000_000)
+                                .speed(10.0)
+                                .suffix(" bp"),
+                        )
+                        .on_hover_text(
+                            "Bin size used for GC overlay aggregation across linear/circular/SVG rendering",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_gc_content_bin_size_bp(gc_bin_size_bp);
+                        self.sync_gc_content_bin_size_to_engine(gc_bin_size_bp);
+                    }
+                });
+
+                if !self.is_circular() {
+                    ui.separator();
+                    ui.label("Linear DNA letters");
+                    let (
+                        mut show_double_strand,
+                        mut hide_backbone_when_letters_visible,
+                        mut reverse_upside_down,
+                        mut max_span_bp,
+                        mut helical_letters_enabled,
+                        mut helical_max_span_bp,
+                        mut auto_hide_sequence_panel,
+                        mut detail_font_size,
+                    ) = self
+                        .dna_display
+                        .read()
+                        .map(|display| {
+                            (
+                                display.linear_show_double_strand_bases(),
+                                display.linear_hide_backbone_when_sequence_bases_visible(),
+                                display.linear_reverse_strand_use_upside_down_letters(),
+                                display.linear_sequence_base_text_max_view_span_bp(),
+                                display.linear_sequence_helical_letters_enabled(),
+                                display.linear_sequence_helical_max_view_span_bp(),
+                                display.auto_hide_sequence_panel_when_linear_bases_visible(),
+                                display.feature_details_font_size(),
+                            )
+                        })
+                        .unwrap_or((true, false, true, 500, false, 2000, false, 8.25));
+                    if ui
+                        .checkbox(
+                            &mut show_double_strand,
+                            "Show double-strand DNA letters on linear map",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_show_double_strand_bases(show_double_strand);
+                        self.sync_linear_double_strand_settings_to_engine(
+                            show_double_strand,
+                            reverse_upside_down,
+                        );
+                    }
+                    if ui
+                        .checkbox(
+                            &mut hide_backbone_when_letters_visible,
+                            "Hide DNA backbone line when letters are shown",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_hide_backbone_when_sequence_bases_visible(
+                                hide_backbone_when_letters_visible,
+                            );
+                        self.sync_linear_backbone_visibility_to_engine(
+                            hide_backbone_when_letters_visible,
+                        );
+                    }
+                    if ui
+                        .checkbox(
+                            &mut reverse_upside_down,
+                            "Use upside-down letters for reverse strand",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_reverse_strand_use_upside_down_letters(
+                                reverse_upside_down,
+                            );
+                        self.sync_linear_double_strand_settings_to_engine(
+                            show_double_strand,
+                            reverse_upside_down,
+                        );
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("DNA letters max span");
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut max_span_bp)
+                                    .range(0..=5_000_000)
+                                    .speed(25.0)
+                                    .suffix(" bp"),
+                            )
+                            .on_hover_text(
+                                "Show linear-map DNA letters when span <= threshold (0 disables)",
+                            )
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_sequence_base_text_max_view_span_bp(max_span_bp);
+                            self.sync_linear_sequence_base_text_max_view_span_to_engine(max_span_bp);
+                        }
+                    });
+                    if ui
+                        .checkbox(
+                            &mut helical_letters_enabled,
+                            "Enable helical-compressed DNA letters (up to higher spans)",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_sequence_helical_letters_enabled(
+                                helical_letters_enabled,
+                            );
+                        self.sync_linear_helical_settings_to_engine(
+                            helical_letters_enabled,
+                            helical_max_span_bp,
+                        );
+                    }
+                    ui.horizontal(|ui| {
+                        ui.label("Helical letters max span");
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut helical_max_span_bp)
+                                    .range(0..=5_000_000)
+                                    .speed(25.0)
+                                    .suffix(" bp"),
+                            )
+                            .on_hover_text(
+                                "Helical-compressed DNA letters are shown when span exceeds standard DNA-letter max span and remains <= this threshold",
+                            )
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_sequence_helical_max_view_span_bp(
+                                    helical_max_span_bp,
+                                );
+                            self.sync_linear_helical_settings_to_engine(
+                                helical_letters_enabled,
+                                helical_max_span_bp,
+                            );
+                        }
+                    });
+                    if ui
+                        .checkbox(
+                            &mut auto_hide_sequence_panel,
+                            "Auto-hide sequence panel when linear DNA letters are visible",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_auto_hide_sequence_panel_when_linear_bases_visible(
+                                auto_hide_sequence_panel,
+                            );
+                        self.sync_auto_hide_sequence_panel_to_engine(auto_hide_sequence_panel);
+                    }
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut detail_font_size, 8.0..=24.0)
+                                .step_by(0.25)
+                                .text("Feature detail font")
+                                .suffix(" px"),
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_feature_details_font_size(detail_font_size);
+                        self.sync_feature_details_font_size_to_engine(detail_font_size);
+                    }
                 }
             })
             .response
@@ -1928,6 +2183,13 @@ impl MainAreaDna {
 
             ui.separator();
             if ui
+                .button("Extract Sel")
+                .on_hover_text("Extract current map/text selection into a new sequence (with overlapping features)")
+                .clicked()
+            {
+                self.extract_current_selection_as_sequence();
+            }
+            if ui
                 .button("Rev")
                 .on_hover_text("Create a reversed branch sequence")
                 .clicked()
@@ -2025,6 +2287,17 @@ impl MainAreaDna {
         }
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
+        }
+        if self.should_auto_hide_sequence_panel() {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(
+                        "Sequence panel auto-hidden because linear DNA letters are visible at current zoom",
+                    )
+                    .monospace(),
+                )
+                .wrap(),
+            );
         }
 
         if self.is_single_stranded_rna() {
@@ -2450,7 +2723,7 @@ impl MainAreaDna {
                         .on_hover_text("Reset feature detail font size to default")
                         .clicked()
                     {
-                        let default_size = 11.0;
+                        let default_size = 8.25;
                         self.dna_display
                             .write()
                             .expect("DNA display lock poisoned")
@@ -3484,11 +3757,76 @@ impl MainAreaDna {
         guard.state_mut().display.feature_details_font_size = value.clamp(8.0, 24.0);
     }
 
+    fn sync_linear_sequence_base_text_max_view_span_to_engine(&self, value: usize) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard
+            .state_mut()
+            .display
+            .linear_sequence_base_text_max_view_span_bp = value;
+    }
+
+    fn sync_gc_content_bin_size_to_engine(&self, value: usize) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard.state_mut().display.gc_content_bin_size_bp = value.max(1);
+    }
+
+    fn sync_linear_double_strand_settings_to_engine(
+        &self,
+        show_double_strand: bool,
+        reverse_upside_down: bool,
+    ) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        let display = &mut guard.state_mut().display;
+        display.linear_show_double_strand_bases = show_double_strand;
+        display.linear_reverse_strand_use_upside_down_letters = reverse_upside_down;
+    }
+
+    fn sync_linear_helical_settings_to_engine(&self, enabled: bool, max_span: usize) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        let display = &mut guard.state_mut().display;
+        display.linear_sequence_helical_letters_enabled = enabled;
+        display.linear_sequence_helical_max_view_span_bp = max_span;
+    }
+
+    fn sync_linear_backbone_visibility_to_engine(&self, hide_when_bases_visible: bool) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard
+            .state_mut()
+            .display
+            .linear_hide_backbone_when_sequence_bases_visible = hide_when_bases_visible;
+    }
+
+    fn sync_auto_hide_sequence_panel_to_engine(&self, value: bool) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard
+            .state_mut()
+            .display
+            .auto_hide_sequence_panel_when_linear_bases_visible = value;
+    }
+
     fn feature_details_font_size(&self) -> f32 {
         self.dna_display
             .read()
             .map(|display| display.feature_details_font_size())
-            .unwrap_or(11.0)
+            .unwrap_or(8.25)
     }
 
     fn sync_from_engine_display(&mut self) {
@@ -3536,6 +3874,7 @@ impl MainAreaDna {
         self.vcf_display_required_info_keys = settings.vcf_display_required_info_keys.join(",");
         display.set_show_restriction_enzyme_sites(settings.show_restriction_enzymes);
         display.set_show_gc_contents(settings.show_gc_contents);
+        display.set_gc_content_bin_size_bp(settings.gc_content_bin_size_bp);
         display.set_show_open_reading_frames(settings.show_open_reading_frames);
         display.set_suppress_open_reading_frames_for_genome_anchor(suppress_orf_for_anchor);
         display.set_suppress_cds_features_for_gene_annotations(suppress_cds_for_gene_annotations);
@@ -3544,6 +3883,25 @@ impl MainAreaDna {
         display
             .set_regulatory_feature_max_view_span_bp(settings.regulatory_feature_max_view_span_bp);
         display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
+        display.set_linear_sequence_base_text_max_view_span_bp(
+            settings.linear_sequence_base_text_max_view_span_bp,
+        );
+        display.set_linear_sequence_helical_letters_enabled(
+            settings.linear_sequence_helical_letters_enabled,
+        );
+        display.set_linear_sequence_helical_max_view_span_bp(
+            settings.linear_sequence_helical_max_view_span_bp,
+        );
+        display.set_linear_show_double_strand_bases(settings.linear_show_double_strand_bases);
+        display.set_linear_hide_backbone_when_sequence_bases_visible(
+            settings.linear_hide_backbone_when_sequence_bases_visible,
+        );
+        display.set_linear_reverse_strand_use_upside_down_letters(
+            settings.linear_reverse_strand_use_upside_down_letters,
+        );
+        display.set_auto_hide_sequence_panel_when_linear_bases_visible(
+            settings.auto_hide_sequence_panel_when_linear_bases_visible,
+        );
         display.set_feature_details_font_size(settings.feature_details_font_size);
     }
 
@@ -3567,6 +3925,112 @@ impl MainAreaDna {
         let max_start = sequence_length.saturating_sub(span);
         let start = start_bp.min(max_start);
         (start, span, sequence_length)
+    }
+
+    fn linear_map_sequence_bases_visible(&self) -> bool {
+        if self.is_circular() {
+            return false;
+        }
+        let (max_span, helical_enabled, helical_max_span) = self
+            .dna_display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_sequence_base_text_max_view_span_bp(),
+                    display.linear_sequence_helical_letters_enabled(),
+                    display.linear_sequence_helical_max_view_span_bp(),
+                )
+            })
+            .unwrap_or((500, false, 2000));
+        if max_span == 0 && (!helical_enabled || helical_max_span == 0) {
+            return false;
+        }
+        let (_, span, sequence_length) = self.current_linear_viewport();
+        if sequence_length == 0 || span == 0 {
+            return false;
+        }
+        if max_span > 0 && span <= max_span {
+            return true;
+        }
+        helical_enabled && helical_max_span > 0 && span <= helical_max_span
+    }
+
+    fn should_auto_hide_sequence_panel(&self) -> bool {
+        if !self.show_sequence || !self.show_map {
+            return false;
+        }
+        let auto_hide = self
+            .dna_display
+            .read()
+            .map(|display| display.auto_hide_sequence_panel_when_linear_bases_visible())
+            .unwrap_or(false);
+        auto_hide && self.linear_map_sequence_bases_visible()
+    }
+
+    fn pointer_pos_to_linear_bp(&self, rect: egui::Rect, pointer_pos: egui::Pos2) -> Option<usize> {
+        if self.is_circular() || !rect.contains(pointer_pos) {
+            return None;
+        }
+        let (start_bp, span_bp, sequence_length) = self.current_linear_viewport();
+        if sequence_length == 0 || span_bp == 0 {
+            return None;
+        }
+        let frac = ((pointer_pos.x - rect.left()) / rect.width().max(1.0)).clamp(0.0, 1.0);
+        let bp = start_bp + (frac * span_bp as f32).floor() as usize;
+        Some(bp.min(start_bp.saturating_add(span_bp).saturating_sub(1)))
+    }
+
+    fn update_linear_drag_selection(&mut self, anchor_bp: usize, current_bp: usize) {
+        let sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+        if sequence_length == 0 {
+            return;
+        }
+        let from = anchor_bp
+            .min(current_bp)
+            .min(sequence_length.saturating_sub(1));
+        let to = anchor_bp
+            .max(current_bp)
+            .saturating_add(1)
+            .min(sequence_length);
+        self.dna_display
+            .write()
+            .expect("DNA display lock poisoned")
+            .select(Selection::new(from, to, sequence_length));
+    }
+
+    fn extract_current_selection_as_sequence(&mut self) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.is_empty() {
+            self.op_status = "No active template sequence".to_string();
+            return;
+        }
+        let selection = self
+            .dna_display
+            .read()
+            .ok()
+            .and_then(|display| display.selection());
+        let Some(selection) = selection else {
+            self.op_status = "No sequence selection available on map/sequence panel".to_string();
+            return;
+        };
+        let from = selection.from();
+        let to = selection.to();
+        if from == to {
+            self.op_status = "Selected span is empty; drag-select a non-empty interval".to_string();
+            return;
+        }
+        self.extract_from = from.to_string();
+        self.extract_to = to.to_string();
+        self.apply_operation_with_feedback(Operation::ExtractRegion {
+            input: template,
+            from,
+            to,
+            output_id: if self.extract_output_id.trim().is_empty() {
+                None
+            } else {
+                Some(self.extract_output_id.trim().to_string())
+            },
+        });
     }
 
     fn set_linear_viewport(&self, start_bp: usize, span_bp: usize) {
@@ -3974,11 +4438,259 @@ impl MainAreaDna {
         });
     }
 
+    fn render_splicing_expert_view_ui(&self, ui: &mut egui::Ui, view: &SplicingExpertView) {
+        ui.label(
+            egui::RichText::new(format!(
+                "{}  {}:{}..{}  strand {}  transcripts={}  exons={}",
+                view.group_label,
+                view.seq_id,
+                view.region_start_1based,
+                view.region_end_1based,
+                view.strand,
+                view.transcript_count,
+                view.unique_exon_count
+            ))
+            .monospace()
+            .size(self.feature_details_font_size()),
+        );
+
+        let lane_count = view.transcripts.len().max(1);
+        let lane_height = 26.0_f32;
+        let plot_height = 52.0 + lane_count as f32 * lane_height + 36.0;
+        let desired_width = (ui.available_width()).max(920.0);
+
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            let (rect, response) = ui.allocate_exact_size(
+                egui::Vec2::new(desired_width, plot_height),
+                egui::Sense::hover(),
+            );
+            response.on_hover_text(view.instruction.as_str());
+            let painter = ui.painter_at(rect);
+            let label_x = rect.left() + 6.0;
+            let plot_left = rect.left() + 220.0;
+            let plot_right = rect.right() - 20.0;
+            let axis_y = rect.top() + 26.0;
+            let lanes_top = rect.top() + 56.0;
+            let span = (view
+                .region_end_1based
+                .saturating_sub(view.region_start_1based))
+            .max(1);
+
+            let to_x = |pos_1based: usize| -> f32 {
+                let clamped = pos_1based.clamp(view.region_start_1based, view.region_end_1based);
+                let frac = (clamped.saturating_sub(view.region_start_1based)) as f32 / span as f32;
+                plot_left + frac * (plot_right - plot_left)
+            };
+
+            painter.line_segment(
+                [
+                    egui::pos2(plot_left, axis_y),
+                    egui::pos2(plot_right, axis_y),
+                ],
+                egui::Stroke::new(1.2, egui::Color32::from_gray(50)),
+            );
+            painter.text(
+                egui::pos2(plot_left, axis_y - 5.0),
+                egui::Align2::LEFT_BOTTOM,
+                format!("{}", view.region_start_1based),
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_gray(70),
+            );
+            painter.text(
+                egui::pos2(plot_right, axis_y - 5.0),
+                egui::Align2::RIGHT_BOTTOM,
+                format!("{}", view.region_end_1based),
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_gray(70),
+            );
+
+            for junction in &view.junctions {
+                let x1 = to_x(junction.donor_1based);
+                let x2 = to_x(junction.acceptor_1based);
+                if (x2 - x1).abs() < 3.0 {
+                    continue;
+                }
+                let support = junction.support_transcript_count.max(1) as f32;
+                let height = ((x2 - x1).abs() * 0.12).clamp(9.0, 30.0) + support * 2.0;
+                let color = egui::Color32::from_rgb(59, 130, 246);
+                let mut pts = Vec::with_capacity(17);
+                for idx in 0..=16 {
+                    let t = idx as f32 / 16.0;
+                    let x = x1 + (x2 - x1) * t;
+                    let y = axis_y - height * 4.0 * t * (1.0 - t);
+                    pts.push(egui::pos2(x, y));
+                }
+                painter.add(egui::Shape::line(
+                    pts,
+                    egui::Stroke::new((0.9 + support * 0.45).clamp(0.9, 3.2), color),
+                ));
+            }
+
+            let lane_index: HashMap<usize, usize> = view
+                .transcripts
+                .iter()
+                .enumerate()
+                .map(|(idx, lane)| (lane.transcript_feature_id, idx))
+                .collect();
+
+            for marker in &view.boundaries {
+                let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
+                    continue;
+                };
+                let y = lanes_top + *idx as f32 * lane_height + lane_height * 0.5;
+                let x = to_x(marker.position_1based);
+                let (dy, color) = if marker.side.eq_ignore_ascii_case("donor") {
+                    (
+                        9.0,
+                        if marker.canonical {
+                            egui::Color32::from_rgb(16, 185, 129)
+                        } else {
+                            egui::Color32::from_rgb(220, 38, 38)
+                        },
+                    )
+                } else {
+                    (
+                        -9.0,
+                        if marker.canonical {
+                            egui::Color32::from_rgb(6, 95, 70)
+                        } else {
+                            egui::Color32::from_rgb(153, 27, 27)
+                        },
+                    )
+                };
+                painter.line_segment(
+                    [egui::pos2(x, y), egui::pos2(x, y + dy)],
+                    egui::Stroke::new(1.3, color),
+                );
+            }
+
+            for (idx, transcript) in view.transcripts.iter().enumerate() {
+                let y = lanes_top + idx as f32 * lane_height + lane_height * 0.5;
+                painter.text(
+                    egui::pos2(label_x, y),
+                    egui::Align2::LEFT_CENTER,
+                    format!(
+                        "n-{} {}",
+                        transcript.transcript_feature_id, transcript.transcript_id
+                    ),
+                    egui::FontId::monospace(10.0),
+                    egui::Color32::BLACK,
+                );
+
+                for intron in &transcript.introns {
+                    let x1 = to_x(intron.start_1based);
+                    let x2 = to_x(intron.end_1based);
+                    painter.line_segment(
+                        [egui::pos2(x1, y), egui::pos2(x2, y)],
+                        egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
+                    );
+                }
+                for exon in &transcript.exons {
+                    let x1 = to_x(exon.start_1based);
+                    let x2 = to_x(exon.end_1based);
+                    let rect = egui::Rect::from_min_max(
+                        egui::pos2(x1, y - 6.5),
+                        egui::pos2((x2).max(x1 + 1.0), y + 6.5),
+                    );
+                    let fill = if transcript.has_target_feature {
+                        egui::Color32::from_rgb(251, 191, 36)
+                    } else {
+                        egui::Color32::from_rgb(245, 158, 11)
+                    };
+                    painter.rect_filled(rect, 1.5, fill);
+                    painter.rect_stroke(
+                        rect,
+                        1.5,
+                        egui::Stroke::new(
+                            if transcript.has_target_feature {
+                                1.4
+                            } else {
+                                0.8
+                            },
+                            egui::Color32::from_rgb(120, 53, 15),
+                        ),
+                    );
+                }
+            }
+        });
+
+        if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Transcript x exon matrix")
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+            egui::ScrollArea::horizontal().show(ui, |ui| {
+                egui::Grid::new("splicing_expert_matrix")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("transcript").monospace().strong());
+                        for exon in &view.unique_exons {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{}..{}",
+                                    exon.start_1based, exon.end_1based
+                                ))
+                                .monospace()
+                                .size(9.0),
+                            );
+                        }
+                        ui.end_row();
+                        for row in &view.matrix_rows {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "n-{} {}",
+                                    row.transcript_feature_id, row.transcript_id
+                                ))
+                                .monospace()
+                                .size(9.0),
+                            );
+                            for present in &row.exon_presence {
+                                ui.label(
+                                    egui::RichText::new(if *present { "X" } else { "." })
+                                        .monospace()
+                                        .size(9.0),
+                                );
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+
+        if !view.events.is_empty() {
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Splicing event summary")
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+            for event in &view.events {
+                ui.label(
+                    egui::RichText::new(format!("{}: {}", event.event_type, event.count))
+                        .monospace()
+                        .size(self.feature_details_font_size()),
+                );
+                for detail in event.details.iter().take(3) {
+                    ui.label(
+                        egui::RichText::new(format!("  - {detail}"))
+                            .monospace()
+                            .size(9.0),
+                    );
+                }
+            }
+        }
+    }
+
     fn render_feature_expert_view_ui(&self, ui: &mut egui::Ui, view: &FeatureExpertView) {
         match view {
             FeatureExpertView::Tfbs(tfbs) => self.render_tfbs_expert_view_ui(ui, tfbs),
             FeatureExpertView::RestrictionSite(re) => {
                 self.render_restriction_expert_view_ui(ui, re)
+            }
+            FeatureExpertView::Splicing(splicing) => {
+                self.render_splicing_expert_view_ui(ui, splicing)
             }
         }
     }
@@ -5976,6 +6688,7 @@ impl MainAreaDna {
             export_pool_id: self.export_pool_id.clone(),
             export_pool_human_id: self.export_pool_human_id.clone(),
             pool_gel_ladders: self.pool_gel_ladders.clone(),
+            feature_tree_second_level_grouping: self.feature_tree_second_level_grouping,
         }
     }
 
@@ -6114,6 +6827,7 @@ impl MainAreaDna {
         self.export_pool_id = s.export_pool_id;
         self.export_pool_human_id = s.export_pool_human_id;
         self.pool_gel_ladders = s.pool_gel_ladders;
+        self.feature_tree_second_level_grouping = s.feature_tree_second_level_grouping;
         let tfbs_criteria = TfbsDisplayCriteria {
             use_llr_bits: s.tfbs_display_use_llr_bits,
             min_llr_bits: s.tfbs_display_min_llr_bits,
@@ -6454,13 +7168,94 @@ impl MainAreaDna {
         }
     }
 
+    fn format_feature_tree_count_label(
+        label: &str,
+        visible_count: usize,
+        total_count: usize,
+        viewport_limited: bool,
+    ) -> String {
+        if viewport_limited && visible_count != total_count {
+            format!("{label} ({visible_count}/{total_count})")
+        } else {
+            format!("{label} ({total_count})")
+        }
+    }
+
+    fn feature_tree_subgroup_label(
+        feature: &gb_io::seq::Feature,
+        feature_label: &str,
+        second_level_grouping: bool,
+    ) -> (Option<String>, bool) {
+        if RenderDna::is_track_feature(feature) {
+            return (RenderDna::track_group_label(feature), true);
+        }
+        if RenderDna::is_tfbs_feature(feature) {
+            return (RenderDna::tfbs_group_label(feature), true);
+        }
+        if RenderDna::is_restriction_site_feature(feature) {
+            return (RenderDna::restriction_site_group_label(feature), true);
+        }
+        if !second_level_grouping {
+            return (None, false);
+        }
+        let normalized_label = feature_label.trim();
+        if normalized_label.is_empty() {
+            return (None, false);
+        }
+        (Some(normalized_label.to_string()), false)
+    }
+
+    fn track_feature_matches_filter(feature: &gb_io::seq::Feature, filter_text: &str) -> bool {
+        let terms = filter_text
+            .split_whitespace()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if terms.is_empty() {
+            return true;
+        }
+
+        let mut haystacks = vec![
+            feature.kind.to_string(),
+            RenderDna::feature_name(feature),
+            RenderDna::feature_range_text(feature),
+        ];
+        for key in [
+            "gentle_track_source",
+            "gentle_track_name",
+            "gentle_track_file",
+            "name",
+            "label",
+            "note",
+            "gene",
+            "id",
+        ] {
+            for value in feature.qualifier_values(key.into()) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    haystacks.push(trimmed.to_string());
+                }
+            }
+        }
+        let haystacks = haystacks
+            .into_iter()
+            .map(|value| value.to_ascii_lowercase())
+            .collect::<Vec<_>>();
+        terms
+            .iter()
+            .all(|term| haystacks.iter().any(|value| value.contains(term)))
+    }
+
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         struct FeatureTreeEntry {
             id: usize,
-            button_label: String,
-            hover_text: Option<String>,
+            feature_label: String,
+            range_label: String,
             subgroup_key: Option<String>,
             subgroup_label: Option<String>,
+            force_subgroup: bool,
+            show_range_inline_when_ungrouped: bool,
+            visible_in_view: bool,
         }
 
         ui.heading(
@@ -6472,6 +7267,47 @@ impl MainAreaDna {
                 .map(|s| s.as_str())
                 .unwrap_or("<Unnamed DNA sequence>"),
         );
+        let viewport = self.active_linear_viewport_range();
+        let viewport_limited = viewport.is_some();
+        let grouping_toggle = ui
+            .checkbox(
+                &mut self.feature_tree_second_level_grouping,
+                "Second-level grouping",
+            )
+            .on_hover_text(
+                "Group repeated feature labels under each feature kind (for example RNA variants, TFBS motifs, and restriction sites)",
+            );
+        if grouping_toggle.changed() {
+            self.save_engine_ops_state();
+        }
+        ui.horizontal(|ui| {
+            ui.label("Track filter");
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut self.feature_tree_track_filter)
+                    .hint_text("track name, file, note")
+                    .desired_width(180.0),
+            );
+            if response.changed() {
+                self.pending_feature_tree_scroll_to = None;
+            }
+            if ui
+                .add_enabled(
+                    !self.feature_tree_track_filter.trim().is_empty(),
+                    egui::Button::new("Clear"),
+                )
+                .clicked()
+            {
+                self.feature_tree_track_filter.clear();
+                self.pending_feature_tree_scroll_to = None;
+            }
+        });
+        if viewport_limited {
+            ui.label(
+                egui::RichText::new("Group counts show visible/total for current linear view span")
+                    .size(10.5)
+                    .italics(),
+            );
+        }
 
         let selected_id = self.get_selected_feature_id();
         let (
@@ -6496,105 +7332,109 @@ impl MainAreaDna {
                 display.feature_details_font_size(),
             )
         };
-        let typed_features = self
-            .dna
-            .read()
-            .expect("DNA lock poisoned")
-            .features()
-            .iter()
-            .enumerate()
-            .filter_map(|(id, feature)| {
-                if RenderDna::is_source_feature(feature) {
-                    return None;
-                }
-                if !RenderDna::feature_passes_kind_filter(
-                    feature,
-                    show_cds_features,
-                    show_gene_features,
-                    show_mrna_features,
-                ) {
-                    return None;
-                }
-                if hidden_feature_kinds.contains(&feature.kind.to_string().to_ascii_uppercase()) {
-                    return None;
-                }
-                if RenderDna::is_tfbs_feature(feature) {
-                    if !show_tfbs {
+        let second_level_grouping = self.feature_tree_second_level_grouping;
+        let track_filter_text = self.feature_tree_track_filter.trim().to_string();
+        let typed_features = {
+            let dna = self.dna.read().expect("DNA lock poisoned");
+            let sequence_length = dna.len();
+            dna.features()
+                .iter()
+                .enumerate()
+                .filter_map(|(id, feature)| {
+                    if RenderDna::is_source_feature(feature) {
                         return None;
                     }
-                    if !RenderDna::tfbs_feature_passes_display_filter(
+                    if !RenderDna::feature_passes_kind_filter(
                         feature,
-                        tfbs_display_criteria,
+                        show_cds_features,
+                        show_gene_features,
+                        show_mrna_features,
                     ) {
                         return None;
                     }
-                }
-                if RenderDna::is_vcf_track_feature(feature)
-                    && !RenderDna::vcf_feature_passes_display_filter(feature, &vcf_display_criteria)
-                {
-                    return None;
-                }
-                let (from, to) = feature.location.find_bounds().ok()?;
-                if from < 0 || to < 0 {
-                    return None;
-                }
-                let feature_label = {
-                    let name = RenderDna::feature_name(feature);
-                    if name.trim().is_empty() {
-                        format!("{} #{}", feature.kind.to_string(), id + 1)
-                    } else {
-                        name
+                    if hidden_feature_kinds.contains(&feature.kind.to_string().to_ascii_uppercase())
+                    {
+                        return None;
                     }
-                };
-                let subgroup_label = if RenderDna::is_track_feature(feature) {
-                    RenderDna::track_group_label(feature)
-                } else if RenderDna::is_tfbs_feature(feature) {
-                    RenderDna::tfbs_group_label(feature)
-                } else if RenderDna::is_restriction_site_feature(feature) {
-                    RenderDna::restriction_site_group_label(feature)
-                } else {
-                    None
-                };
-                let subgroup_key = subgroup_label
-                    .as_ref()
-                    .map(|label| label.trim().to_ascii_uppercase());
-                let kind_label = if RenderDna::is_track_feature(feature) {
-                    "tracks".to_string()
-                } else {
-                    feature.kind.to_string()
-                };
-                let kind_upper = feature.kind.to_string().to_ascii_uppercase();
-                let range_label = RenderDna::feature_range_text(feature);
-                let grouped_entry = subgroup_label.is_some();
-                let button_label = if grouped_entry && !range_label.is_empty() {
-                    range_label.clone()
-                } else if matches!(kind_upper.as_str(), "MRNA" | "GENE") && !range_label.is_empty()
-                {
-                    format!("{feature_label} [{range_label}]")
-                } else {
-                    feature_label.clone()
-                };
-                let hover_text = if grouped_entry {
-                    if range_label.is_empty() {
-                        Some(feature_label.clone())
-                    } else {
-                        Some(format!("{feature_label} ({range_label})"))
+                    if RenderDna::is_tfbs_feature(feature) {
+                        if !show_tfbs {
+                            return None;
+                        }
+                        if !RenderDna::tfbs_feature_passes_display_filter(
+                            feature,
+                            tfbs_display_criteria,
+                        ) {
+                            return None;
+                        }
                     }
-                } else {
-                    None
-                };
-                Some((
-                    kind_label,
-                    FeatureTreeEntry {
-                        id,
-                        button_label,
-                        hover_text,
-                        subgroup_key,
-                        subgroup_label,
-                    },
-                ))
-            })
-            .collect::<Vec<_>>();
+                    if RenderDna::is_vcf_track_feature(feature)
+                        && !RenderDna::vcf_feature_passes_display_filter(
+                            feature,
+                            &vcf_display_criteria,
+                        )
+                    {
+                        return None;
+                    }
+                    if RenderDna::is_track_feature(feature)
+                        && !Self::track_feature_matches_filter(feature, &track_filter_text)
+                    {
+                        return None;
+                    }
+                    let (from, to) = feature.location.find_bounds().ok()?;
+                    if from < 0 || to < 0 {
+                        return None;
+                    }
+                    let visible_in_view = match viewport {
+                        Some((start, end)) => Self::feature_overlaps_linear_viewport(
+                            feature,
+                            sequence_length,
+                            start,
+                            end,
+                        ),
+                        None => true,
+                    };
+                    let feature_label = {
+                        let name = RenderDna::feature_name(feature);
+                        if name.trim().is_empty() {
+                            format!("{} #{}", feature.kind.to_string(), id + 1)
+                        } else {
+                            name
+                        }
+                    };
+                    let (subgroup_label, force_subgroup) = Self::feature_tree_subgroup_label(
+                        feature,
+                        &feature_label,
+                        second_level_grouping,
+                    );
+                    let subgroup_key = subgroup_label
+                        .as_ref()
+                        .map(|label| label.trim().to_ascii_uppercase());
+                    let kind_label = if RenderDna::is_track_feature(feature) {
+                        "tracks".to_string()
+                    } else {
+                        feature.kind.to_string()
+                    };
+                    let range_label = RenderDna::feature_range_text(feature);
+                    let show_range_inline_when_ungrouped = matches!(
+                        feature.kind.to_string().to_ascii_uppercase().as_str(),
+                        "MRNA" | "GENE"
+                    );
+                    Some((
+                        kind_label,
+                        FeatureTreeEntry {
+                            id,
+                            feature_label,
+                            range_label,
+                            subgroup_key,
+                            subgroup_label,
+                            force_subgroup,
+                            show_range_inline_when_ungrouped,
+                            visible_in_view,
+                        },
+                    ))
+                })
+                .collect::<Vec<_>>()
+        };
         let mut grouped_features: HashMap<String, Vec<FeatureTreeEntry>> = HashMap::new();
         let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
         for (kind, entry) in typed_features {
@@ -6609,17 +7449,31 @@ impl MainAreaDna {
             let Some(entries) = grouped_features.get(kind) else {
                 continue;
             };
+            let visible_count = entries.iter().filter(|entry| entry.visible_in_view).count();
             let has_selected = selected_id
                 .map(|selected| entries.iter().any(|entry| entry.id == selected))
                 .unwrap_or(false);
             egui::CollapsingHeader::new(
-                egui::RichText::new(kind.as_str())
-                    .size(kind_font_size)
-                    .strong(),
+                egui::RichText::new(Self::format_feature_tree_count_label(
+                    kind.as_str(),
+                    visible_count,
+                    entries.len(),
+                    viewport_limited,
+                ))
+                .size(kind_font_size)
+                .strong(),
             )
             .id_salt(format!("feature_kind_{seq_key}_{kind}"))
             .open(if has_selected { Some(true) } else { None })
             .show(ui, |ui| {
+                let mut subgroup_cardinality: HashMap<String, usize> = HashMap::new();
+                for entry in entries {
+                    if let Some(subgroup_key) = &entry.subgroup_key {
+                        *subgroup_cardinality
+                            .entry(subgroup_key.clone())
+                            .or_insert(0) += 1;
+                    }
+                }
                 let mut grouped_entries: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
                     HashMap::new();
                 let mut ungrouped_entries: Vec<&FeatureTreeEntry> = Vec::new();
@@ -6627,36 +7481,62 @@ impl MainAreaDna {
                     if let (Some(subgroup_key), Some(subgroup_label)) =
                         (&entry.subgroup_key, &entry.subgroup_label)
                     {
-                        grouped_entries
-                            .entry(subgroup_key.clone())
-                            .or_insert_with(|| (subgroup_label.clone(), Vec::new()))
-                            .1
-                            .push(entry);
+                        let subgroup_count =
+                            subgroup_cardinality.get(subgroup_key).copied().unwrap_or(0);
+                        if entry.force_subgroup || subgroup_count > 1 {
+                            grouped_entries
+                                .entry(subgroup_key.clone())
+                                .or_insert_with(|| (subgroup_label.clone(), Vec::new()))
+                                .1
+                                .push(entry);
+                        } else {
+                            ungrouped_entries.push(entry);
+                        }
                     } else {
                         ungrouped_entries.push(entry);
                     }
                 }
 
-                let mut render_entry = |ui: &mut egui::Ui, entry: &FeatureTreeEntry| {
-                    let selected = selected_id == Some(entry.id);
-                    ui.horizontal(|ui| {
-                        let button = egui::Button::new(
-                            egui::RichText::new(&entry.button_label).size(feature_font_size),
-                        )
-                        .selected(selected);
-                        let mut response = ui.add(button);
-                        if let Some(hover_text) = &entry.hover_text {
-                            response = response.on_hover_text(hover_text);
+                let mut render_entry =
+                    |ui: &mut egui::Ui, entry: &FeatureTreeEntry, grouped_entry: bool| {
+                        let selected = selected_id == Some(entry.id);
+                        let button_label = if grouped_entry && !entry.range_label.is_empty() {
+                            entry.range_label.clone()
+                        } else if entry.show_range_inline_when_ungrouped
+                            && !entry.range_label.is_empty()
+                        {
+                            format!("{} [{}]", entry.feature_label, entry.range_label)
+                        } else {
+                            entry.feature_label.clone()
+                        };
+                        let mut button_text =
+                            egui::RichText::new(button_label).size(feature_font_size);
+                        if viewport_limited && !entry.visible_in_view {
+                            button_text = button_text.color(egui::Color32::from_gray(120));
                         }
-                        if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
-                            response.scroll_to_me(Some(egui::Align::Center));
-                            self.pending_feature_tree_scroll_to = None;
-                        }
-                        if response.clicked() {
-                            clicked_feature = Some(entry.id);
-                        }
-                    });
-                };
+                        ui.horizontal(|ui| {
+                            let button = egui::Button::new(button_text).selected(selected);
+                            let mut response = ui.add(button);
+                            if grouped_entry {
+                                let hover_text = if entry.range_label.is_empty() {
+                                    entry.feature_label.clone()
+                                } else {
+                                    format!("{} ({})", entry.feature_label, entry.range_label)
+                                };
+                                response = response.on_hover_text(hover_text);
+                            } else if viewport_limited && !entry.visible_in_view {
+                                response =
+                                    response.on_hover_text("Outside current linear view span");
+                            }
+                            if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
+                                response.scroll_to_me(Some(egui::Align::Center));
+                                self.pending_feature_tree_scroll_to = None;
+                            }
+                            if response.clicked() {
+                                clicked_feature = Some(entry.id);
+                            }
+                        });
+                    };
 
                 let mut subgroup_keys = grouped_entries.keys().cloned().collect::<Vec<_>>();
                 subgroup_keys.sort_by(|left, right| {
@@ -6680,7 +7560,16 @@ impl MainAreaDna {
                     let subgroup_has_selected = selected_id
                         .map(|selected| subgroup_entries.iter().any(|entry| entry.id == selected))
                         .unwrap_or(false);
-                    let subgroup_heading = format!("{subgroup_label} ({})", subgroup_entries.len());
+                    let subgroup_visible_count = subgroup_entries
+                        .iter()
+                        .filter(|entry| entry.visible_in_view)
+                        .count();
+                    let subgroup_heading = Self::format_feature_tree_count_label(
+                        subgroup_label,
+                        subgroup_visible_count,
+                        subgroup_entries.len(),
+                        viewport_limited,
+                    );
                     egui::CollapsingHeader::new(
                         egui::RichText::new(subgroup_heading)
                             .size(feature_font_size)
@@ -6697,13 +7586,13 @@ impl MainAreaDna {
                     })
                     .show(ui, |ui| {
                         for entry in subgroup_entries {
-                            render_entry(ui, entry);
+                            render_entry(ui, entry, true);
                         }
                     });
                 }
 
                 for entry in ungrouped_entries {
-                    render_entry(ui, entry);
+                    render_entry(ui, entry, false);
                 }
             });
         }
@@ -6751,8 +7640,12 @@ impl MainAreaDna {
                     };
                     self.description_cache_range = Some(RenderDna::feature_range_text(feature));
                     self.description_cache_details = RenderDna::feature_detail_lines(feature);
+                    let kind_upper = feature.kind.to_string().trim().to_ascii_uppercase();
                     if RenderDna::is_tfbs_feature(feature) {
                         expert_target = Some(FeatureExpertTarget::TfbsFeature { feature_id: id });
+                    } else if kind_upper == "MRNA" || kind_upper == "EXON" {
+                        expert_target =
+                            Some(FeatureExpertTarget::SplicingFeature { feature_id: id });
                     }
                 } else {
                     clear_invalid_selection = true;
@@ -6958,6 +7851,33 @@ impl MainAreaDna {
                             * span_bp as f32) as isize;
                         self.pan_linear_viewport(delta_bp);
                     }
+                }
+            }
+
+            if !self.is_circular() {
+                if response.drag_started() {
+                    if let Some(pos) = response.interact_pointer_pos() {
+                        if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
+                            self.linear_drag_selection_anchor_bp = Some(bp);
+                            self.update_linear_drag_selection(bp, bp);
+                            self.clear_feature_focus_keep_map_selection();
+                        }
+                    }
+                }
+                if response.dragged() {
+                    if let (Some(anchor_bp), Some(pos)) = (
+                        self.linear_drag_selection_anchor_bp,
+                        response.interact_pointer_pos(),
+                    ) {
+                        if let Some(current_bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
+                        {
+                            self.update_linear_drag_selection(anchor_bp, current_bp);
+                            self.clear_feature_focus_keep_map_selection();
+                        }
+                    }
+                }
+                if response.drag_stopped() {
+                    self.linear_drag_selection_anchor_bp = None;
                 }
             }
 

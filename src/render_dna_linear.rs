@@ -2,6 +2,8 @@ use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
+    gc_contents::GcContents,
+    iupac_code::IupacCode,
     open_reading_frame::OpenReadingFrame,
     render_dna::RenderDna,
     render_dna::RestrictionEnzymePosition,
@@ -34,8 +36,6 @@ const RE_LABEL_MAX_BP_PER_PX: f32 = 30.0;
 const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
 const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
 const ORF_MAX_BP_PER_PX: f32 = 18.0;
-const SEQUENCE_BASE_TEXT_MAX_VIEW_SPAN_BP: usize = 500;
-const SEQUENCE_BASE_TEXT_TRACK_OFFSET: f32 = 8.0;
 const SEQUENCE_BASE_TEXT_MIN_FONT_SIZE: f32 = 8.0;
 const SEQUENCE_BASE_TEXT_MAX_FONT_SIZE: f32 = 14.0;
 const REGULATORY_BASELINE_MARGIN: f32 = 5.0;
@@ -47,6 +47,8 @@ const MIN_REGULATORY_FEATURE_GAP: f32 = 3.0;
 const MIN_REGULATORY_FEATURE_HEIGHT: f32 = 4.0;
 const FEATURE_LANE_PADDING: f32 = 5.0;
 const REGULATORY_LANE_PADDING: f32 = 2.0;
+const HELICAL_MIN_X_COMPRESSION: f32 = 0.2;
+const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -576,6 +578,18 @@ impl RenderDnaLinear {
         let mut feature_lanes_top: Vec<f32> = vec![];
         let mut feature_lanes_bottom: Vec<f32> = vec![];
         let mut feature_lanes_regulatory_top: Vec<f32> = vec![];
+        let has_regulatory_features = seeds.iter().any(|seed| seed.is_regulatory);
+        let has_restriction_sites = self
+            .display
+            .read()
+            .map(|display| display.show_restriction_enzyme_sites())
+            .unwrap_or(false)
+            && self
+                .dna
+                .read()
+                .map(|dna| !dna.restriction_enzyme_groups().is_empty())
+                .unwrap_or(false);
+        let compact_feature_spacing = !has_regulatory_features && !has_restriction_sites;
         let mut lane_seed: Vec<PositionedSeed> = Vec::with_capacity(seeds.len());
         let mut lane_order = seeds.clone();
         lane_order.sort_by(|a, b| {
@@ -628,7 +642,11 @@ impl RenderDnaLinear {
         let bottom_lane_count = feature_lanes_bottom.len();
         let regulatory_top_lane_count = feature_lanes_regulatory_top.len();
         let default_style = SideLaneStyle {
-            margin: BASELINE_MARGIN,
+            margin: if compact_feature_spacing {
+                MIN_BASELINE_MARGIN
+            } else {
+                BASELINE_MARGIN
+            },
             gap: FEATURE_GAP,
             height: FEATURE_HEIGHT,
         };
@@ -721,13 +739,14 @@ impl RenderDnaLinear {
             };
             let center_y = match item.lane_side {
                 LaneSide::Top => {
-                    let required_clearance = if regulatory_tracks_near_baseline {
-                        let regulatory_outer =
-                            REGULATORY_BASELINE_MARGIN + REGULATORY_FEATURE_HEIGHT * 0.5;
-                        regulatory_outer + side_style.height * 0.5 + 1.0
-                    } else {
-                        0.0
-                    };
+                    let required_clearance =
+                        if regulatory_tracks_near_baseline && has_regulatory_features {
+                            let regulatory_outer =
+                                REGULATORY_BASELINE_MARGIN + REGULATORY_FEATURE_HEIGHT * 0.5;
+                            regulatory_outer + side_style.height * 0.5 + 1.0
+                        } else {
+                            0.0
+                        };
                     self.baseline_y()
                         - side_style.margin.max(required_clearance)
                         - side_style.gap * feature_lane as f32
@@ -895,7 +914,19 @@ impl RenderDnaLinear {
         }
     }
 
-    fn draw_backbone(&self, painter: &egui::Painter) {
+    fn should_draw_backbone(&self, viewport: LinearViewport) -> bool {
+        let hide_when_bases_visible = self
+            .display
+            .read()
+            .map(|display| display.linear_hide_backbone_when_sequence_bases_visible())
+            .unwrap_or(false);
+        !(hide_when_bases_visible && self.should_draw_sequence_bases(viewport))
+    }
+
+    fn draw_backbone(&self, painter: &egui::Painter, viewport: LinearViewport) {
+        if !self.should_draw_backbone(viewport) {
+            return;
+        }
         let y = self.baseline_y();
         painter.line_segment(
             [
@@ -943,7 +974,24 @@ impl RenderDnaLinear {
     }
 
     fn should_draw_sequence_bases(&self, viewport: LinearViewport) -> bool {
-        viewport.span > 0 && viewport.span <= SEQUENCE_BASE_TEXT_MAX_VIEW_SPAN_BP
+        let (max_span, helical_enabled, helical_max_span) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_sequence_base_text_max_view_span_bp(),
+                    display.linear_sequence_helical_letters_enabled(),
+                    display.linear_sequence_helical_max_view_span_bp(),
+                )
+            })
+            .unwrap_or((500, false, 2000));
+        if viewport.span == 0 {
+            return false;
+        }
+        if max_span > 0 && viewport.span <= max_span {
+            return true;
+        }
+        helical_enabled && helical_max_span > 0 && viewport.span <= helical_max_span
     }
 
     fn sequence_base_color(base: u8) -> Color32 {
@@ -953,6 +1001,17 @@ impl RenderDnaLinear {
             b'G' => Color32::from_rgb(160, 95, 20),
             b'T' | b'U' => Color32::from_rgb(170, 30, 30),
             _ => Color32::DARK_GRAY,
+        }
+    }
+
+    fn upside_down_base_char(base: char) -> char {
+        match base.to_ascii_uppercase() {
+            'A' => '∀',
+            'C' => 'Ↄ',
+            'G' => '⅁',
+            'T' => '┴',
+            'U' => '∩',
+            other => other,
         }
     }
 
@@ -970,6 +1029,33 @@ impl RenderDnaLinear {
             .read()
             .ok()
             .and_then(|display| display.selection());
+        let (show_double_strand, reverse_strand_upside_down) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_show_double_strand_bases(),
+                    display.linear_reverse_strand_use_upside_down_letters(),
+                )
+            })
+            .unwrap_or((true, true));
+        let (standard_max_span, helical_enabled, helical_max_span) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_sequence_base_text_max_view_span_bp(),
+                    display.linear_sequence_helical_letters_enabled(),
+                    display.linear_sequence_helical_max_view_span_bp(),
+                )
+            })
+            .unwrap_or((500, false, 2000));
+        let use_helical_projection = helical_enabled
+            && helical_max_span > 0
+            && viewport.span <= helical_max_span
+            && (standard_max_span == 0 || viewport.span > standard_max_span);
+        let helical_t =
+            Self::helical_projection_progress(viewport.span, standard_max_span, helical_max_span);
         let px_per_bp = self.area.width().max(1.0) / viewport.span.max(1) as f32;
         let font_size = (px_per_bp * 0.85).clamp(
             SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
@@ -979,32 +1065,103 @@ impl RenderDnaLinear {
             size: font_size,
             family: FontFamily::Monospace,
         };
-        let y = self.baseline_y() + SEQUENCE_BASE_TEXT_TRACK_OFFSET;
+        let baseline = self.baseline_y();
+        let forward_y = baseline - font_size - 3.0;
+        let reverse_y = baseline + 3.0;
+        let helical_compression = Self::helical_projection_x_compression(helical_t);
+        let helical_phase_scale = Self::helical_projection_y_phase_scale(helical_t);
+        let x_centerline = self.area.center().x;
+        let project_x = |x: f32| -> f32 {
+            if use_helical_projection {
+                x_centerline + (x - x_centerline) * helical_compression
+            } else {
+                x
+            }
+        };
         for (offset, base) in seq.iter().enumerate() {
             let bp = viewport.start + offset;
             let x1 = self.bp_to_x(bp, viewport);
             let x2 = self.bp_to_x(bp.saturating_add(1), viewport);
-            let x_center = (x1 + x2) * 0.5;
+            let x1_projected = project_x(x1);
+            let x2_projected = project_x(x2);
+            let x_center = (x1_projected + x2_projected) * 0.5;
+            let helical_phase = if use_helical_projection {
+                let normalized = ((bp % 10) as f32 / 9.0) - 0.5;
+                normalized * font_size * helical_phase_scale
+            } else {
+                0.0
+            };
+            let forward_y_bp = forward_y + helical_phase;
+            let reverse_y_bp = reverse_y - helical_phase;
+            let selection_min_y = forward_y_bp.min(reverse_y_bp) - 1.0;
+            let selection_max_y = if show_double_strand {
+                forward_y_bp.max(reverse_y_bp) + font_size + 1.0
+            } else {
+                forward_y_bp + font_size + 1.0
+            };
             if let Some(selection) = &selection {
                 if selection.contains(bp) {
+                    let left = x1_projected.min(x2_projected);
+                    let right = x1_projected.max(x2_projected).max(left + 1.0);
                     painter.rect_filled(
                         Rect::from_min_max(
-                            Pos2::new(x1, y - 1.0),
-                            Pos2::new(x2.max(x1 + 1.0), y + font_size + 1.0),
+                            Pos2::new(left, selection_min_y),
+                            Pos2::new(right, selection_max_y),
                         ),
                         0.0,
                         Color32::from_gray(230),
                     );
                 }
             }
+            let forward_char = (*base as char).to_ascii_uppercase();
             painter.text(
-                Pos2::new(x_center, y),
+                Pos2::new(x_center, forward_y_bp),
                 Align2::CENTER_TOP,
-                (*base as char).to_ascii_uppercase(),
+                forward_char,
                 font.clone(),
                 Self::sequence_base_color(*base),
             );
+            if show_double_strand {
+                let complemented = IupacCode::letter_complement(*base).to_ascii_uppercase() as char;
+                let reverse_char = if reverse_strand_upside_down {
+                    Self::upside_down_base_char(complemented)
+                } else {
+                    complemented
+                };
+                painter.text(
+                    Pos2::new(x_center, reverse_y_bp),
+                    Align2::CENTER_TOP,
+                    reverse_char,
+                    font.clone(),
+                    Self::sequence_base_color(IupacCode::letter_complement(*base)),
+                );
+            }
         }
+    }
+
+    fn helical_projection_progress(
+        span: usize,
+        standard_max_span: usize,
+        helical_max_span: usize,
+    ) -> f32 {
+        if helical_max_span == 0 {
+            return 0.0;
+        }
+        let start_span = standard_max_span.max(1).min(helical_max_span);
+        if span <= start_span {
+            return 0.0;
+        }
+        let range = helical_max_span.saturating_sub(start_span).max(1) as f32;
+        ((span.saturating_sub(start_span)) as f32 / range).clamp(0.0, 1.0)
+    }
+
+    fn helical_projection_x_compression(progress: f32) -> f32 {
+        let progress = progress.clamp(0.0, 1.0);
+        1.0 - (1.0 - HELICAL_MIN_X_COMPRESSION) * progress
+    }
+
+    fn helical_projection_y_phase_scale(progress: f32) -> f32 {
+        progress.clamp(0.0, 1.0) * HELICAL_MAX_Y_PHASE_SCALE
     }
 
     fn draw_name_and_length(&self, painter: &egui::Painter, viewport: LinearViewport) {
@@ -1157,11 +1314,11 @@ impl RenderDnaLinear {
     }
 
     fn draw_gc_contents(&self, painter: &egui::Painter, viewport: LinearViewport) {
-        let show_gc = self
+        let (show_gc, gc_content_bin_size_bp) = self
             .display
             .read()
-            .map(|display| display.show_gc_contents())
-            .unwrap_or(false);
+            .map(|display| (display.show_gc_contents(), display.gc_content_bin_size_bp()))
+            .unwrap_or((false, 100));
         if !show_gc {
             return;
         }
@@ -1170,7 +1327,12 @@ impl RenderDnaLinear {
         let gc_contents = self
             .dna
             .read()
-            .map(|dna| dna.gc_content().clone())
+            .map(|dna| {
+                GcContents::new_from_sequence_with_bin_size(
+                    dna.forward_bytes(),
+                    gc_content_bin_size_bp,
+                )
+            })
             .unwrap_or_default();
         for region in gc_contents.regions() {
             let region_end_exclusive = region.to().saturating_add(1).min(self.sequence_length);
@@ -1460,7 +1622,7 @@ impl RenderDnaLinear {
         self.draw_name_and_length(ui.painter(), viewport);
         self.draw_gc_contents(ui.painter(), viewport);
         self.draw_methylation_sites(ui.painter(), viewport, detail);
-        self.draw_backbone(ui.painter());
+        self.draw_backbone(ui.painter(), viewport);
         self.draw_bp_ticks(ui.painter(), viewport);
         self.draw_sequence_bases(ui.painter(), viewport);
         self.draw_open_reading_frames(ui.painter(), viewport, detail);
@@ -1562,5 +1724,99 @@ mod tests {
             end: 320,
             span: 120,
         }));
+    }
+
+    #[test]
+    fn sequence_base_track_respects_configured_max_span() {
+        let renderer = test_renderer(1000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(120);
+        }
+        assert!(!renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 121,
+            span: 121,
+        }));
+        assert!(renderer.should_draw_sequence_bases(LinearViewport {
+            start: 10,
+            end: 130,
+            span: 120,
+        }));
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(0);
+        }
+        assert!(!renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 100,
+            span: 100,
+        }));
+    }
+
+    #[test]
+    fn sequence_base_track_can_extend_to_helical_span_limit() {
+        let renderer = test_renderer(5000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+        }
+        assert!(renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        }));
+        assert!(!renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 2100,
+            span: 2100,
+        }));
+    }
+
+    #[test]
+    fn backbone_can_be_hidden_when_sequence_letters_are_visible() {
+        let renderer = test_renderer(5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 500,
+            span: 500,
+        };
+        assert!(renderer.should_draw_backbone(viewport));
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_hide_backbone_when_sequence_bases_visible(true);
+        }
+        assert!(!renderer.should_draw_backbone(viewport));
+        let wide_viewport = LinearViewport {
+            start: 0,
+            end: 3000,
+            span: 3000,
+        };
+        assert!(renderer.should_draw_backbone(wide_viewport));
+    }
+
+    #[test]
+    fn helical_projection_progress_grows_with_view_span() {
+        assert_eq!(
+            RenderDnaLinear::helical_projection_progress(500, 500, 2000),
+            0.0
+        );
+        assert!((RenderDnaLinear::helical_projection_progress(1250, 500, 2000) - 0.5).abs() < 0.01);
+        assert_eq!(
+            RenderDnaLinear::helical_projection_progress(2000, 500, 2000),
+            1.0
+        );
+    }
+
+    #[test]
+    fn helical_projection_approaches_two_letter_width_per_ten_bp_at_max_span() {
+        assert!((RenderDnaLinear::helical_projection_x_compression(0.0) - 1.0).abs() < 0.001);
+        assert!((RenderDnaLinear::helical_projection_x_compression(0.5) - 0.6).abs() < 0.001);
+        assert!((RenderDnaLinear::helical_projection_x_compression(1.0) - 0.2).abs() < 0.001);
+        assert!((RenderDnaLinear::helical_projection_y_phase_scale(0.0) - 0.0).abs() < 0.001);
+        assert!((RenderDnaLinear::helical_projection_y_phase_scale(1.0) - 0.8).abs() < 0.001);
     }
 }

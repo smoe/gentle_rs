@@ -344,6 +344,9 @@ Current parameter support:
 - `regulatory_feature_max_view_span_bp` (default `50000`, range `>= 0`)
   - hides regulatory feature overlays in linear view when current view span
     exceeds this threshold (`0` disables regulatory overlays)
+- `gc_content_bin_size_bp` (default `100`, range `>= 1`)
+  - controls GC-content aggregation bin size for linear/circular rendering and
+    SVG export
 - VCF display filter parameters (shared GUI/SVG state):
   - `vcf_display_show_snp`
   - `vcf_display_show_ins`

@@ -380,8 +380,6 @@ pub struct GENtleApp {
     help_search_matches: Vec<HelpSearchMatch>,
     help_search_selected: usize,
     help_focus_search_box: bool,
-    help_image_preview_path: Option<String>,
-    help_image_preview_caption: String,
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
@@ -480,6 +478,7 @@ pub struct GENtleApp {
     genome_track_import_task: Option<GenomeTrackImportTask>,
     genome_track_import_progress: Option<GenomeTrackImportProgress>,
     genome_bed_track_subscriptions: Vec<GenomeTrackSubscription>,
+    genome_track_subscription_filter: String,
     genome_track_autosync_status: String,
     tracked_autosync_last_op_count: Option<usize>,
     genome_blast_import_track_name: String,
@@ -827,13 +826,6 @@ struct OpenWindowEntry {
     detail: String,
 }
 
-#[derive(Clone, Default)]
-struct HelpMarkdownImage {
-    alt: String,
-    title: String,
-    path: String,
-}
-
 #[derive(Clone, Copy)]
 enum CommandPaletteAction {
     NewProject,
@@ -912,8 +904,6 @@ impl Default for GENtleApp {
             help_search_matches: vec![],
             help_search_selected: 0,
             help_focus_search_box: false,
-            help_image_preview_path: None,
-            help_image_preview_caption: String::new(),
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
@@ -1015,6 +1005,7 @@ impl Default for GENtleApp {
             genome_track_import_task: None,
             genome_track_import_progress: None,
             genome_bed_track_subscriptions: vec![],
+            genome_track_subscription_filter: String::new(),
             genome_track_autosync_status: String::new(),
             tracked_autosync_last_op_count: None,
             show_command_palette_dialog: false,
@@ -1256,6 +1247,8 @@ impl GENtleApp {
 
     fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
         target.show_sequence_panel = source.show_sequence_panel;
+        target.auto_hide_sequence_panel_when_linear_bases_visible =
+            source.auto_hide_sequence_panel_when_linear_bases_visible;
         target.show_map_panel = source.show_map_panel;
         target.show_features = source.show_features;
         target.show_cds_features = source.show_cds_features;
@@ -1287,11 +1280,23 @@ impl GENtleApp {
         target.vcf_display_required_info_keys = source.vcf_display_required_info_keys.clone();
         target.show_restriction_enzymes = source.show_restriction_enzymes;
         target.show_gc_contents = source.show_gc_contents;
+        target.gc_content_bin_size_bp = source.gc_content_bin_size_bp;
         target.show_open_reading_frames = source.show_open_reading_frames;
         target.show_methylation_sites = source.show_methylation_sites;
         target.feature_details_font_size = source.feature_details_font_size;
         target.linear_view_start_bp = source.linear_view_start_bp;
         target.linear_view_span_bp = source.linear_view_span_bp;
+        target.linear_sequence_base_text_max_view_span_bp =
+            source.linear_sequence_base_text_max_view_span_bp;
+        target.linear_sequence_helical_letters_enabled =
+            source.linear_sequence_helical_letters_enabled;
+        target.linear_sequence_helical_max_view_span_bp =
+            source.linear_sequence_helical_max_view_span_bp;
+        target.linear_show_double_strand_bases = source.linear_show_double_strand_bases;
+        target.linear_hide_backbone_when_sequence_bases_visible =
+            source.linear_hide_backbone_when_sequence_bases_visible;
+        target.linear_reverse_strand_use_upside_down_letters =
+            source.linear_reverse_strand_use_upside_down_letters;
     }
 
     fn apply_configuration_graphics_to_engine_state(&mut self) {
@@ -2139,8 +2144,6 @@ Error: `{err}`"
         self.help_doc = doc;
         self.refresh_help_search_matches();
         self.help_focus_search_box = true;
-        self.help_image_preview_path = None;
-        self.help_image_preview_caption.clear();
         self.show_help_dialog = true;
     }
 
@@ -2157,65 +2160,6 @@ Error: `{err}`"
             HelpDoc::Gui => &self.help_gui_markdown,
             HelpDoc::Cli => &self.help_cli_markdown,
             HelpDoc::Shell => &self.help_shell_markdown,
-        }
-    }
-
-    fn collect_help_markdown_images(markdown: &str) -> Vec<HelpMarkdownImage> {
-        let mut images = Vec::new();
-        let mut current: Option<HelpMarkdownImage> = None;
-        for event in Parser::new(markdown) {
-            match event {
-                Event::Start(Tag::Image {
-                    link_type: LinkType::Inline,
-                    dest_url,
-                    title,
-                    ..
-                }) => {
-                    current = Some(HelpMarkdownImage {
-                        path: dest_url.to_string(),
-                        title: title.to_string(),
-                        ..HelpMarkdownImage::default()
-                    });
-                }
-                Event::End(pulldown_cmark::TagEnd::Image) => {
-                    if let Some(image) = current.take() {
-                        if !image.path.trim().is_empty() {
-                            images.push(image);
-                        }
-                    }
-                }
-                Event::Text(text) | Event::Code(text) => {
-                    if let Some(image) = current.as_mut() {
-                        if !image.alt.is_empty() {
-                            image.alt.push(' ');
-                        }
-                        image.alt.push_str(text.as_ref());
-                    }
-                }
-                Event::SoftBreak | Event::HardBreak => {
-                    if let Some(image) = current.as_mut() {
-                        if !image.alt.is_empty() {
-                            image.alt.push(' ');
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        images
-    }
-
-    fn help_image_caption(image: &HelpMarkdownImage) -> String {
-        if !image.title.trim().is_empty() {
-            image.title.trim().to_string()
-        } else if !image.alt.trim().is_empty() {
-            image.alt.trim().to_string()
-        } else {
-            Path::new(image.path.as_str())
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("Image")
-                .to_string()
         }
     }
 
@@ -2533,14 +2477,34 @@ Error: `{err}`"
         }
         display.show_restriction_enzymes.hash(&mut hasher);
         display.show_gc_contents.hash(&mut hasher);
+        display.gc_content_bin_size_bp.hash(&mut hasher);
         display.show_open_reading_frames.hash(&mut hasher);
         display.show_methylation_sites.hash(&mut hasher);
         display
             .feature_details_font_size
             .to_bits()
             .hash(&mut hasher);
+        display
+            .auto_hide_sequence_panel_when_linear_bases_visible
+            .hash(&mut hasher);
         display.linear_view_start_bp.hash(&mut hasher);
         display.linear_view_span_bp.hash(&mut hasher);
+        display
+            .linear_sequence_base_text_max_view_span_bp
+            .hash(&mut hasher);
+        display
+            .linear_sequence_helical_letters_enabled
+            .hash(&mut hasher);
+        display
+            .linear_sequence_helical_max_view_span_bp
+            .hash(&mut hasher);
+        display.linear_show_double_strand_bases.hash(&mut hasher);
+        display
+            .linear_hide_backbone_when_sequence_bases_visible
+            .hash(&mut hasher);
+        display
+            .linear_reverse_strand_use_upside_down_letters
+            .hash(&mut hasher);
 
         hasher.finish()
     }
@@ -2819,6 +2783,24 @@ Error: `{err}`"
         path.file_name()
             .map(|value| value.to_string_lossy().to_string())
             .unwrap_or_else(|| path.display().to_string())
+    }
+
+    fn subscription_matches_filter(subscription: &GenomeTrackSubscription, filter_text: &str) -> bool {
+        let needle = filter_text.trim().to_ascii_lowercase();
+        if needle.is_empty() {
+            return true;
+        }
+        let mut haystacks = vec![
+            subscription.source.label().to_string(),
+            subscription.path.clone(),
+        ];
+        if let Some(track_name) = &subscription.track_name {
+            haystacks.push(track_name.clone());
+        }
+        haystacks
+            .into_iter()
+            .map(|value| value.to_ascii_lowercase())
+            .any(|value| value.contains(&needle))
     }
 
     fn open_helper_genome_prepare_dialog(&mut self) {
@@ -7044,6 +7026,23 @@ Error: `{err}`"
 
         ui.separator();
         ui.label("Tracked genome signal files for auto-sync to new anchored sequences");
+        ui.horizontal(|ui| {
+            ui.label("Filter");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.genome_track_subscription_filter)
+                    .hint_text("path, track, source")
+                    .desired_width(280.0),
+            );
+            if ui
+                .add_enabled(
+                    !self.genome_track_subscription_filter.trim().is_empty(),
+                    egui::Button::new("Clear"),
+                )
+                .clicked()
+            {
+                self.genome_track_subscription_filter.clear();
+            }
+        });
 
         let mut apply_now_index: Option<usize> = None;
         let mut remove_index: Option<usize> = None;
@@ -7051,6 +7050,17 @@ Error: `{err}`"
             ui.small("No tracked files yet.");
         } else {
             let subscription_rows = self.genome_bed_track_subscriptions.clone();
+            let filter_text = self.genome_track_subscription_filter.trim().to_string();
+            let filtered_rows = subscription_rows
+                .iter()
+                .enumerate()
+                .filter(|(_, subscription)| {
+                    Self::subscription_matches_filter(subscription, &filter_text)
+                })
+                .collect::<Vec<_>>();
+            if filtered_rows.is_empty() {
+                ui.small("No tracked files match the current filter.");
+            }
             egui::Grid::new("genome_bed_track_subscriptions_grid")
                 .striped(true)
                 .show(ui, |ui| {
@@ -7061,7 +7071,7 @@ Error: `{err}`"
                     ui.strong("Clear Existing");
                     ui.strong("Actions");
                     ui.end_row();
-                    for (index, subscription) in subscription_rows.iter().enumerate() {
+                    for (index, subscription) in filtered_rows {
                         ui.label(subscription.source.label());
                         ui.monospace(subscription.path.as_str());
                         ui.label(
@@ -8187,6 +8197,13 @@ Error: `{err}`"
 
     fn render_specialist_window_nav(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
+            if ui
+                .button("Help")
+                .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
+                .clicked()
+            {
+                self.open_help_doc(HelpDoc::Gui);
+            }
             if ui
                 .button("Main")
                 .on_hover_text("Bring the main project window to front")
@@ -10402,6 +10419,9 @@ Error: `{err}`"
     fn reset_configuration_graphics_to_defaults(&mut self) {
         let defaults = DisplaySettings::default();
         self.configuration_graphics.show_sequence_panel = defaults.show_sequence_panel;
+        self.configuration_graphics
+            .auto_hide_sequence_panel_when_linear_bases_visible =
+            defaults.auto_hide_sequence_panel_when_linear_bases_visible;
         self.configuration_graphics.show_map_panel = defaults.show_map_panel;
         self.configuration_graphics.show_features = defaults.show_features;
         self.configuration_graphics.show_cds_features = defaults.show_cds_features;
@@ -10442,11 +10462,29 @@ Error: `{err}`"
             defaults.vcf_display_required_info_keys.clone();
         self.configuration_graphics.show_restriction_enzymes = defaults.show_restriction_enzymes;
         self.configuration_graphics.show_gc_contents = defaults.show_gc_contents;
+        self.configuration_graphics.gc_content_bin_size_bp = defaults.gc_content_bin_size_bp;
         self.configuration_graphics.show_open_reading_frames = defaults.show_open_reading_frames;
         self.configuration_graphics.show_methylation_sites = defaults.show_methylation_sites;
         self.configuration_graphics.feature_details_font_size = defaults.feature_details_font_size;
         self.configuration_graphics.linear_view_start_bp = defaults.linear_view_start_bp;
         self.configuration_graphics.linear_view_span_bp = defaults.linear_view_span_bp;
+        self.configuration_graphics
+            .linear_sequence_base_text_max_view_span_bp =
+            defaults.linear_sequence_base_text_max_view_span_bp;
+        self.configuration_graphics
+            .linear_sequence_helical_letters_enabled =
+            defaults.linear_sequence_helical_letters_enabled;
+        self.configuration_graphics
+            .linear_sequence_helical_max_view_span_bp =
+            defaults.linear_sequence_helical_max_view_span_bp;
+        self.configuration_graphics.linear_show_double_strand_bases =
+            defaults.linear_show_double_strand_bases;
+        self.configuration_graphics
+            .linear_hide_backbone_when_sequence_bases_visible =
+            defaults.linear_hide_backbone_when_sequence_bases_visible;
+        self.configuration_graphics
+            .linear_reverse_strand_use_upside_down_letters =
+            defaults.linear_reverse_strand_use_upside_down_letters;
         self.configuration_graphics_dirty = true;
     }
 
@@ -10472,71 +10510,128 @@ Error: `{err}`"
         self.configuration_window_backdrops_dirty = true;
     }
 
-    fn render_window_backdrop_path_row(
+    fn window_backdrop_row_mut<'a>(
+        settings: &'a mut WindowBackdropSettings,
+        row_index: usize,
+    ) -> (&'static str, &'a mut String) {
+        match row_index {
+            0 => ("Main", &mut settings.main_image_path),
+            1 => ("Sequence", &mut settings.sequence_image_path),
+            2 => ("Pool", &mut settings.pool_image_path),
+            3 => ("Configuration", &mut settings.configuration_image_path),
+            4 => ("Help", &mut settings.help_image_path),
+            _ => ("Unknown", &mut settings.main_image_path),
+        }
+    }
+
+    fn window_backdrop_path_status(path: &str) -> (egui::Color32, String) {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return (
+                egui::Color32::from_gray(120),
+                "No image path configured (text watermark/tint fallback only)".to_string(),
+            );
+        }
+        match window_backdrop::validate_window_backdrop_image_path(trimmed) {
+            Ok(resolved) => (
+                egui::Color32::from_rgb(20, 140, 45),
+                format!("Resolved image: {resolved}"),
+            ),
+            Err(message) => (
+                egui::Color32::from_rgb(180, 50, 50),
+                format!("Path check failed: {message}"),
+            ),
+        }
+    }
+
+    fn render_window_backdrop_path_table(
         ui: &mut Ui,
-        label: &str,
-        value: &mut String,
+        settings: &mut WindowBackdropSettings,
         changed: &mut bool,
     ) {
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                ui.label(label);
-                if ui
-                    .add(
-                        egui::TextEdit::singleline(value)
-                            .desired_width(360.0)
-                            .hint_text("/absolute/path/to/image.png"),
-                    )
-                    .on_hover_text(
-                        "Optional absolute or working-directory-relative image path for this window type",
-                    )
-                    .changed()
-                {
-                    *changed = true;
-                }
-                if ui
-                    .button("Browse...")
-                    .on_hover_text("Pick an image file for this window backdrop")
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Images", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
-                        .pick_file()
-                    {
-                        *value = path.display().to_string();
-                        *changed = true;
-                    }
-                }
-                if ui
-                    .button("Clear")
-                    .on_hover_text("Clear custom image path for this window type")
-                    .clicked()
-                {
-                    value.clear();
-                    *changed = true;
-                }
-            });
+        const ROW_COUNT: usize = 5;
+        const MIN_VISIBLE_ROWS: f32 = 2.0;
+        let row_height = ui.spacing().interact_size.y.max(24.0);
+        let header_height = row_height;
+        let desired_height = header_height + row_height * ROW_COUNT as f32 + 12.0;
+        let minimum_height = header_height + row_height * MIN_VISIBLE_ROWS + 12.0;
+        let table_height = desired_height.min(ui.available_height().max(minimum_height));
 
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                ui.small("No image path configured (text watermark/tint fallback only)");
-            } else {
-                match window_backdrop::validate_window_backdrop_image_path(trimmed) {
-                    Ok(resolved) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(20, 140, 45),
-                            format!("Resolved image: {resolved}"),
-                        );
-                    }
-                    Err(message) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(180, 50, 50),
-                            format!("Path check failed: {message}"),
-                        );
-                    }
-                }
-            }
+        ui.label("Background image paths");
+        egui::ScrollArea::vertical()
+            .id_salt("window_backdrop_path_table")
+            .max_height(table_height)
+            .show(ui, |ui| {
+                egui::Grid::new("window_backdrop_path_grid")
+                    .num_columns(3)
+                    .striped(true)
+                    .spacing(egui::vec2(10.0, 6.0))
+                    .show(ui, |ui| {
+                        ui.strong("Window");
+                        ui.strong("Path");
+                        ui.strong("Actions");
+                        ui.end_row();
+
+                        for row_index in 0..ROW_COUNT {
+                            let (label, value) = Self::window_backdrop_row_mut(settings, row_index);
+                            ui.label(label);
+
+                            ui.horizontal(|ui| {
+                                let field_width = (ui.available_width() - 20.0).max(140.0);
+                                if ui
+                                    .add_sized(
+                                        [field_width, 0.0],
+                                        egui::TextEdit::singleline(value)
+                                            .hint_text("/absolute/path/to/image.png"),
+                                    )
+                                    .on_hover_text(
+                                        "Optional absolute or working-directory-relative image path for this window type",
+                                    )
+                                    .changed()
+                                {
+                                    *changed = true;
+                                }
+                                let (status_color, status_message) =
+                                    Self::window_backdrop_path_status(value);
+                                ui.label(egui::RichText::new("●").color(status_color))
+                                    .on_hover_text(status_message);
+                            });
+
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .small_button("Browse...")
+                                    .on_hover_text("Pick an image file for this window backdrop")
+                                    .clicked()
+                                {
+                                    if let Some(path) = rfd::FileDialog::new()
+                                        .add_filter(
+                                            "Images",
+                                            &["png", "jpg", "jpeg", "gif", "bmp", "webp"],
+                                        )
+                                        .pick_file()
+                                    {
+                                        *value = path.display().to_string();
+                                        *changed = true;
+                                    }
+                                }
+                                if ui
+                                    .add_enabled(
+                                        !value.trim().is_empty(),
+                                        egui::Button::new("Clear"),
+                                    )
+                                    .on_hover_text("Clear custom image path for this window type")
+                                    .clicked()
+                                {
+                                    value.clear();
+                                    *changed = true;
+                                }
+                            });
+
+                            ui.end_row();
+                        }
+                    });
         });
+        ui.small("Scroll when space is limited; at least two rows remain visible.");
     }
 
     fn refresh_open_sequence_windows(&mut self, ctx: &egui::Context) -> usize {
@@ -10711,6 +10806,105 @@ Error: `{err}`"
                 "Show map panel",
             )
             .changed();
+        changed |= ui
+            .checkbox(
+                &mut self
+                    .configuration_graphics
+                    .auto_hide_sequence_panel_when_linear_bases_visible,
+                "Auto-hide sequence panel when linear DNA letters are visible",
+            )
+            .changed();
+
+        ui.separator();
+        ui.heading("Linear DNA Base Rendering");
+        changed |= ui
+            .checkbox(
+                &mut self.configuration_graphics.linear_show_double_strand_bases,
+                "Render double-strand DNA letters in linear view",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self
+                    .configuration_graphics
+                    .linear_hide_backbone_when_sequence_bases_visible,
+                "Hide DNA backbone line when letters are shown",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self
+                    .configuration_graphics
+                    .linear_sequence_helical_letters_enabled,
+                "Enable helical-compressed linear DNA letter rendering",
+            )
+            .changed();
+        changed |= ui
+            .checkbox(
+                &mut self
+                    .configuration_graphics
+                    .linear_reverse_strand_use_upside_down_letters,
+                "Use upside-down letters for reverse strand",
+            )
+            .changed();
+        ui.horizontal(|ui| {
+            ui.label("DNA letters max view span");
+            if ui
+                .add(
+                    egui::DragValue::new(
+                        &mut self
+                            .configuration_graphics
+                            .linear_sequence_base_text_max_view_span_bp,
+                    )
+                    .range(0..=5_000_000)
+                    .speed(25.0)
+                    .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "Linear map DNA letters are shown only when current span is <= this threshold (0 disables letter rendering)",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Helical letters max view span");
+            if ui
+                .add(
+                    egui::DragValue::new(
+                        &mut self
+                            .configuration_graphics
+                            .linear_sequence_helical_max_view_span_bp,
+                    )
+                    .range(0..=5_000_000)
+                    .speed(25.0)
+                    .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "Helical-compressed DNA letters are shown when span <= this threshold and standard linear letters are no longer shown",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Feature detail font size");
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.configuration_graphics.feature_details_font_size,
+                        8.0..=24.0,
+                    )
+                    .step_by(0.25)
+                    .suffix(" px"),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
 
         ui.separator();
         ui.heading("Feature Layers");
@@ -10784,6 +10978,23 @@ Error: `{err}`"
                 "Show GC contents",
             )
             .changed();
+        ui.horizontal(|ui| {
+            ui.label("GC bin size");
+            if ui
+                .add(
+                    egui::DragValue::new(&mut self.configuration_graphics.gc_content_bin_size_bp)
+                        .range(1..=5_000_000)
+                        .speed(10.0)
+                        .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "Bin size used for GC-content aggregation in linear/circular maps and SVG export",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_open_reading_frames,
@@ -10852,34 +11063,9 @@ Error: `{err}`"
                 backdrop_changed = true;
             }
         });
-        Self::render_window_backdrop_path_row(
+        Self::render_window_backdrop_path_table(
             ui,
-            "Main window image",
-            &mut self.configuration_window_backdrops.main_image_path,
-            &mut backdrop_changed,
-        );
-        Self::render_window_backdrop_path_row(
-            ui,
-            "Sequence window image",
-            &mut self.configuration_window_backdrops.sequence_image_path,
-            &mut backdrop_changed,
-        );
-        Self::render_window_backdrop_path_row(
-            ui,
-            "Pool window image",
-            &mut self.configuration_window_backdrops.pool_image_path,
-            &mut backdrop_changed,
-        );
-        Self::render_window_backdrop_path_row(
-            ui,
-            "Configuration window image",
-            &mut self.configuration_window_backdrops.configuration_image_path,
-            &mut backdrop_changed,
-        );
-        Self::render_window_backdrop_path_row(
-            ui,
-            "Help window image",
-            &mut self.configuration_window_backdrops.help_image_path,
+            &mut self.configuration_window_backdrops,
             &mut backdrop_changed,
         );
 
@@ -11697,63 +11883,15 @@ Error: `{err}`"
         }
 
         ui.separator();
-        let markdown = self.active_help_markdown().to_string();
-        let help_images = Self::collect_help_markdown_images(markdown.as_str());
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                let markdown = self.active_help_markdown().to_string();
                 let max_image_width = (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
                 CommonMarkViewer::new()
                     .max_image_width(Some(max_image_width as usize))
                     .show(ui, &mut self.help_markdown_cache, markdown.as_str());
-                if !help_images.is_empty() {
-                    ui.separator();
-                    ui.heading("Image Captions");
-                    ui.small("Click any preview to open an enlarged view.");
-                    for image in &help_images {
-                        let caption = Self::help_image_caption(image);
-                        let response = ui.add(
-                            egui::Image::new(image.path.clone())
-                                .max_width(max_image_width)
-                                .maintain_aspect_ratio(true)
-                                .sense(egui::Sense::click()),
-                        );
-                        if response.clicked() {
-                            self.help_image_preview_path = Some(image.path.clone());
-                            self.help_image_preview_caption = caption.clone();
-                        }
-                        ui.small(caption);
-                        ui.separator();
-                    }
-                }
             });
-
-        if let Some(path) = self.help_image_preview_path.clone() {
-            let title = if self.help_image_preview_caption.trim().is_empty() {
-                "Help image".to_string()
-            } else {
-                self.help_image_preview_caption.clone()
-            };
-            let mut open = true;
-            egui::Window::new(title)
-                .open(&mut open)
-                .resizable(true)
-                .vscroll(true)
-                .default_size(Vec2::new(960.0, 720.0))
-                .show(ui.ctx(), |ui| {
-                    ui.add(egui::Image::new(path.clone()).shrink_to_fit());
-                    ui.horizontal(|ui| {
-                        if ui.button("Close").clicked() {
-                            self.help_image_preview_path = None;
-                            self.help_image_preview_caption.clear();
-                        }
-                    });
-                });
-            if !open {
-                self.help_image_preview_path = None;
-                self.help_image_preview_caption.clear();
-            }
-        }
     }
 
     fn summarize_operation(op: &Operation) -> String {
@@ -12302,6 +12440,10 @@ impl eframe::App for GENtleApp {
             let open_configuration = KeyboardShortcut::new(Modifiers::COMMAND, Key::Comma);
             let focus_main_window = KeyboardShortcut::new(Modifiers::COMMAND, Key::Backtick);
             let open_command_palette = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
+            let open_help_f1 = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
+            let open_help_ctrl_f1 = KeyboardShortcut::new(Modifiers::CTRL, Key::F1);
+            let open_help_cmd_shift_slash =
+                KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::Slash);
             let undo_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
             let redo_shortcut_shift =
                 KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
@@ -12344,6 +12486,12 @@ impl eframe::App for GENtleApp {
             }
             if ctx.input_mut(|i| i.consume_shortcut(&open_command_palette)) {
                 self.open_command_palette_dialog();
+            }
+            if ctx.input_mut(|i| i.consume_shortcut(&open_help_f1))
+                || ctx.input_mut(|i| i.consume_shortcut(&open_help_ctrl_f1))
+                || ctx.input_mut(|i| i.consume_shortcut(&open_help_cmd_shift_slash))
+            {
+                self.open_help_doc(HelpDoc::Gui);
             }
             if ctx.input_mut(|i| i.consume_shortcut(&undo_shortcut)) {
                 self.undo_last_operation();
@@ -12508,46 +12656,6 @@ mod tests {
         let temp = tempdir().unwrap();
         let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, temp.path());
         assert_eq!(rewritten, markdown);
-    }
-
-    #[test]
-    fn collect_help_markdown_images_extracts_inline_targets_and_labels() {
-        let markdown = "# Help\n\n![Main](<docs/screenshots/main.png> \"Main window\")\n\n![Alt only](images/alt.png)\n";
-        let images = GENtleApp::collect_help_markdown_images(markdown);
-        assert_eq!(images.len(), 2);
-        assert_eq!(images[0].path, "docs/screenshots/main.png");
-        assert_eq!(images[0].title, "Main window");
-        assert_eq!(images[0].alt, "Main");
-        assert_eq!(images[1].path, "images/alt.png");
-        assert_eq!(images[1].title, "");
-        assert_eq!(images[1].alt, "Alt only");
-    }
-
-    #[test]
-    fn help_image_caption_prefers_title_then_alt_then_filename() {
-        let title_first = super::HelpMarkdownImage {
-            alt: "Alt".to_string(),
-            title: "Caption".to_string(),
-            path: "/tmp/ignored.png".to_string(),
-        };
-        assert_eq!(GENtleApp::help_image_caption(&title_first), "Caption");
-
-        let alt_second = super::HelpMarkdownImage {
-            alt: "Fallback alt".to_string(),
-            title: String::new(),
-            path: "/tmp/ignored.png".to_string(),
-        };
-        assert_eq!(GENtleApp::help_image_caption(&alt_second), "Fallback alt");
-
-        let filename_last = super::HelpMarkdownImage {
-            alt: String::new(),
-            title: String::new(),
-            path: "/tmp/final-name.png".to_string(),
-        };
-        assert_eq!(
-            GENtleApp::help_image_caption(&filename_last),
-            "final-name.png"
-        );
     }
 
     #[test]

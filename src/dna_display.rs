@@ -1,3 +1,4 @@
+use crate::gc_contents::DEFAULT_SECTION_SIZE_BP;
 use std::collections::BTreeSet;
 
 use eframe::egui::Color32;
@@ -171,6 +172,7 @@ impl UpdateLayoutParts {
 pub struct DnaDisplay {
     show_restriction_enzymes: bool,
     show_reverse_complement: bool,
+    auto_hide_sequence_panel_when_linear_bases_visible: bool,
     show_open_reading_frames: bool,
     suppress_open_reading_frames_for_genome_anchor: bool,
     show_features: bool,
@@ -185,6 +187,7 @@ pub struct DnaDisplay {
     tfbs_display_criteria: TfbsDisplayCriteria,
     vcf_display_criteria: VcfDisplayCriteria,
     show_gc_contents: bool,
+    gc_content_bin_size_bp: usize,
     show_methylation_sites: bool,
     update_layout: UpdateLayoutParts,
     aa_letters: AminoAcidLetters,
@@ -192,12 +195,30 @@ pub struct DnaDisplay {
     selection: Option<Selection>,
     linear_view_start_bp: usize,
     linear_view_span_bp: usize,
+    linear_sequence_base_text_max_view_span_bp: usize,
+    linear_sequence_helical_letters_enabled: bool,
+    linear_sequence_helical_max_view_span_bp: usize,
+    linear_show_double_strand_bases: bool,
+    linear_hide_backbone_when_sequence_bases_visible: bool,
+    linear_reverse_strand_use_upside_down_letters: bool,
     feature_details_font_size: f32,
 }
 
 impl DnaDisplay {
     fn clamp_feature_details_font_size(value: f32) -> f32 {
         value.clamp(8.0, 24.0)
+    }
+
+    fn clamp_linear_sequence_base_text_max_view_span_bp(value: usize) -> usize {
+        value.min(5_000_000)
+    }
+
+    fn clamp_gc_content_bin_size_bp(value: usize) -> usize {
+        value.clamp(1, 5_000_000)
+    }
+
+    fn clamp_linear_sequence_helical_max_view_span_bp(value: usize) -> usize {
+        value.min(5_000_000)
     }
 
     fn mark_layout_dirty(&mut self) {
@@ -408,6 +429,17 @@ impl DnaDisplay {
         }
     }
 
+    pub fn auto_hide_sequence_panel_when_linear_bases_visible(&self) -> bool {
+        self.auto_hide_sequence_panel_when_linear_bases_visible
+    }
+
+    pub fn set_auto_hide_sequence_panel_when_linear_bases_visible(&mut self, value: bool) {
+        if self.auto_hide_sequence_panel_when_linear_bases_visible != value {
+            self.auto_hide_sequence_panel_when_linear_bases_visible = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn show_open_reading_frames(&self) -> bool {
         self.show_open_reading_frames
     }
@@ -451,6 +483,18 @@ impl DnaDisplay {
     pub fn set_show_gc_contents(&mut self, value: bool) {
         if self.show_gc_contents != value {
             self.show_gc_contents = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn gc_content_bin_size_bp(&self) -> usize {
+        Self::clamp_gc_content_bin_size_bp(self.gc_content_bin_size_bp)
+    }
+
+    pub fn set_gc_content_bin_size_bp(&mut self, value: usize) {
+        let value = Self::clamp_gc_content_bin_size_bp(value);
+        if self.gc_content_bin_size_bp != value {
+            self.gc_content_bin_size_bp = value;
             self.mark_layout_dirty();
         }
     }
@@ -532,6 +576,78 @@ impl DnaDisplay {
         }
     }
 
+    pub fn linear_sequence_base_text_max_view_span_bp(&self) -> usize {
+        Self::clamp_linear_sequence_base_text_max_view_span_bp(
+            self.linear_sequence_base_text_max_view_span_bp,
+        )
+    }
+
+    pub fn set_linear_sequence_base_text_max_view_span_bp(&mut self, value: usize) {
+        let value = Self::clamp_linear_sequence_base_text_max_view_span_bp(value);
+        if self.linear_sequence_base_text_max_view_span_bp != value {
+            self.linear_sequence_base_text_max_view_span_bp = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn linear_sequence_helical_letters_enabled(&self) -> bool {
+        self.linear_sequence_helical_letters_enabled
+    }
+
+    pub fn set_linear_sequence_helical_letters_enabled(&mut self, value: bool) {
+        if self.linear_sequence_helical_letters_enabled != value {
+            self.linear_sequence_helical_letters_enabled = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn linear_sequence_helical_max_view_span_bp(&self) -> usize {
+        Self::clamp_linear_sequence_helical_max_view_span_bp(
+            self.linear_sequence_helical_max_view_span_bp,
+        )
+    }
+
+    pub fn set_linear_sequence_helical_max_view_span_bp(&mut self, value: usize) {
+        let value = Self::clamp_linear_sequence_helical_max_view_span_bp(value);
+        if self.linear_sequence_helical_max_view_span_bp != value {
+            self.linear_sequence_helical_max_view_span_bp = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn linear_show_double_strand_bases(&self) -> bool {
+        self.linear_show_double_strand_bases
+    }
+
+    pub fn set_linear_show_double_strand_bases(&mut self, value: bool) {
+        if self.linear_show_double_strand_bases != value {
+            self.linear_show_double_strand_bases = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn linear_hide_backbone_when_sequence_bases_visible(&self) -> bool {
+        self.linear_hide_backbone_when_sequence_bases_visible
+    }
+
+    pub fn set_linear_hide_backbone_when_sequence_bases_visible(&mut self, value: bool) {
+        if self.linear_hide_backbone_when_sequence_bases_visible != value {
+            self.linear_hide_backbone_when_sequence_bases_visible = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn linear_reverse_strand_use_upside_down_letters(&self) -> bool {
+        self.linear_reverse_strand_use_upside_down_letters
+    }
+
+    pub fn set_linear_reverse_strand_use_upside_down_letters(&mut self, value: bool) {
+        if self.linear_reverse_strand_use_upside_down_letters != value {
+            self.linear_reverse_strand_use_upside_down_letters = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn feature_details_font_size(&self) -> f32 {
         Self::clamp_feature_details_font_size(self.feature_details_font_size)
     }
@@ -552,6 +668,7 @@ impl Default for DnaDisplay {
         Self {
             show_restriction_enzymes: true,
             show_reverse_complement: true,
+            auto_hide_sequence_panel_when_linear_bases_visible: false,
             show_open_reading_frames: false,
             suppress_open_reading_frames_for_genome_anchor: false,
             show_features: true,
@@ -566,6 +683,7 @@ impl Default for DnaDisplay {
             tfbs_display_criteria: TfbsDisplayCriteria::default(),
             vcf_display_criteria: VcfDisplayCriteria::default(),
             show_gc_contents: true,
+            gc_content_bin_size_bp: DEFAULT_SECTION_SIZE_BP,
             show_methylation_sites: false,
             update_layout: UpdateLayoutParts::default(),
             aa_letters: AminoAcidLetters::Single,
@@ -573,7 +691,13 @@ impl Default for DnaDisplay {
             selection: None,
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
-            feature_details_font_size: 11.0,
+            linear_sequence_base_text_max_view_span_bp: 500,
+            linear_sequence_helical_letters_enabled: false,
+            linear_sequence_helical_max_view_span_bp: 2000,
+            linear_show_double_strand_bases: true,
+            linear_hide_backbone_when_sequence_bases_visible: false,
+            linear_reverse_strand_use_upside_down_letters: true,
+            feature_details_font_size: 8.25,
         }
     }
 }

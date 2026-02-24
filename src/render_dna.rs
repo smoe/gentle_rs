@@ -10,6 +10,7 @@ use gb_io::seq::Feature;
 use std::{
     fmt::Debug,
     panic::{AssertUnwindSafe, catch_unwind},
+    path::Path,
     sync::{Arc, RwLock},
 };
 
@@ -416,8 +417,29 @@ impl RenderDna {
         if !Self::is_track_feature(feature) {
             return None;
         }
-        Self::first_nonempty_qualifier(feature, &["gentle_track_name", "name", "label"])
-            .or_else(|| Some("Unnamed track".to_string()))
+        let source = Self::feature_qualifier_text(feature, "gentle_track_source");
+        let file_name = Self::feature_qualifier_text(feature, "gentle_track_file").and_then(|v| {
+            Path::new(v.trim())
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        });
+        let track_name = Self::first_nonempty_qualifier(feature, &["gentle_track_name", "name"]);
+        let label = Self::feature_qualifier_text(feature, "label");
+
+        match (source, file_name, track_name, label) {
+            (Some(source), Some(file_name), Some(track_name), _) => {
+                Some(format!("{source}: {file_name} ({track_name})"))
+            }
+            (Some(source), Some(file_name), None, _) => Some(format!("{source}: {file_name}")),
+            (Some(source), None, Some(track_name), _) => Some(format!("{source}: {track_name}")),
+            (None, Some(file_name), Some(track_name), _) => {
+                Some(format!("{file_name} ({track_name})"))
+            }
+            (None, Some(file_name), None, _) => Some(file_name),
+            (_, _, Some(track_name), _) => Some(track_name),
+            (_, _, None, Some(label)) => Some(label),
+            _ => Some("Unnamed track".to_string()),
+        }
     }
 
     pub fn vcf_variant_class(feature: &Feature) -> Option<String> {
@@ -753,7 +775,7 @@ impl Widget for RenderDna {
             height = ui.max_rect().height().max(1.0);
         }
         let safe_size = Vec2::new(width.clamp(1.0, 100_000.0), height.clamp(1.0, 100_000.0));
-        let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click());
+        let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click_and_drag());
         let builder = egui::UiBuilder::new()
             .max_rect(rect)
             .layout(ui.layout().clone());

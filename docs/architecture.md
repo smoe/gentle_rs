@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-23
+Last updated: 2026-02-24
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -55,6 +55,9 @@ Strategic aims:
    source/reconstruction and usage context are always clear.
 7. Support optional per-window-type visual identity cues (subtle monochrome
    image backdrops + color accents) without harming scientific readability.
+8. Make sequence/feature transfer pathways explicit and deterministic,
+   including in-app selection extraction and planned cross-application
+   clipboard interchange through the same engine operation contracts.
 
 Test-data provenance rule:
 
@@ -375,6 +378,9 @@ Remaining additions for full text/voice GUI control:
    mapping while preserving deterministic execution.
 3. Add optional voice transport (STT/TTS) that emits/consumes the same
    deterministic intent contracts through the existing agent interface.
+4. Extend the intent plane with explicit clipboard/export intents so
+   cross-application copy/paste can be routed through auditable engine
+   operations rather than frontend-only ad hoc handlers.
 
 Voice path note:
 
@@ -545,11 +551,12 @@ recomputations. This keeps GUI/CLI/JS/Lua behavior aligned.
 
 Shared view model:
 
-- `FeatureExpertTarget`: stable target selector (TFBS feature or restriction
-  site).
+- `FeatureExpertTarget`: stable target selector
+  (TFBS feature, restriction site, or splicing-seeded feature).
 - `FeatureExpertView`: typed payload with one of:
   - `TfbsExpertView`
   - `RestrictionSiteExpertView`
+  - `SplicingExpertView`
 
 TFBS expert semantics:
 
@@ -570,12 +577,61 @@ Restriction-site expert semantics:
 - Mark cleavage position explicitly.
 - Include enzyme/site metadata and shared instruction text.
 
+Splicing expert semantics:
+
+- Group transcripts by shared locus/gene context and strand.
+- Render one transcript lane per isoform on a shared coordinate axis.
+- Keep exon/intron geometry coordinate-true (labels never resize feature
+  geometry).
+- Mark donor/acceptor boundaries with canonical/non-canonical motif context.
+- Summarize alternative-splicing events and transcript-vs-exon membership in a
+  matrix.
+- Render junction-support arcs from the same engine payload used by GUI and
+  SVG export.
+
 Export semantics:
 
 - `RenderFeatureExpertSvg` is the canonical engine export path.
 - GUI detail panel and shell/CLI scripting consume the same expert view
   contract before/while exporting.
 - SVG output is therefore adapter-equivalent by construction.
+
+### Alternative-splicing interpretation contract (implemented baseline)
+
+Alternative-splicing interpretation now follows the same deterministic
+engine-owned view-model pattern used by other feature expert views.
+
+Shared splicing view model:
+
+- `FeatureExpertTarget::SplicingFeature`: target selector.
+- `SplicingExpertView`: typed payload carrying:
+  - transcript lanes over one shared genomic axis
+  - exon/intron geometry per transcript
+  - splice-boundary markers (donor/acceptor)
+  - event summaries (for example exon skip, alt 5', alt 3', mutually exclusive,
+    intron retention)
+  - optional junction-evidence arcs and support values
+  - optional transcript-vs-exon presence matrix.
+
+Rendering invariants:
+
+- Biological geometry is coordinate-driven:
+  - exon rectangles are sized strictly by genomic coordinates.
+  - labels must never expand exon/intron footprints or hide neighboring
+    exon-intron structures.
+- One lane per transcript in splicing mode with stable lane ordering.
+- Introns are rendered as connectors only; exon presence/absence carries the
+  primary interpretation.
+
+Interaction and export semantics:
+
+- GUI splicing mode, SVG export, and scripting interfaces must consume the same
+  `SplicingExpertView` contract.
+- Boundary/event summaries must therefore be adapter-equivalent by design.
+- Implemented operations mirror the expert-view pattern:
+  - inspect splicing view payload (`inspect-feature-expert ... splicing ...`)
+  - render splicing view SVG from the same payload
+    (`render-feature-expert-svg ... splicing ...`).
 
 ## 9. Decision log (concise)
 
@@ -656,6 +712,11 @@ Export semantics:
 - Add feature expert-view model + SVG export contract (TFBS + restriction
   sites) and expose through GUI/shell/CLI/JS/Lua:
   accepted and implemented.
+- Add first-class alternative-splicing interpretation view model (transcript
+  lanes, splice boundaries, event summaries, junction overlays) with strict
+  GUI/SVG parity and no label-driven geometry distortion:
+  accepted and implemented baseline (follow-up hardening remains: dense-fixture
+  regressions + dedicated primary map-mode integration).
 - Add candidate-set scoring/filter/set-algebra workflow (derived expressions,
   value+quantile filters, and explicit set union/intersection/subtraction):
   accepted and implemented as first-class engine operations, exposed through

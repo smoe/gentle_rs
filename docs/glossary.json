@@ -103,8 +103,8 @@
             "cli-direct"
          ],
          "path": "inspect-feature-expert",
-         "summary": "Inspect TFBS or restriction-site expert details as JSON.",
-         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]"
+         "summary": "Inspect TFBS, restriction-site, or splicing expert details as JSON.",
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID"
       },
       {
          "aliases": [],
@@ -117,8 +117,8 @@
             "cli-direct"
          ],
          "path": "render-feature-expert-svg",
-         "summary": "Render TFBS or restriction-site expert visualization as SVG.",
-         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg"
+         "summary": "Render TFBS, restriction-site, or splicing expert visualization as SVG.",
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg"
       },
       {
          "aliases": [],

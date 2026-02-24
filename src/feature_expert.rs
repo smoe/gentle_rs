@@ -4,6 +4,8 @@ pub const TFBS_EXPERT_INSTRUCTION: &str = "TFBS expert view: each column is one 
 
 pub const RESTRICTION_EXPERT_INSTRUCTION: &str = "Restriction-site expert view: top strand is 5'->3', bottom strand is complementary 3'->5'. The vertical cut marker shows cleavage position for the selected enzyme/site.";
 
+pub const SPLICING_EXPERT_INSTRUCTION: &str = "Splicing expert view: one lane per transcript on a shared genomic axis. Exon geometry is coordinate-true (labels never resize exon/intron footprints). Donor/acceptor splice boundaries are marked, junction arcs summarize support across transcripts, and the transcript-vs-exon matrix shows isoform differences.";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
@@ -18,6 +20,9 @@ pub enum FeatureExpertTarget {
         recognition_start_1based: Option<usize>,
         #[serde(default)]
         recognition_end_1based: Option<usize>,
+    },
+    SplicingFeature {
+        feature_id: usize,
     },
 }
 
@@ -43,8 +48,88 @@ impl FeatureExpertTarget {
                 }
                 out
             }
+            Self::SplicingFeature { feature_id } => {
+                format!("splicing feature #{feature_id}")
+            }
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingRange {
+    pub start_1based: usize,
+    pub end_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingExonSummary {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub support_transcript_count: usize,
+    pub constitutive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingBoundaryMarker {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub side: String,
+    pub position_1based: usize,
+    pub motif_2bp: String,
+    pub canonical: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingJunctionArc {
+    pub donor_1based: usize,
+    pub acceptor_1based: usize,
+    pub support_transcript_count: usize,
+    pub transcript_feature_ids: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingTranscriptLane {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub label: String,
+    pub strand: String,
+    pub exons: Vec<SplicingRange>,
+    pub introns: Vec<SplicingRange>,
+    pub has_target_feature: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingMatrixRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub label: String,
+    pub exon_presence: Vec<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingEventSummary {
+    pub event_type: String,
+    pub count: usize,
+    pub details: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingExpertView {
+    pub seq_id: String,
+    pub target_feature_id: usize,
+    pub group_label: String,
+    pub strand: String,
+    pub region_start_1based: usize,
+    pub region_end_1based: usize,
+    pub transcript_count: usize,
+    pub unique_exon_count: usize,
+    pub instruction: String,
+    pub transcripts: Vec<SplicingTranscriptLane>,
+    pub unique_exons: Vec<SplicingExonSummary>,
+    pub matrix_rows: Vec<SplicingMatrixRow>,
+    pub boundaries: Vec<SplicingBoundaryMarker>,
+    pub junctions: Vec<SplicingJunctionArc>,
+    pub events: Vec<SplicingEventSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +195,7 @@ pub struct RestrictionSiteExpertView {
 pub enum FeatureExpertView {
     Tfbs(TfbsExpertView),
     RestrictionSite(RestrictionSiteExpertView),
+    Splicing(SplicingExpertView),
 }
 
 impl FeatureExpertView {
@@ -117,6 +203,7 @@ impl FeatureExpertView {
         match self {
             Self::Tfbs(_) => TFBS_EXPERT_INSTRUCTION,
             Self::RestrictionSite(_) => RESTRICTION_EXPERT_INSTRUCTION,
+            Self::Splicing(_) => SPLICING_EXPERT_INSTRUCTION,
         }
     }
 }

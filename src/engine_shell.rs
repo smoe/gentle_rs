@@ -2181,7 +2181,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.len() < 2 {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -2256,8 +2256,19 @@ fn parse_feature_expert_target_tokens(
                 recognition_end_1based,
             })
         }
+        "splicing" => {
+            if tokens.len() != 2 {
+                return Err(format!(
+                    "{context} splicing target expects exactly: splicing FEATURE_ID"
+                ));
+            }
+            let feature_id = tokens[1]
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid splicing feature id '{}': {e}", tokens[1]))?;
+            Ok(FeatureExpertTarget::SplicingFeature { feature_id })
+        }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing)"
         )),
     }
 }
@@ -11261,6 +11272,19 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             ShellCommand::InspectFeatureExpert { seq_id, target } => {
                 assert_eq!(seq_id, "s");
                 assert_eq!(target, FeatureExpertTarget::TfbsFeature { feature_id: 7 });
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let splicing =
+            parse_shell_line("inspect-feature-expert s splicing 11").expect("parse splicing");
+        match splicing {
+            ShellCommand::InspectFeatureExpert { seq_id, target } => {
+                assert_eq!(seq_id, "s");
+                assert_eq!(
+                    target,
+                    FeatureExpertTarget::SplicingFeature { feature_id: 11 }
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }

@@ -3,7 +3,7 @@ use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
-    feature_location::feature_is_reverse,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
@@ -46,7 +46,10 @@ pub type NodeId = String;
 pub type ContainerId = String;
 pub use crate::feature_expert::{
     FeatureExpertTarget, FeatureExpertView, RESTRICTION_EXPERT_INSTRUCTION,
-    RestrictionSiteExpertView, TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+    RestrictionSiteExpertView, SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker,
+    SplicingEventSummary, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    SplicingMatrixRow, SplicingRange, SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION,
+    TfbsExpertColumn, TfbsExpertView,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
@@ -92,6 +95,7 @@ pub enum DisplayTarget {
 #[serde(default)]
 pub struct DisplaySettings {
     pub show_sequence_panel: bool,
+    pub auto_hide_sequence_panel_when_linear_bases_visible: bool,
     pub show_map_panel: bool,
     pub show_features: bool,
     pub show_cds_features: bool,
@@ -122,17 +126,32 @@ pub struct DisplaySettings {
     pub vcf_display_required_info_keys: Vec<String>,
     pub show_restriction_enzymes: bool,
     pub show_gc_contents: bool,
+    #[serde(default = "DisplaySettings::default_gc_content_bin_size_bp")]
+    pub gc_content_bin_size_bp: usize,
     pub show_open_reading_frames: bool,
     pub show_methylation_sites: bool,
     pub linear_view_start_bp: usize,
     pub linear_view_span_bp: usize,
+    pub linear_sequence_base_text_max_view_span_bp: usize,
+    pub linear_sequence_helical_letters_enabled: bool,
+    pub linear_sequence_helical_max_view_span_bp: usize,
+    pub linear_show_double_strand_bases: bool,
+    pub linear_hide_backbone_when_sequence_bases_visible: bool,
+    pub linear_reverse_strand_use_upside_down_letters: bool,
     pub feature_details_font_size: f32,
+}
+
+impl DisplaySettings {
+    pub const fn default_gc_content_bin_size_bp() -> usize {
+        100
+    }
 }
 
 impl Default for DisplaySettings {
     fn default() -> Self {
         Self {
             show_sequence_panel: true,
+            auto_hide_sequence_panel_when_linear_bases_visible: false,
             show_map_panel: true,
             show_features: true,
             show_cds_features: true,
@@ -162,11 +181,18 @@ impl Default for DisplaySettings {
             vcf_display_required_info_keys: vec![],
             show_restriction_enzymes: true,
             show_gc_contents: true,
+            gc_content_bin_size_bp: Self::default_gc_content_bin_size_bp(),
             show_open_reading_frames: false,
             show_methylation_sites: false,
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
-            feature_details_font_size: 11.0,
+            linear_sequence_base_text_max_view_span_bp: 500,
+            linear_sequence_helical_letters_enabled: false,
+            linear_sequence_helical_max_view_span_bp: 2000,
+            linear_show_double_strand_bases: true,
+            linear_hide_backbone_when_sequence_bases_visible: false,
+            linear_reverse_strand_use_upside_down_letters: true,
+            feature_details_font_size: 8.25,
         }
     }
 }
@@ -3569,6 +3595,591 @@ impl GentleEngine {
         })
     }
 
+    fn is_mrna_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+    }
+
+    fn is_exon_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature.kind.to_string().eq_ignore_ascii_case("exon")
+    }
+
+    fn splicing_group_label(feature: &gb_io::seq::Feature, fallback: usize) -> String {
+        Self::first_nonempty_feature_qualifier(
+            feature,
+            &[
+                "gene",
+                "gene_id",
+                "locus_tag",
+                "standard_name",
+                "gene_synonym",
+            ],
+        )
+        .unwrap_or_else(|| format!("mRNA-group-{}", fallback + 1))
+    }
+
+    fn feature_transcript_id(feature: &gb_io::seq::Feature, fallback: usize) -> String {
+        Self::first_nonempty_feature_qualifier(
+            feature,
+            &[
+                "transcript_id",
+                "standard_name",
+                "product",
+                "label",
+                "name",
+                "gene",
+            ],
+        )
+        .unwrap_or_else(|| format!("transcript-{}", fallback + 1))
+    }
+
+    fn range_vec_to_splicing(mut ranges: Vec<(usize, usize)>) -> Vec<SplicingRange> {
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges
+            .into_iter()
+            .filter(|(start, end)| end > start)
+            .map(|(start, end)| SplicingRange {
+                start_1based: start + 1,
+                end_1based: end,
+            })
+            .collect()
+    }
+
+    fn sequence_slice_upper(dna: &DNAsequence, start: usize, end: usize) -> String {
+        if end <= start {
+            return String::new();
+        }
+        dna.get_range_safe(start..end)
+            .map(|bytes| String::from_utf8_lossy(&bytes).to_ascii_uppercase())
+            .unwrap_or_default()
+    }
+
+    fn splice_boundary_markers_for_introns(
+        dna: &DNAsequence,
+        transcript_feature_id: usize,
+        transcript_id: &str,
+        is_reverse: bool,
+        introns: &[(usize, usize)],
+    ) -> Vec<SplicingBoundaryMarker> {
+        let mut out = Vec::new();
+        for (start, end) in introns {
+            if *end <= *start || end - start < 2 {
+                continue;
+            }
+            if is_reverse {
+                let donor_raw = Self::sequence_slice_upper(dna, end.saturating_sub(2), *end);
+                let acceptor_raw = Self::sequence_slice_upper(dna, *start, (start + 2).min(*end));
+                let donor_rc = Self::reverse_complement_bytes(donor_raw.as_bytes());
+                let acceptor_rc = Self::reverse_complement_bytes(acceptor_raw.as_bytes());
+                let donor_motif = String::from_utf8_lossy(&donor_rc).to_ascii_uppercase();
+                let acceptor_motif = String::from_utf8_lossy(&acceptor_rc).to_ascii_uppercase();
+                out.push(SplicingBoundaryMarker {
+                    transcript_feature_id,
+                    transcript_id: transcript_id.to_string(),
+                    side: "donor".to_string(),
+                    position_1based: *end,
+                    canonical: donor_motif == "GT",
+                    motif_2bp: donor_motif,
+                });
+                out.push(SplicingBoundaryMarker {
+                    transcript_feature_id,
+                    transcript_id: transcript_id.to_string(),
+                    side: "acceptor".to_string(),
+                    position_1based: start + 1,
+                    canonical: acceptor_motif == "AG",
+                    motif_2bp: acceptor_motif,
+                });
+            } else {
+                let donor_motif = Self::sequence_slice_upper(dna, *start, (start + 2).min(*end));
+                let acceptor_motif = Self::sequence_slice_upper(dna, end.saturating_sub(2), *end);
+                out.push(SplicingBoundaryMarker {
+                    transcript_feature_id,
+                    transcript_id: transcript_id.to_string(),
+                    side: "donor".to_string(),
+                    position_1based: start + 1,
+                    canonical: donor_motif == "GT",
+                    motif_2bp: donor_motif,
+                });
+                out.push(SplicingBoundaryMarker {
+                    transcript_feature_id,
+                    transcript_id: transcript_id.to_string(),
+                    side: "acceptor".to_string(),
+                    position_1based: *end,
+                    canonical: acceptor_motif == "AG",
+                    motif_2bp: acceptor_motif,
+                });
+            }
+        }
+        out
+    }
+
+    fn build_splicing_expert_view(
+        &self,
+        seq_id: &str,
+        feature_id: usize,
+    ) -> Result<SplicingExpertView, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let features = dna.features();
+        let target_feature = features.get(feature_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "Feature id '{}' was not found in sequence '{}'",
+                feature_id, seq_id
+            ),
+        })?;
+        if !Self::is_mrna_feature(target_feature) && !Self::is_exon_feature(target_feature) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Feature '{}' in '{}' is not mRNA/exon and cannot seed a splicing view",
+                    feature_id, seq_id
+                ),
+            });
+        }
+        let target_group = Self::splicing_group_label(target_feature, feature_id);
+        let target_is_reverse = feature_is_reverse(target_feature);
+
+        #[derive(Clone)]
+        struct TranscriptWork {
+            feature_id: usize,
+            transcript_id: String,
+            label: String,
+            is_reverse: bool,
+            exon_ranges: Vec<(usize, usize)>,
+            intron_ranges: Vec<(usize, usize)>,
+        }
+
+        let mut transcripts: Vec<TranscriptWork> = Vec::new();
+        for (idx, feature) in features.iter().enumerate() {
+            if !Self::is_mrna_feature(feature) {
+                continue;
+            }
+            if Self::splicing_group_label(feature, idx) != target_group {
+                continue;
+            }
+            if feature_is_reverse(feature) != target_is_reverse {
+                continue;
+            }
+            let mut exon_ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+            if exon_ranges.is_empty() {
+                let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse transcript range: {e}"),
+                })?;
+                if from >= 0 && to >= 0 {
+                    exon_ranges.push((from as usize, to as usize));
+                }
+            }
+            exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            exon_ranges.retain(|(start, end)| end > start);
+            if exon_ranges.is_empty() {
+                continue;
+            }
+            let mut introns: Vec<(usize, usize)> = vec![];
+            for pair in exon_ranges.windows(2) {
+                let left = pair[0];
+                let right = pair[1];
+                if right.0 > left.1 {
+                    introns.push((left.1, right.0));
+                }
+            }
+            transcripts.push(TranscriptWork {
+                feature_id: idx,
+                transcript_id: Self::feature_transcript_id(feature, idx),
+                label: Self::feature_display_label(feature, idx),
+                is_reverse: feature_is_reverse(feature),
+                exon_ranges,
+                intron_ranges: introns,
+            });
+        }
+
+        if transcripts.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No mRNA transcripts found for splicing group '{}' in '{}'",
+                    target_group, seq_id
+                ),
+            });
+        }
+
+        transcripts.sort_by(|a, b| a.transcript_id.cmp(&b.transcript_id));
+
+        let mut exon_support: HashMap<(usize, usize), HashSet<usize>> = HashMap::new();
+        let mut junction_support: HashMap<(usize, usize), HashSet<usize>> = HashMap::new();
+        for transcript in &transcripts {
+            for exon in &transcript.exon_ranges {
+                exon_support
+                    .entry(*exon)
+                    .or_default()
+                    .insert(transcript.feature_id);
+            }
+            for intron in &transcript.intron_ranges {
+                junction_support
+                    .entry(*intron)
+                    .or_default()
+                    .insert(transcript.feature_id);
+            }
+        }
+
+        let mut unique_exons: Vec<(usize, usize)> = exon_support.keys().copied().collect();
+        unique_exons.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        let region_start = unique_exons
+            .iter()
+            .map(|(start, _)| *start)
+            .min()
+            .unwrap_or(0);
+        let region_end = unique_exons
+            .iter()
+            .map(|(_, end)| *end)
+            .max()
+            .unwrap_or(region_start + 1);
+
+        let transcript_count = transcripts.len();
+        let unique_exon_summaries: Vec<SplicingExonSummary> = unique_exons
+            .iter()
+            .map(|(start, end)| {
+                let support = exon_support
+                    .get(&(*start, *end))
+                    .map(|set| set.len())
+                    .unwrap_or(0);
+                SplicingExonSummary {
+                    start_1based: start + 1,
+                    end_1based: *end,
+                    support_transcript_count: support,
+                    constitutive: support == transcript_count,
+                }
+            })
+            .collect();
+
+        let transcript_lanes: Vec<SplicingTranscriptLane> = transcripts
+            .iter()
+            .map(|transcript| SplicingTranscriptLane {
+                transcript_feature_id: transcript.feature_id,
+                transcript_id: transcript.transcript_id.clone(),
+                label: transcript.label.clone(),
+                strand: if transcript.is_reverse {
+                    "-".to_string()
+                } else {
+                    "+".to_string()
+                },
+                exons: Self::range_vec_to_splicing(transcript.exon_ranges.clone()),
+                introns: Self::range_vec_to_splicing(transcript.intron_ranges.clone()),
+                has_target_feature: transcript.feature_id == feature_id,
+            })
+            .collect();
+
+        let matrix_rows: Vec<SplicingMatrixRow> = transcripts
+            .iter()
+            .map(|transcript| {
+                let set = transcript
+                    .exon_ranges
+                    .iter()
+                    .copied()
+                    .collect::<HashSet<(usize, usize)>>();
+                SplicingMatrixRow {
+                    transcript_feature_id: transcript.feature_id,
+                    transcript_id: transcript.transcript_id.clone(),
+                    label: transcript.label.clone(),
+                    exon_presence: unique_exons.iter().map(|exon| set.contains(exon)).collect(),
+                }
+            })
+            .collect();
+
+        let mut boundaries = Vec::new();
+        for transcript in &transcripts {
+            boundaries.extend(Self::splice_boundary_markers_for_introns(
+                dna,
+                transcript.feature_id,
+                &transcript.transcript_id,
+                transcript.is_reverse,
+                &transcript.intron_ranges,
+            ));
+        }
+        boundaries.sort_by(|a, b| {
+            a.position_1based
+                .cmp(&b.position_1based)
+                .then_with(|| a.side.cmp(&b.side))
+                .then_with(|| a.transcript_feature_id.cmp(&b.transcript_feature_id))
+        });
+
+        let mut junctions: Vec<SplicingJunctionArc> = junction_support
+            .into_iter()
+            .map(|((donor0, acceptor0), ids)| {
+                let mut transcript_feature_ids = ids.into_iter().collect::<Vec<_>>();
+                transcript_feature_ids.sort_unstable();
+                SplicingJunctionArc {
+                    donor_1based: donor0 + 1,
+                    acceptor_1based: acceptor0,
+                    support_transcript_count: transcript_feature_ids.len(),
+                    transcript_feature_ids,
+                }
+            })
+            .collect();
+        junctions.sort_by(|a, b| {
+            a.donor_1based
+                .cmp(&b.donor_1based)
+                .then(a.acceptor_1based.cmp(&b.acceptor_1based))
+        });
+
+        let mut exon_skip_details = Vec::new();
+        let mut intron_retention_details = Vec::new();
+        let mut alt5_details = Vec::new();
+        let mut alt3_details = Vec::new();
+        let mut mex_details = Vec::new();
+
+        let exon_set_by_transcript: HashMap<usize, HashSet<(usize, usize)>> = transcripts
+            .iter()
+            .map(|transcript| {
+                (
+                    transcript.feature_id,
+                    transcript.exon_ranges.iter().copied().collect(),
+                )
+            })
+            .collect();
+
+        let mut alt5_groups = 0usize;
+        let mut alt3_groups = 0usize;
+        let mut grouped_by_start: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+        let mut grouped_by_end: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+        for exon in &unique_exons {
+            grouped_by_start.entry(exon.0).or_default().push(*exon);
+            grouped_by_end.entry(exon.1).or_default().push(*exon);
+        }
+        if target_is_reverse {
+            for (start, group) in grouped_by_start {
+                let distinct = group
+                    .iter()
+                    .map(|(_, end)| *end)
+                    .collect::<HashSet<_>>()
+                    .len();
+                if distinct > 1 {
+                    alt5_groups += 1;
+                    alt5_details.push(format!(
+                        "shared start={} with {} alternative 5' exon end(s)",
+                        start + 1,
+                        distinct
+                    ));
+                }
+            }
+            for (end, group) in grouped_by_end {
+                let distinct = group
+                    .iter()
+                    .map(|(start, _)| *start)
+                    .collect::<HashSet<_>>()
+                    .len();
+                if distinct > 1 {
+                    alt3_groups += 1;
+                    alt3_details.push(format!(
+                        "shared end={} with {} alternative 3' exon start(s)",
+                        end, distinct
+                    ));
+                }
+            }
+        } else {
+            for (start, group) in grouped_by_start {
+                let distinct = group
+                    .iter()
+                    .map(|(_, end)| *end)
+                    .collect::<HashSet<_>>()
+                    .len();
+                if distinct > 1 {
+                    alt3_groups += 1;
+                    alt3_details.push(format!(
+                        "shared start={} with {} alternative 3' exon end(s)",
+                        start + 1,
+                        distinct
+                    ));
+                }
+            }
+            for (end, group) in grouped_by_end {
+                let distinct = group
+                    .iter()
+                    .map(|(start, _)| *start)
+                    .collect::<HashSet<_>>()
+                    .len();
+                if distinct > 1 {
+                    alt5_groups += 1;
+                    alt5_details.push(format!(
+                        "shared end={} with {} alternative 5' exon start(s)",
+                        end, distinct
+                    ));
+                }
+            }
+        }
+
+        let mut exon_skip_count = 0usize;
+        for transcript in &transcripts {
+            for (intron_start, intron_end) in &transcript.intron_ranges {
+                let skipped = unique_exons
+                    .iter()
+                    .filter(|(exon_start, exon_end)| {
+                        *exon_start >= *intron_start
+                            && *exon_end <= *intron_end
+                            && !transcript
+                                .exon_ranges
+                                .iter()
+                                .any(|own| own.0 == *exon_start && own.1 == *exon_end)
+                    })
+                    .count();
+                if skipped > 0 {
+                    exon_skip_count += skipped;
+                    exon_skip_details.push(format!(
+                        "{} junction {}..{} skips {} exon(s)",
+                        transcript.transcript_id,
+                        intron_start + 1,
+                        intron_end,
+                        skipped
+                    ));
+                }
+            }
+        }
+
+        let mut intron_retention_count = 0usize;
+        for transcript in &transcripts {
+            for (intron_start, intron_end) in &transcript.intron_ranges {
+                let retained_by = transcripts.iter().find_map(|other| {
+                    if other.feature_id == transcript.feature_id {
+                        return None;
+                    }
+                    if other.exon_ranges.iter().any(|(exon_start, exon_end)| {
+                        exon_start <= intron_start && exon_end >= intron_end
+                    }) {
+                        Some(other.transcript_id.clone())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(other_id) = retained_by {
+                    intron_retention_count += 1;
+                    intron_retention_details.push(format!(
+                        "{} intron {}..{} retained in {}",
+                        transcript.transcript_id,
+                        intron_start + 1,
+                        intron_end,
+                        other_id
+                    ));
+                }
+            }
+        }
+
+        let mut mex_count = 0usize;
+        for left_idx in 0..unique_exons.len() {
+            for right_idx in (left_idx + 1)..unique_exons.len() {
+                let left = unique_exons[left_idx];
+                let right = unique_exons[right_idx];
+                if left.1 <= right.0 || right.1 <= left.0 {
+                    continue;
+                }
+                let left_support = exon_support.get(&left).cloned().unwrap_or_default();
+                let right_support = exon_support.get(&right).cloned().unwrap_or_default();
+                if left_support.is_empty()
+                    || right_support.is_empty()
+                    || !left_support.is_disjoint(&right_support)
+                {
+                    continue;
+                }
+                let co_occurs = transcripts.iter().any(|transcript| {
+                    let set = exon_set_by_transcript
+                        .get(&transcript.feature_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    set.contains(&left) && set.contains(&right)
+                });
+                if !co_occurs {
+                    mex_count += 1;
+                    mex_details.push(format!(
+                        "{}..{} and {}..{} appear mutually exclusive",
+                        left.0 + 1,
+                        left.1,
+                        right.0 + 1,
+                        right.1
+                    ));
+                }
+            }
+        }
+
+        let alt_exon_count = unique_exon_summaries
+            .iter()
+            .filter(|exon| !exon.constitutive)
+            .count();
+
+        let events = vec![
+            SplicingEventSummary {
+                event_type: "alternative_exon".to_string(),
+                count: alt_exon_count,
+                details: unique_exon_summaries
+                    .iter()
+                    .filter(|exon| !exon.constitutive)
+                    .take(6)
+                    .map(|exon| {
+                        format!(
+                            "{}..{} support={}/{}",
+                            exon.start_1based,
+                            exon.end_1based,
+                            exon.support_transcript_count,
+                            transcript_count
+                        )
+                    })
+                    .collect(),
+            },
+            SplicingEventSummary {
+                event_type: "alternative_5prime".to_string(),
+                count: alt5_groups,
+                details: alt5_details.into_iter().take(6).collect(),
+            },
+            SplicingEventSummary {
+                event_type: "alternative_3prime".to_string(),
+                count: alt3_groups,
+                details: alt3_details.into_iter().take(6).collect(),
+            },
+            SplicingEventSummary {
+                event_type: "exon_skipping".to_string(),
+                count: exon_skip_count,
+                details: exon_skip_details.into_iter().take(6).collect(),
+            },
+            SplicingEventSummary {
+                event_type: "intron_retention".to_string(),
+                count: intron_retention_count,
+                details: intron_retention_details.into_iter().take(6).collect(),
+            },
+            SplicingEventSummary {
+                event_type: "mutually_exclusive_exons".to_string(),
+                count: mex_count,
+                details: mex_details.into_iter().take(6).collect(),
+            },
+        ];
+
+        Ok(SplicingExpertView {
+            seq_id: seq_id.to_string(),
+            target_feature_id: feature_id,
+            group_label: target_group,
+            strand: if target_is_reverse {
+                "-".to_string()
+            } else {
+                "+".to_string()
+            },
+            region_start_1based: region_start + 1,
+            region_end_1based: region_end,
+            transcript_count,
+            unique_exon_count: unique_exons.len(),
+            instruction: SPLICING_EXPERT_INSTRUCTION.to_string(),
+            transcripts: transcript_lanes,
+            unique_exons: unique_exon_summaries,
+            matrix_rows,
+            boundaries,
+            junctions,
+            events,
+        })
+    }
+
     pub fn inspect_feature_expert(
         &self,
         seq_id: &str,
@@ -3592,6 +4203,9 @@ impl GentleEngine {
                     *recognition_end_1based,
                 )
                 .map(FeatureExpertView::RestrictionSite),
+            FeatureExpertTarget::SplicingFeature { feature_id } => self
+                .build_splicing_expert_view(seq_id, *feature_id)
+                .map(FeatureExpertView::Splicing),
         }
     }
 
@@ -14085,18 +14699,24 @@ impl GentleEngine {
                         message: "ExtractRegion requires from != to".to_string(),
                     });
                 }
-                let fragment = dna.get_range_safe(from..to).ok_or_else(|| EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message: format!(
-                        "Could not extract region {}..{} from sequence '{}'",
-                        from, to, input
-                    ),
-                })?;
-                let text = String::from_utf8_lossy(&fragment).to_string();
-                let mut out = DNAsequence::from_sequence(&text).map_err(|e| EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!("Could not create extracted sequence: {e}"),
-                })?;
+                let mut out = dna
+                    .extract_region_preserving_features(from, to)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not extract region {}..{} from sequence '{}'",
+                            from, to, input
+                        ),
+                    })?;
+                if out.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Could not extract region {}..{} from sequence '{}'",
+                            from, to, input
+                        ),
+                    });
+                }
                 out.set_circular(false);
                 Self::prepare_sequence(&mut out);
 
@@ -15379,6 +15999,51 @@ impl GentleEngine {
                         self.state.display.regulatory_feature_max_view_span_bp
                     ));
                 }
+                "linear_sequence_base_text_max_view_span_bp"
+                | "linear_base_text_max_view_span_bp"
+                | "sequence_base_text_max_view_span_bp" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a non-negative integer"),
+                    })?;
+                    self.state
+                        .display
+                        .linear_sequence_base_text_max_view_span_bp = raw as usize;
+                    result.messages.push(format!(
+                        "Set parameter 'linear_sequence_base_text_max_view_span_bp' to {}",
+                        self.state
+                            .display
+                            .linear_sequence_base_text_max_view_span_bp
+                    ));
+                }
+                "gc_content_bin_size_bp" | "gc_bin_size_bp" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a positive integer"),
+                    })?;
+                    if raw == 0 {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "gc_content_bin_size_bp must be >= 1".to_string(),
+                        });
+                    }
+                    self.state.display.gc_content_bin_size_bp = raw as usize;
+                    result.messages.push(format!(
+                        "Set parameter 'gc_content_bin_size_bp' to {}",
+                        self.state.display.gc_content_bin_size_bp
+                    ));
+                }
+                "linear_sequence_helical_max_view_span_bp" | "linear_helical_max_view_span_bp" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a non-negative integer"),
+                    })?;
+                    self.state.display.linear_sequence_helical_max_view_span_bp = raw as usize;
+                    result.messages.push(format!(
+                        "Set parameter 'linear_sequence_helical_max_view_span_bp' to {}",
+                        self.state.display.linear_sequence_helical_max_view_span_bp
+                    ));
+                }
                 "vcf_display_show_snp"
                 | "vcf_display_show_ins"
                 | "vcf_display_show_del"
@@ -15386,7 +16051,15 @@ impl GentleEngine {
                 | "vcf_display_show_other"
                 | "vcf_display_pass_only"
                 | "vcf_display_use_min_qual"
-                | "vcf_display_use_max_qual" => {
+                | "vcf_display_use_max_qual"
+                | "auto_hide_sequence_panel_when_linear_bases_visible"
+                | "linear_show_double_strand_bases"
+                | "show_linear_double_strand_bases"
+                | "linear_hide_backbone_when_sequence_bases_visible"
+                | "hide_linear_backbone_when_bases_visible"
+                | "linear_sequence_helical_letters_enabled"
+                | "linear_reverse_strand_use_upside_down_letters"
+                | "linear_reverse_strand_upside_down_letters" => {
                     let raw = value.as_bool().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("SetParameter {} requires a boolean", name),
@@ -15403,6 +16076,29 @@ impl GentleEngine {
                         }
                         "vcf_display_use_max_qual" => {
                             self.state.display.vcf_display_use_max_qual = raw
+                        }
+                        "auto_hide_sequence_panel_when_linear_bases_visible" => {
+                            self.state
+                                .display
+                                .auto_hide_sequence_panel_when_linear_bases_visible = raw
+                        }
+                        "linear_show_double_strand_bases" | "show_linear_double_strand_bases" => {
+                            self.state.display.linear_show_double_strand_bases = raw
+                        }
+                        "linear_hide_backbone_when_sequence_bases_visible"
+                        | "hide_linear_backbone_when_bases_visible" => {
+                            self.state
+                                .display
+                                .linear_hide_backbone_when_sequence_bases_visible = raw
+                        }
+                        "linear_sequence_helical_letters_enabled" => {
+                            self.state.display.linear_sequence_helical_letters_enabled = raw
+                        }
+                        "linear_reverse_strand_use_upside_down_letters"
+                        | "linear_reverse_strand_upside_down_letters" => {
+                            self.state
+                                .display
+                                .linear_reverse_strand_use_upside_down_letters = raw
                         }
                         _ => unreachable!(),
                     }
@@ -15546,6 +16242,53 @@ mod tests {
 
     fn seq(s: &str) -> DNAsequence {
         DNAsequence::from_sequence(s).unwrap()
+    }
+
+    fn splicing_test_sequence() -> DNAsequence {
+        let mut bases = vec![b'A'; 40];
+        for (idx, base) in [
+            (8usize, b'G'),
+            (9, b'T'),
+            (10, b'A'),
+            (11, b'G'),
+            (14, b'A'),
+            (15, b'G'),
+            (20, b'G'),
+            (21, b'T'),
+            (24, b'A'),
+            (25, b'G'),
+        ] {
+            bases[idx] = base;
+        }
+        let sequence = String::from_utf8(bases).expect("valid ASCII DNA");
+        let mut dna = DNAsequence::from_sequence(&sequence).expect("valid DNA sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(2, 8),
+                gb_io::seq::Location::simple_range(12, 20),
+                gb_io::seq::Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_1".to_string())),
+                ("label".into(), Some("NM_TEST_1".to_string())),
+            ],
+        });
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(2, 8),
+                gb_io::seq::Location::simple_range(16, 20),
+                gb_io::seq::Location::simple_range(26, 34),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("NM_TEST_2".to_string())),
+                ("label".into(), Some("NM_TEST_2".to_string())),
+            ],
+        });
+        dna
     }
 
     fn synth_oligo(desc: &str, sequence: &[u8]) -> DNAsequence {
@@ -15753,6 +16496,34 @@ exit 2
                 .get_forward_string(),
             "GCATG"
         );
+    }
+
+    #[test]
+    fn test_extract_region_preserves_overlapping_features() {
+        let mut state = ProjectState::default();
+        let mut dna = seq("ATGCATGCATGC");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location: gb_io::seq::Location::simple_range(2, 8),
+            qualifiers: vec![("label".into(), Some("gene_a".to_string()))],
+        });
+        state.sequences.insert("x".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::ExtractRegion {
+                input: "x".to_string(),
+                from: 2,
+                to: 10,
+                output_id: Some("part".to_string()),
+            })
+            .unwrap();
+        let part = engine.state().sequences.get("part").expect("part sequence");
+        let gene = part
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("gene should be preserved in extracted region");
+        assert_eq!(gene.location.find_bounds().expect("gene bounds"), (0, 6));
     }
 
     #[test]
@@ -16247,6 +17018,88 @@ exit 2
         assert_eq!(
             engine.state().display.regulatory_feature_max_view_span_bp,
             50_000
+        );
+    }
+
+    #[test]
+    fn test_set_parameter_gc_content_bin_size_bp() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetParameter {
+                name: "gc_content_bin_size_bp".to_string(),
+                value: serde_json::json!(250),
+            })
+            .unwrap();
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("gc_content_bin_size_bp"))
+        );
+        assert_eq!(engine.state().display.gc_content_bin_size_bp, 250);
+    }
+
+    #[test]
+    fn test_set_parameter_linear_sequence_base_text_max_view_span_bp() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetParameter {
+                name: "linear_sequence_base_text_max_view_span_bp".to_string(),
+                value: serde_json::json!(1200),
+            })
+            .unwrap();
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("linear_sequence_base_text_max_view_span_bp"))
+        );
+        assert_eq!(
+            engine
+                .state()
+                .display
+                .linear_sequence_base_text_max_view_span_bp,
+            1200
+        );
+    }
+
+    #[test]
+    fn test_set_parameter_linear_helical_display_controls() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_sequence_helical_letters_enabled".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_sequence_helical_max_view_span_bp".to_string(),
+                value: serde_json::json!(2500),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_hide_backbone_when_sequence_bases_visible".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        assert!(
+            engine
+                .state()
+                .display
+                .linear_sequence_helical_letters_enabled
+        );
+        assert_eq!(
+            engine
+                .state()
+                .display
+                .linear_sequence_helical_max_view_span_bp,
+            2500
+        );
+        assert!(
+            engine
+                .state()
+                .display
+                .linear_hide_backbone_when_sequence_bases_visible
         );
     }
 
@@ -17480,6 +18333,45 @@ ORIGIN
     }
 
     #[test]
+    fn test_inspect_splicing_feature_expert_view() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), splicing_test_sequence());
+        let engine = GentleEngine::from_state(state);
+        let view = engine
+            .inspect_feature_expert("s", &FeatureExpertTarget::SplicingFeature { feature_id: 0 })
+            .unwrap();
+        match view {
+            FeatureExpertView::Splicing(splicing) => {
+                assert_eq!(splicing.seq_id, "s");
+                assert_eq!(splicing.group_label, "GENE1");
+                assert_eq!(splicing.transcript_count, 2);
+                assert_eq!(splicing.transcripts.len(), 2);
+                assert!(splicing.unique_exon_count >= 3);
+                assert_eq!(splicing.matrix_rows.len(), 2);
+                assert!(!splicing.unique_exons.is_empty());
+                assert!(!splicing.boundaries.is_empty());
+                assert!(!splicing.junctions.is_empty());
+                assert!(
+                    splicing
+                        .boundaries
+                        .iter()
+                        .any(|m| m.side.eq_ignore_ascii_case("donor") && m.canonical)
+                );
+                assert!(
+                    splicing
+                        .boundaries
+                        .iter()
+                        .any(|m| m.side.eq_ignore_ascii_case("acceptor") && m.canonical)
+                );
+                assert_eq!(splicing.instruction, SPLICING_EXPERT_INSTRUCTION);
+            }
+            other => panic!("expected splicing expert view, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_render_feature_expert_svg_operation() {
         let mut state = ProjectState::default();
         state
@@ -17524,6 +18416,29 @@ ORIGIN
         let text = std::fs::read_to_string(path_text).unwrap();
         assert!(text.contains("<svg"));
         assert!(text.contains("TFBS expert"));
+    }
+
+    #[test]
+    fn test_render_splicing_feature_expert_svg_operation() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("splicing.feature.expert.svg");
+        let path_text = path.display().to_string();
+        let result = engine
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id: "s".to_string(),
+                target: FeatureExpertTarget::SplicingFeature { feature_id: 0 },
+                path: path_text.clone(),
+            })
+            .unwrap();
+        assert!(result.messages.iter().any(|m| m.contains("feature expert")));
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("<svg"));
+        assert!(text.contains("Splicing expert"));
     }
 
     #[test]
@@ -18121,6 +19036,33 @@ ORIGIN
             err.message
                 .contains("regulatory_feature_max_view_span_bp requires a non-negative integer")
         );
+    }
+
+    #[test]
+    fn test_set_parameter_gc_content_bin_size_bp_invalid_type_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "gc_content_bin_size_bp".to_string(),
+                value: serde_json::json!("fine"),
+            })
+            .unwrap_err();
+        assert!(
+            err.message
+                .contains("gc_content_bin_size_bp requires a positive integer")
+        );
+    }
+
+    #[test]
+    fn test_set_parameter_gc_content_bin_size_bp_zero_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "gc_content_bin_size_bp".to_string(),
+                value: serde_json::json!(0),
+            })
+            .unwrap_err();
+        assert!(err.message.contains("gc_content_bin_size_bp must be >= 1"));
     }
 
     #[test]

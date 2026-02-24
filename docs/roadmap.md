@@ -32,7 +32,8 @@ order. Durable architecture constraints and decisions remain in
   and scripting adapters.
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
-- Feature expert-view pipeline for selected TFBS and restriction sites:
+- Feature expert-view pipeline for selected TFBS, restriction sites, and
+  splicing groups:
   - shared expert payload generation in engine
   - GUI-side expert panel rendering from engine payload
   - SVG export via `RenderFeatureExpertSvg`
@@ -58,6 +59,13 @@ order. Durable architecture constraints and decisions remain in
   - serial arrangements are rendered as dedicated graph nodes linked from lane-source sequences
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
+- Linear DNA-letter rendering controls now include:
+  - configurable standard letter span threshold
+  - optional helical-compressed letter mode up to higher spans (default 2000 bp)
+  - configurable double-strand display with optional upside-down reverse letters
+  - optional sequence-panel auto-hide when map letters are visible
+- Linear-map drag selection can now be extracted directly to a new sequence via
+  `ExtractRegion`, preserving overlapping features in the derived fragment.
 - Scrollable/resizable Engine Ops area and shared-shell panel.
 - Context-sensitive hover descriptions on actionable controls.
 - Help-window shell command reference generated from `docs/glossary.json` with
@@ -71,10 +79,11 @@ order. Durable architecture constraints and decisions remain in
 - Circular sequence-map feature labels now use collision-aware placement:
   labels can slide within feature spans and avoid overlap with already rendered
   labels (for example restriction-site annotations).
+- GC-content overlays now use a configurable bin size (`gc_content_bin_size_bp`)
+  shared across linear view, circular view, and SVG export.
 - Help viewer image handling:
   - markdown images render at constrained width
-  - parsed help images are listed with captions and clickable previews
-  - clicking a preview opens an enlarged image window inside Help
+  - image captions are authored inline in markdown (`*Figure: ...*`)
 - Experimental window backdrop styling path:
   - optional per-window-type accent tint (`main`, `sequence`, `pool`,
     `configuration`, `help`)
@@ -90,8 +99,9 @@ order. Durable architecture constraints and decisions remain in
 | Export/render operations (sequence/lineage/pool gel) | Done |
 | Reference genome + track import surfaces | Done |
 | Shared shell parity across GUI/CLI | Done |
-| Feature expert views (TFBS/restriction) via shared engine model | Done |
+| Feature expert views (TFBS/restriction/splicing) via shared engine model | Done |
 | Candidate strand-relation controls across adapters | Done |
+| Alternative-splicing interpretation (lanes/boundaries/events/evidence) | Done (expert-view baseline) |
 | Cloning-mode macro presets (SnapGene-style workflows) | Planned |
 | Gel simulation realism and arrangement modeling | Partial |
 | Shared operation protocol usage | Partial |
@@ -117,6 +127,8 @@ Notes:
 - Auto-updated documentation with embedded graphics remains postponed.
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
+- Feature-tree grouping/count UX currently lacks dedicated UI regression tests
+  (second-level grouping toggle and visible/total per-group count labeling).
 - Backdrop-image ingest and UX hardening are still incomplete:
   - monochrome conversion currently relies on tinting/asset choice and needs a
     stricter renderer-side grayscale pass
@@ -130,12 +142,40 @@ Notes:
 - Chromosomal-scale track overview is still missing: BED-derived features should
   also be visualized at chromosome level, including an optional density view for
   large regions.
-- Feature expert-view scope is currently targeted to TFBS and restriction
-  sites; future extension to additional feature classes should preserve the same
-  `FeatureExpertTarget -> FeatureExpertView -> SVG` contract.
+- Feature expert-view scope now includes TFBS, restriction sites, and
+  splicing groups; future extension to additional feature classes should
+  preserve the same `FeatureExpertTarget -> FeatureExpertView -> SVG` contract.
+- Dedicated primary map-mode splicing visualization (outside expert/detail
+  panel) is still pending; current baseline is available via expert payload,
+  GUI expert panel, and SVG export.
 - XML sequence/annotation import is not yet integrated into the shared runtime
   import paths; current primary format remains GenBank (+ FASTA for
   sequence-only).
+- Cross-application clipboard interoperability for sequence + feature transfer
+  is not yet implemented; current baseline supports deterministic in-app
+  extraction into new sequences, while external copy/paste still needs a
+  versioned import/export/intent contract.
+
+### Alternative-splicing interpretation track (baseline implemented; follow-ups)
+
+Goal: make exon/intron boundary interpretation and alternative-splicing
+inspection explicit, readable, and adapter-equivalent.
+
+Status:
+
+1. Implemented baseline:
+   - shared engine-owned splicing payload (`SplicingExpertView`) and selector
+     (`FeatureExpertTarget::SplicingFeature`) are in place.
+   - boundary markers, event summaries, transcript-vs-exon matrix, and
+     junction-support arcs are rendered from the shared payload.
+   - GUI expert panel and SVG export use the same payload; shell/CLI/JS/Lua
+     can inspect/export via existing feature-expert commands.
+2. Remaining follow-ups:
+   - add dense-fixture snapshot tests for boundary visibility/non-overlap.
+   - add explicit geometry invariants to ensure label text can never alter
+     exon/intron footprints.
+   - add a dedicated primary map-mode splicing view (beyond expert/detail
+     panel embedding) for full-sequence workflows.
 
 ### XML import integration track (GenBank-first)
 
@@ -378,6 +418,10 @@ Planned upgrades:
 
 - Keep adapter-level helpers thin and aligned with engine operations.
 - Continue parity checks as new operations are introduced.
+- Continue alternative-splicing follow-ups:
+  - add dense-fixture regression tests for boundary visibility and label safety
+  - harden invariants for coordinate-true exon/intron geometry
+  - promote expert-view baseline into a dedicated primary map-mode splicing view
 - Start with gel work:
   - add arrangement authoring/editing UX (create/update/reorder lanes)
   - add `plate` arrangement mode as first-class engine + adapter entity

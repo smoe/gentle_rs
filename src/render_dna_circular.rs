@@ -2,7 +2,7 @@ use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
     feature_location::{feature_ranges_sorted_i64, normalize_range, unwrap_ranges_monotonic},
-    gc_contents::GcRegion,
+    gc_contents::{GcContents, GcRegion},
     render_dna::RenderDna,
     render_dna::RestrictionEnzymePosition,
     restriction_enzyme::RestrictionEnzymeKey,
@@ -517,12 +517,26 @@ impl RenderDnaCircular {
 
     /// Draws GC content regions on the circular DNA.
     fn draw_gc_contents(&self, painter: &egui::Painter) {
-        if !self.display.read().unwrap().show_gc_contents() {
+        let (show_gc, gc_content_bin_size_bp) = self
+            .display
+            .read()
+            .map(|display| (display.show_gc_contents(), display.gc_content_bin_size_bp()))
+            .unwrap_or((false, 100));
+        if !show_gc {
             return;
         }
         let radius = self.radius * 2.0 / 3.0;
         let mut last_point = self.pos2xy(0, radius);
-        let gc_content = self.dna.read().unwrap().gc_content().to_owned();
+        let gc_content = self
+            .dna
+            .read()
+            .map(|dna| {
+                GcContents::new_from_sequence_with_bin_size(
+                    dna.forward_bytes(),
+                    gc_content_bin_size_bp,
+                )
+            })
+            .unwrap_or_default();
         for gc_region in gc_content.regions() {
             last_point = self.draw_gc_arc(gc_region, radius, painter, last_point);
         }

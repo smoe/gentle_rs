@@ -1,0 +1,23 @@
+ID   TOY000001; SV 1; linear; genomic DNA; STD; SYN; 120 BP.
+XX
+AC   TOY000001;
+XX
+DE   Synthetic 120 bp test sequence for GENtle cross-format import checks.
+XX
+FH   Key             Location/Qualifiers
+FH
+FT   source          1..120
+FT                   /organism="synthetic DNA construct"
+FT                   /mol_type="other DNA"
+FT   gene            5..30
+FT                   /gene="toyA"
+FT                   /locus_tag="toyA"
+FT   gene            complement(60..90)
+FT                   /gene="toyB"
+FT                   /locus_tag="toyB"
+FT   misc_feature    96..112
+FT                   /note="barcode"
+SQ   Sequence 120 BP; 30 A; 28 C; 29 G; 33 T; 0 other;
+     atggccattg taatgggccg ctgaaagggt gcccgatagt taaccggttaa acccgggtt        60
+     taaacccggg tttaaaccgg atccggtacc gagctcgaat tcgcgtacga tcgtacgcta       120
+//
