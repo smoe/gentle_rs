@@ -1,10 +1,10 @@
 use anyhow::{Result, anyhow};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use std::num::ParseFloatError;
-use serde_json::Value;
 
 // Should consider falling back on https://docs.rs/bio/latest/src/bio/pattern_matching/pssm/mod.rs.html
 
@@ -158,11 +158,17 @@ impl PSSM {
 
         if let Some(entries) = json.as_array() {
             for entry in entries {
-                let accession = entry["matrix_id"].as_str().ok_or(anyhow!("Missing matrix_id"))?.to_string();
+                let accession = entry["matrix_id"]
+                    .as_str()
+                    .ok_or(anyhow!("Missing matrix_id"))?
+                    .to_string();
                 let description = entry["name"].as_str().unwrap_or("").to_string();
                 let mut matrix = vec![vec![]; 4];
 
-                for (base, counts) in entry["pfm"].as_object().ok_or(anyhow!("Invalid pfm format"))? {
+                for (base, counts) in entry["pfm"]
+                    .as_object()
+                    .ok_or(anyhow!("Invalid pfm format"))?
+                {
                     let row = match base.as_str() {
                         "A" => &mut matrix[0],
                         "C" => &mut matrix[1],
@@ -172,7 +178,9 @@ impl PSSM {
                     };
 
                     for count in counts.as_array().ok_or(anyhow!("Invalid counts format"))? {
-                        let count_value = count.as_f64().or_else(|| count.as_str().and_then(|s| s.parse::<f64>().ok()))
+                        let count_value = count
+                            .as_f64()
+                            .or_else(|| count.as_str().and_then(|s| s.parse::<f64>().ok()))
                             .ok_or(anyhow!("Invalid count value: {:?}", count))?;
                         row.push(count_value);
                     }
@@ -385,7 +393,7 @@ mod tests {
     fn test_json_parsing() -> Result<()> {
         let json_file = "assets/jaspar_2022.json"; // Replace with actual file path
         let pssms = PSSM::from_json_file(json_file)?;
-        
+
         assert_eq!(pssms.len(), 1956); // Equals `grep -c "^>" data/JASPAR_2022.txt`
 
         // Access a specific PSSM by name

@@ -3278,7 +3278,10 @@ impl GentleEngine {
             })?;
         let feature = dna.features().get(feature_id).ok_or_else(|| EngineError {
             code: ErrorCode::NotFound,
-            message: format!("Feature id '{}' was not found in sequence '{}'", feature_id, seq_id),
+            message: format!(
+                "Feature id '{}' was not found in sequence '{}'",
+                feature_id, seq_id
+            ),
         })?;
         if !Self::is_tfbs_feature(feature) {
             return Err(EngineError {
@@ -3331,7 +3334,9 @@ impl GentleEngine {
             let counts = matrix_counts[idx];
             let frequencies = Self::normalize_column_frequencies(counts);
             let information_content_bits = Self::information_content_bits(&frequencies);
-            let match_base = matched_bytes.get(idx).map(|b| (*b as char).to_ascii_uppercase());
+            let match_base = matched_bytes
+                .get(idx)
+                .map(|b| (*b as char).to_ascii_uppercase());
             let match_idx = matched_bytes.get(idx).and_then(|b| Self::base_to_idx(*b));
             let (match_frequency, llr_bits, true_log_odds_bits) = if let Some(base_idx) = match_idx
             {
@@ -3376,10 +3381,9 @@ impl GentleEngine {
         let llr_total_bits =
             Self::feature_qualifier_f64(feature, "llr_bits").or(Some(llr_from_columns));
         let llr_quantile = Self::feature_qualifier_f64(feature, "llr_quantile");
-        let true_log_odds_total_bits =
-            Self::feature_qualifier_f64(feature, "true_log_odds_bits")
-                .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_bits"))
-                .or(Some(true_log_odds_from_columns));
+        let true_log_odds_total_bits = Self::feature_qualifier_f64(feature, "true_log_odds_bits")
+            .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_bits"))
+            .or(Some(true_log_odds_from_columns));
         let true_log_odds_quantile = Self::feature_qualifier_f64(feature, "true_log_odds_quantile")
             .or_else(|| Self::feature_qualifier_f64(feature, "log_odds_ratio_quantile"));
 
@@ -3389,7 +3393,11 @@ impl GentleEngine {
             feature_label: Self::feature_display_label(feature, feature_id),
             tf_id,
             tf_name,
-            strand: if is_reverse { "-".to_string() } else { "+".to_string() },
+            strand: if is_reverse {
+                "-".to_string()
+            } else {
+                "+".to_string()
+            },
             start_1based: start + 1,
             end_1based: end,
             motif_length,
@@ -3445,7 +3453,10 @@ impl GentleEngine {
                 }
             }
             if let Some(filter) = &enzyme_filter {
-                if !names.iter().any(|name| name.to_ascii_uppercase() == *filter) {
+                if !names
+                    .iter()
+                    .any(|name| name.to_ascii_uppercase() == *filter)
+                {
                     continue;
                 }
             }
@@ -17399,10 +17410,7 @@ ORIGIN
             })
             .expect("a tfbs feature should exist");
         let view = engine
-            .inspect_feature_expert(
-                "s",
-                &FeatureExpertTarget::TfbsFeature { feature_id },
-            )
+            .inspect_feature_expert("s", &FeatureExpertTarget::TfbsFeature { feature_id })
             .unwrap();
         match view {
             FeatureExpertView::Tfbs(tfbs) => {
@@ -17453,15 +17461,17 @@ ORIGIN
                 assert_eq!(re.cut_pos_1based, key.pos() as usize + 1);
                 assert_eq!(re.recognition_start_1based, key.from() as usize + 1);
                 assert_eq!(re.recognition_end_1based, key.to() as usize);
-                assert!(re
-                    .enzyme_names
-                    .iter()
-                    .any(|name| name.eq_ignore_ascii_case("EcoRI")));
-                for name in names {
-                    assert!(re
-                        .enzyme_names
+                assert!(
+                    re.enzyme_names
                         .iter()
-                        .any(|entry| entry.eq_ignore_ascii_case(&name)));
+                        .any(|name| name.eq_ignore_ascii_case("EcoRI"))
+                );
+                for name in names {
+                    assert!(
+                        re.enzyme_names
+                            .iter()
+                            .any(|entry| entry.eq_ignore_ascii_case(&name))
+                    );
                 }
                 assert_eq!(re.instruction, RESTRICTION_EXPERT_INSTRUCTION);
             }

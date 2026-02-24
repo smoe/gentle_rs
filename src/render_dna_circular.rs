@@ -950,9 +950,7 @@ impl RenderDnaCircular {
     fn label_rect_from_anchor(point: Pos2, align: Align2, text_size: Vec2) -> Rect {
         let h2 = text_size.y * 0.5;
         match align {
-            Align2::LEFT_CENTER => {
-                Rect::from_min_size(Pos2::new(point.x, point.y - h2), text_size)
-            }
+            Align2::LEFT_CENTER => Rect::from_min_size(Pos2::new(point.x, point.y - h2), text_size),
             Align2::RIGHT_CENTER => {
                 Rect::from_min_size(Pos2::new(point.x - text_size.x, point.y - h2), text_size)
             }
@@ -1029,7 +1027,10 @@ impl RenderDnaCircular {
                     Align2::LEFT_CENTER
                 };
                 let rect = Self::label_rect_from_anchor(point, align, text_size).expand(2.0);
-                if occupied_label_rects.iter().any(|occupied| occupied.intersects(rect)) {
+                if occupied_label_rects
+                    .iter()
+                    .any(|occupied| occupied.intersects(rect))
+                {
                     continue;
                 }
                 return Some((point, align, rect));
@@ -1366,13 +1367,12 @@ mod tests {
         let middle = fp.segments[0].from + (fp.segments[0].to - fp.segments[0].from) / 2;
         let label_radius = fp.outer + renderer.feature_thickness() * 0.35;
         let center_point = renderer.pos2xy(middle, label_radius);
-        let center_align = if middle.rem_euclid(renderer.sequence_length.max(1))
-            > renderer.sequence_length / 2
-        {
-            Align2::RIGHT_CENTER
-        } else {
-            Align2::LEFT_CENTER
-        };
+        let center_align =
+            if middle.rem_euclid(renderer.sequence_length.max(1)) > renderer.sequence_length / 2 {
+                Align2::RIGHT_CENTER
+            } else {
+                Align2::LEFT_CENTER
+            };
         let occupied_center =
             RenderDnaCircular::label_rect_from_anchor(center_point, center_align, text_size)
                 .expand(2.0);

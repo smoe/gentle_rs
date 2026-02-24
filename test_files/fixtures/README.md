@@ -55,6 +55,8 @@ checks.
   `2154eb966409b91f714c2139113c907028c42634`.
 - Primary usage:
   - `src/resource_sync.rs` parser tests.
+  - `src/engine_shell.rs` shared-shell execution tests for
+    `resources sync-jaspar` + motif-registry reload side effects.
   - Runtime paths `resources sync-jaspar` / GUI import dialog.
 
 ### `resources/rebase.edge.withrefm`
@@ -63,6 +65,8 @@ checks.
   `2154eb966409b91f714c2139113c907028c42634`.
 - Primary usage:
   - `src/resource_sync.rs` parser tests.
+  - `src/engine_shell.rs` shared-shell execution tests for
+    `resources sync-rebase`.
   - Runtime paths `resources sync-rebase` / GUI import dialog.
 
 ## Large exploratory XML samples

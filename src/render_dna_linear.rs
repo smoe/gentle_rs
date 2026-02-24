@@ -34,6 +34,10 @@ const RE_LABEL_MAX_BP_PER_PX: f32 = 30.0;
 const FEATURE_LABEL_MAX_BP_PER_PX: f32 = 120.0;
 const METHYLATION_MAX_BP_PER_PX: f32 = 40.0;
 const ORF_MAX_BP_PER_PX: f32 = 18.0;
+const SEQUENCE_BASE_TEXT_MAX_VIEW_SPAN_BP: usize = 500;
+const SEQUENCE_BASE_TEXT_TRACK_OFFSET: f32 = 8.0;
+const SEQUENCE_BASE_TEXT_MIN_FONT_SIZE: f32 = 8.0;
+const SEQUENCE_BASE_TEXT_MAX_FONT_SIZE: f32 = 14.0;
 const REGULATORY_BASELINE_MARGIN: f32 = 5.0;
 const REGULATORY_FEATURE_GAP: f32 = 6.0;
 const REGULATORY_FEATURE_HEIGHT: f32 = 6.0;
@@ -906,6 +910,7 @@ impl RenderDnaLinear {
         if viewport.span == 0 {
             return;
         }
+        let show_sequence_bases = self.should_draw_sequence_bases(viewport);
         let y = self.baseline_y();
         let tick = Self::tick_step(viewport.span);
         let font = FontId {
@@ -924,14 +929,81 @@ impl RenderDnaLinear {
                 [Pos2::new(x, y - 4.0), Pos2::new(x, y + 4.0)],
                 Stroke::new(1.0, Color32::DARK_GRAY),
             );
-            painter.text(
-                Pos2::new(x, y + 7.0),
-                Align2::CENTER_TOP,
-                pos.to_string(),
-                font.clone(),
-                Color32::DARK_GRAY,
-            );
+            if !show_sequence_bases {
+                painter.text(
+                    Pos2::new(x, y + 7.0),
+                    Align2::CENTER_TOP,
+                    pos.to_string(),
+                    font.clone(),
+                    Color32::DARK_GRAY,
+                );
+            }
             pos += tick;
+        }
+    }
+
+    fn should_draw_sequence_bases(&self, viewport: LinearViewport) -> bool {
+        viewport.span > 0 && viewport.span <= SEQUENCE_BASE_TEXT_MAX_VIEW_SPAN_BP
+    }
+
+    fn sequence_base_color(base: u8) -> Color32 {
+        match base.to_ascii_uppercase() {
+            b'A' => Color32::from_rgb(20, 120, 40),
+            b'C' => Color32::from_rgb(20, 80, 170),
+            b'G' => Color32::from_rgb(160, 95, 20),
+            b'T' | b'U' => Color32::from_rgb(170, 30, 30),
+            _ => Color32::DARK_GRAY,
+        }
+    }
+
+    fn draw_sequence_bases(&self, painter: &egui::Painter, viewport: LinearViewport) {
+        if !self.should_draw_sequence_bases(viewport) {
+            return;
+        }
+        let Some(seq) = self.dna.read().ok().and_then(|dna| {
+            dna.get_inclusive_range_safe(viewport.start..=viewport.end.saturating_sub(1))
+        }) else {
+            return;
+        };
+        let selection = self
+            .display
+            .read()
+            .ok()
+            .and_then(|display| display.selection());
+        let px_per_bp = self.area.width().max(1.0) / viewport.span.max(1) as f32;
+        let font_size = (px_per_bp * 0.85).clamp(
+            SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
+            SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
+        );
+        let font = FontId {
+            size: font_size,
+            family: FontFamily::Monospace,
+        };
+        let y = self.baseline_y() + SEQUENCE_BASE_TEXT_TRACK_OFFSET;
+        for (offset, base) in seq.iter().enumerate() {
+            let bp = viewport.start + offset;
+            let x1 = self.bp_to_x(bp, viewport);
+            let x2 = self.bp_to_x(bp.saturating_add(1), viewport);
+            let x_center = (x1 + x2) * 0.5;
+            if let Some(selection) = &selection {
+                if selection.contains(bp) {
+                    painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2::new(x1, y - 1.0),
+                            Pos2::new(x2.max(x1 + 1.0), y + font_size + 1.0),
+                        ),
+                        0.0,
+                        Color32::from_gray(230),
+                    );
+                }
+            }
+            painter.text(
+                Pos2::new(x_center, y),
+                Align2::CENTER_TOP,
+                (*base as char).to_ascii_uppercase(),
+                font.clone(),
+                Self::sequence_base_color(*base),
+            );
         }
     }
 
@@ -1390,6 +1462,7 @@ impl RenderDnaLinear {
         self.draw_methylation_sites(ui.painter(), viewport, detail);
         self.draw_backbone(ui.painter());
         self.draw_bp_ticks(ui.painter(), viewport);
+        self.draw_sequence_bases(ui.painter(), viewport);
         self.draw_open_reading_frames(ui.painter(), viewport, detail);
         self.draw_features(ui.painter(), detail);
         self.draw_restriction_enzyme_sites(ui.painter(), viewport, detail);
@@ -1413,6 +1486,16 @@ mod tests {
         let mut dna = DNAsequence::from_sequence(&"A".repeat(sequence_len)).expect("valid DNA");
         dna.features_mut().push(feature);
         let dna = Arc::new(RwLock::new(dna));
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        let mut renderer = RenderDnaLinear::new(dna, display);
+        renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
+        renderer
+    }
+
+    fn test_renderer(sequence_len: usize) -> RenderDnaLinear {
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(sequence_len)).expect("valid DNA"),
+        ));
         let display = Arc::new(RwLock::new(DnaDisplay::default()));
         let mut renderer = RenderDnaLinear::new(dna, display);
         renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 600.0));
@@ -1459,5 +1542,25 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 1);
         let baseline = renderer.baseline_y();
         assert!(fp.rect.center().y > baseline);
+    }
+
+    #[test]
+    fn sequence_base_track_is_enabled_at_or_below_500_bp_viewport() {
+        let renderer = test_renderer(1000);
+        assert!(!renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 501,
+            span: 501,
+        }));
+        assert!(renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 500,
+            span: 500,
+        }));
+        assert!(renderer.should_draw_sequence_bases(LinearViewport {
+            start: 200,
+            end: 320,
+            span: 120,
+        }));
     }
 }

@@ -45,7 +45,8 @@ order. Durable architecture constraints and decisions remain in
 - Workflow and candidate macro template catalogs now preserve optional external
   reference URLs (`details_url`) alongside template names/descriptions across
   engine and shared shell adapter surfaces.
-- Ladder-aware virtual gel rendering and SVG export routes.
+- Ladder-aware virtual gel rendering and SVG export routes, including
+  container-based and arrangement-based serial gel export surfaces.
 
 ### GUI baseline in place
 
@@ -64,13 +65,21 @@ order. Durable architecture constraints and decisions remain in
 - Native macOS menu mirrors of open windows are available under:
   - `Window -> GENtle Open Windows…`
   - `GENtle -> GENtle Windows…`
+  - entries now sync by stable viewport keys (not transient index position)
+  - selecting an entry requests focus for the specific window key
+  - active window state is mirrored with native menu checkmarks
 - Circular sequence-map feature labels now use collision-aware placement:
   labels can slide within feature spans and avoid overlap with already rendered
   labels (for example restriction-site annotations).
+- Help viewer image handling:
+  - markdown images render at constrained width
+  - parsed help images are listed with captions and clickable previews
+  - clicking a preview opens an enlarged image window inside Help
 - Experimental window backdrop styling path:
   - optional per-window-type accent tint (`main`, `sequence`, `pool`,
     `configuration`, `help`)
   - optional image watermark path per window type
+  - configuration UI now includes image-file pickers and live path validation
   - persisted in app settings and live-applied from Configuration -> Graphics
 
 ### High-level parity snapshot
@@ -109,7 +118,6 @@ Notes:
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
 - Backdrop-image ingest and UX hardening are still incomplete:
-  - no dedicated file picker yet for backdrop image paths
   - monochrome conversion currently relies on tinting/asset choice and needs a
     stricter renderer-side grayscale pass
   - per-window readability guardrails (contrast checks, auto-dimming) are not
@@ -237,9 +245,11 @@ simplified relative to wet-lab interpretation.
 
 Planned upgrades:
 
-- Generalize virtual gels from pool-only usage to any container/tube:
-  - support one-lane "single-product proof" use cases
-  - support mixed cardinality lanes (single-sequence and pool containers)
+- Keep universal gel support for any container/tube (now implemented) and
+  harden workflows:
+  - preserve one-lane "single-product proof" use cases
+  - preserve mixed cardinality lanes (single-sequence and pool containers)
+  - improve arrangement edit/authoring UX for lane setup reuse
 - Extend arrangement nodes in lineage/DALG:
   - arrangement is already modeled and rendered as an explicit node type that
     groups multiple input tubes under one experimental setup
@@ -340,7 +350,7 @@ Planned upgrades:
 ### Current branch blockers (must clear first)
 
 - None currently blocking on this branch. Latest local run: `cargo test -q`
-  passed (`333 passed, 1 ignored` in main suite; additional suites green).
+  passed (`335 passed, 1 ignored` in main suite; additional suites green).
 
 ### Stability TODO (queued, items 5-7)
 
@@ -353,10 +363,10 @@ Planned upgrades:
 
 ### Missing test coverage (current priority list)
 
-- Add shell execution tests for `resources sync-rebase` and
-  `resources sync-jaspar` using local fixture input files (no network dependency).
-- Add a focused test that verifies motif reload side effects after
-  `resources sync-jaspar`.
+- Done (2026-02-24): shared-shell execution tests now cover
+  `resources sync-rebase` and `resources sync-jaspar` using local fixture
+  inputs (no network dependency), including a focused assertion that motif
+  reload side effects are applied after `resources sync-jaspar`.
 - Add JS adapter tests for `import_pool(...)` and resource-sync wrapper paths.
 - Add Lua adapter tests for `import_pool(...)` and resource-sync wrapper paths.
 - Add CLI integration tests that confirm `import-pool` / `resources` top-level
@@ -369,9 +379,10 @@ Planned upgrades:
 - Keep adapter-level helpers thin and aligned with engine operations.
 - Continue parity checks as new operations are introduced.
 - Start with gel work:
-  - add arrangement-node model
-  - generalize gel rendering/operations from pools to any tube/container
-  - keep one-run/one-setup semantics per serial arrangement
+  - add arrangement authoring/editing UX (create/update/reorder lanes)
+  - add `plate` arrangement mode as first-class engine + adapter entity
+  - keep and harden one-run/one-setup semantics per serial arrangement
+  - add gel realism upgrades (topology, intensity, co-migration, lane tables)
 - Add protocol macro template packs for the cloning modes listed in Section 2.
 - Add visual benchmark fixtures and readability regression gates for map export.
 

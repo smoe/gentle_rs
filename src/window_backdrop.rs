@@ -1,4 +1,4 @@
-use eframe::egui::{self, Color32, Ui};
+use eframe::egui::{self, Color32, Rect, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -152,26 +152,75 @@ fn migrate_legacy_image_path(path: &str) -> String {
     trimmed.to_string()
 }
 
-fn resolve_runtime_asset_path(path: &str) -> Option<String> {
+fn resolve_runtime_asset_uri(path: &str) -> Option<String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return None;
     }
 
+    // egui file loading expects URI schemes such as file://
+    if trimmed.starts_with("file://")
+        || trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("bytes://")
+    {
+        return Some(trimmed.to_string());
+    }
+
     let direct = PathBuf::from(trimmed);
     if direct.exists() {
-        return Some(direct.to_string_lossy().to_string());
+        return Some(format!("file://{}", direct.to_string_lossy()));
     }
 
     if let Ok(exe_path) = env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             let bundled = exe_dir.join("../Resources").join(trimmed);
             if bundled.exists() {
-                return Some(bundled.to_string_lossy().to_string());
+                return Some(format!("file://{}", bundled.to_string_lossy()));
             }
         }
     }
     None
+}
+
+fn cover_uv_rect(texture_size: Vec2, target_size: Vec2) -> Rect {
+    if texture_size.x <= 0.0
+        || texture_size.y <= 0.0
+        || target_size.x <= 0.0
+        || target_size.y <= 0.0
+    {
+        return Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    }
+
+    let image_aspect = texture_size.x / texture_size.y;
+    let target_aspect = target_size.x / target_size.y;
+    if !image_aspect.is_finite() || !target_aspect.is_finite() {
+        return Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    }
+
+    if image_aspect > target_aspect {
+        // Wider image: crop horizontal edges.
+        let visible_fraction = (target_aspect / image_aspect).clamp(0.0, 1.0);
+        let margin = (1.0 - visible_fraction) * 0.5;
+        Rect::from_min_max(egui::pos2(margin, 0.0), egui::pos2(1.0 - margin, 1.0))
+    } else if image_aspect < target_aspect {
+        // Taller image: crop vertical edges.
+        let visible_fraction = (image_aspect / target_aspect).clamp(0.0, 1.0);
+        let margin = (1.0 - visible_fraction) * 0.5;
+        Rect::from_min_max(egui::pos2(0.0, margin), egui::pos2(1.0, 1.0 - margin))
+    } else {
+        Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))
+    }
+}
+
+pub fn validate_window_backdrop_image_path(path: &str) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("No image path configured".to_string());
+    }
+    resolve_runtime_asset_uri(trimmed).ok_or_else(|| {
+        "Path not found in filesystem or app bundle Resources/<path> lookup.".to_string()
+    })
 }
 
 pub fn paint_window_backdrop(
@@ -191,17 +240,23 @@ pub fn paint_window_backdrop(
 
     if settings.draw_images {
         let path = settings.image_path_for_kind(kind).trim();
-        if let Some(resolved_path) = resolve_runtime_asset_path(path) {
-            let image = egui::Image::new(resolved_path)
-                .fit_to_exact_size(rect.size())
-                .tint(Color32::from_rgba_unmultiplied(
-                    196,
-                    196,
-                    196,
-                    image_alpha,
-                ))
-                .sense(egui::Sense::hover());
-            let _ = ui.put(rect, image);
+        if let Some(resolved_uri) = resolve_runtime_asset_uri(path) {
+            let mut image = egui::Image::new(resolved_uri).tint(Color32::from_rgba_unmultiplied(
+                196,
+                196,
+                196,
+                image_alpha,
+            ));
+
+            if let Ok(egui::load::TexturePoll::Ready { texture }) =
+                image.load_for_size(ui.ctx(), rect.size())
+            {
+                let uv = cover_uv_rect(texture.size, rect.size());
+                image = image.uv(uv);
+            }
+
+            // Paint-only backdrop: this must never participate in layout, so main content remains visible.
+            image.paint_at(ui, rect);
         }
     }
 
@@ -223,5 +278,54 @@ pub fn paint_window_backdrop(
             egui::FontId::proportional((rect.height() * 0.12).clamp(32.0, 128.0)),
             text_color,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cover_uv_rect, resolve_runtime_asset_uri};
+    use eframe::egui::Vec2;
+
+    #[test]
+    fn resolve_runtime_asset_uri_preserves_supported_uri_schemes() {
+        assert_eq!(
+            resolve_runtime_asset_uri("file://assets/backgrounds/Lab_Tubes.jpg").as_deref(),
+            Some("file://assets/backgrounds/Lab_Tubes.jpg")
+        );
+        assert_eq!(
+            resolve_runtime_asset_uri("https://example.org/bg.jpg").as_deref(),
+            Some("https://example.org/bg.jpg")
+        );
+        assert_eq!(
+            resolve_runtime_asset_uri("bytes://bg.png").as_deref(),
+            Some("bytes://bg.png")
+        );
+    }
+
+    #[test]
+    fn resolve_runtime_asset_uri_converts_existing_file_to_file_uri() {
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let uri = resolve_runtime_asset_uri(&path).expect("resolved file uri");
+        assert!(uri.starts_with("file://"));
+        assert!(uri.ends_with(&path), "uri='{uri}' path='{path}'");
+    }
+
+    #[test]
+    fn cover_uv_rect_crops_wider_images_horizontally() {
+        let uv = cover_uv_rect(Vec2::new(2000.0, 1000.0), Vec2::new(1000.0, 1000.0));
+        assert!(uv.min.x > 0.0);
+        assert!(uv.max.x < 1.0);
+        assert_eq!(uv.min.y, 0.0);
+        assert_eq!(uv.max.y, 1.0);
+    }
+
+    #[test]
+    fn cover_uv_rect_crops_taller_images_vertically() {
+        let uv = cover_uv_rect(Vec2::new(1000.0, 2000.0), Vec2::new(1000.0, 1000.0));
+        assert!(uv.min.y > 0.0);
+        assert!(uv.max.y < 1.0);
+        assert_eq!(uv.min.x, 0.0);
+        assert_eq!(uv.max.x, 1.0);
     }
 }

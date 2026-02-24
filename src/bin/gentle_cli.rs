@@ -1762,11 +1762,9 @@ fn run() -> Result<(), String> {
             let cmd_name = args[cmd_idx].as_str();
             if args.len() <= cmd_idx + 2 {
                 usage();
-                return Err(
-                    format!(
-                        "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
-                    ),
-                );
+                return Err(format!(
+                    "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+                ));
             }
             let ids = match args[cmd_idx + 1].trim() {
                 "-" | "_" => vec![],
@@ -2216,7 +2214,9 @@ T [ 0 0 0 10 ]
         for command in SHELL_FORWARDED_COMMANDS {
             let expected_prefix = format!("{command} ");
             assert!(
-                paths.iter().any(|path| *path == *command || path.starts_with(&expected_prefix)),
+                paths
+                    .iter()
+                    .any(|path| *path == *command || path.starts_with(&expected_prefix)),
                 "shell-forwarded command '{command}' is missing from docs/glossary.json"
             );
         }

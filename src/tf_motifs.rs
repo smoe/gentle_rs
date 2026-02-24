@@ -127,13 +127,23 @@ impl TfMotifDb {
         Some(Self { motifs, by_key })
     }
 
-    fn load() -> Self {
-        if let Ok(text) = fs::read_to_string(RUNTIME_TF_MOTIF_PATH) {
-            if let Some(db) = Self::from_json(&text) {
-                return db;
-            }
+    fn try_load_path(path: &str) -> Option<Self> {
+        let text = fs::read_to_string(path).ok()?;
+        Self::from_json(&text)
+    }
+
+    fn load_from_path(path: Option<&str>) -> Self {
+        if let Some(db) = path.and_then(Self::try_load_path) {
+            return db;
+        }
+        if let Some(db) = Self::try_load_path(RUNTIME_TF_MOTIF_PATH) {
+            return db;
         }
         Self::from_json(BUILTIN_TF_MOTIFS_JSON).unwrap_or_default()
+    }
+
+    fn load() -> Self {
+        Self::load_from_path(None)
     }
 
     pub fn resolve(&self, token: &str) -> Option<&TfMotif> {
@@ -162,8 +172,12 @@ pub fn resolve_motif_definition(token: &str) -> Option<TfMotif> {
 }
 
 pub fn reload() {
+    reload_from_path(None);
+}
+
+pub fn reload_from_path(path: Option<&str>) {
     if let Ok(mut db) = TF_MOTIFS.write() {
-        *db = TfMotifDb::load();
+        *db = TfMotifDb::load_from_path(path);
     }
 }
 

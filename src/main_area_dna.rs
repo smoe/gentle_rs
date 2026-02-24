@@ -7,10 +7,12 @@ use crate::{
         ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation, OperationProgress,
         PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
     },
-    feature_expert::{FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, TfbsExpertView},
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
         shell_help_text,
+    },
+    feature_expert::{
+        FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, TfbsExpertView,
     },
     feature_location::collect_location_ranges_usize,
     icons::*,
@@ -3868,7 +3870,11 @@ impl MainAreaDna {
         });
     }
 
-    fn render_restriction_expert_view_ui(&self, ui: &mut egui::Ui, view: &RestrictionSiteExpertView) {
+    fn render_restriction_expert_view_ui(
+        &self,
+        ui: &mut egui::Ui,
+        view: &RestrictionSiteExpertView,
+    ) {
         ui.label(
             egui::RichText::new(format!(
                 "{} | cut={} | {}:{}..{}",
@@ -3916,7 +3922,10 @@ impl MainAreaDna {
             let rail_right = start_x + total + 10.0;
 
             painter.line_segment(
-                [egui::pos2(rail_left, top_y - 8.0), egui::pos2(rail_right, top_y - 8.0)],
+                [
+                    egui::pos2(rail_left, top_y - 8.0),
+                    egui::pos2(rail_right, top_y - 8.0),
+                ],
                 egui::Stroke::new(1.4, egui::Color32::BLACK),
             );
             painter.line_segment(
@@ -3968,7 +3977,9 @@ impl MainAreaDna {
     fn render_feature_expert_view_ui(&self, ui: &mut egui::Ui, view: &FeatureExpertView) {
         match view {
             FeatureExpertView::Tfbs(tfbs) => self.render_tfbs_expert_view_ui(ui, tfbs),
-            FeatureExpertView::RestrictionSite(re) => self.render_restriction_expert_view_ui(ui, re),
+            FeatureExpertView::RestrictionSite(re) => {
+                self.render_restriction_expert_view_ui(ui, re)
+            }
         }
     }
 

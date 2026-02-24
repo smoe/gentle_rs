@@ -89,6 +89,12 @@ Sequence window screenshot:
 ![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)
 *Figure: Sequence window with map and sequence panels.*
 
+Linear map zoom detail:
+
+- In linear mode, when the current viewport spans `500 bp` or less, GENtle
+  overlays per-base DNA letters on the backbone so sequence context becomes
+  directly readable while inspecting nearby features.
+
 Circular map label behavior:
 
 - Feature labels are placed near the feature midpoint but may slide along the

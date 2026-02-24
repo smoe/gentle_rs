@@ -1,4 +1,5 @@
 use std::{
+    collections::hash_map::DefaultHasher,
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     hash::{Hash, Hasher},
@@ -8,7 +9,7 @@ use std::{
     process::Command,
     sync::{
         Arc, RwLock,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -71,9 +72,19 @@ const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
-const NATIVE_WINDOW_FOCUS_INDEX_NONE: usize = usize::MAX;
-static NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED: AtomicUsize =
-    AtomicUsize::new(NATIVE_WINDOW_FOCUS_INDEX_NONE);
+const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
+static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
+static ACTIVE_VIEWPORT_KEY_REPORTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
+
+fn viewport_native_menu_key(viewport_id: ViewportId) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    viewport_id.hash(&mut hasher);
+    hasher.finish() & 0x7fff_ffff_ffff_ffff
+}
+
+fn report_active_viewport_from_ui(viewport_id: ViewportId) {
+    ACTIVE_VIEWPORT_KEY_REPORTED.store(viewport_native_menu_key(viewport_id), Ordering::SeqCst);
+}
 
 fn normalize_agent_model_name(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -285,12 +296,12 @@ pub fn request_open_settings_from_native_menu() {
 }
 
 pub fn request_open_windows_from_native_menu() {
-    NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED.store(NATIVE_WINDOW_FOCUS_INDEX_NONE, Ordering::SeqCst);
+    NATIVE_WINDOWS_FOCUS_KEY_REQUESTED.store(NATIVE_WINDOW_FOCUS_KEY_NONE, Ordering::SeqCst);
     NATIVE_WINDOWS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
-pub fn request_focus_window_index_from_native_menu(index: usize) {
-    NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED.store(index, Ordering::SeqCst);
+pub fn request_focus_window_key_from_native_menu(key: u64) {
+    NATIVE_WINDOWS_FOCUS_KEY_REQUESTED.store(key, Ordering::SeqCst);
     NATIVE_WINDOWS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -369,6 +380,8 @@ pub struct GENtleApp {
     help_search_matches: Vec<HelpSearchMatch>,
     help_search_selected: usize,
     help_focus_search_box: bool,
+    help_image_preview_path: Option<String>,
+    help_image_preview_caption: String,
     show_configuration_dialog: bool,
     configuration_tab: ConfigurationTab,
     configuration_rnapkin_executable: String,
@@ -411,7 +424,10 @@ pub struct GENtleApp {
     dirty_cache_value: bool,
     dirty_cache_last_deep_check: Instant,
     last_applied_window_title: String,
-    last_native_window_titles: Vec<String>,
+    last_native_window_entries: Vec<(u64, String)>,
+    last_native_active_window_key: Option<u64>,
+    native_window_key_to_viewport: HashMap<u64, ViewportId>,
+    active_window_menu_key: Option<u64>,
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
@@ -805,9 +821,17 @@ struct ArrangementRow {
 
 #[derive(Clone)]
 struct OpenWindowEntry {
+    native_menu_key: u64,
     viewport_id: ViewportId,
     title: String,
     detail: String,
+}
+
+#[derive(Clone, Default)]
+struct HelpMarkdownImage {
+    alt: String,
+    title: String,
+    path: String,
 }
 
 #[derive(Clone, Copy)]
@@ -888,6 +912,8 @@ impl Default for GENtleApp {
             help_search_matches: vec![],
             help_search_selected: 0,
             help_focus_search_box: false,
+            help_image_preview_path: None,
+            help_image_preview_caption: String::new(),
             show_configuration_dialog: false,
             configuration_tab: ConfigurationTab::ExternalApplications,
             configuration_rnapkin_executable: env::var("GENTLE_RNAPKIN_BIN").unwrap_or_default(),
@@ -931,7 +957,10 @@ impl Default for GENtleApp {
             dirty_cache_value: false,
             dirty_cache_last_deep_check: Instant::now(),
             last_applied_window_title: String::new(),
-            last_native_window_titles: vec![],
+            last_native_window_entries: vec![],
+            last_native_active_window_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
+            native_window_key_to_viewport: HashMap::new(),
+            active_window_menu_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
@@ -1060,6 +1089,21 @@ impl GENtleApp {
 
     fn history_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Operation History Viewport")
+    }
+
+    fn native_menu_key_for_viewport(viewport_id: ViewportId) -> u64 {
+        viewport_native_menu_key(viewport_id)
+    }
+
+    fn set_active_window_viewport(&mut self, viewport_id: ViewportId) {
+        self.active_window_menu_key = Some(Self::native_menu_key_for_viewport(viewport_id));
+        report_active_viewport_from_ui(viewport_id);
+    }
+
+    fn note_viewport_focus_if_active(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {
+        if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
+            self.set_active_window_viewport(viewport_id);
+        }
     }
 
     fn configuration_store_path() -> PathBuf {
@@ -1529,18 +1573,26 @@ Error: `{err}`"
 
     fn consume_native_windows_request(&mut self) {
         if NATIVE_WINDOWS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
-            let requested_index = NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED
-                .swap(NATIVE_WINDOW_FOCUS_INDEX_NONE, Ordering::SeqCst);
-            if requested_index == NATIVE_WINDOW_FOCUS_INDEX_NONE {
+            let requested_key = NATIVE_WINDOWS_FOCUS_KEY_REQUESTED
+                .swap(NATIVE_WINDOW_FOCUS_KEY_NONE, Ordering::SeqCst);
+            if requested_key == NATIVE_WINDOW_FOCUS_KEY_NONE {
                 self.queue_focus_viewport(ViewportId::ROOT);
                 return;
             }
-            let entries = self.collect_open_window_entries();
-            if let Some(entry) = entries.get(requested_index) {
-                self.queue_focus_viewport(entry.viewport_id);
-            } else {
-                self.queue_focus_viewport(ViewportId::ROOT);
-            }
+            let target_viewport = self
+                .native_window_key_to_viewport
+                .get(&requested_key)
+                .copied()
+                .unwrap_or(ViewportId::ROOT);
+            self.queue_focus_viewport(target_viewport);
+        }
+    }
+
+    fn consume_active_viewport_report(&mut self) {
+        let reported_key =
+            ACTIVE_VIEWPORT_KEY_REPORTED.swap(NATIVE_WINDOW_FOCUS_KEY_NONE, Ordering::SeqCst);
+        if reported_key != NATIVE_WINDOW_FOCUS_KEY_NONE {
+            self.active_window_menu_key = Some(reported_key);
         }
     }
 
@@ -2087,6 +2139,8 @@ Error: `{err}`"
         self.help_doc = doc;
         self.refresh_help_search_matches();
         self.help_focus_search_box = true;
+        self.help_image_preview_path = None;
+        self.help_image_preview_caption.clear();
         self.show_help_dialog = true;
     }
 
@@ -2103,6 +2157,65 @@ Error: `{err}`"
             HelpDoc::Gui => &self.help_gui_markdown,
             HelpDoc::Cli => &self.help_cli_markdown,
             HelpDoc::Shell => &self.help_shell_markdown,
+        }
+    }
+
+    fn collect_help_markdown_images(markdown: &str) -> Vec<HelpMarkdownImage> {
+        let mut images = Vec::new();
+        let mut current: Option<HelpMarkdownImage> = None;
+        for event in Parser::new(markdown) {
+            match event {
+                Event::Start(Tag::Image {
+                    link_type: LinkType::Inline,
+                    dest_url,
+                    title,
+                    ..
+                }) => {
+                    current = Some(HelpMarkdownImage {
+                        path: dest_url.to_string(),
+                        title: title.to_string(),
+                        ..HelpMarkdownImage::default()
+                    });
+                }
+                Event::End(pulldown_cmark::TagEnd::Image) => {
+                    if let Some(image) = current.take() {
+                        if !image.path.trim().is_empty() {
+                            images.push(image);
+                        }
+                    }
+                }
+                Event::Text(text) | Event::Code(text) => {
+                    if let Some(image) = current.as_mut() {
+                        if !image.alt.is_empty() {
+                            image.alt.push(' ');
+                        }
+                        image.alt.push_str(text.as_ref());
+                    }
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    if let Some(image) = current.as_mut() {
+                        if !image.alt.is_empty() {
+                            image.alt.push(' ');
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        images
+    }
+
+    fn help_image_caption(image: &HelpMarkdownImage) -> String {
+        if !image.title.trim().is_empty() {
+            image.title.trim().to_string()
+        } else if !image.alt.trim().is_empty() {
+            image.alt.trim().to_string()
+        } else {
+            Path::new(image.path.as_str())
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Image")
+                .to_string()
         }
     }
 
@@ -5702,6 +5815,7 @@ Error: `{err}`"
             .with_inner_size([760.0, 560.0])
             .with_min_inner_size([520.0, 360.0]);
         ctx.show_viewport_immediate(Self::prepare_genome_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::prepare_genome_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_reference_genome_prepare_dialog;
                 egui::Window::new("Prepare Reference Genome")
@@ -6397,6 +6511,7 @@ Error: `{err}`"
             .with_inner_size([980.0, 700.0])
             .with_min_inner_size([640.0, 420.0]);
         ctx.show_viewport_immediate(Self::blast_genome_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::blast_genome_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_reference_genome_blast_dialog;
                 egui::Window::new("BLAST Genome Sequence")
@@ -7061,6 +7176,7 @@ Error: `{err}`"
             .with_inner_size([980.0, 620.0])
             .with_min_inner_size([620.0, 320.0]);
         ctx.show_viewport_immediate(Self::bed_track_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::bed_track_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_genome_bed_track_dialog;
                 egui::Window::new("Import Genome Tracks")
@@ -7639,6 +7755,7 @@ Error: `{err}`"
             Self::agent_assistant_viewport_id(),
             builder,
             |ctx, class| {
+                self.note_viewport_focus_if_active(ctx, Self::agent_assistant_viewport_id());
                 if class == egui::ViewportClass::Embedded {
                     let mut open = self.show_agent_assistant_dialog;
                     egui::Window::new("Agent Assistant")
@@ -7941,6 +8058,7 @@ Error: `{err}`"
 
     fn collect_open_window_entries(&self) -> Vec<OpenWindowEntry> {
         let mut entries = vec![OpenWindowEntry {
+            native_menu_key: Self::native_menu_key_for_viewport(ViewportId::ROOT),
             viewport_id: ViewportId::ROOT,
             title: format!("Main Window — {}", self.current_project_name()),
             detail: "Project workspace".to_string(),
@@ -7948,6 +8066,9 @@ Error: `{err}`"
 
         if self.show_configuration_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::configuration_viewport_id(),
+                ),
                 viewport_id: Self::configuration_viewport_id(),
                 title: "Configuration".to_string(),
                 detail: "External tools and graphics defaults".to_string(),
@@ -7955,6 +8076,7 @@ Error: `{err}`"
         }
         if self.show_help_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::help_viewport_id()),
                 viewport_id: Self::help_viewport_id(),
                 title: format!("Help — {}", self.active_help_title()),
                 detail: "GUI/CLI manual".to_string(),
@@ -7962,6 +8084,9 @@ Error: `{err}`"
         }
         if self.show_command_palette_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::command_palette_viewport_id(),
+                ),
                 viewport_id: Self::command_palette_viewport_id(),
                 title: "Command Palette".to_string(),
                 detail: "Action launcher".to_string(),
@@ -7969,6 +8094,7 @@ Error: `{err}`"
         }
         if self.show_history_panel {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::history_viewport_id()),
                 viewport_id: Self::history_viewport_id(),
                 title: "Operation History".to_string(),
                 detail: "Undo/redo operation log".to_string(),
@@ -7976,6 +8102,9 @@ Error: `{err}`"
         }
         if self.show_reference_genome_prepare_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::prepare_genome_viewport_id(),
+                ),
                 viewport_id: Self::prepare_genome_viewport_id(),
                 title: "Prepare Reference Genome".to_string(),
                 detail: "Reference/helper genome preparation".to_string(),
@@ -7983,6 +8112,9 @@ Error: `{err}`"
         }
         if self.show_reference_genome_blast_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::blast_genome_viewport_id(),
+                ),
                 viewport_id: Self::blast_genome_viewport_id(),
                 title: "BLAST Genome Sequence".to_string(),
                 detail: "BLAST against prepared genomes/helpers".to_string(),
@@ -7990,6 +8122,7 @@ Error: `{err}`"
         }
         if self.show_genome_bed_track_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::bed_track_viewport_id()),
                 viewport_id: Self::bed_track_viewport_id(),
                 title: "Import Genome Tracks".to_string(),
                 detail: "Import BED/BigWig/VCF track overlays".to_string(),
@@ -7997,6 +8130,9 @@ Error: `{err}`"
         }
         if self.show_agent_assistant_dialog {
             entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::agent_assistant_viewport_id(),
+                ),
                 viewport_id: Self::agent_assistant_viewport_id(),
                 title: "Agent Assistant".to_string(),
                 detail: "Agent chat and per-reply command execution".to_string(),
@@ -8012,6 +8148,7 @@ Error: `{err}`"
                     .map(|w| w.name())
                     .unwrap_or_else(|_| "Sequence window".to_string());
                 OpenWindowEntry {
+                    native_menu_key: Self::native_menu_key_for_viewport(*viewport_id),
                     viewport_id: *viewport_id,
                     title,
                     detail: "Sequence map window".to_string(),
@@ -8045,6 +8182,7 @@ Error: `{err}`"
 
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
+        self.set_active_window_viewport(viewport_id);
     }
 
     fn render_specialist_window_nav(&mut self, ui: &mut Ui) {
@@ -8062,13 +8200,23 @@ Error: `{err}`"
 
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
         let open_window_entries = self.collect_open_window_entries();
-        let native_window_titles = open_window_entries
+        self.native_window_key_to_viewport = open_window_entries
             .iter()
-            .map(|entry| entry.title.clone())
+            .map(|entry| (entry.native_menu_key, entry.viewport_id))
+            .collect();
+        let native_window_entries = open_window_entries
+            .iter()
+            .map(|entry| (entry.native_menu_key, entry.title.clone()))
             .collect::<Vec<_>>();
-        if self.last_native_window_titles != native_window_titles {
-            about::sync_native_open_windows_menu_titles(&native_window_titles);
-            self.last_native_window_titles = native_window_titles;
+        let active_window_key = self
+            .active_window_menu_key
+            .or_else(|| Some(Self::native_menu_key_for_viewport(ViewportId::ROOT)));
+        if self.last_native_window_entries != native_window_entries
+            || self.last_native_active_window_key != active_window_key
+        {
+            about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
+            self.last_native_window_entries = native_window_entries;
+            self.last_native_active_window_key = active_window_key;
         }
         let (undo_count, redo_count) = {
             let engine = self.engine.read().expect("Engine lock poisoned");
@@ -8506,6 +8654,9 @@ Error: `{err}`"
                         "W GENtleApp: unexpected viewport class, skipping deferred window update"
                     );
                     return;
+                }
+                if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
+                    report_active_viewport_from_ui(id);
                 }
 
                 // Draw the window
@@ -10327,20 +10478,63 @@ Error: `{err}`"
         value: &mut String,
         changed: &mut bool,
     ) {
-        ui.horizontal(|ui| {
-            ui.label(label);
-            if ui
-                .add(
-                    egui::TextEdit::singleline(value)
-                        .desired_width(360.0)
-                        .hint_text("/absolute/path/to/image.png"),
-                )
-                .on_hover_text(
-                    "Optional absolute or working-directory-relative image path for this window type",
-                )
-                .changed()
-            {
-                *changed = true;
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(label);
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(value)
+                            .desired_width(360.0)
+                            .hint_text("/absolute/path/to/image.png"),
+                    )
+                    .on_hover_text(
+                        "Optional absolute or working-directory-relative image path for this window type",
+                    )
+                    .changed()
+                {
+                    *changed = true;
+                }
+                if ui
+                    .button("Browse...")
+                    .on_hover_text("Pick an image file for this window backdrop")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Images", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
+                        .pick_file()
+                    {
+                        *value = path.display().to_string();
+                        *changed = true;
+                    }
+                }
+                if ui
+                    .button("Clear")
+                    .on_hover_text("Clear custom image path for this window type")
+                    .clicked()
+                {
+                    value.clear();
+                    *changed = true;
+                }
+            });
+
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                ui.small("No image path configured (text watermark/tint fallback only)");
+            } else {
+                match window_backdrop::validate_window_backdrop_image_path(trimmed) {
+                    Ok(resolved) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(20, 140, 45),
+                            format!("Resolved image: {resolved}"),
+                        );
+                    }
+                    Err(message) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(180, 50, 50),
+                            format!("Path check failed: {message}"),
+                        );
+                    }
+                }
             }
         });
     }
@@ -10816,6 +11010,7 @@ Error: `{err}`"
             .with_inner_size([720.0, 540.0])
             .with_min_inner_size([460.0, 320.0]);
         ctx.show_viewport_immediate(Self::configuration_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::configuration_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_configuration_dialog;
                 egui::Window::new("Configuration")
@@ -10930,6 +11125,7 @@ Error: `{err}`"
             Self::command_palette_viewport_id(),
             builder,
             |ctx, class| {
+                self.note_viewport_focus_if_active(ctx, Self::command_palette_viewport_id());
                 let mut render_contents = |ui: &mut Ui| {
                     ui.label("Search actions, settings, and help topics");
                     let input_id = ui.make_persistent_id("gentle_command_palette_search");
@@ -11238,6 +11434,7 @@ Error: `{err}`"
             .with_inner_size([820.0, 520.0])
             .with_min_inner_size([560.0, 320.0]);
         ctx.show_viewport_immediate(Self::history_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::history_viewport_id());
             let mut render_contents = |ui: &mut Ui| {
                 ui.label("Operation-level history with undo/redo");
                 ui.horizontal(|ui| {
@@ -11326,6 +11523,7 @@ Error: `{err}`"
             .with_inner_size([860.0, 680.0])
             .with_min_inner_size([420.0, 320.0]);
         ctx.show_viewport_immediate(Self::help_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::help_viewport_id());
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_help_dialog;
                 egui::Window::new(title.clone())
@@ -11351,7 +11549,11 @@ Error: `{err}`"
     }
 
     fn render_help_contents(&mut self, ui: &mut Ui) {
-        window_backdrop::paint_window_backdrop(ui, WindowBackdropKind::Help, &self.window_backdrops);
+        window_backdrop::paint_window_backdrop(
+            ui,
+            WindowBackdropKind::Help,
+            &self.window_backdrops,
+        );
         let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
         if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
             self.help_focus_search_box = true;
@@ -11495,15 +11697,63 @@ Error: `{err}`"
         }
 
         ui.separator();
+        let markdown = self.active_help_markdown().to_string();
+        let help_images = Self::collect_help_markdown_images(markdown.as_str());
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let markdown = self.active_help_markdown().to_string();
                 let max_image_width = (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
                 CommonMarkViewer::new()
                     .max_image_width(Some(max_image_width as usize))
-                    .show(ui, &mut self.help_markdown_cache, &markdown);
+                    .show(ui, &mut self.help_markdown_cache, markdown.as_str());
+                if !help_images.is_empty() {
+                    ui.separator();
+                    ui.heading("Image Captions");
+                    ui.small("Click any preview to open an enlarged view.");
+                    for image in &help_images {
+                        let caption = Self::help_image_caption(image);
+                        let response = ui.add(
+                            egui::Image::new(image.path.clone())
+                                .max_width(max_image_width)
+                                .maintain_aspect_ratio(true)
+                                .sense(egui::Sense::click()),
+                        );
+                        if response.clicked() {
+                            self.help_image_preview_path = Some(image.path.clone());
+                            self.help_image_preview_caption = caption.clone();
+                        }
+                        ui.small(caption);
+                        ui.separator();
+                    }
+                }
             });
+
+        if let Some(path) = self.help_image_preview_path.clone() {
+            let title = if self.help_image_preview_caption.trim().is_empty() {
+                "Help image".to_string()
+            } else {
+                self.help_image_preview_caption.clone()
+            };
+            let mut open = true;
+            egui::Window::new(title)
+                .open(&mut open)
+                .resizable(true)
+                .vscroll(true)
+                .default_size(Vec2::new(960.0, 720.0))
+                .show(ui.ctx(), |ui| {
+                    ui.add(egui::Image::new(path.clone()).shrink_to_fit());
+                    ui.horizontal(|ui| {
+                        if ui.button("Close").clicked() {
+                            self.help_image_preview_path = None;
+                            self.help_image_preview_caption.clear();
+                        }
+                    });
+                });
+            if !open {
+                self.help_image_preview_path = None;
+                self.help_image_preview_caption.clear();
+            }
+        }
     }
 
     fn summarize_operation(op: &Operation) -> String {
@@ -12014,6 +12264,10 @@ impl eframe::App for GENtleApp {
             self.consume_native_help_request();
             self.consume_native_settings_request();
             self.consume_native_windows_request();
+            self.consume_active_viewport_report();
+            if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
+                self.set_active_window_viewport(ViewportId::ROOT);
+            }
             self.hover_status_name.clear();
             let project_dirty = self.is_project_dirty();
             let dirty_marker = if project_dirty { " *" } else { "" };
@@ -12254,6 +12508,46 @@ mod tests {
         let temp = tempdir().unwrap();
         let rewritten = GENtleApp::rewrite_markdown_relative_image_links(markdown, temp.path());
         assert_eq!(rewritten, markdown);
+    }
+
+    #[test]
+    fn collect_help_markdown_images_extracts_inline_targets_and_labels() {
+        let markdown = "# Help\n\n![Main](<docs/screenshots/main.png> \"Main window\")\n\n![Alt only](images/alt.png)\n";
+        let images = GENtleApp::collect_help_markdown_images(markdown);
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].path, "docs/screenshots/main.png");
+        assert_eq!(images[0].title, "Main window");
+        assert_eq!(images[0].alt, "Main");
+        assert_eq!(images[1].path, "images/alt.png");
+        assert_eq!(images[1].title, "");
+        assert_eq!(images[1].alt, "Alt only");
+    }
+
+    #[test]
+    fn help_image_caption_prefers_title_then_alt_then_filename() {
+        let title_first = super::HelpMarkdownImage {
+            alt: "Alt".to_string(),
+            title: "Caption".to_string(),
+            path: "/tmp/ignored.png".to_string(),
+        };
+        assert_eq!(GENtleApp::help_image_caption(&title_first), "Caption");
+
+        let alt_second = super::HelpMarkdownImage {
+            alt: "Fallback alt".to_string(),
+            title: String::new(),
+            path: "/tmp/ignored.png".to_string(),
+        };
+        assert_eq!(GENtleApp::help_image_caption(&alt_second), "Fallback alt");
+
+        let filename_last = super::HelpMarkdownImage {
+            alt: String::new(),
+            title: String::new(),
+            path: "/tmp/final-name.png".to_string(),
+        };
+        assert_eq!(
+            GENtleApp::help_image_caption(&filename_last),
+            "final-name.png"
+        );
     }
 
     #[test]

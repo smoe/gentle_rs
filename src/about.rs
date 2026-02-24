@@ -61,13 +61,13 @@ pub fn install_native_app_windows_menu_bridge() {
 pub fn install_native_app_windows_menu_bridge() {}
 
 #[cfg(target_os = "macos")]
-pub fn sync_native_open_windows_menu_titles(titles: &[String]) {
-    macos_native_windows_menu::sync_titles(titles);
-    macos_native_app_windows_menu::sync_titles(titles);
+pub fn sync_native_open_windows_menu(entries: &[(u64, String)], active_key: Option<u64>) {
+    macos_native_windows_menu::sync_entries(entries, active_key);
+    macos_native_app_windows_menu::sync_entries(entries, active_key);
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn sync_native_open_windows_menu_titles(_titles: &[String]) {}
+pub fn sync_native_open_windows_menu(_entries: &[(u64, String)], _active_key: Option<u64>) {}
 
 #[cfg(target_os = "macos")]
 mod macos_native_help_menu {
@@ -307,7 +307,7 @@ mod macos_native_windows_menu {
                 };
                 let raw_tag: isize = unsafe { msg_send![sender, tag] };
                 if raw_tag >= 0 {
-                    app::request_focus_window_index_from_native_menu(raw_tag as usize);
+                    app::request_focus_window_key_from_native_menu(raw_tag as u64);
                 } else {
                     app::request_open_windows_from_native_menu();
                 }
@@ -377,7 +377,7 @@ mod macos_native_windows_menu {
         INSTALLED.store(true, Ordering::Relaxed);
     }
 
-    pub(super) fn sync_titles(titles: &[String]) {
+    pub(super) fn sync_entries(entries: &[(u64, String)], active_key: Option<u64>) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -398,14 +398,15 @@ mod macos_native_windows_menu {
         let submenu = if let Some(existing) = unsafe { item.submenu() } {
             existing
         } else {
-            let created = unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Open Windows")) };
+            let created =
+                unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Open Windows")) };
             item.setSubmenu(Some(&created));
             created
         };
         unsafe {
             submenu.removeAllItems();
         }
-        if titles.is_empty() {
+        if entries.is_empty() {
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(
                     ns_string!("No open windows"),
@@ -419,7 +420,7 @@ mod macos_native_windows_menu {
             return;
         }
 
-        for (idx, title) in titles.iter().enumerate() {
+        for (key, title) in entries {
             let title = NSString::from_str(title);
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(&title, None, ns_string!(""))
@@ -430,7 +431,9 @@ mod macos_native_windows_menu {
                     unsafe {
                         entry.setTarget(Some(target_obj));
                         entry.setAction(Some(sel!(focusGentleWindowEntry:)));
-                        entry.setTag(idx as isize);
+                        entry.setTag(*key as isize);
+                        let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+                        let _: () = msg_send![&entry, setState: state_value];
                         entry.setEnabled(true);
                     }
                 } else {
@@ -491,7 +494,7 @@ mod macos_native_app_windows_menu {
                 };
                 let raw_tag: isize = unsafe { msg_send![sender, tag] };
                 if raw_tag >= 0 {
-                    app::request_focus_window_index_from_native_menu(raw_tag as usize);
+                    app::request_focus_window_key_from_native_menu(raw_tag as u64);
                 } else {
                     app::request_open_windows_from_native_menu();
                 }
@@ -560,7 +563,7 @@ mod macos_native_app_windows_menu {
         INSTALLED.store(true, Ordering::Relaxed);
     }
 
-    pub(super) fn sync_titles(titles: &[String]) {
+    pub(super) fn sync_entries(entries: &[(u64, String)], active_key: Option<u64>) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
@@ -580,14 +583,15 @@ mod macos_native_app_windows_menu {
         let submenu = if let Some(existing) = unsafe { item.submenu() } {
             existing
         } else {
-            let created = unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Windows")) };
+            let created =
+                unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Windows")) };
             item.setSubmenu(Some(&created));
             created
         };
         unsafe {
             submenu.removeAllItems();
         }
-        if titles.is_empty() {
+        if entries.is_empty() {
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(
                     ns_string!("No open windows"),
@@ -601,7 +605,7 @@ mod macos_native_app_windows_menu {
             return;
         }
 
-        for (idx, title) in titles.iter().enumerate() {
+        for (key, title) in entries {
             let title = NSString::from_str(title);
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(&title, None, ns_string!(""))
@@ -612,7 +616,9 @@ mod macos_native_app_windows_menu {
                     unsafe {
                         entry.setTarget(Some(target_obj));
                         entry.setAction(Some(sel!(focusGentleWindowEntryFromAppMenu:)));
-                        entry.setTag(idx as isize);
+                        entry.setTag(*key as isize);
+                        let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+                        let _: () = msg_send![&entry, setState: state_value];
                         entry.setEnabled(true);
                     }
                 } else {

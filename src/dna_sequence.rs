@@ -199,7 +199,10 @@ impl DNAsequence {
     pub fn from_embl_file(filename: &str) -> Result<Vec<DNAsequence>> {
         let text = std::fs::read_to_string(filename)?;
         let parsed = parse_embl_records(&text)?;
-        Ok(parsed.into_iter().map(DNAsequence::from_genbank_seq).collect())
+        Ok(parsed
+            .into_iter()
+            .map(DNAsequence::from_genbank_seq)
+            .collect())
     }
 
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
@@ -822,7 +825,9 @@ fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
         records.push(parse_embl_record(&current_lines)?);
     }
     if records.is_empty() {
-        return Err(anyhow::anyhow!("Could not parse EMBL file: no records found"));
+        return Err(anyhow::anyhow!(
+            "Could not parse EMBL file: no records found"
+        ));
     }
     Ok(records)
 }
@@ -903,7 +908,12 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
 
         if let Some(raw_id) = line.strip_prefix("ID") {
             let id = raw_id.trim();
-            if let Some(name) = id.split(';').next().map(str::trim).filter(|v| !v.is_empty()) {
+            if let Some(name) = id
+                .split(';')
+                .next()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
                 seq.name = Some(name.to_string());
             }
             let lower = id.to_ascii_lowercase();
@@ -1144,9 +1154,8 @@ mod tests {
         let genbank =
             DNAsequence::from_genbank_file("test_files/fixtures/import_parity/toy.small.gb")
                 .unwrap();
-        let embl =
-            DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.small.embl")
-                .unwrap();
+        let embl = DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.small.embl")
+            .unwrap();
         let fasta = fasta.first().unwrap();
         let genbank = genbank.first().unwrap();
         let embl = embl.first().unwrap();
@@ -1178,9 +1187,8 @@ mod tests {
 
     #[test]
     fn test_toy_multi_embl_parses_multiple_records() {
-        let seqs =
-            DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.multi.embl")
-                .expect("parse multi-record EMBL fixture");
+        let seqs = DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.multi.embl")
+            .expect("parse multi-record EMBL fixture");
         assert_eq!(seqs.len(), 2);
         let first = &seqs[0];
         let second = &seqs[1];
@@ -1334,7 +1342,8 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             "canonical location formatting should preserve both joined intervals"
         );
         assert!(
-            gene.qualifier_values("gene".into()).any(|value| value == "g1"),
+            gene.qualifier_values("gene".into())
+                .any(|value| value == "g1"),
             "gene qualifier should be parsed"
         );
 
@@ -1353,9 +1362,7 @@ SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
             .next()
             .unwrap_or_default();
         assert!(
-            note.contains("line one")
-                && note.contains("line two")
-                && !note.contains("\"\""),
+            note.contains("line one") && note.contains("line two") && !note.contains("\"\""),
             "wrapped qualifier text should be concatenated and normalized"
         );
 

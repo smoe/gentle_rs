@@ -315,7 +315,9 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
             "cut_pos={} | cuts_for_enzyme={} | recognition_iupac={}",
             view.cut_pos_1based,
             view.number_of_cuts_for_enzyme,
-            view.recognition_iupac.clone().unwrap_or_else(|| "-".to_string())
+            view.recognition_iupac
+                .clone()
+                .unwrap_or_else(|| "-".to_string())
         ))
         .set("x", 90)
         .set("y", 66)

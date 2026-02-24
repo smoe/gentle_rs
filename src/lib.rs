@@ -95,12 +95,12 @@ pub mod tool_overrides;
 pub mod translations;
 /// Generic GUI window abstraction.
 pub mod window;
+/// Window backdrop configuration and rendering helpers.
+pub mod window_backdrop;
 /// DNA sequence-window wrapper and per-window controls.
 pub mod window_dna;
 /// Curated workflow example payloads and templates.
 pub mod workflow_examples;
-/// Window backdrop configuration and rendering helpers.
-pub mod window_backdrop;
 
 lazy_static! {
     // Interface translations

@@ -11,11 +11,11 @@ use crate::{
         CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
         CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
         CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, Engine, GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide,
-        GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
+        CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget, GUIDE_DESIGN_METADATA_KEY,
+        GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
         ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
-        Workflow, WorkflowMacroTemplateParam, FeatureExpertTarget,
+        Workflow, WorkflowMacroTemplateParam,
     },
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
@@ -966,7 +966,10 @@ impl ShellCommand {
                 output,
             } => format!("render {mode:?} SVG for '{seq_id}' to '{output}'"),
             Self::InspectFeatureExpert { seq_id, target } => {
-                format!("inspect feature expert view for '{seq_id}' target={}", target.describe())
+                format!(
+                    "inspect feature expert view for '{seq_id}' target={}",
+                    target.describe()
+                )
             }
             Self::RenderFeatureExpertSvg {
                 seq_id,
@@ -2235,7 +2238,9 @@ fn parse_feature_expert_target_tokens(
                         recognition_end_1based = Some(parsed);
                     }
                     other => {
-                        return Err(format!("Unknown option '{other}' for {context} restriction"));
+                        return Err(format!(
+                            "Unknown option '{other}' for {context} restriction"
+                        ));
                     }
                 }
             }
@@ -4933,10 +4938,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 return Err(token_error(cmd));
             }
             let seq_id = tokens[1].clone();
-            let target = parse_feature_expert_target_tokens(
-                &tokens[2..],
-                "inspect-feature-expert",
-            )?;
+            let target =
+                parse_feature_expert_target_tokens(&tokens[2..], "inspect-feature-expert")?;
             Ok(ShellCommand::InspectFeatureExpert { seq_id, target })
         }
         "render-feature-expert-svg" => {
@@ -6543,7 +6546,7 @@ pub fn execute_shell_command_with_options(
         }
         ShellCommand::ResourcesSyncJaspar { input, output } => {
             let report = resource_sync::sync_jaspar(input, output.as_deref())?;
-            tf_motifs::reload();
+            tf_motifs::reload_from_path(Some(report.output.as_str()));
             ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -8454,7 +8457,17 @@ mod tests {
     use crate::dna_sequence::DNAsequence;
     use gb_io::seq::{Feature, FeatureKind, Location};
     use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::tempdir;
+
+    static JASPAR_RELOAD_TEST_COUNTER: AtomicUsize = AtomicUsize::new(1);
+
+    fn resource_fixture_path(name: &str) -> String {
+        format!(
+            "{}/test_files/fixtures/resources/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
 
     #[test]
     fn parse_help_with_topic_and_options() {
@@ -10032,12 +10045,13 @@ filter set1 set2 --metric score --min 10
         );
         let mut engine = GentleEngine::from_state(state);
 
-        let path = format!("{}/assets/cloning_patterns.json", env!("CARGO_MANIFEST_DIR"));
-        let import = execute_shell_command(
-            &mut engine,
-            &ShellCommand::MacrosTemplateImport { path },
-        )
-        .expect("import built-in patterns");
+        let path = format!(
+            "{}/assets/cloning_patterns.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let import =
+            execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+                .expect("import built-in patterns");
         assert!(import.state_changed);
         assert!(import.output["imported_count"].as_u64().unwrap_or(0) >= 6);
         let templates = import
@@ -10544,6 +10558,120 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn execute_resources_sync_rebase_with_local_fixture() {
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("rebase.sync.json");
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ResourcesSyncRebase {
+                input: resource_fixture_path("rebase.edge.withrefm"),
+                output: Some(output_path.to_string_lossy().to_string()),
+                commercial_only: true,
+            },
+        )
+        .expect("execute resources sync-rebase");
+
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["report"]["resource"].as_str(),
+            Some("rebase-commercial")
+        );
+        assert_eq!(out.output["report"]["item_count"].as_u64(), Some(2));
+        assert_eq!(
+            out.output["report"]["output"].as_str(),
+            Some(output_path.to_string_lossy().as_ref())
+        );
+
+        let written = fs::read_to_string(&output_path).expect("read synced REBASE output");
+        let enzymes = serde_json::from_str::<serde_json::Value>(&written).expect("parse JSON");
+        let names = enzymes
+            .as_array()
+            .expect("enzyme array")
+            .iter()
+            .filter_map(|entry| entry.get("name").and_then(|v| v.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["BsaI", "EcoRI"]);
+    }
+
+    #[test]
+    fn execute_resources_sync_jaspar_with_local_fixture() {
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("jaspar.sync.json");
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ResourcesSyncJaspar {
+                input: resource_fixture_path("jaspar.edge.pfm"),
+                output: Some(output_path.to_string_lossy().to_string()),
+            },
+        )
+        .expect("execute resources sync-jaspar");
+
+        assert!(!out.state_changed);
+        assert_eq!(out.output["report"]["resource"].as_str(), Some("jaspar"));
+        assert_eq!(out.output["report"]["item_count"].as_u64(), Some(2));
+        assert_eq!(
+            out.output["report"]["output"].as_str(),
+            Some(output_path.to_string_lossy().as_ref())
+        );
+
+        let written = fs::read_to_string(&output_path).expect("read synced JASPAR output");
+        let snapshot = serde_json::from_str::<serde_json::Value>(&written).expect("parse JSON");
+        assert_eq!(
+            snapshot.get("schema").and_then(|v| v.as_str()),
+            Some("gentle.tf_motifs.v2")
+        );
+        assert_eq!(
+            snapshot.get("motif_count").and_then(|v| v.as_u64()),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn execute_resources_sync_jaspar_reloads_motif_registry_from_synced_output() {
+        struct ReloadResetGuard;
+        impl Drop for ReloadResetGuard {
+            fn drop(&mut self) {
+                crate::tf_motifs::reload();
+            }
+        }
+        let _guard = ReloadResetGuard;
+
+        let td = tempdir().expect("tempdir");
+        let unique = JASPAR_RELOAD_TEST_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let motif_id = format!("MTEST{unique}.1");
+        let motif_name = format!("CODEX_TEST_MOTIF_{unique}");
+        let input_path = td.path().join("custom_reload.pfm");
+        let output_path = td.path().join("custom_reload.motifs.json");
+        let motif_text = format!(
+            ">{motif_id} {motif_name}\nA [1 0 0 0]\nC [0 1 0 0]\nG [0 0 1 0]\nT [0 0 0 1]\n"
+        );
+        fs::write(&input_path, motif_text).expect("write custom JASPAR input");
+
+        assert_eq!(crate::tf_motifs::resolve_motif(&motif_name), None);
+
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ResourcesSyncJaspar {
+                input: input_path.to_string_lossy().to_string(),
+                output: Some(output_path.to_string_lossy().to_string()),
+            },
+        )
+        .expect("execute resources sync-jaspar");
+
+        assert!(!out.state_changed);
+        assert_eq!(out.output["report"]["item_count"].as_u64(), Some(1));
+        assert_eq!(
+            crate::tf_motifs::resolve_motif(&motif_name).as_deref(),
+            Some("ACGT")
+        );
     }
 
     #[test]
@@ -11166,12 +11294,10 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
     #[test]
     fn execute_inspect_feature_expert_returns_view_json() {
         let mut state = ProjectState::default();
-        state
-            .sequences
-            .insert(
-                "s".to_string(),
-                DNAsequence::from_sequence("TTTACGTAAACGTGGG").expect("valid dna"),
-            );
+        state.sequences.insert(
+            "s".to_string(),
+            DNAsequence::from_sequence("TTTACGTAAACGTGGG").expect("valid dna"),
+        );
         let mut engine = GentleEngine::from_state(state);
         engine
             .apply(Operation::AnnotateTfbs {
