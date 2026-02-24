@@ -1,5 +1,5 @@
 {
-   "command_count": 155,
+   "command_count": 163,
    "commands": [
       {
          "aliases": [
@@ -93,6 +93,32 @@
          "path": "render-svg",
          "summary": "Render sequence map SVG.",
          "usage": "render-svg SEQ_ID linear|circular OUTPUT.svg"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "inspect-feature-expert",
+         "summary": "Inspect TFBS or restriction-site expert details as JSON.",
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "RenderFeatureExpertSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "render-feature-expert-svg",
+         "summary": "Render TFBS or restriction-site expert visualization as SVG.",
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg"
       },
       {
          "aliases": [],
@@ -224,6 +250,66 @@
          "path": "agents ask",
          "summary": "Send prompt to one agent system and optionally execute suggested shared-shell commands.",
          "usage": "agents ask SYSTEM_ID --prompt TEXT [--catalog PATH] [--base-url URL] [--model MODEL] [--timeout-secs N] [--connect-timeout-secs N] [--read-timeout-secs N] [--max-retries N] [--max-response-bytes N] [--allow-auto-exec] [--execute-all] [--execute-index N ...] [--no-state-summary]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui intents",
+         "summary": "List available GUI intent targets and supported query arguments.",
+         "usage": "ui intents"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui open",
+         "summary": "Request opening a GUI target (prepared refs, dialogs, assistant views).",
+         "usage": "ui open TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui focus",
+         "summary": "Request focusing an already-open GUI target.",
+         "usage": "ui focus TARGET [--genome-id GENOME_ID] [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui prepared-genomes",
+         "summary": "List prepared genomes/helpers for GUI intent disambiguation.",
+         "usage": "ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "ui latest-prepared",
+         "summary": "Resolve latest prepared genome/helper candidate by species query.",
+         "usage": "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -985,7 +1071,7 @@
          ],
          "path": "macros template-put",
          "summary": "Create or update a persisted workflow macro template.",
-         "usage": "macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+         "usage": "macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
       },
       {
          "aliases": [],
@@ -1088,7 +1174,7 @@
          ],
          "path": "candidates template-put",
          "summary": "Create or update a persisted candidate macro template.",
-         "usage": "candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+         "usage": "candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
       },
       {
          "aliases": [],

@@ -4,6 +4,7 @@
     {
       "name": "digest_ligate_extract_sticky",
       "description": "Digest one sequence with two enzymes, ligate two selected fragments (sticky protocol), and extract one region from the first ligation product.",
+      "details_url": "https://www.addgene.org/protocols/restriction-digest/",
       "parameters": [
         {
           "name": "seq_id",
@@ -60,6 +61,7 @@
     {
       "name": "branch_reverse_complement",
       "description": "Create one branch copy and reverse-complement that branch.",
+      "details_url": "https://www.bioinformatics.org/sms/rev_comp.html",
       "parameters": [
         {
           "name": "seq_id",
@@ -81,6 +83,7 @@
     {
       "name": "pcr_site_insertion_then_digest",
       "description": "Run PCR with explicit primer constraints (supports tail additions/site insertion) and digest the amplicon with one enzyme.",
+      "details_url": "https://www.neb.com/en-us/applications/cloning-and-synthetic-biology/pcr-cloning-and-mutagenesis",
       "parameters": [
         {
           "name": "template_seq_id",
@@ -150,6 +153,7 @@
     {
       "name": "grna_candidate_priority_scan",
       "description": "Guide-RNA candidate preselection by sequence windows, GC/distance scoring, quantile+range filtering, and top-k extraction.",
+      "details_url": "https://www.addgene.org/guides/crispr/",
       "parameters": [
         {
           "name": "seq_id",
@@ -226,6 +230,7 @@
     {
       "name": "grna_anchor_window_scan",
       "description": "Guide-RNA candidate preselection constrained to a region between two local anchor positions.",
+      "details_url": "https://www.addgene.org/guides/crispr/",
       "parameters": [
         {
           "name": "seq_id",
@@ -265,6 +270,7 @@
     {
       "name": "grna_practical_filter_and_oligos",
       "description": "Apply practical guide filters and generate cloning oligos from a guide set.",
+      "details_url": "https://www.addgene.org/protocols/crispr/",
       "parameters": [
         {
           "name": "guide_set_id",

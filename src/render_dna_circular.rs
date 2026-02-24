@@ -8,7 +8,7 @@ use crate::{
     restriction_enzyme::RestrictionEnzymeKey,
 };
 use eframe::egui::{
-    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke,
+    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Shape, Stroke, Vec2,
 };
 use gb_io::seq::Feature;
 use lazy_static::lazy_static;
@@ -846,13 +846,23 @@ impl RenderDnaCircular {
         {
             return;
         }
+        let mut occupied_label_rects: Vec<Rect> = self
+            .restriction_enzyme_sites
+            .iter()
+            .map(|site| site.area)
+            .collect();
         for feature in &self.features {
-            self.draw_feature_from_range(painter, feature);
+            self.draw_feature_from_range(painter, feature, &mut occupied_label_rects);
         }
     }
 
     /// Draws a feature from a given range
-    fn draw_feature_from_range(&self, painter: &egui::Painter, ret: &FeaturePosition) {
+    fn draw_feature_from_range(
+        &self,
+        painter: &egui::Painter,
+        ret: &FeaturePosition,
+        occupied_label_rects: &mut Vec<Rect>,
+    ) {
         let selected = self.selected_feature_number == Some(ret.feature_number);
         let hovered = self.hovered_feature_number == Some(ret.feature_number);
         let feature_stroke_width = if selected {
@@ -925,30 +935,107 @@ impl RenderDnaCircular {
 
         // Draw feature label
         if !ret.label.trim().is_empty() {
-            if let Some(widest_segment) = ret
-                .segments
-                .iter()
-                .max_by_key(|segment| segment.to.saturating_sub(segment.from))
+            let text_size = painter
+                .layout_no_wrap(ret.label.to_owned(), font_feature.to_owned(), ret.color)
+                .size();
+            if let Some((point, align, rect)) =
+                self.find_feature_label_placement(ret, text_size, occupied_label_rects)
             {
-                let label_radius = ret.outer + self.feature_thickness() * 0.35;
-                let arc_px = (widest_segment.to.saturating_sub(widest_segment.from) as f32
-                    / self.sequence_length.max(1) as f32)
-                    * std::f32::consts::TAU
-                    * label_radius.max(1.0);
-                let label_px = (ret.label.chars().count().max(1) as f32) * 6.0;
-                if arc_px >= label_px {
-                    let middle = (widest_segment.to + widest_segment.from) / 2;
-                    let middle_norm = middle.rem_euclid(self.sequence_length.max(1));
-                    let point = self.pos2xy(middle, label_radius);
-                    let align = if middle_norm > self.sequence_length / 2 {
-                        Align2::RIGHT_CENTER
-                    } else {
-                        Align2::LEFT_CENTER
-                    };
-                    painter.text(point, align, ret.label.to_owned(), font_feature, ret.color);
-                }
+                painter.text(point, align, ret.label.to_owned(), font_feature, ret.color);
+                occupied_label_rects.push(rect);
             }
         }
+    }
+
+    fn label_rect_from_anchor(point: Pos2, align: Align2, text_size: Vec2) -> Rect {
+        let h2 = text_size.y * 0.5;
+        match align {
+            Align2::LEFT_CENTER => {
+                Rect::from_min_size(Pos2::new(point.x, point.y - h2), text_size)
+            }
+            Align2::RIGHT_CENTER => {
+                Rect::from_min_size(Pos2::new(point.x - text_size.x, point.y - h2), text_size)
+            }
+            _ => Rect::from_center_size(point, text_size),
+        }
+    }
+
+    fn segment_midpoint(segment: &FeatureSegmentPosition) -> i64 {
+        segment.from + (segment.to.saturating_sub(segment.from) / 2)
+    }
+
+    fn segment_candidate_offsets(max_shift: i64, step_bp: i64) -> Vec<i64> {
+        let mut offsets = vec![0];
+        if max_shift <= 0 {
+            return offsets;
+        }
+        let step = step_bp.max(1);
+        let mut shift = step;
+        while shift <= max_shift {
+            offsets.push(shift);
+            offsets.push(-shift);
+            shift = shift.saturating_add(step);
+        }
+        offsets
+    }
+
+    fn find_feature_label_placement(
+        &self,
+        feature: &FeaturePosition,
+        text_size: Vec2,
+        occupied_label_rects: &[Rect],
+    ) -> Option<(Pos2, Align2, Rect)> {
+        if self.sequence_length <= 0 || text_size.x <= 0.0 || text_size.y <= 0.0 {
+            return None;
+        }
+
+        let label_radius = feature.outer + self.feature_thickness() * 0.35;
+        let seq_len = self.sequence_length.max(1) as f32;
+        let circumference_px = std::f32::consts::TAU * label_radius.max(1.0);
+        let bp_per_px = (self.sequence_length.max(1) as f32) / circumference_px.max(1.0);
+        let step_bp = (bp_per_px * 8.0).ceil().max(1.0) as i64;
+
+        let mut segment_refs = feature.segments.iter().collect::<Vec<_>>();
+        segment_refs.sort_by(|a, b| {
+            let span_a = a.to.saturating_sub(a.from);
+            let span_b = b.to.saturating_sub(b.from);
+            let mid_a = Self::segment_midpoint(a);
+            let mid_b = Self::segment_midpoint(b);
+            let feature_mid = feature.from + (feature.to.saturating_sub(feature.from) / 2);
+            let dist_a = (mid_a - feature_mid).abs();
+            let dist_b = (mid_b - feature_mid).abs();
+            span_b.cmp(&span_a).then_with(|| dist_a.cmp(&dist_b))
+        });
+
+        for segment in segment_refs {
+            let span = segment.to.saturating_sub(segment.from);
+            if span <= 0 {
+                continue;
+            }
+            let arc_px = (span as f32 / seq_len) * circumference_px;
+            if arc_px < text_size.x {
+                continue;
+            }
+
+            let middle = Self::segment_midpoint(segment);
+            let max_shift = span / 2;
+            for offset in Self::segment_candidate_offsets(max_shift, step_bp) {
+                let candidate_bp = (middle + offset).clamp(segment.from, segment.to);
+                let candidate_bp_norm = candidate_bp.rem_euclid(self.sequence_length.max(1));
+                let point = self.pos2xy(candidate_bp, label_radius);
+                let align = if candidate_bp_norm > self.sequence_length / 2 {
+                    Align2::RIGHT_CENTER
+                } else {
+                    Align2::LEFT_CENTER
+                };
+                let rect = Self::label_rect_from_anchor(point, align, text_size).expand(2.0);
+                if occupied_label_rects.iter().any(|occupied| occupied.intersects(rect)) {
+                    continue;
+                }
+                return Some((point, align, rect));
+            }
+        }
+        None
     }
 
     fn draw_intron_arch(
@@ -1258,5 +1345,41 @@ mod tests {
         assert_eq!(fp.segments.len(), 3);
         assert_eq!(fp.intron_arches.len(), 2);
         assert!(fp.outer > fp.inner);
+    }
+
+    #[test]
+    fn feature_label_offsets_start_at_center_then_expand() {
+        let offsets = RenderDnaCircular::segment_candidate_offsets(10, 3);
+        assert_eq!(offsets.first().copied(), Some(0));
+        assert_eq!(offsets.get(1).copied(), Some(3));
+        assert_eq!(offsets.get(2).copied(), Some(-3));
+    }
+
+    #[test]
+    fn find_feature_label_placement_avoids_occupied_center_rect() {
+        let feature = make_test_feature(Location::simple_range(100, 260));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features();
+        assert_eq!(renderer.features.len(), 1);
+        let fp = renderer.features[0].to_owned();
+        let text_size = Vec2::new(58.0, 12.0);
+        let middle = fp.segments[0].from + (fp.segments[0].to - fp.segments[0].from) / 2;
+        let label_radius = fp.outer + renderer.feature_thickness() * 0.35;
+        let center_point = renderer.pos2xy(middle, label_radius);
+        let center_align = if middle.rem_euclid(renderer.sequence_length.max(1))
+            > renderer.sequence_length / 2
+        {
+            Align2::RIGHT_CENTER
+        } else {
+            Align2::LEFT_CENTER
+        };
+        let occupied_center =
+            RenderDnaCircular::label_rect_from_anchor(center_point, center_align, text_size)
+                .expand(2.0);
+        let placement = renderer
+            .find_feature_label_placement(&fp, text_size, &[occupied_center])
+            .expect("placement should shift away from occupied center");
+        let placed_rect = placement.2;
+        assert!(!placed_rect.intersects(occupied_center));
     }
 }

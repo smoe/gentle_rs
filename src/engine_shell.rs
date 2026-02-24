@@ -71,6 +71,7 @@ impl Default for CloningPatternFile {
 struct CloningPatternTemplate {
     name: String,
     description: Option<String>,
+    details_url: Option<String>,
     parameters: Vec<WorkflowMacroTemplateParam>,
     script: String,
 }
@@ -408,6 +409,7 @@ pub enum ShellCommand {
     MacrosTemplateUpsert {
         name: String,
         description: Option<String>,
+        details_url: Option<String>,
         parameters: Vec<WorkflowMacroTemplateParam>,
         script: String,
     },
@@ -517,6 +519,7 @@ pub enum ShellCommand {
     CandidatesTemplateUpsert {
         name: String,
         description: Option<String>,
+        details_url: Option<String>,
         parameters: Vec<CandidateMacroTemplateParam>,
         script: String,
     },
@@ -1527,12 +1530,17 @@ impl ShellCommand {
             Self::MacrosTemplateUpsert {
                 name,
                 description,
+                details_url,
                 parameters,
                 script,
             } => format!(
-                "upsert workflow macro template '{}' (description='{}', params={}, script_len={})",
+                "upsert workflow macro template '{}' (description='{}', details_url='{}', params={}, script_len={})",
                 name,
                 description
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("-"),
+                details_url
                     .as_deref()
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or("-"),
@@ -1791,12 +1799,17 @@ impl ShellCommand {
             Self::CandidatesTemplateUpsert {
                 name,
                 description,
+                details_url,
                 parameters,
                 script,
             } => format!(
-                "upsert candidate macro template '{}' (description='{}', params={}, script_len={})",
+                "upsert candidate macro template '{}' (description='{}', details_url='{}', params={}, script_len={})",
                 name,
                 description
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("-"),
+                details_url
                     .as_deref()
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or("-"),
@@ -3708,12 +3721,13 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "template-put" | "template-upsert" => {
             if tokens.len() < 4 {
                 return Err(
-                    "candidates template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+                    "candidates template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
                         .to_string(),
                 );
             }
             let name = tokens[2].clone();
             let mut description: Option<String> = None;
+            let mut details_url: Option<String> = None;
             let mut parameters: Vec<CandidateMacroTemplateParam> = vec![];
             let mut script: Option<String> = None;
             let mut idx = 3usize;
@@ -3724,6 +3738,20 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--description",
+                            "candidates template-put",
+                        )?);
+                    }
+                    "--details-url" | "--url" => {
+                        if details_url.is_some() {
+                            return Err(
+                                "candidates template-put details URL was already specified"
+                                    .to_string(),
+                            );
+                        }
+                        details_url = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--details-url",
                             "candidates template-put",
                         )?);
                     }
@@ -3777,6 +3805,7 @@ fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::CandidatesTemplateUpsert {
                 name,
                 description,
+                details_url,
                 parameters,
                 script,
             })
@@ -4241,12 +4270,13 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "template-put" | "template-upsert" => {
             if tokens.len() < 4 {
                 return Err(
-                    "macros template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]"
+                    "macros template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
                         .to_string(),
                 );
             }
             let name = tokens[2].clone();
             let mut description: Option<String> = None;
+            let mut details_url: Option<String> = None;
             let mut parameters: Vec<WorkflowMacroTemplateParam> = vec![];
             let mut script: Option<String> = None;
             let mut idx = 3usize;
@@ -4257,6 +4287,19 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             tokens,
                             &mut idx,
                             "--description",
+                            "macros template-put",
+                        )?);
+                    }
+                    "--details-url" | "--url" => {
+                        if details_url.is_some() {
+                            return Err(
+                                "macros template-put details URL was already specified".to_string()
+                            );
+                        }
+                        details_url = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--details-url",
                             "macros template-put",
                         )?);
                     }
@@ -4299,6 +4342,7 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::MacrosTemplateUpsert {
                 name,
                 description,
+                details_url,
                 parameters,
                 script,
             })
@@ -7437,6 +7481,7 @@ pub fn execute_shell_command_with_options(
         ShellCommand::MacrosTemplateUpsert {
             name,
             description,
+            details_url,
             parameters,
             script,
         } => {
@@ -7450,6 +7495,7 @@ pub fn execute_shell_command_with_options(
                 .apply(Operation::UpsertWorkflowMacroTemplate {
                     name: name.clone(),
                     description: description.clone(),
+                    details_url: details_url.clone(),
                     parameters: parameters.clone(),
                     script: loaded_script.clone(),
                 })
@@ -7464,6 +7510,7 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "name": name,
                     "description": description,
+                    "details_url": details_url,
                     "parameter_count": parameters.len(),
                     "script_length": loaded_script.len(),
                     "result": op_result
@@ -7501,6 +7548,7 @@ pub fn execute_shell_command_with_options(
                 let op = Operation::UpsertWorkflowMacroTemplate {
                     name: template.name.clone(),
                     description: template.description.clone(),
+                    details_url: template.details_url.clone(),
                     parameters: template.parameters.clone(),
                     script,
                 };
@@ -8018,6 +8066,7 @@ pub fn execute_shell_command_with_options(
         ShellCommand::CandidatesTemplateUpsert {
             name,
             description,
+            details_url,
             parameters,
             script,
         } => {
@@ -8031,6 +8080,7 @@ pub fn execute_shell_command_with_options(
                 .apply(Operation::UpsertCandidateMacroTemplate {
                     name: name.clone(),
                     description: description.clone(),
+                    details_url: details_url.clone(),
                     parameters: parameters.clone(),
                     script: loaded_script.clone(),
                 })
@@ -8045,6 +8095,7 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "name": name,
                     "description": description,
+                    "details_url": details_url,
                     "parameter_count": parameters.len(),
                     "script_length": loaded_script.len(),
                     "result": op_result
@@ -9151,17 +9202,22 @@ mod tests {
     #[test]
     fn parse_candidates_template_put_and_run() {
         let put = parse_shell_line(
-            "candidates template-put scan --script 'generate ${set_name} ${seq_id} --length ${len}' --param set_name --param seq_id=seqA --param len=20",
+            "candidates template-put scan --script 'generate ${set_name} ${seq_id} --length ${len}' --details-url https://example.org/candidates/scan --param set_name --param seq_id=seqA --param len=20",
         )
         .expect("parse template-put");
         match put {
             ShellCommand::CandidatesTemplateUpsert {
                 name,
+                details_url,
                 parameters,
                 script,
                 ..
             } => {
                 assert_eq!(name, "scan");
+                assert_eq!(
+                    details_url.as_deref(),
+                    Some("https://example.org/candidates/scan")
+                );
                 assert_eq!(parameters.len(), 3);
                 assert_eq!(script, "generate ${set_name} ${seq_id} --length ${len}");
             }
@@ -9182,6 +9238,23 @@ mod tests {
                 assert_eq!(bindings.get("set_name"), Some(&"hits".to_string()));
                 assert_eq!(bindings.get("seq_id"), Some(&"seqB".to_string()));
                 assert!(transactional);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_candidates_template_put_accepts_url_alias() {
+        let put = parse_shell_line(
+            "candidates template-put scan --script 'generate ${set_name} ${seq_id} --length 20' --url https://example.org/candidates/scan --param set_name --param seq_id",
+        )
+        .expect("parse candidates template-put with --url");
+        match put {
+            ShellCommand::CandidatesTemplateUpsert { details_url, .. } => {
+                assert_eq!(
+                    details_url.as_deref(),
+                    Some("https://example.org/candidates/scan")
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -9245,17 +9318,19 @@ mod tests {
         }
 
         let put = parse_shell_line(
-            r#"macros template-put clone --script 'op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}' --param seq_id --param out_id=seqA_rev"#,
+            r#"macros template-put clone --script 'op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}' --details-url https://example.org/clone --param seq_id --param out_id=seqA_rev"#,
         )
         .expect("parse macros template-put");
         match put {
             ShellCommand::MacrosTemplateUpsert {
                 name,
+                details_url,
                 parameters,
                 script,
                 ..
             } => {
                 assert_eq!(name, "clone");
+                assert_eq!(details_url.as_deref(), Some("https://example.org/clone"));
                 assert_eq!(parameters.len(), 2);
                 assert_eq!(
                     script,
@@ -9288,6 +9363,20 @@ mod tests {
         match import {
             ShellCommand::MacrosTemplateImport { path } => {
                 assert_eq!(path, "assets/cloning_patterns.json");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_macros_template_put_accepts_url_alias() {
+        let put = parse_shell_line(
+            r#"macros template-put clone --script 'op {"Reverse":{"input":"${seq_id}"}}' --url https://example.org/clone --param seq_id"#,
+        )
+        .expect("parse macros template-put with --url");
+        match put {
+            ShellCommand::MacrosTemplateUpsert { details_url, .. } => {
+                assert_eq!(details_url.as_deref(), Some("https://example.org/clone"));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -9713,6 +9802,7 @@ filter set1 set2 --metric score --min 10
             &ShellCommand::CandidatesTemplateUpsert {
                 name: "scan".to_string(),
                 description: Some("scan template".to_string()),
+                details_url: Some("https://example.org/candidates/scan".to_string()),
                 parameters: vec![
                     CandidateMacroTemplateParam {
                         name: "set_name".to_string(),
@@ -9733,6 +9823,14 @@ filter set1 set2 --metric score --min 10
         let listed = execute_shell_command(&mut engine, &ShellCommand::CandidatesTemplateList)
             .expect("list templates");
         assert_eq!(listed.output["template_count"].as_u64(), Some(1));
+        let details_url = listed
+            .output
+            .get("templates")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|template| template.get("details_url"))
+            .and_then(|v| v.as_str());
+        assert_eq!(details_url, Some("https://example.org/candidates/scan"));
 
         let run = execute_shell_command(
             &mut engine,
@@ -9767,6 +9865,7 @@ filter set1 set2 --metric score --min 10
             &ShellCommand::MacrosTemplateUpsert {
                 name: "clone".to_string(),
                 description: Some("reverse helper".to_string()),
+                details_url: Some("https://example.org/macros/clone".to_string()),
                 parameters: vec![
                     WorkflowMacroTemplateParam {
                         name: "seq_id".to_string(),
@@ -9788,6 +9887,14 @@ filter set1 set2 --metric score --min 10
         let listed = execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateList)
             .expect("list macros templates");
         assert_eq!(listed.output["template_count"].as_u64(), Some(1));
+        let details_url = listed
+            .output
+            .get("templates")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|template| template.get("details_url"))
+            .and_then(|v| v.as_str());
+        assert_eq!(details_url, Some("https://example.org/macros/clone"));
 
         let run = execute_shell_command(
             &mut engine,
@@ -9854,6 +9961,7 @@ filter set1 set2 --metric score --min 10
     {
       "name": "reverse_default",
       "description": "reverse one sequence",
+      "details_url": "https://example.org/reverse-default",
       "parameters": [
         { "name": "seq_id", "default_value": "seqA", "required": false },
         { "name": "output_id", "default_value": "seqA_rev", "required": false }
@@ -9874,6 +9982,13 @@ filter set1 set2 --metric score --min 10
         .expect("import patterns");
         assert!(import.state_changed);
         assert_eq!(import.output["imported_count"].as_u64(), Some(1));
+        let imported_template = engine
+            .get_workflow_macro_template("reverse_default")
+            .expect("get imported template");
+        assert_eq!(
+            imported_template.details_url.as_deref(),
+            Some("https://example.org/reverse-default")
+        );
 
         let run = execute_shell_command(
             &mut engine,
@@ -9916,6 +10031,13 @@ filter set1 set2 --metric score --min 10
                 .map(|s| s == "grna_candidate_priority_scan")
                 .unwrap_or(false)
         }));
+        let branch_template = engine
+            .get_workflow_macro_template("branch_reverse_complement")
+            .expect("imported branch template should exist");
+        assert_eq!(
+            branch_template.details_url.as_deref(),
+            Some("https://www.bioinformatics.org/sms/rev_comp.html")
+        );
 
         let mut bindings = HashMap::new();
         bindings.insert("seq_id".to_string(), "seqA".to_string());

@@ -1580,6 +1580,7 @@ struct WorkflowMacroTemplateStore {
 pub struct WorkflowMacroTemplate {
     pub name: String,
     pub description: Option<String>,
+    pub details_url: Option<String>,
     pub parameters: Vec<WorkflowMacroTemplateParam>,
     #[serde(default = "default_cloning_macro_template_schema")]
     pub template_schema: String,
@@ -1604,6 +1605,7 @@ pub struct WorkflowMacroTemplateParam {
 pub struct WorkflowMacroTemplateSummary {
     pub name: String,
     pub description: Option<String>,
+    pub details_url: Option<String>,
     pub parameter_count: usize,
     pub created_at_unix_ms: u128,
     pub updated_at_unix_ms: u128,
@@ -1622,6 +1624,7 @@ struct CandidateMacroTemplateStore {
 pub struct CandidateMacroTemplate {
     pub name: String,
     pub description: Option<String>,
+    pub details_url: Option<String>,
     pub parameters: Vec<CandidateMacroTemplateParam>,
     pub script: String,
     pub created_at_unix_ms: u128,
@@ -1640,6 +1643,7 @@ pub struct CandidateMacroTemplateParam {
 pub struct CandidateMacroTemplateSummary {
     pub name: String,
     pub description: Option<String>,
+    pub details_url: Option<String>,
     pub parameter_count: usize,
     pub created_at_unix_ms: u128,
     pub updated_at_unix_ms: u128,
@@ -2042,6 +2046,8 @@ pub enum Operation {
         name: String,
         description: Option<String>,
         #[serde(default)]
+        details_url: Option<String>,
+        #[serde(default)]
         parameters: Vec<WorkflowMacroTemplateParam>,
         script: String,
     },
@@ -2051,6 +2057,8 @@ pub enum Operation {
     UpsertCandidateMacroTemplate {
         name: String,
         description: Option<String>,
+        #[serde(default)]
+        details_url: Option<String>,
         #[serde(default)]
         parameters: Vec<CandidateMacroTemplateParam>,
         script: String,
@@ -4977,6 +4985,29 @@ impl GentleEngine {
         Ok(trimmed.to_string())
     }
 
+    fn normalize_workflow_macro_template_details_url(
+        raw: Option<String>,
+    ) -> Result<Option<String>, EngineError> {
+        let Some(raw) = raw else {
+            return Ok(None);
+        };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if !(lower.starts_with("https://") || lower.starts_with("http://")) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Workflow macro template details_url '{}' must start with http:// or https://",
+                    trimmed
+                ),
+            });
+        }
+        Ok(Some(trimmed.to_string()))
+    }
+
     fn read_workflow_macro_template_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> WorkflowMacroTemplateStore {
@@ -5030,6 +5061,7 @@ impl GentleEngine {
             .map(|template| WorkflowMacroTemplateSummary {
                 name: template.name.clone(),
                 description: template.description.clone(),
+                details_url: template.details_url.clone(),
                 parameter_count: template.parameters.len(),
                 created_at_unix_ms: template.created_at_unix_ms,
                 updated_at_unix_ms: template.updated_at_unix_ms,
@@ -5172,6 +5204,29 @@ impl GentleEngine {
         Ok(trimmed.to_string())
     }
 
+    fn normalize_candidate_macro_template_details_url(
+        raw: Option<String>,
+    ) -> Result<Option<String>, EngineError> {
+        let Some(raw) = raw else {
+            return Ok(None);
+        };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if !(lower.starts_with("https://") || lower.starts_with("http://")) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Candidate macro template details_url '{}' must start with http:// or https://",
+                    trimmed
+                ),
+            });
+        }
+        Ok(Some(trimmed.to_string()))
+    }
+
     fn read_candidate_macro_template_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> CandidateMacroTemplateStore {
@@ -5225,6 +5280,7 @@ impl GentleEngine {
             .map(|template| CandidateMacroTemplateSummary {
                 name: template.name.clone(),
                 description: template.description.clone(),
+                details_url: template.details_url.clone(),
                 parameter_count: template.parameters.len(),
                 created_at_unix_ms: template.created_at_unix_ms,
                 updated_at_unix_ms: template.updated_at_unix_ms,
@@ -8307,6 +8363,7 @@ impl GentleEngine {
         &mut self,
         name: String,
         description: Option<String>,
+        details_url: Option<String>,
         parameters: Vec<WorkflowMacroTemplateParam>,
         script: String,
         result: &mut OpResult,
@@ -8319,6 +8376,7 @@ impl GentleEngine {
                 message: "Workflow macro template script cannot be empty".to_string(),
             });
         }
+        let details_url = Self::normalize_workflow_macro_template_details_url(details_url)?;
 
         let mut normalized_parameters = Vec::with_capacity(parameters.len());
         let mut seen = HashSet::new();
@@ -8388,6 +8446,7 @@ impl GentleEngine {
                     description: description
                         .map(|text| text.trim().to_string())
                         .filter(|text| !text.is_empty()),
+                    details_url,
                     parameters: normalized_parameters,
                     template_schema: CLONING_MACRO_TEMPLATE_SCHEMA.to_string(),
                     script: script.to_string(),
@@ -8435,6 +8494,7 @@ impl GentleEngine {
         &mut self,
         name: String,
         description: Option<String>,
+        details_url: Option<String>,
         parameters: Vec<CandidateMacroTemplateParam>,
         script: String,
         result: &mut OpResult,
@@ -8447,6 +8507,7 @@ impl GentleEngine {
                 message: "Candidate macro template script cannot be empty".to_string(),
             });
         }
+        let details_url = Self::normalize_candidate_macro_template_details_url(details_url)?;
 
         let mut normalized_parameters = Vec::with_capacity(parameters.len());
         let mut seen = HashSet::new();
@@ -8516,6 +8577,7 @@ impl GentleEngine {
                     description: description
                         .map(|text| text.trim().to_string())
                         .filter(|text| !text.is_empty()),
+                    details_url,
                     parameters: normalized_parameters,
                     script: script.to_string(),
                     created_at_unix_ms,
@@ -14807,12 +14869,14 @@ impl GentleEngine {
             Operation::UpsertWorkflowMacroTemplate {
                 name,
                 description,
+                details_url,
                 parameters,
                 script,
             } => {
                 self.op_upsert_workflow_macro_template(
                     name,
                     description,
+                    details_url,
                     parameters,
                     script,
                     &mut result,
@@ -14824,12 +14888,14 @@ impl GentleEngine {
             Operation::UpsertCandidateMacroTemplate {
                 name,
                 description,
+                details_url,
                 parameters,
                 script,
             } => {
                 self.op_upsert_candidate_macro_template(
                     name,
                     description,
+                    details_url,
                     parameters,
                     script,
                     &mut result,
@@ -20510,6 +20576,7 @@ ORIGIN
             .apply(Operation::UpsertCandidateMacroTemplate {
                 name: "scan_tp53".to_string(),
                 description: Some("demo template".to_string()),
+                details_url: Some("https://example.org/candidates/scan-tp53".to_string()),
                 parameters: vec![
                     CandidateMacroTemplateParam {
                         name: "set_name".to_string(),
@@ -20534,6 +20601,17 @@ ORIGIN
         let templates = engine.list_candidate_macro_templates();
         assert_eq!(templates.len(), 1);
         assert_eq!(templates[0].name, "scan_tp53");
+        assert_eq!(
+            templates[0].details_url.as_deref(),
+            Some("https://example.org/candidates/scan-tp53")
+        );
+        let template = engine
+            .get_candidate_macro_template("scan_tp53")
+            .expect("get candidate template");
+        assert_eq!(
+            template.details_url.as_deref(),
+            Some("https://example.org/candidates/scan-tp53")
+        );
 
         let rendered = engine
             .render_candidate_macro_template_script(
@@ -20552,12 +20630,36 @@ ORIGIN
     }
 
     #[test]
+    fn test_candidate_macro_template_rejects_non_http_details_url() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let err = engine
+            .apply(Operation::UpsertCandidateMacroTemplate {
+                name: "bad_url".to_string(),
+                description: Some("template".to_string()),
+                details_url: Some("ftp://example.org/template".to_string()),
+                parameters: vec![CandidateMacroTemplateParam {
+                    name: "set_name".to_string(),
+                    default_value: None,
+                    required: true,
+                }],
+                script: "generate ${set_name} seqA --length 20".to_string(),
+            })
+            .expect_err("expected invalid details_url error");
+        assert!(
+            err.message.contains("must start with http:// or https://"),
+            "unexpected error: {}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_workflow_macro_template_store_and_render() {
         let mut engine = GentleEngine::from_state(ProjectState::default());
         engine
             .apply(Operation::UpsertWorkflowMacroTemplate {
                 name: "clone_step".to_string(),
                 description: Some("demo workflow template".to_string()),
+                details_url: Some("https://example.org/cloning/clone-step".to_string()),
                 parameters: vec![
                     WorkflowMacroTemplateParam {
                         name: "seq_id".to_string(),
@@ -20582,6 +20684,10 @@ ORIGIN
             .get_workflow_macro_template("clone_step")
             .expect("get workflow template");
         assert_eq!(template.template_schema, CLONING_MACRO_TEMPLATE_SCHEMA);
+        assert_eq!(
+            template.details_url.as_deref(),
+            Some("https://example.org/cloning/clone-step")
+        );
 
         let rendered = engine
             .render_workflow_macro_template_script(
@@ -20600,6 +20706,29 @@ ORIGIN
             })
             .expect("delete workflow template");
         assert!(engine.list_workflow_macro_templates().is_empty());
+    }
+
+    #[test]
+    fn test_workflow_macro_template_rejects_non_http_details_url() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let err = engine
+            .apply(Operation::UpsertWorkflowMacroTemplate {
+                name: "bad_url".to_string(),
+                description: Some("template".to_string()),
+                details_url: Some("ftp://example.org/template".to_string()),
+                parameters: vec![WorkflowMacroTemplateParam {
+                    name: "seq_id".to_string(),
+                    default_value: None,
+                    required: true,
+                }],
+                script: "op {\"Reverse\":{\"input\":\"${seq_id}\"}}".to_string(),
+            })
+            .expect_err("expected invalid details_url error");
+        assert!(
+            err.message.contains("must start with http:// or https://"),
+            "unexpected error: {}",
+            err.message
+        );
     }
 
     #[test]

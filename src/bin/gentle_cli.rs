@@ -485,7 +485,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
   gentle_cli [--state PATH|--project PATH] macros template-list\n  \
   gentle_cli [--state PATH|--project PATH] macros template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]\n  \
   gentle_cli [--state PATH|--project PATH] macros template-delete TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] macros template-import PATH\n  \
   gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
@@ -505,7 +505,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] candidates macro SCRIPT_OR_@FILE\n  \
   gentle_cli [--state PATH|--project PATH] candidates template-list\n  \
   gentle_cli [--state PATH|--project PATH] candidates template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]\n  \
+  gentle_cli [--state PATH|--project PATH] candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]\n  \
   gentle_cli [--state PATH|--project PATH] candidates template-delete TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
   gentle_cli [--state PATH|--project PATH] guides list\n  \
@@ -529,23 +529,24 @@ fn usage() {
     );
 }
 
+const SHELL_FORWARDED_COMMANDS: &[&str] = &[
+    "genomes",
+    "helpers",
+    "agents",
+    "ui",
+    "macros",
+    "resources",
+    "import-pool",
+    "ladders",
+    "guides",
+    "tracks",
+    "screenshot-window",
+    "inspect-feature-expert",
+    "render-feature-expert-svg",
+];
+
 fn is_shell_forwarded_command(command: &str) -> bool {
-    matches!(
-        command,
-        "genomes"
-            | "helpers"
-            | "agents"
-            | "ui"
-            | "macros"
-            | "resources"
-            | "import-pool"
-            | "ladders"
-            | "guides"
-            | "tracks"
-            | "screenshot-window"
-            | "inspect-feature-expert"
-            | "render-feature-expert-svg"
-    )
+    SHELL_FORWARDED_COMMANDS.contains(&command)
 }
 
 fn parse_forwarded_shell_command(
@@ -2174,19 +2175,7 @@ T [ 0 0 0 10 ]
 
     #[test]
     fn test_shell_forwarded_command_allowlist_contains_shared_shell_commands() {
-        for command in [
-            "genomes",
-            "helpers",
-            "agents",
-            "ui",
-            "macros",
-            "resources",
-            "import-pool",
-            "ladders",
-            "guides",
-            "tracks",
-            "screenshot-window",
-        ] {
+        for command in SHELL_FORWARDED_COMMANDS {
             assert!(
                 is_shell_forwarded_command(command),
                 "expected '{command}' to be shell-forwarded"
@@ -2196,6 +2185,37 @@ T [ 0 0 0 10 ]
             assert!(
                 !is_shell_forwarded_command(command),
                 "expected '{command}' to be handled by direct CLI branch"
+            );
+        }
+    }
+
+    #[test]
+    fn test_shell_forwarded_commands_are_documented_in_glossary() {
+        let glossary: serde_json::Value =
+            serde_json::from_str(include_str!("../../docs/glossary.json"))
+                .expect("parse docs/glossary.json");
+        let commands = glossary
+            .get("commands")
+            .and_then(|value| value.as_array())
+            .expect("glossary commands array");
+        let declared_count = glossary
+            .get("command_count")
+            .and_then(|value| value.as_u64())
+            .expect("glossary command_count") as usize;
+        assert_eq!(
+            declared_count,
+            commands.len(),
+            "docs/glossary.json command_count does not match commands length"
+        );
+        let paths: Vec<&str> = commands
+            .iter()
+            .filter_map(|entry| entry.get("path").and_then(|value| value.as_str()))
+            .collect();
+        for command in SHELL_FORWARDED_COMMANDS {
+            let expected_prefix = format!("{command} ");
+            assert!(
+                paths.iter().any(|path| *path == *command || path.starts_with(&expected_prefix)),
+                "shell-forwarded command '{command}' is missing from docs/glossary.json"
             );
         }
     }

@@ -204,7 +204,16 @@ impl DNAsequence {
 
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
         let file = File::create(filename)?;
-        gb_io::writer::write(file, &self.seq)?;
+        let mut seq = self.seq.clone();
+        for feature in &mut seq.features {
+            let location_text = feature.location.to_gb_format();
+            feature.location = gb_io::seq::Location::from_gb_format(&location_text).map_err(|e| {
+                anyhow::anyhow!(
+                    "Could not canonicalize feature location '{location_text}' before GenBank write: {e}"
+                )
+            })?;
+        }
+        gb_io::writer::write(file, &seq)?;
         Ok(())
     }
 
@@ -819,13 +828,64 @@ fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
 }
 
 fn parse_embl_record(lines: &[String]) -> Result<Seq> {
+    #[derive(Debug, Default)]
+    struct PendingEmblFeature {
+        kind: Option<gb_io::seq::FeatureKind>,
+        location_text: String,
+        qualifiers: Vec<(gb_io::seq::QualifierKey, Option<String>)>,
+        last_qualifier_index: Option<usize>,
+    }
+
+    impl PendingEmblFeature {
+        fn push_qualifier_line(&mut self, trimmed: &str) {
+            if let Some(raw_qualifier) = trimmed.strip_prefix('/') {
+                let (qk, qv) = if let Some((key, value)) = raw_qualifier.split_once('=') {
+                    (key.trim(), Some(value.trim().to_string()))
+                } else {
+                    (raw_qualifier.trim(), None)
+                };
+                self.qualifiers.push((qk.into(), qv));
+                self.last_qualifier_index = Some(self.qualifiers.len().saturating_sub(1));
+            } else if let Some(idx) = self.last_qualifier_index {
+                if let Some(existing) = self.qualifiers.get_mut(idx).and_then(|(_, v)| v.as_mut()) {
+                    if !existing.ends_with(' ') {
+                        existing.push(' ');
+                    }
+                    existing.push_str(trimmed);
+                }
+            } else {
+                self.location_text.push_str(trimmed);
+            }
+        }
+
+        fn into_feature(self) -> Result<Feature> {
+            let kind = self
+                .kind
+                .ok_or_else(|| anyhow::anyhow!("Encountered empty EMBL feature record"))?;
+            let location_text = self.location_text.trim().to_string();
+            let parsed_location =
+                gb_io::seq::Location::from_gb_format(&location_text).map_err(|e| {
+                    anyhow::anyhow!("Could not parse EMBL feature location '{location_text}': {e}")
+                })?;
+            let location = canonicalize_location(parsed_location).map_err(|e| {
+                anyhow::anyhow!(
+                    "Could not canonicalize EMBL feature location '{location_text}': {e}"
+                )
+            })?;
+            Ok(Feature {
+                kind,
+                location,
+                qualifiers: self.qualifiers,
+            })
+        }
+    }
+
     let mut seq = Seq::empty();
     let mut accession: Option<String> = None;
     let mut version: Option<String> = None;
     let mut definition_lines: Vec<String> = vec![];
     let mut sequence_started = false;
-    let mut current_feature: Option<Feature> = None;
-    let mut last_qualifier_index: Option<usize> = None;
+    let mut current_feature: Option<PendingEmblFeature> = None;
 
     for raw_line in lines {
         let line = raw_line.trim_end_matches('\r');
@@ -893,17 +953,14 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
         let value = line.get(21..).unwrap_or_default().trim_end();
         if !key.is_empty() {
             if let Some(feature) = current_feature.take() {
-                seq.features.push(feature);
+                seq.features.push(feature.into_feature()?);
             }
-            let location = gb_io::seq::Location::from_gb_format(value.trim()).map_err(|e| {
-                anyhow::anyhow!("Could not parse EMBL feature location '{value}': {e}")
-            })?;
-            current_feature = Some(Feature {
-                kind: gb_io::seq::FeatureKind::from(key),
-                location,
+            current_feature = Some(PendingEmblFeature {
+                kind: Some(gb_io::seq::FeatureKind::from(key)),
+                location_text: value.trim().to_string(),
                 qualifiers: vec![],
+                last_qualifier_index: None,
             });
-            last_qualifier_index = None;
             continue;
         }
 
@@ -916,29 +973,11 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
                 "Encountered EMBL qualifier before any feature: '{trimmed}'"
             ));
         };
-        if let Some(raw_qualifier) = trimmed.strip_prefix('/') {
-            let (qk, qv) = if let Some((key, value)) = raw_qualifier.split_once('=') {
-                (key.trim(), Some(value.trim().to_string()))
-            } else {
-                (raw_qualifier.trim(), None)
-            };
-            feature.qualifiers.push((qk.into(), qv));
-            last_qualifier_index = Some(feature.qualifiers.len().saturating_sub(1));
-            continue;
-        }
-
-        if let Some(idx) = last_qualifier_index {
-            if let Some(existing) = feature.qualifiers.get_mut(idx).and_then(|(_, v)| v.as_mut()) {
-                if !existing.ends_with(' ') {
-                    existing.push(' ');
-                }
-                existing.push_str(trimmed);
-            }
-        }
+        feature.push_qualifier_line(trimmed);
     }
 
     if let Some(feature) = current_feature.take() {
-        seq.features.push(feature);
+        seq.features.push(feature.into_feature()?);
     }
     for feature in &mut seq.features {
         for (_, value) in &mut feature.qualifiers {
@@ -968,6 +1007,11 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
     Ok(seq)
 }
 
+fn canonicalize_location(location: gb_io::seq::Location) -> Result<gb_io::seq::Location> {
+    let value = serde_json::to_value(&location)?;
+    Ok(serde_json::from_value(value)?)
+}
+
 fn normalize_embl_qualifier_value(raw: &str) -> String {
     let mut value = raw.trim().to_string();
     if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
@@ -992,6 +1036,8 @@ impl From<String> for DNAsequence {
 mod tests {
     use super::*;
     use crate::{app::GENtleApp, enzymes::Enzymes};
+    use std::io::Write;
+    use tempfile::Builder;
 
     #[test]
     fn test_split_at_restriction_enzyme_site_circular() {
@@ -1098,13 +1144,22 @@ mod tests {
         let genbank =
             DNAsequence::from_genbank_file("test_files/fixtures/import_parity/toy.small.gb")
                 .unwrap();
+        let embl =
+            DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.small.embl")
+                .unwrap();
         let fasta = fasta.first().unwrap();
         let genbank = genbank.first().unwrap();
+        let embl = embl.first().unwrap();
         assert_eq!(fasta.len(), 120);
         assert_eq!(genbank.len(), 120);
+        assert_eq!(embl.len(), 120);
         assert_eq!(
             fasta.get_forward_string().to_ascii_uppercase(),
             genbank.get_forward_string().to_ascii_uppercase()
+        );
+        assert_eq!(
+            genbank.get_forward_string().to_ascii_uppercase(),
+            embl.get_forward_string().to_ascii_uppercase()
         );
         let gene_names: Vec<String> = genbank
             .features()
@@ -1119,6 +1174,42 @@ mod tests {
             .collect();
         assert!(gene_names.iter().any(|name| name == "toyA"));
         assert!(gene_names.iter().any(|name| name == "toyB"));
+    }
+
+    #[test]
+    fn test_toy_multi_embl_parses_multiple_records() {
+        let seqs =
+            DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.multi.embl")
+                .expect("parse multi-record EMBL fixture");
+        assert_eq!(seqs.len(), 2);
+        let first = &seqs[0];
+        let second = &seqs[1];
+        assert_eq!(first.len(), 24);
+        assert_eq!(second.len(), 24);
+
+        let first_gene = first
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("first record should contain a gene feature");
+        assert_eq!(first_gene.location.to_gb_format(), "join(1..4,9..12)");
+
+        let second_misc = second
+            .features()
+            .iter()
+            .find(|feature| {
+                feature
+                    .kind
+                    .to_string()
+                    .eq_ignore_ascii_case("misc_feature")
+            })
+            .expect("second record should contain a misc_feature");
+        let note = second_misc
+            .qualifier_values("note".into())
+            .next()
+            .unwrap_or_default();
+        assert!(note.contains("line one"));
+        assert!(note.contains("line two"));
     }
 
     #[test]
@@ -1200,6 +1291,180 @@ mod tests {
         let dna = GENtleApp::load_from_file("test_files/pGEX-3X.embl").unwrap();
         assert_eq!(dna.len(), 4952);
         assert!(!dna.features().is_empty());
+    }
+
+    #[test]
+    fn test_embl_wrapped_feature_location_is_parsed() {
+        let embl = "\
+ID   TEST1; SV 1; linear; genomic DNA; STD; SYN; 40 BP.\n\
+XX\n\
+AC   TEST1;\n\
+XX\n\
+DE   Test wrapped location.\n\
+XX\n\
+FH   Key             Location/Qualifiers\n\
+FH\n\
+FT   gene            join(1..5,\n\
+FT                   10..15)\n\
+FT                   /gene=\"g1\"\n\
+FT   misc_feature    complement(20..25)\n\
+FT                   /note=\"line one\"\n\
+FT                   \"line two\"\n\
+SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
+     acgtacgtac gtacgtacgt gtacgtacgt gtacgtacgt        40\n\
+//\n";
+        let parsed = parse_embl_records(embl).expect("parse EMBL");
+        assert_eq!(parsed.len(), 1);
+        let dna = DNAsequence::from_genbank_seq(parsed.into_iter().next().unwrap());
+        assert_eq!(dna.len(), 40);
+
+        let gene = dna
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("gene feature");
+        assert_eq!(
+            gene.location.find_bounds().expect("gene bounds"),
+            (0, 15),
+            "joined location should preserve wrapped continuation segment"
+        );
+        assert_eq!(
+            gene.location.to_gb_format(),
+            "join(1..5,10..15)",
+            "canonical location formatting should preserve both joined intervals"
+        );
+        assert!(
+            gene.qualifier_values("gene".into()).any(|value| value == "g1"),
+            "gene qualifier should be parsed"
+        );
+
+        let misc = dna
+            .features()
+            .iter()
+            .find(|feature| {
+                feature
+                    .kind
+                    .to_string()
+                    .eq_ignore_ascii_case("misc_feature")
+            })
+            .expect("misc_feature");
+        let note = misc
+            .qualifier_values("note".into())
+            .next()
+            .unwrap_or_default();
+        assert!(
+            note.contains("line one")
+                && note.contains("line two")
+                && !note.contains("\"\""),
+            "wrapped qualifier text should be concatenated and normalized"
+        );
+
+        let mut tmp = Builder::new()
+            .suffix(".embl")
+            .tempfile()
+            .expect("temp EMBL file");
+        tmp.write_all(embl.as_bytes()).expect("write EMBL fixture");
+        let dna_via_loader = GENtleApp::load_from_file(
+            tmp.path()
+                .to_str()
+                .expect("temp EMBL path should be valid UTF-8"),
+        )
+        .expect("load_from_file should parse EMBL by extension");
+        let gene_via_loader = dna_via_loader
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("gene feature through load_from_file");
+        assert_eq!(
+            gene_via_loader
+                .location
+                .find_bounds()
+                .expect("gene bounds through load_from_file"),
+            (0, 15)
+        );
+        assert_eq!(
+            gene_via_loader.location.to_gb_format(),
+            "join(1..5,10..15)",
+            "load_from_file should keep wrapped EMBL join locations intact"
+        );
+
+        let gb_out = Builder::new()
+            .suffix(".gb")
+            .tempfile()
+            .expect("temp GenBank output");
+        let gb_out_path = gb_out.path().to_path_buf();
+        drop(gb_out);
+        dna_via_loader
+            .write_genbank_file(
+                gb_out_path
+                    .to_str()
+                    .expect("temp GenBank output path should be valid UTF-8"),
+            )
+            .expect("write wrapped EMBL feature to GenBank");
+        let exported = std::fs::read_to_string(&gb_out_path).expect("read exported GenBank");
+        assert!(
+            exported.contains("join(1..5,10..15)") || exported.contains("10..15)"),
+            "exported GenBank should retain full join location: {exported}"
+        );
+    }
+
+    #[test]
+    fn test_embl_wrapped_single_feature_genbank_export_keeps_join() {
+        let embl = "\
+ID   TEST1; SV 1; linear; genomic DNA; STD; SYN; 40 BP.\n\
+XX\n\
+AC   TEST1;\n\
+XX\n\
+DE   Test wrapped single feature.\n\
+XX\n\
+FH   Key             Location/Qualifiers\n\
+FH\n\
+FT   gene            join(1..5,\n\
+FT                   10..15)\n\
+FT                   /gene=\"g1\"\n\
+SQ   Sequence 40 BP; 10 A; 10 C; 10 G; 10 T; 0 other;\n\
+     acgtacgtac gtacgtacgt gtacgtacgt gtacgtacgt        40\n\
+//\n";
+        let mut tmp = Builder::new()
+            .suffix(".embl")
+            .tempfile()
+            .expect("temp EMBL file");
+        tmp.write_all(embl.as_bytes()).expect("write EMBL fixture");
+
+        let dna = GENtleApp::load_from_file(
+            tmp.path()
+                .to_str()
+                .expect("temp EMBL path should be valid UTF-8"),
+        )
+        .expect("load wrapped EMBL");
+        let gene = dna
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("gene feature");
+        assert_eq!(
+            gene.location.to_gb_format(),
+            "join(1..5,10..15)",
+            "wrapped single feature should canonicalize to full join"
+        );
+
+        let gb_out = Builder::new()
+            .suffix(".gb")
+            .tempfile()
+            .expect("temp GenBank output");
+        let gb_out_path = gb_out.path().to_path_buf();
+        drop(gb_out);
+        dna.write_genbank_file(
+            gb_out_path
+                .to_str()
+                .expect("temp GenBank output path should be valid UTF-8"),
+        )
+        .expect("write GenBank");
+        let exported = std::fs::read_to_string(&gb_out_path).expect("read exported GenBank");
+        assert!(
+            exported.contains("join(1..5,10..15)") || exported.contains("10..15)"),
+            "single-feature wrapped join should survive export: {exported}"
+        );
     }
 
     #[test]

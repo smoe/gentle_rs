@@ -1,9 +1,16 @@
 use eframe::egui::{self, Color32, Ui};
 use serde::{Deserialize, Serialize};
 use std::{
-    path::Path,
+    env,
+    path::PathBuf,
     sync::{OnceLock, RwLock},
 };
+
+const DEFAULT_MAIN_IMAGE_PATH: &str = "docs/backgrounds/Lab_Hood.jpg";
+const DEFAULT_SEQUENCE_IMAGE_PATH: &str = "docs/backgrounds/Lab_PCR_Machines.jpg";
+const DEFAULT_POOL_IMAGE_PATH: &str = "docs/backgrounds/Lab_Plates_Piles.jpg";
+const DEFAULT_CONFIGURATION_IMAGE_PATH: &str = "docs/backgrounds/Lab_Glas_Dry.jpg";
+const DEFAULT_HELP_IMAGE_PATH: &str = "docs/backgrounds/Lab_Tubes.jpg";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowBackdropKind {
@@ -44,16 +51,16 @@ pub struct WindowBackdropSettings {
 impl Default for WindowBackdropSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             draw_images: true,
-            tint_opacity: 0.06,
-            image_opacity: 0.10,
-            show_text_watermark: true,
-            main_image_path: String::new(),
-            sequence_image_path: String::new(),
-            pool_image_path: String::new(),
-            configuration_image_path: String::new(),
-            help_image_path: String::new(),
+            tint_opacity: 0.16,
+            image_opacity: 0.22,
+            show_text_watermark: false,
+            main_image_path: DEFAULT_MAIN_IMAGE_PATH.to_string(),
+            sequence_image_path: DEFAULT_SEQUENCE_IMAGE_PATH.to_string(),
+            pool_image_path: DEFAULT_POOL_IMAGE_PATH.to_string(),
+            configuration_image_path: DEFAULT_CONFIGURATION_IMAGE_PATH.to_string(),
+            help_image_path: DEFAULT_HELP_IMAGE_PATH.to_string(),
         }
     }
 }
@@ -66,6 +73,25 @@ impl WindowBackdropSettings {
             WindowBackdropKind::Pool => self.pool_image_path.as_str(),
             WindowBackdropKind::Configuration => self.configuration_image_path.as_str(),
             WindowBackdropKind::Help => self.help_image_path.as_str(),
+        }
+    }
+
+    pub fn apply_runtime_defaults_if_legacy(&mut self) {
+        let all_empty = self.main_image_path.trim().is_empty()
+            && self.sequence_image_path.trim().is_empty()
+            && self.pool_image_path.trim().is_empty()
+            && self.configuration_image_path.trim().is_empty()
+            && self.help_image_path.trim().is_empty();
+        if all_empty {
+            self.main_image_path = DEFAULT_MAIN_IMAGE_PATH.to_string();
+            self.sequence_image_path = DEFAULT_SEQUENCE_IMAGE_PATH.to_string();
+            self.pool_image_path = DEFAULT_POOL_IMAGE_PATH.to_string();
+            self.configuration_image_path = DEFAULT_CONFIGURATION_IMAGE_PATH.to_string();
+            self.help_image_path = DEFAULT_HELP_IMAGE_PATH.to_string();
+        }
+
+        if all_empty && !self.enabled {
+            self.enabled = true;
         }
     }
 }
@@ -91,16 +117,38 @@ pub fn set_window_backdrop_settings(settings: WindowBackdropSettings) {
 
 fn kind_color(kind: WindowBackdropKind) -> Color32 {
     match kind {
-        WindowBackdropKind::Main => Color32::from_rgb(28, 80, 120),
-        WindowBackdropKind::Sequence => Color32::from_rgb(26, 118, 92),
-        WindowBackdropKind::Pool => Color32::from_rgb(124, 82, 34),
-        WindowBackdropKind::Configuration => Color32::from_rgb(90, 74, 118),
-        WindowBackdropKind::Help => Color32::from_rgb(44, 96, 112),
+        WindowBackdropKind::Main => Color32::from_rgb(158, 108, 66),
+        WindowBackdropKind::Sequence => Color32::from_rgb(176, 116, 72),
+        WindowBackdropKind::Pool => Color32::from_rgb(148, 95, 58),
+        WindowBackdropKind::Configuration => Color32::from_rgb(169, 118, 79),
+        WindowBackdropKind::Help => Color32::from_rgb(141, 92, 56),
     }
 }
 
 fn alpha_to_u8(opacity: f32) -> u8 {
     (opacity.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn resolve_runtime_asset_path(path: &str) -> Option<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let direct = PathBuf::from(trimmed);
+    if direct.exists() {
+        return Some(direct.to_string_lossy().to_string());
+    }
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let bundled = exe_dir.join("../Resources").join(trimmed);
+            if bundled.exists() {
+                return Some(bundled.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
 }
 
 pub fn paint_window_backdrop(
@@ -118,28 +166,28 @@ pub fn paint_window_backdrop(
     let image_alpha = alpha_to_u8(settings.image_opacity);
     let painter = ui.painter_at(rect);
 
+    if settings.draw_images {
+        let path = settings.image_path_for_kind(kind).trim();
+        if let Some(resolved_path) = resolve_runtime_asset_path(path) {
+            let image = egui::Image::new(resolved_path)
+                .fit_to_exact_size(rect.size())
+                .tint(Color32::from_rgba_unmultiplied(
+                    196,
+                    196,
+                    196,
+                    image_alpha,
+                ))
+                .sense(egui::Sense::hover());
+            let _ = ui.put(rect, image);
+        }
+    }
+
     if tint_alpha > 0 {
         painter.rect_filled(
             rect,
             0.0,
             Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), tint_alpha),
         );
-    }
-
-    if settings.draw_images {
-        let path = settings.image_path_for_kind(kind).trim();
-        if !path.is_empty() && Path::new(path).exists() {
-            let image = egui::Image::new(path.to_string())
-                .fit_to_exact_size(rect.size())
-                .tint(Color32::from_rgba_unmultiplied(
-                    accent.r(),
-                    accent.g(),
-                    accent.b(),
-                    image_alpha,
-                ))
-                .sense(egui::Sense::hover());
-            let _ = ui.put(rect, image);
-        }
     }
 
     if settings.show_text_watermark {

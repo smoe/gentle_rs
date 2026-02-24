@@ -110,9 +110,9 @@ Current draft operations:
 - `ScoreCandidateSetWeightedObjective { set_name, metric, objectives[], normalize_metrics? }`
 - `TopKCandidateSet { input_set, output_set, metric, k, direction?, tie_break? }`
 - `ParetoFrontierCandidateSet { input_set, output_set, objectives[], max_candidates?, tie_break? }`
-- `UpsertWorkflowMacroTemplate { name, description?, parameters[], script }`
+- `UpsertWorkflowMacroTemplate { name, description?, details_url?, parameters[], script }`
 - `DeleteWorkflowMacroTemplate { name }`
-- `UpsertCandidateMacroTemplate { name, description?, parameters[], script }`
+- `UpsertCandidateMacroTemplate { name, description?, details_url?, parameters[], script }`
 - `DeleteCandidateMacroTemplate { name }`
 - `FilterByMolecularWeight { inputs, min_bp, max_bp, error, unique, output_prefix? }`
 - `FilterByDesignConstraints { inputs, gc_min?, gc_max?, max_homopolymer_run?, reject_ambiguous_bases?, avoid_u6_terminator_tttt?, forbidden_motifs?, unique, output_prefix? }`
@@ -447,6 +447,7 @@ Candidate-set semantics:
   - each template now carries `template_schema`
     (`gentle.cloning_macro_template.v1`) so cloning-operation macro intent is
     explicit at engine level
+  - optional `details_url` can link to external protocol/reference material
   - template expansion/binding is exposed through adapter command surfaces
     (`macros template-*`, including `macros template-import PATH`)
   - expanded scripts run through shared shell execution (`macros run`) and can
@@ -456,6 +457,7 @@ Candidate-set semantics:
 - Candidate macro templates are persisted in project metadata:
   - `UpsertCandidateMacroTemplate` stores/replaces named templates
   - `DeleteCandidateMacroTemplate` removes templates
+  - optional `details_url` can link to external protocol/reference material
   - template expansion/binding is exposed through adapter command surfaces
     (`candidates template-*`)
 - Between-anchor generation augments baseline metrics with anchor-aware fields

@@ -501,7 +501,7 @@ Shared shell command:
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros template-list`
     - `macros template-show TEMPLATE_NAME`
-    - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+    - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]`
     - `macros template-delete TEMPLATE_NAME`
     - `macros template-import PATH`
     - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
@@ -521,7 +521,7 @@ Shared shell command:
     - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `candidates template-list`
     - `candidates template-show TEMPLATE_NAME`
-    - `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+    - `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]`
     - `candidates template-delete TEMPLATE_NAME`
     - `candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
     - `guides list`
@@ -762,9 +762,11 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Lists persisted workflow macro templates.
 - `macros template-show TEMPLATE_NAME`
   - Shows one persisted workflow template definition.
-- `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+- `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]`
   - Creates/updates a named workflow macro template in project metadata.
   - Placeholders in script use `${param_name}` and must be declared via `--param`.
+  - Optional `--details-url URL` records external protocol/reference details for
+    catalog display.
 - `macros template-delete TEMPLATE_NAME`
   - Deletes one persisted workflow template.
 - `macros template-import PATH`
@@ -833,9 +835,11 @@ Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candi
   - Lists persisted candidate macro templates.
 - `candidates template-show TEMPLATE_NAME`
   - Shows one persisted template definition.
-- `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--param NAME|NAME=DEFAULT ...]`
+- `candidates template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]`
   - Creates/updates a named template in project metadata.
   - placeholders in script use `${param_name}` and must be declared via `--param`.
+  - Optional `--details-url URL` records external protocol/reference details for
+    catalog display.
 - `candidates template-delete TEMPLATE_NAME`
   - Deletes one persisted template.
 - `candidates template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`

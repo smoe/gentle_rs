@@ -61,6 +61,15 @@ pub fn install_native_app_windows_menu_bridge() {
 pub fn install_native_app_windows_menu_bridge() {}
 
 #[cfg(target_os = "macos")]
+pub fn sync_native_open_windows_menu_titles(titles: &[String]) {
+    macos_native_windows_menu::sync_titles(titles);
+    macos_native_app_windows_menu::sync_titles(titles);
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn sync_native_open_windows_menu_titles(_titles: &[String]) {}
+
+#[cfg(target_os = "macos")]
 mod macos_native_help_menu {
     use std::{
         cell::RefCell,
@@ -261,8 +270,8 @@ mod macos_native_windows_menu {
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
-    use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
+    use objc2_app_kit::{NSApplication, NSMenu};
+    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -298,6 +307,15 @@ mod macos_native_windows_menu {
             let this = this.set_ivars(());
             unsafe { msg_send_id![super(this), init] }
         }
+    }
+
+    fn find_windows_item(window_menu: &NSMenu) -> Option<Retained<objc2_app_kit::NSMenuItem>> {
+        let item_title = ns_string!("GENtle Open Windows…");
+        let index = unsafe { window_menu.indexOfItemWithTitle(item_title) };
+        if index < 0 {
+            return None;
+        }
+        unsafe { window_menu.itemAtIndex(index) }
     }
 
     pub(super) fn install() {
@@ -344,6 +362,59 @@ mod macos_native_windows_menu {
         });
         INSTALLED.store(true, Ordering::Relaxed);
     }
+
+    pub(super) fn sync_titles(titles: &[String]) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let app = NSApplication::sharedApplication(mtm);
+        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+            return;
+        };
+        let Some(window_menu_item) = (unsafe { main_menu.itemWithTitle(ns_string!("Window")) })
+        else {
+            return;
+        };
+        let Some(window_menu) = (unsafe { window_menu_item.submenu() }) else {
+            return;
+        };
+        let Some(item) = find_windows_item(&window_menu) else {
+            return;
+        };
+        let submenu = if let Some(existing) = unsafe { item.submenu() } {
+            existing
+        } else {
+            let created = unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Open Windows")) };
+            item.setSubmenu(Some(&created));
+            created
+        };
+        unsafe {
+            submenu.removeAllItems();
+        }
+        if titles.is_empty() {
+            let entry = unsafe {
+                submenu.addItemWithTitle_action_keyEquivalent(
+                    ns_string!("No open windows"),
+                    None,
+                    ns_string!(""),
+                )
+            };
+            unsafe {
+                entry.setEnabled(false);
+            }
+            return;
+        }
+
+        for title in titles {
+            let title = NSString::from_str(title);
+            let entry = unsafe {
+                submenu.addItemWithTitle_action_keyEquivalent(&title, None, ns_string!(""))
+            };
+            unsafe {
+                entry.setEnabled(false);
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -357,8 +428,8 @@ mod macos_native_app_windows_menu {
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
-    use objc2_app_kit::NSApplication;
-    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, ns_string};
+    use objc2_app_kit::{NSApplication, NSMenu};
+    use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
 
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
@@ -394,6 +465,15 @@ mod macos_native_app_windows_menu {
             let this = this.set_ivars(());
             unsafe { msg_send_id![super(this), init] }
         }
+    }
+
+    fn find_app_windows_item(app_menu: &NSMenu) -> Option<Retained<objc2_app_kit::NSMenuItem>> {
+        let item_title = ns_string!("GENtle Windows…");
+        let index = unsafe { app_menu.indexOfItemWithTitle(item_title) };
+        if index < 0 {
+            return None;
+        }
+        unsafe { app_menu.itemAtIndex(index) }
     }
 
     pub(super) fn install() {
@@ -438,5 +518,57 @@ mod macos_native_app_windows_menu {
             *slot.borrow_mut() = Some(target);
         });
         INSTALLED.store(true, Ordering::Relaxed);
+    }
+
+    pub(super) fn sync_titles(titles: &[String]) {
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let app = NSApplication::sharedApplication(mtm);
+        let Some(main_menu) = (unsafe { app.mainMenu() }) else {
+            return;
+        };
+        let Some(app_menu_item) = (unsafe { main_menu.itemAtIndex(0) }) else {
+            return;
+        };
+        let Some(app_menu) = (unsafe { app_menu_item.submenu() }) else {
+            return;
+        };
+        let Some(item) = find_app_windows_item(&app_menu) else {
+            return;
+        };
+        let submenu = if let Some(existing) = unsafe { item.submenu() } {
+            existing
+        } else {
+            let created = unsafe { NSMenu::initWithTitle(mtm.alloc(), ns_string!("GENtle Windows")) };
+            item.setSubmenu(Some(&created));
+            created
+        };
+        unsafe {
+            submenu.removeAllItems();
+        }
+        if titles.is_empty() {
+            let entry = unsafe {
+                submenu.addItemWithTitle_action_keyEquivalent(
+                    ns_string!("No open windows"),
+                    None,
+                    ns_string!(""),
+                )
+            };
+            unsafe {
+                entry.setEnabled(false);
+            }
+            return;
+        }
+
+        for title in titles {
+            let title = NSString::from_str(title);
+            let entry = unsafe {
+                submenu.addItemWithTitle_action_keyEquivalent(&title, None, ns_string!(""))
+            };
+            unsafe {
+                entry.setEnabled(false);
+            }
+        }
     }
 }

@@ -402,6 +402,7 @@ pub struct GENtleApp {
     dirty_cache_value: bool,
     dirty_cache_last_deep_check: Instant,
     last_applied_window_title: String,
+    last_native_window_titles: Vec<String>,
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
@@ -908,6 +909,7 @@ impl Default for GENtleApp {
             dirty_cache_value: false,
             dirty_cache_last_deep_check: Instant::now(),
             last_applied_window_title: String::new(),
+            last_native_window_titles: vec![],
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
@@ -1260,8 +1262,10 @@ impl GENtleApp {
             saved.bigwig_to_bedgraph_executable.trim().to_string();
         self.sync_runtime_tool_overrides_from_configuration();
         self.configuration_graphics = saved.graphics_defaults;
-        self.window_backdrops = saved.window_backdrops.clone();
-        self.configuration_window_backdrops = saved.window_backdrops;
+        let mut runtime_backdrops = saved.window_backdrops;
+        runtime_backdrops.apply_runtime_defaults_if_legacy();
+        self.window_backdrops = runtime_backdrops.clone();
+        self.configuration_window_backdrops = runtime_backdrops;
         self.configuration_window_backdrops_dirty = false;
         window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
@@ -2238,15 +2242,31 @@ Error: `{err}`"
     }
 
     pub fn load_from_file(path: &str) -> Result<DNAsequence> {
-        if let Ok(dna) = Self::load_dna_from_genbank_file(path) {
-            Ok(dna)
-        } else if let Ok(dna) = Self::load_dna_from_embl_file(path) {
-            Ok(dna)
-        } else if let Ok(dna) = Self::load_dna_from_fasta_file(path) {
-            Ok(dna)
-        } else {
-            Err(anyhow!("Could not load file '{path}'"))
+        let extension = Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase());
+        match extension.as_deref() {
+            Some("embl") | Some("emb") => return Self::load_dna_from_embl_file(path),
+            Some("gb") | Some("gbk") | Some("genbank") => {
+                return Self::load_dna_from_genbank_file(path);
+            }
+            Some("fa") | Some("fasta") | Some("fna") | Some("fas") => {
+                return Self::load_dna_from_fasta_file(path);
+            }
+            _ => {}
         }
+
+        for loader in [
+            Self::load_dna_from_genbank_file,
+            Self::load_dna_from_embl_file,
+            Self::load_dna_from_fasta_file,
+        ] {
+            if let Ok(dna) = loader(path) {
+                return Ok(dna);
+            }
+        }
+        Err(anyhow!("Could not load file '{path}'"))
     }
 
     fn open_new_window_from_file(&mut self, path: &str) {
@@ -8009,6 +8029,14 @@ Error: `{err}`"
 
     pub fn render_menu_bar(&mut self, ui: &mut Ui) {
         let open_window_entries = self.collect_open_window_entries();
+        let native_window_titles = open_window_entries
+            .iter()
+            .map(|entry| entry.title.clone())
+            .collect::<Vec<_>>();
+        if self.last_native_window_titles != native_window_titles {
+            about::sync_native_open_windows_menu_titles(&native_window_titles);
+            self.last_native_window_titles = native_window_titles;
+        }
         let (undo_count, redo_count) = {
             let engine = self.engine.read().expect("Engine lock poisoned");
             (engine.undo_available(), engine.redo_available())
@@ -11216,11 +11244,10 @@ Error: `{err}`"
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let markdown = self.active_help_markdown().to_string();
-                CommonMarkViewer::new().max_image_width(Some(1200)).show(
-                    ui,
-                    &mut self.help_markdown_cache,
-                    &markdown,
-                );
+                let max_image_width = (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
+                CommonMarkViewer::new()
+                    .max_image_width(Some(max_image_width as usize))
+                    .show(ui, &mut self.help_markdown_cache, &markdown);
             });
     }
 
@@ -11727,6 +11754,8 @@ impl eframe::App for GENtleApp {
             }
             about::install_native_help_menu_bridge();
             about::install_native_settings_menu_bridge();
+            about::install_native_windows_menu_bridge();
+            about::install_native_app_windows_menu_bridge();
             self.consume_native_help_request();
             self.consume_native_settings_request();
             self.consume_native_windows_request();

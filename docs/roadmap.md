@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-23
+Last updated: 2026-02-24
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -42,6 +42,9 @@ order. Durable architecture constraints and decisions remain in
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)
   with persistent storage model, including between-anchor window generation.
+- Workflow and candidate macro template catalogs now preserve optional external
+  reference URLs (`details_url`) alongside template names/descriptions across
+  engine and shared shell adapter surfaces.
 - Ladder-aware virtual gel rendering and SVG export routes.
 
 ### GUI baseline in place
@@ -57,6 +60,12 @@ order. Durable architecture constraints and decisions remain in
 - Context-sensitive hover descriptions on actionable controls.
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
+- Native macOS menu mirrors of open windows are available under:
+  - `Window -> GENtle Open Windows…`
+  - `GENtle -> GENtle Windows…`
+- Circular sequence-map feature labels now use collision-aware placement:
+  labels can slide within feature spans and avoid overlap with already rendered
+  labels (for example restriction-site annotations).
 - Experimental window backdrop styling path:
   - optional per-window-type accent tint (`main`, `sequence`, `pool`,
     `configuration`, `help`)
@@ -128,7 +137,7 @@ Execution order:
 1. Parser scaffolding and format detection:
    - Add explicit format detection at import boundaries (`LoadFile`,
      annotation parser dispatch) with deterministic precedence:
-     GenBank -> FASTA -> XML.
+     GenBank -> EMBL -> FASTA -> XML.
    - Introduce one normalized intermediate import record
      (sequence, topology, feature list, source metadata) used by all formats.
 2. Sequence + annotation XML adapter (priority scope):
@@ -330,7 +339,7 @@ Planned upgrades:
 ### Current branch blockers (must clear first)
 
 - None currently blocking on this branch. Latest local run: `cargo test -q`
-  passed (`263 passed, 1 ignored` in main suite; additional suites green).
+  passed (`333 passed, 1 ignored` in main suite; additional suites green).
 
 ### Stability TODO (queued, items 5-7)
 

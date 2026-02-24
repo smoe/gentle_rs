@@ -14,6 +14,7 @@ The GUI opens an empty project unless a project path is passed on startup.
 Example startup window:
 
 ![GENtle main window (empty project)](screenshots/screenshot_GUI_main_empty.png)
+*Figure: Main window after startup with an empty project.*
 
 Screenshot capture policy:
 
@@ -58,7 +59,9 @@ Persistence:
 Configuration screenshots:
 
 ![Configuration - External Applications](screenshots/screenshot_GUI_configuration_applications.png)
+*Figure: Configuration window, External Applications tab.*
 ![Configuration - Graphics](screenshots/screenshot_GUI_configuration_graphics.png)
+*Figure: Configuration window, Graphics tab.*
 
 ## Main window layout
 
@@ -79,10 +82,21 @@ The project main window (lineage page) supports two views:
 Project overview screenshot:
 
 ![GENtle main window (project loaded)](screenshots/screenshot_GUI_main_project_loaded.png)
+*Figure: Main lineage view with a loaded project.*
 
 Sequence window screenshot:
 
 ![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)
+*Figure: Sequence window with map and sequence panels.*
+
+Circular map label behavior:
+
+- Feature labels are placed near the feature midpoint but may slide along the
+  feature span to avoid overlaps.
+- Placement avoids overlaps with already placed labels (including restriction
+  site labels).
+- If no collision-free placement exists within the feature span, the feature
+  label is omitted for that view.
 
 Global productivity controls:
 
@@ -474,6 +488,8 @@ Markdown image support:
 - image rendering is enabled in the help viewer
 - use standard markdown image syntax (`![alt](path-or-url)`)
 - relative image paths in `docs/*.md` are resolved relative to the markdown file location
+- images are dynamically constrained to 75% of help-pane width for readability
+- screenshots in this manual include explicit caption lines (`*Figure: ...*`)
 - `Reload` in the help window reloads markdown + images from disk
 - help viewer supports in-window text search (`Cmd/Ctrl+F` focuses search box)
 - search UI includes match count and `Prev`/`Next` navigation
@@ -481,6 +497,7 @@ Markdown image support:
 Help window screenshot:
 
 ![GENtle help window](screenshots/screenshot_GUI_help_gui.png)
+*Figure: Help window with searchable in-app markdown manuals.*
 
 ## Map interactions
 
@@ -867,6 +884,7 @@ Recommended flow:
 Track import screenshot:
 
 ![Import Genome Tracks (BED)](screenshots/screenshot_GUI_import_genome_tracks_bed.png)
+*Figure: Import Genome Tracks dialog for BED/BigWig/VCF sources.*
 
 How to enlarge the genomic span after extraction:
 

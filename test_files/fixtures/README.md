@@ -11,6 +11,8 @@ checks.
 - `import_parity/`
   - `toy.small.fa`
   - `toy.small.gb`
+  - `toy.small.embl`
+  - `toy.multi.embl`
   - `toy.small.gbseq.xml`
 - `resources/`
   - `jaspar.edge.pfm`
@@ -31,11 +33,21 @@ checks.
 ### `import_parity/toy.small.*`
 
 - Origin: hand-crafted synthetic 120 bp sequence represented in FASTA, GenBank,
-  and NCBI GenBank XML (`GBSet/GBSeq`) forms.
+  EMBL, and NCBI GenBank XML (`GBSet/GBSeq`) forms.
 - Primary usage:
   - Cross-format import/parity tests.
+  - EMBL parser location/qualifier regression coverage.
   - Planned XML import normalization tests against current GenBank baseline.
 - Purpose: tiny, reviewable fixture set for format-difference debugging.
+
+### `import_parity/toy.multi.embl`
+
+- Origin: hand-crafted two-record EMBL fixture.
+- Primary usage:
+  - Multi-record EMBL ingestion tests.
+  - Wrapped feature-location and wrapped qualifier regression coverage.
+- Purpose: ensure parser behavior stays stable for realistic EMBL line wrapping
+  and record boundaries.
 
 ### `resources/jaspar.edge.pfm`
 

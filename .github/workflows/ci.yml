@@ -45,6 +45,15 @@ jobs:
       - name: Engine tests
         run: cargo test -q "engine::tests::"
 
+      - name: Glossary coverage guard
+        run: cargo test -q --bin gentle_cli test_shell_forwarded_commands_are_documented_in_glossary
+
+      - name: EMBL parser regression tests
+        run: |
+          cargo test -q test_toy_small_cross_format_sequence_parity
+          cargo test -q test_toy_multi_embl_parses_multiple_records
+          cargo test -q test_embl_wrapped_feature_location_is_parsed
+
       - name: Genome catalog regression test
         run: cargo test -q genomes::tests::test_repo_assets_genome_catalog_is_valid
 
