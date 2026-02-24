@@ -30,7 +30,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeSet, HashMap},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex, RwLock,
         mpsc::{self, Receiver, TryRecvError},
@@ -319,12 +319,28 @@ struct EngineOpsUiState {
     #[serde(default)]
     pool_gel_ladders: String,
     #[serde(default)]
-    feature_tree_second_level_grouping: bool,
+    feature_tree_grouping_mode: FeatureTreeGroupingMode,
+    #[serde(default)]
+    feature_tree_filter: String,
+    #[serde(default)]
+    feature_tree_second_level_grouping: bool, // legacy compatibility
 }
 
 #[cfg(test)]
 mod tests {
     use super::MainAreaDna;
+    use gb_io::seq::{Feature, FeatureKind, Location};
+
+    fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
+        Feature {
+            kind: FeatureKind::from(kind),
+            location: Location::simple_range(0, 10),
+            qualifiers: qualifiers
+                .into_iter()
+                .map(|(key, value)| (key.into(), Some(value.to_string())))
+                .collect(),
+        }
+    }
 
     #[test]
     fn feature_tree_count_label_shows_visible_over_total_for_linear_view() {
@@ -347,6 +363,58 @@ mod tests {
         assert_eq!(
             MainAreaDna::format_feature_tree_count_label("mRNA", 3, 7, false),
             "mRNA (7)"
+        );
+    }
+
+    #[test]
+    fn feature_tree_filter_terms_parse_scoped_and_free_terms() {
+        assert_eq!(
+            MainAreaDna::parse_feature_tree_filter_terms("kind:mrna TP73 range:1..10"),
+            vec![
+                (Some("kind".to_string()), "mrna".to_string()),
+                (None, "tp73".to_string()),
+                (Some("range".to_string()), "1..10".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn feature_tree_matches_filter_scoped_terms() {
+        let feature = make_feature("gene", vec![("label", "TP53")]);
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "kind:gene label:tp53",
+            "gene",
+            "TP53",
+            "1..10"
+        ));
+        assert!(!MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "kind:mrna",
+            "gene",
+            "TP53",
+            "1..10"
+        ));
+    }
+
+    #[test]
+    fn feature_tree_display_label_disambiguates_rna_by_transcript_id() {
+        let feature = make_feature(
+            "mRNA",
+            vec![("label", "TP73-AS3"), ("transcript_id", "NM_001126112.3")],
+        );
+        assert_eq!(
+            MainAreaDna::feature_tree_display_label(&feature, "TP73-AS3", "6128..16430"),
+            "TP73-AS3 [NM_001126112.3]"
+        );
+    }
+
+    #[test]
+    fn feature_tree_display_label_disambiguates_rna_by_range_fallback() {
+        let feature = make_feature("ncRNA", vec![("label", "TP73-AS3")]);
+        assert_eq!(
+            MainAreaDna::feature_tree_display_label(&feature, "TP73-AS3", "6128..16430"),
+            "TP73-AS3 [6128..16430]"
         );
     }
 }
@@ -416,6 +484,25 @@ impl MapViewPreset {
             Self::Signal => {
                 "Prioritize signal tracks and regulatory context with reduced coding-feature noise"
             }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum FeatureTreeGroupingMode {
+    #[default]
+    Off,
+    Auto,
+    Always,
+}
+
+impl FeatureTreeGroupingMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Auto => "Auto (duplicates)",
+            Self::Always => "Always",
         }
     }
 }
@@ -629,8 +716,8 @@ pub struct MainAreaDna {
     export_pool_id: String,
     export_pool_human_id: String,
     pool_gel_ladders: String,
-    feature_tree_second_level_grouping: bool,
-    feature_tree_track_filter: String,
+    feature_tree_grouping_mode: FeatureTreeGroupingMode,
+    feature_tree_filter: String,
     pending_feature_tree_scroll_to: Option<usize>,
     focused_feature_id: Option<usize>,
     description_cache_initialized: bool,
@@ -845,8 +932,8 @@ impl MainAreaDna {
             export_pool_id: String::new(),
             export_pool_human_id: String::new(),
             pool_gel_ladders: String::new(),
-            feature_tree_second_level_grouping: false,
-            feature_tree_track_filter: String::new(),
+            feature_tree_grouping_mode: FeatureTreeGroupingMode::Off,
+            feature_tree_filter: String::new(),
             pending_feature_tree_scroll_to: None,
             focused_feature_id: None,
             description_cache_initialized: false,
@@ -1769,7 +1856,7 @@ impl MainAreaDna {
                     if ui
                         .checkbox(
                             &mut reverse_upside_down,
-                            "Use upside-down letters for reverse strand",
+                            "Rotate reverse strand letters by 180°",
                         )
                         .changed()
                     {
@@ -6688,7 +6775,12 @@ impl MainAreaDna {
             export_pool_id: self.export_pool_id.clone(),
             export_pool_human_id: self.export_pool_human_id.clone(),
             pool_gel_ladders: self.pool_gel_ladders.clone(),
-            feature_tree_second_level_grouping: self.feature_tree_second_level_grouping,
+            feature_tree_grouping_mode: self.feature_tree_grouping_mode,
+            feature_tree_filter: self.feature_tree_filter.clone(),
+            feature_tree_second_level_grouping: !matches!(
+                self.feature_tree_grouping_mode,
+                FeatureTreeGroupingMode::Off
+            ),
         }
     }
 
@@ -6827,7 +6919,15 @@ impl MainAreaDna {
         self.export_pool_id = s.export_pool_id;
         self.export_pool_human_id = s.export_pool_human_id;
         self.pool_gel_ladders = s.pool_gel_ladders;
-        self.feature_tree_second_level_grouping = s.feature_tree_second_level_grouping;
+        self.feature_tree_grouping_mode =
+            if matches!(s.feature_tree_grouping_mode, FeatureTreeGroupingMode::Off)
+                && s.feature_tree_second_level_grouping
+            {
+                FeatureTreeGroupingMode::Auto
+            } else {
+                s.feature_tree_grouping_mode
+            };
+        self.feature_tree_filter = s.feature_tree_filter;
         let tfbs_criteria = TfbsDisplayCriteria {
             use_llr_bits: s.tfbs_display_use_llr_bits,
             min_llr_bits: s.tfbs_display_min_llr_bits,
@@ -7184,66 +7284,231 @@ impl MainAreaDna {
     fn feature_tree_subgroup_label(
         feature: &gb_io::seq::Feature,
         feature_label: &str,
-        second_level_grouping: bool,
-    ) -> (Option<String>, bool) {
+        grouping_mode: FeatureTreeGroupingMode,
+    ) -> Option<String> {
+        if matches!(grouping_mode, FeatureTreeGroupingMode::Off) {
+            return None;
+        }
         if RenderDna::is_track_feature(feature) {
-            return (RenderDna::track_group_label(feature), true);
+            return RenderDna::track_group_label(feature);
         }
         if RenderDna::is_tfbs_feature(feature) {
-            return (RenderDna::tfbs_group_label(feature), true);
+            return RenderDna::tfbs_group_label(feature);
         }
         if RenderDna::is_restriction_site_feature(feature) {
-            return (RenderDna::restriction_site_group_label(feature), true);
-        }
-        if !second_level_grouping {
-            return (None, false);
+            return RenderDna::restriction_site_group_label(feature);
         }
         let normalized_label = feature_label.trim();
         if normalized_label.is_empty() {
-            return (None, false);
+            None
+        } else {
+            Some(normalized_label.to_string())
         }
-        (Some(normalized_label.to_string()), false)
     }
 
-    fn track_feature_matches_filter(feature: &gb_io::seq::Feature, filter_text: &str) -> bool {
-        let terms = filter_text
-            .split_whitespace()
-            .map(|value| value.trim().to_ascii_lowercase())
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>();
+    fn feature_tree_first_nonempty_qualifier(
+        feature: &gb_io::seq::Feature,
+        keys: &[&str],
+    ) -> Option<String> {
+        for key in keys {
+            for value in feature.qualifier_values((*key).into()) {
+                let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                let normalized = normalized.trim().to_string();
+                if !normalized.is_empty() {
+                    return Some(normalized);
+                }
+            }
+        }
+        None
+    }
+
+    fn feature_tree_rna_discriminator(
+        feature: &gb_io::seq::Feature,
+        range_label: &str,
+    ) -> Option<String> {
+        let kind = feature.kind.to_string().to_ascii_uppercase();
+        if !kind.contains("RNA") {
+            return None;
+        }
+        Self::feature_tree_first_nonempty_qualifier(
+            feature,
+            &["transcript_id", "mrna_id", "rna_id"],
+        )
+        .or_else(|| {
+            Self::feature_tree_first_nonempty_qualifier(feature, &["transcript_variant", "variant"])
+        })
+        .or_else(|| {
+            let trimmed = range_label.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+    }
+
+    fn feature_tree_display_label(
+        feature: &gb_io::seq::Feature,
+        base_label: &str,
+        range_label: &str,
+    ) -> String {
+        let base_label = base_label.trim();
+        if base_label.is_empty() {
+            return String::new();
+        }
+        let Some(discriminator) = Self::feature_tree_rna_discriminator(feature, range_label) else {
+            return base_label.to_string();
+        };
+        let discriminator = discriminator.trim();
+        if discriminator.is_empty() {
+            return base_label.to_string();
+        }
+        if base_label
+            .to_ascii_lowercase()
+            .contains(&discriminator.to_ascii_lowercase())
+        {
+            return base_label.to_string();
+        }
+        format!("{base_label} [{discriminator}]")
+    }
+
+    fn feature_tree_matches_filter(
+        feature: &gb_io::seq::Feature,
+        filter_text: &str,
+        kind_label: &str,
+        display_label: &str,
+        range_label: &str,
+    ) -> bool {
+        let terms = Self::parse_feature_tree_filter_terms(filter_text);
         if terms.is_empty() {
             return true;
         }
 
-        let mut haystacks = vec![
-            feature.kind.to_string(),
-            RenderDna::feature_name(feature),
-            RenderDna::feature_range_text(feature),
-        ];
-        for key in [
-            "gentle_track_source",
-            "gentle_track_name",
-            "gentle_track_file",
-            "name",
-            "label",
-            "note",
-            "gene",
-            "id",
-        ] {
-            for value in feature.qualifier_values(key.into()) {
-                let trimmed = value.trim();
-                if !trimmed.is_empty() {
-                    haystacks.push(trimmed.to_string());
+        let all_terms = {
+            let mut values = vec![
+                kind_label.to_string(),
+                display_label.to_string(),
+                range_label.to_string(),
+                feature.kind.to_string(),
+                RenderDna::feature_name(feature),
+                RenderDna::feature_range_text(feature),
+            ];
+            for key in [
+                "gentle_track_source",
+                "gentle_track_name",
+                "gentle_track_file",
+                "name",
+                "label",
+                "note",
+                "function",
+                "product",
+                "gene",
+                "id",
+                "transcript_id",
+                "transcript_variant",
+                "variant",
+            ] {
+                for value in feature.qualifier_values(key.into()) {
+                    let trimmed = value.trim();
+                    if !trimmed.is_empty() {
+                        values.push(trimmed.to_string());
+                    }
                 }
             }
-        }
-        let haystacks = haystacks
-            .into_iter()
-            .map(|value| value.to_ascii_lowercase())
+            values
+                .into_iter()
+                .map(|value| value.to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        };
+        let source_terms = feature
+            .qualifier_values("gentle_track_source".into())
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
-        terms
-            .iter()
-            .all(|term| haystacks.iter().any(|value| value.contains(term)))
+        let track_terms = feature
+            .qualifier_values("gentle_track_name".into())
+            .chain(feature.qualifier_values("name".into()))
+            .chain(feature.qualifier_values("label".into()))
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        let file_terms = feature
+            .qualifier_values("gentle_track_file".into())
+            .flat_map(|value| {
+                let mut values = Vec::new();
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    values.push(trimmed.to_ascii_lowercase());
+                    if let Some(file_name) = Path::new(trimmed).file_name().and_then(|v| v.to_str())
+                    {
+                        values.push(file_name.to_ascii_lowercase());
+                    }
+                }
+                values
+            })
+            .collect::<Vec<_>>();
+        let note_terms = feature
+            .qualifier_values("note".into())
+            .chain(feature.qualifier_values("function".into()))
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        let kind_terms = vec![
+            feature.kind.to_string().to_ascii_lowercase(),
+            kind_label.trim().to_ascii_lowercase(),
+        ];
+        let mut label_terms = feature
+            .qualifier_values("label".into())
+            .chain(feature.qualifier_values("name".into()))
+            .chain(feature.qualifier_values("gene".into()))
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if !display_label.trim().is_empty() {
+            label_terms.push(display_label.trim().to_ascii_lowercase());
+        }
+        let mut range_terms = vec![RenderDna::feature_range_text(feature).to_ascii_lowercase()];
+        if !range_label.trim().is_empty() {
+            range_terms.push(range_label.trim().to_ascii_lowercase());
+        }
+
+        terms.iter().all(|(scope, needle)| {
+            let search_space: &Vec<String> = match scope.as_deref() {
+                Some("source") | Some("type") => &source_terms,
+                Some("track") | Some("name") => &track_terms,
+                Some("path") | Some("file") => &file_terms,
+                Some("note") => &note_terms,
+                Some("kind") => &kind_terms,
+                Some("label") => &label_terms,
+                Some("range") => &range_terms,
+                _ => &all_terms,
+            };
+            search_space.iter().any(|value| value.contains(needle))
+        })
+    }
+
+    fn parse_feature_tree_filter_terms(filter_text: &str) -> Vec<(Option<String>, String)> {
+        filter_text
+            .split_whitespace()
+            .filter_map(|raw_term| {
+                let term = raw_term.trim();
+                if term.is_empty() {
+                    return None;
+                }
+                if let Some((raw_scope, raw_needle)) = term.split_once(':') {
+                    let scope = raw_scope.trim().to_ascii_lowercase();
+                    let needle = raw_needle.trim().to_ascii_lowercase();
+                    if !scope.is_empty() && !needle.is_empty() {
+                        return Some((Some(scope), needle));
+                    }
+                }
+                Some((None, term.to_ascii_lowercase()))
+            })
+            .collect()
+    }
+
+    fn feature_tree_filter_help_text() -> &'static str {
+        "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:chip path:peaks.bed note:enhancer"
     }
 
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
@@ -7253,7 +7518,6 @@ impl MainAreaDna {
             range_label: String,
             subgroup_key: Option<String>,
             subgroup_label: Option<String>,
-            force_subgroup: bool,
             show_range_inline_when_ungrouped: bool,
             visible_in_view: bool,
         }
@@ -7267,38 +7531,63 @@ impl MainAreaDna {
                 .map(|s| s.as_str())
                 .unwrap_or("<Unnamed DNA sequence>"),
         );
+        let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
         let viewport = self.active_linear_viewport_range();
         let viewport_limited = viewport.is_some();
-        let grouping_toggle = ui
-            .checkbox(
-                &mut self.feature_tree_second_level_grouping,
-                "Second-level grouping",
-            )
-            .on_hover_text(
-                "Group repeated feature labels under each feature kind (for example RNA variants, TFBS motifs, and restriction sites)",
-            );
-        if grouping_toggle.changed() {
-            self.save_engine_ops_state();
-        }
         ui.horizontal(|ui| {
-            ui.label("Track filter");
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.feature_tree_track_filter)
-                    .hint_text("track name, file, note")
-                    .desired_width(180.0),
-            );
+            ui.label("Grouping");
+            let before = self.feature_tree_grouping_mode;
+            egui::ComboBox::from_id_salt(format!("feature_tree_grouping_mode_{seq_key}"))
+                .selected_text(self.feature_tree_grouping_mode.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.feature_tree_grouping_mode,
+                        FeatureTreeGroupingMode::Off,
+                        FeatureTreeGroupingMode::Off.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.feature_tree_grouping_mode,
+                        FeatureTreeGroupingMode::Auto,
+                        FeatureTreeGroupingMode::Auto.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.feature_tree_grouping_mode,
+                        FeatureTreeGroupingMode::Always,
+                        FeatureTreeGroupingMode::Always.label(),
+                    );
+                });
+            if before != self.feature_tree_grouping_mode {
+                self.save_engine_ops_state();
+            }
+        })
+        .response
+        .on_hover_text(
+            "Off: flat list per kind. Auto: subgroup repeated labels only. Always: subgroup all labels when available.",
+        );
+        ui.horizontal(|ui| {
+            ui.label("Filter")
+                .on_hover_text(Self::feature_tree_filter_help_text());
+            let response = ui
+                .add(
+                    egui::TextEdit::singleline(&mut self.feature_tree_filter)
+                        .hint_text("kind:mrna label:tp73 range:6128..16430")
+                        .desired_width(220.0),
+                )
+                .on_hover_text(Self::feature_tree_filter_help_text());
             if response.changed() {
                 self.pending_feature_tree_scroll_to = None;
+                self.save_engine_ops_state();
             }
             if ui
                 .add_enabled(
-                    !self.feature_tree_track_filter.trim().is_empty(),
+                    !self.feature_tree_filter.trim().is_empty(),
                     egui::Button::new("Clear"),
                 )
                 .clicked()
             {
-                self.feature_tree_track_filter.clear();
+                self.feature_tree_filter.clear();
                 self.pending_feature_tree_scroll_to = None;
+                self.save_engine_ops_state();
             }
         });
         if viewport_limited {
@@ -7332,8 +7621,11 @@ impl MainAreaDna {
                 display.feature_details_font_size(),
             )
         };
-        let second_level_grouping = self.feature_tree_second_level_grouping;
-        let track_filter_text = self.feature_tree_track_filter.trim().to_string();
+        let grouping_mode = self.feature_tree_grouping_mode;
+        let feature_filter_text = self.feature_tree_filter.trim().to_string();
+        let filter_active = !feature_filter_text.is_empty();
+        let mut filter_total_count = 0usize;
+        let mut filter_matched_count = 0usize;
         let typed_features = {
             let dna = self.dna.read().expect("DNA lock poisoned");
             let sequence_length = dna.len();
@@ -7375,11 +7667,6 @@ impl MainAreaDna {
                     {
                         return None;
                     }
-                    if RenderDna::is_track_feature(feature)
-                        && !Self::track_feature_matches_filter(feature, &track_filter_text)
-                    {
-                        return None;
-                    }
                     let (from, to) = feature.location.find_bounds().ok()?;
                     if from < 0 || to < 0 {
                         return None;
@@ -7393,7 +7680,12 @@ impl MainAreaDna {
                         ),
                         None => true,
                     };
-                    let feature_label = {
+                    let kind_label = if RenderDna::is_track_feature(feature) {
+                        "tracks".to_string()
+                    } else {
+                        feature.kind.to_string()
+                    };
+                    let base_label = {
                         let name = RenderDna::feature_name(feature);
                         if name.trim().is_empty() {
                             format!("{} #{}", feature.kind.to_string(), id + 1)
@@ -7401,20 +7693,27 @@ impl MainAreaDna {
                             name
                         }
                     };
-                    let (subgroup_label, force_subgroup) = Self::feature_tree_subgroup_label(
-                        feature,
-                        &feature_label,
-                        second_level_grouping,
-                    );
+                    let range_label = RenderDna::feature_range_text(feature);
+                    let display_label =
+                        Self::feature_tree_display_label(feature, &base_label, &range_label);
+                    if filter_active {
+                        filter_total_count += 1;
+                        if !Self::feature_tree_matches_filter(
+                            feature,
+                            &feature_filter_text,
+                            &kind_label,
+                            &display_label,
+                            &range_label,
+                        ) {
+                            return None;
+                        }
+                        filter_matched_count += 1;
+                    }
+                    let subgroup_label =
+                        Self::feature_tree_subgroup_label(feature, &base_label, grouping_mode);
                     let subgroup_key = subgroup_label
                         .as_ref()
                         .map(|label| label.trim().to_ascii_uppercase());
-                    let kind_label = if RenderDna::is_track_feature(feature) {
-                        "tracks".to_string()
-                    } else {
-                        feature.kind.to_string()
-                    };
-                    let range_label = RenderDna::feature_range_text(feature);
                     let show_range_inline_when_ungrouped = matches!(
                         feature.kind.to_string().to_ascii_uppercase().as_str(),
                         "MRNA" | "GENE"
@@ -7423,11 +7722,10 @@ impl MainAreaDna {
                         kind_label,
                         FeatureTreeEntry {
                             id,
-                            feature_label,
+                            feature_label: display_label,
                             range_label,
                             subgroup_key,
                             subgroup_label,
-                            force_subgroup,
                             show_range_inline_when_ungrouped,
                             visible_in_view,
                         },
@@ -7435,8 +7733,13 @@ impl MainAreaDna {
                 })
                 .collect::<Vec<_>>()
         };
+        if filter_active {
+            ui.small(format!(
+                "Filter matches: {} / {} features",
+                filter_matched_count, filter_total_count
+            ));
+        }
         let mut grouped_features: HashMap<String, Vec<FeatureTreeEntry>> = HashMap::new();
-        let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
         for (kind, entry) in typed_features {
             grouped_features.entry(kind).or_default().push(entry);
         }
@@ -7478,12 +7781,23 @@ impl MainAreaDna {
                     HashMap::new();
                 let mut ungrouped_entries: Vec<&FeatureTreeEntry> = Vec::new();
                 for entry in entries {
+                    let should_group = match grouping_mode {
+                        FeatureTreeGroupingMode::Off => false,
+                        FeatureTreeGroupingMode::Auto => {
+                            entry
+                                .subgroup_key
+                                .as_ref()
+                                .and_then(|subgroup_key| subgroup_cardinality.get(subgroup_key))
+                                .copied()
+                                .unwrap_or(0)
+                                > 1
+                        }
+                        FeatureTreeGroupingMode::Always => true,
+                    };
                     if let (Some(subgroup_key), Some(subgroup_label)) =
                         (&entry.subgroup_key, &entry.subgroup_label)
                     {
-                        let subgroup_count =
-                            subgroup_cardinality.get(subgroup_key).copied().unwrap_or(0);
-                        if entry.force_subgroup || subgroup_count > 1 {
+                        if should_group {
                             grouped_entries
                                 .entry(subgroup_key.clone())
                                 .or_insert_with(|| (subgroup_label.clone(), Vec::new()))

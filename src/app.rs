@@ -2785,22 +2785,70 @@ Error: `{err}`"
             .unwrap_or_else(|| path.display().to_string())
     }
 
-    fn subscription_matches_filter(subscription: &GenomeTrackSubscription, filter_text: &str) -> bool {
-        let needle = filter_text.trim().to_ascii_lowercase();
-        if needle.is_empty() {
+    fn subscription_matches_filter(
+        subscription: &GenomeTrackSubscription,
+        filter_text: &str,
+    ) -> bool {
+        let terms = Self::parse_track_filter_terms(filter_text);
+        if terms.is_empty() {
             return true;
         }
-        let mut haystacks = vec![
-            subscription.source.label().to_string(),
-            subscription.path.clone(),
-        ];
-        if let Some(track_name) = &subscription.track_name {
-            haystacks.push(track_name.clone());
-        }
-        haystacks
-            .into_iter()
-            .map(|value| value.to_ascii_lowercase())
-            .any(|value| value.contains(&needle))
+        let source_terms = vec![subscription.source.label().to_ascii_lowercase()];
+        let path_terms = {
+            let mut values = vec![subscription.path.to_ascii_lowercase()];
+            if let Some(file_name) = Path::new(subscription.path.as_str())
+                .file_name()
+                .and_then(|value| value.to_str())
+            {
+                values.push(file_name.to_ascii_lowercase());
+            }
+            values
+        };
+        let track_terms = subscription
+            .track_name
+            .as_ref()
+            .map(|value| vec![value.to_ascii_lowercase()])
+            .unwrap_or_default();
+        let all_terms = source_terms
+            .iter()
+            .chain(path_terms.iter())
+            .chain(track_terms.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+
+        terms.iter().all(|(scope, needle)| {
+            let search_space: &Vec<String> = match scope.as_deref() {
+                Some("source") | Some("type") => &source_terms,
+                Some("path") | Some("file") => &path_terms,
+                Some("track") | Some("name") => &track_terms,
+                _ => &all_terms,
+            };
+            search_space.iter().any(|value| value.contains(needle))
+        })
+    }
+
+    fn parse_track_filter_terms(filter_text: &str) -> Vec<(Option<String>, String)> {
+        filter_text
+            .split_whitespace()
+            .filter_map(|raw_term| {
+                let term = raw_term.trim();
+                if term.is_empty() {
+                    return None;
+                }
+                if let Some((raw_scope, raw_needle)) = term.split_once(':') {
+                    let scope = raw_scope.trim().to_ascii_lowercase();
+                    let needle = raw_needle.trim().to_ascii_lowercase();
+                    if !scope.is_empty() && !needle.is_empty() {
+                        return Some((Some(scope), needle));
+                    }
+                }
+                Some((None, term.to_ascii_lowercase()))
+            })
+            .collect()
+    }
+
+    fn tracked_file_filter_help_text() -> &'static str {
+        "Free text matches source/path/track. Scoped terms: source:BED source:VCF path:peaks.bed track:chip"
     }
 
     fn open_helper_genome_prepare_dialog(&mut self) {
@@ -7027,12 +7075,14 @@ Error: `{err}`"
         ui.separator();
         ui.label("Tracked genome signal files for auto-sync to new anchored sequences");
         ui.horizontal(|ui| {
-            ui.label("Filter");
+            ui.label("Filter")
+                .on_hover_text(Self::tracked_file_filter_help_text());
             ui.add(
                 egui::TextEdit::singleline(&mut self.genome_track_subscription_filter)
                     .hint_text("path, track, source")
                     .desired_width(280.0),
-            );
+            )
+            .on_hover_text(Self::tracked_file_filter_help_text());
             if ui
                 .add_enabled(
                     !self.genome_track_subscription_filter.trim().is_empty(),
@@ -7058,6 +7108,11 @@ Error: `{err}`"
                     Self::subscription_matches_filter(subscription, &filter_text)
                 })
                 .collect::<Vec<_>>();
+            ui.small(format!(
+                "Showing {} of {} tracked files",
+                filtered_rows.len(),
+                subscription_rows.len()
+            ));
             if filtered_rows.is_empty() {
                 ui.small("No tracked files match the current filter.");
             }
@@ -10844,7 +10899,7 @@ Error: `{err}`"
                 &mut self
                     .configuration_graphics
                     .linear_reverse_strand_use_upside_down_letters,
-                "Use upside-down letters for reverse strand",
+                "Rotate reverse strand letters by 180°",
             )
             .changed();
         ui.horizontal(|ui| {

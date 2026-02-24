@@ -62,7 +62,7 @@ order. Durable architecture constraints and decisions remain in
 - Linear DNA-letter rendering controls now include:
   - configurable standard letter span threshold
   - optional helical-compressed letter mode up to higher spans (default 2000 bp)
-  - configurable double-strand display with optional upside-down reverse letters
+  - configurable double-strand display with optional 180° reverse-letter rotation
   - optional sequence-panel auto-hide when map letters are visible
 - Linear-map drag selection can now be extracted directly to a new sequence via
   `ExtractRegion`, preserving overlapping features in the derived fragment.

@@ -100,12 +100,26 @@ Linear map zoom detail:
 
 Feature tree grouping:
 
-- The left-side feature tree includes an optional `Second-level grouping`
-  toggle.
-- When enabled, repeated labels (for example many RNA variants) are grouped
-  under each feature-kind section.
+- The left-side feature tree includes a `Grouping` selector:
+  - `Off`
+  - `Auto (duplicates)`
+  - `Always`
+- Repeated labels (for example many RNA variants) can be grouped under each
+  feature-kind section depending on that mode.
+- `Auto (duplicates)` flattens singleton subgroups and only keeps grouped
+  branches where duplicate labels exist.
 - Group headings show counts as `visible/total` in linear mode (current stretch
   shown in the map), and as total count in circular mode.
+- `Filter` narrows all feature rows in the tree.
+  - free text searches kind/label/range and selected qualifiers
+  - scoped terms are supported:
+    - `kind:mrna`
+    - `label:TP73`
+    - `range:6128..16430`
+    - `source:BED` / `source:VCF`
+    - `track:chip`
+    - `path:peaks.bed` or `file:peaks.bed`
+    - `note:enhancer`
 
 Circular map label behavior:
 
@@ -636,14 +650,15 @@ Current linear map conventions are:
 - Restriction enzyme labels are lane-packed to reduce overlap
 - Optional helical-compressed letter mode (linear map):
   - active only when `Enable helical-compressed DNA letters` is on
-  - applies when current span is above the standard DNA-letter threshold and
-    at/below `Helical letters max span`
+  - applies when current span is at/below `Helical letters max span`
   - transition is continuous:
-    - near the standard threshold, letters remain close to linear placement
+    - below the standard threshold, letters keep near-linear spacing while
+      showing strand-phase offsets
+    - above the standard threshold, horizontal compaction ramps up
     - at the helical max span, horizontal projection reaches strong compaction
       (`10 bp` occupies approximately the width of `2` letter cells)
   - forward/reverse strand letter placement remains symmetric around the DNA
-    baseline (with optional upside-down reverse letters)
+    baseline (with optional 180° reverse-letter rotation)
 
 ## Circular map conventions
 
@@ -996,6 +1011,11 @@ Notes:
   They render as dense signal tracks (lane-packed in linear view) and appear in
   the feature tree under a dedicated `Tracks` category, grouped by experiment
   (`gentle_track_name`).
+- The tracked-subscription table in `Genome -> Import Genome Tracks...` includes
+  a textual `Filter` box:
+  - free text searches source/path/track name
+  - scoped terms are supported (`source:`, `path:`/`file:`, `track:`)
+  - UI shows `Showing N of M tracked files` so it is clear when filters hide rows
 - Prepare/Retrieve dialogs show resolved source types for the selected entry
   (`local`, `ncbi_assembly`, `genbank_accession`, `remote_http`).
 - Retrieval fields are enabled only after the selected genome is prepared.

@@ -49,6 +49,7 @@ const FEATURE_LANE_PADDING: f32 = 5.0;
 const REGULATORY_LANE_PADDING: f32 = 2.0;
 const HELICAL_MIN_X_COMPRESSION: f32 = 0.2;
 const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
+const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -1004,15 +1005,21 @@ impl RenderDnaLinear {
         }
     }
 
-    fn upside_down_base_char(base: char) -> char {
-        match base.to_ascii_uppercase() {
-            'A' => '∀',
-            'C' => 'Ↄ',
-            'G' => '⅁',
-            'T' => '┴',
-            'U' => '∩',
-            other => other,
-        }
+    fn draw_rotated_base_char(
+        painter: &egui::Painter,
+        x_center: f32,
+        y_top: f32,
+        base: char,
+        font: &FontId,
+        color: Color32,
+    ) {
+        let galley = painter.layout_no_wrap(base.to_string(), font.clone(), color);
+        let size = galley.size();
+        // Rotate the full glyph box (not symbol substitution) to preserve font fidelity.
+        let pivot = Pos2::new(x_center + size.x * 0.5, y_top + size.y);
+        painter.add(
+            egui::epaint::TextShape::new(pivot, galley, color).with_angle(std::f32::consts::PI),
+        );
     }
 
     fn draw_sequence_bases(&self, painter: &egui::Painter, viewport: LinearViewport) {
@@ -1056,6 +1063,12 @@ impl RenderDnaLinear {
             && (standard_max_span == 0 || viewport.span > standard_max_span);
         let helical_t =
             Self::helical_projection_progress(viewport.span, standard_max_span, helical_max_span);
+        let helical_visual_t =
+            if helical_enabled && helical_max_span > 0 && viewport.span <= helical_max_span {
+                helical_t.max(HELICAL_MIN_VISUAL_PROGRESS)
+            } else {
+                0.0
+            };
         let px_per_bp = self.area.width().max(1.0) / viewport.span.max(1) as f32;
         let font_size = (px_per_bp * 0.85).clamp(
             SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
@@ -1069,7 +1082,7 @@ impl RenderDnaLinear {
         let forward_y = baseline - font_size - 3.0;
         let reverse_y = baseline + 3.0;
         let helical_compression = Self::helical_projection_x_compression(helical_t);
-        let helical_phase_scale = Self::helical_projection_y_phase_scale(helical_t);
+        let helical_phase_scale = Self::helical_projection_y_phase_scale(helical_visual_t);
         let x_centerline = self.area.center().x;
         let project_x = |x: f32| -> f32 {
             if use_helical_projection {
@@ -1085,7 +1098,7 @@ impl RenderDnaLinear {
             let x1_projected = project_x(x1);
             let x2_projected = project_x(x2);
             let x_center = (x1_projected + x2_projected) * 0.5;
-            let helical_phase = if use_helical_projection {
+            let helical_phase = if helical_visual_t > 0.0 {
                 let normalized = ((bp % 10) as f32 / 9.0) - 0.5;
                 normalized * font_size * helical_phase_scale
             } else {
@@ -1122,19 +1135,27 @@ impl RenderDnaLinear {
                 Self::sequence_base_color(*base),
             );
             if show_double_strand {
-                let complemented = IupacCode::letter_complement(*base).to_ascii_uppercase() as char;
-                let reverse_char = if reverse_strand_upside_down {
-                    Self::upside_down_base_char(complemented)
+                let complemented_byte = IupacCode::letter_complement(*base).to_ascii_uppercase();
+                let complemented = complemented_byte as char;
+                let reverse_color = Self::sequence_base_color(complemented_byte);
+                if reverse_strand_upside_down {
+                    Self::draw_rotated_base_char(
+                        painter,
+                        x_center,
+                        reverse_y_bp,
+                        complemented,
+                        &font,
+                        reverse_color,
+                    );
                 } else {
-                    complemented
-                };
-                painter.text(
-                    Pos2::new(x_center, reverse_y_bp),
-                    Align2::CENTER_TOP,
-                    reverse_char,
-                    font.clone(),
-                    Self::sequence_base_color(IupacCode::letter_complement(*base)),
-                );
+                    painter.text(
+                        Pos2::new(x_center, reverse_y_bp),
+                        Align2::CENTER_TOP,
+                        complemented,
+                        font.clone(),
+                        reverse_color,
+                    );
+                }
             }
         }
     }
