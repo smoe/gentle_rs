@@ -4981,10 +4981,11 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 Err(token_error(cmd))
             }
         }
-        "render-pool-gel-svg" => {
+        "render-pool-gel-svg" | "render-gel-svg" => {
             if tokens.len() < 3 {
                 return Err(token_error(cmd));
             }
+            let cmd_name = tokens[0].as_str();
             let inputs = match tokens[1].trim() {
                 "-" | "_" => vec![],
                 raw => split_ids(raw),
@@ -5027,9 +5028,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                         idx += 2;
                     }
                     other => {
-                        return Err(format!(
-                            "Unknown argument '{other}' for render-pool-gel-svg"
-                        ));
+                        return Err(format!("Unknown argument '{other}' for {cmd_name}"));
                     }
                 }
             }
@@ -5037,10 +5036,9 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 && container_ids.as_ref().map_or(true, |v| v.is_empty())
                 && arrangement_id.is_none()
             {
-                return Err(
-                    "render-pool-gel-svg requires inputs, --containers, or --arrangement"
-                        .to_string(),
-                );
+                return Err(format!(
+                    "{cmd_name} requires inputs, --containers, or --arrangement"
+                ));
             }
             Ok(ShellCommand::RenderPoolGelSvg {
                 inputs,
@@ -8536,6 +8534,28 @@ mod tests {
     #[test]
     fn parse_render_pool_gel_from_arrangement() {
         let cmd = parse_shell_line("render-pool-gel-svg - out.svg --arrangement arrangement-2")
+            .expect("parse command");
+        match cmd {
+            ShellCommand::RenderPoolGelSvg {
+                inputs,
+                output,
+                ladders,
+                container_ids,
+                arrangement_id,
+            } => {
+                assert!(inputs.is_empty());
+                assert_eq!(output, "out.svg".to_string());
+                assert_eq!(ladders, None);
+                assert_eq!(container_ids, None);
+                assert_eq!(arrangement_id, Some("arrangement-2".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_render_gel_svg_alias() {
+        let cmd = parse_shell_line("render-gel-svg - out.svg --arrangement arrangement-2")
             .expect("parse command");
         match cmd {
             ShellCommand::RenderPoolGelSvg {

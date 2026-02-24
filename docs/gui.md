@@ -453,6 +453,9 @@ The custom window and CLI `--version` share the same text payload.
 GENtle tracks open native windows and can raise a selected one to front.
 
 - Main project window menu: `Windows -> <window name>` jumps directly to that window
+- macOS native mirrors:
+  - `Window -> GENtle Open Windows… -> <window name>`
+  - `GENtle -> GENtle Windows… -> <window name>`
 - `Windows` includes project, sequence/pool, and auxiliary windows
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
   Agent Assistant, Operation History)

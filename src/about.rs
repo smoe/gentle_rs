@@ -269,7 +269,7 @@ mod macos_native_windows_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
+    use objc2::{ClassType, DeclaredClass, declare_class, msg_send, msg_send_id, mutability, sel};
     use objc2_app_kit::{NSApplication, NSMenu};
     use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
 
@@ -297,6 +297,20 @@ mod macos_native_windows_menu {
             #[method(openGentleWindows:)]
             fn open_gentle_windows(&self, _sender: Option<&AnyObject>) {
                 app::request_open_windows_from_native_menu();
+            }
+
+            #[method(focusGentleWindowEntry:)]
+            fn focus_gentle_window_entry(&self, sender: Option<&AnyObject>) {
+                let Some(sender) = sender else {
+                    app::request_open_windows_from_native_menu();
+                    return;
+                };
+                let raw_tag: isize = unsafe { msg_send![sender, tag] };
+                if raw_tag >= 0 {
+                    app::request_focus_window_index_from_native_menu(raw_tag as usize);
+                } else {
+                    app::request_open_windows_from_native_menu();
+                }
             }
         }
     );
@@ -405,14 +419,26 @@ mod macos_native_windows_menu {
             return;
         }
 
-        for title in titles {
+        for (idx, title) in titles.iter().enumerate() {
             let title = NSString::from_str(title);
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(&title, None, ns_string!(""))
             };
-            unsafe {
-                entry.setEnabled(false);
-            }
+            WINDOWS_MENU_TARGET.with(|slot| {
+                if let Some(target) = slot.borrow().as_ref() {
+                    let target_obj: &AnyObject = target.as_ref();
+                    unsafe {
+                        entry.setTarget(Some(target_obj));
+                        entry.setAction(Some(sel!(focusGentleWindowEntry:)));
+                        entry.setTag(idx as isize);
+                        entry.setEnabled(true);
+                    }
+                } else {
+                    unsafe {
+                        entry.setEnabled(false);
+                    }
+                }
+            });
         }
     }
 }
@@ -427,7 +453,7 @@ mod macos_native_app_windows_menu {
     use crate::app;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::{ClassType, DeclaredClass, declare_class, msg_send_id, mutability, sel};
+    use objc2::{ClassType, DeclaredClass, declare_class, msg_send, msg_send_id, mutability, sel};
     use objc2_app_kit::{NSApplication, NSMenu};
     use objc2_foundation::{MainThreadMarker, NSObject, NSObjectProtocol, NSString, ns_string};
 
@@ -455,6 +481,20 @@ mod macos_native_app_windows_menu {
             #[method(openGentleWindowsFromAppMenu:)]
             fn open_gentle_windows_from_app_menu(&self, _sender: Option<&AnyObject>) {
                 app::request_open_windows_from_native_menu();
+            }
+
+            #[method(focusGentleWindowEntryFromAppMenu:)]
+            fn focus_gentle_window_entry_from_app_menu(&self, sender: Option<&AnyObject>) {
+                let Some(sender) = sender else {
+                    app::request_open_windows_from_native_menu();
+                    return;
+                };
+                let raw_tag: isize = unsafe { msg_send![sender, tag] };
+                if raw_tag >= 0 {
+                    app::request_focus_window_index_from_native_menu(raw_tag as usize);
+                } else {
+                    app::request_open_windows_from_native_menu();
+                }
             }
         }
     );
@@ -561,14 +601,26 @@ mod macos_native_app_windows_menu {
             return;
         }
 
-        for title in titles {
+        for (idx, title) in titles.iter().enumerate() {
             let title = NSString::from_str(title);
             let entry = unsafe {
                 submenu.addItemWithTitle_action_keyEquivalent(&title, None, ns_string!(""))
             };
-            unsafe {
-                entry.setEnabled(false);
-            }
+            APP_WINDOWS_MENU_TARGET.with(|slot| {
+                if let Some(target) = slot.borrow().as_ref() {
+                    let target_obj: &AnyObject = target.as_ref();
+                    unsafe {
+                        entry.setTarget(Some(target_obj));
+                        entry.setAction(Some(sel!(focusGentleWindowEntryFromAppMenu:)));
+                        entry.setTag(idx as isize);
+                        entry.setEnabled(true);
+                    }
+                } else {
+                    unsafe {
+                        entry.setEnabled(false);
+                    }
+                }
+            });
         }
     }
 }

@@ -17557,6 +17557,47 @@ ORIGIN
     }
 
     #[test]
+    fn test_render_lineage_svg_includes_arrangement_nodes() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("a".to_string(), seq(&"ATGC".repeat(40)));
+        state
+            .sequences
+            .insert("b".to_string(), seq(&"ATGC".repeat(55)));
+        let mut engine = GentleEngine::from_state(state);
+
+        let mut container_ids: Vec<String> = engine
+            .state()
+            .container_state
+            .containers
+            .keys()
+            .cloned()
+            .collect();
+        container_ids.sort();
+        engine
+            .apply(Operation::CreateArrangementSerial {
+                container_ids: container_ids.into_iter().take(2).collect(),
+                arrangement_id: Some("arr-viz".to_string()),
+                name: Some("Digest run".to_string()),
+                ladders: Some(vec!["NEB 100bp DNA Ladder".to_string()]),
+            })
+            .unwrap();
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("lineage.arr.svg");
+        let path_text = path.display().to_string();
+        engine
+            .apply(Operation::RenderLineageSvg {
+                path: path_text.clone(),
+            })
+            .unwrap();
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("arr-viz"));
+        assert!(text.contains("lanes=2"));
+    }
+
+    #[test]
     fn test_render_pool_gel_svg_operation() {
         let mut state = ProjectState::default();
         state

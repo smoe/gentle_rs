@@ -448,6 +448,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] shell 'state-summary'\n  \
   gentle_cli [--state PATH|--project PATH] shell 'op <operation-json>'\n\n  \
   gentle_cli [--state PATH|--project PATH] render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]\n  \
   gentle_cli [--state PATH|--project PATH] arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]\n\n  \
   gentle_cli [--state PATH|--project PATH] screenshot-window OUTPUT.png (disabled by security policy)\n\n  \
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
@@ -1757,12 +1758,14 @@ fn run() -> Result<(), String> {
             }
             Ok(())
         }
-        "render-pool-gel-svg" => {
+        "render-pool-gel-svg" | "render-gel-svg" => {
+            let cmd_name = args[cmd_idx].as_str();
             if args.len() <= cmd_idx + 2 {
                 usage();
                 return Err(
-                    "render-pool-gel-svg requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
-                        .to_string(),
+                    format!(
+                        "{cmd_name} requires: IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]"
+                    ),
                 );
             }
             let ids = match args[cmd_idx + 1].trim() {
@@ -1823,7 +1826,7 @@ fn run() -> Result<(), String> {
                     }
                     other => {
                         return Err(format!(
-                            "Unknown argument '{other}' for render-pool-gel-svg (expected --ladders/--containers/--arrangement)"
+                            "Unknown argument '{other}' for {cmd_name} (expected --ladders/--containers/--arrangement)"
                         ));
                     }
                 }
@@ -1832,10 +1835,9 @@ fn run() -> Result<(), String> {
                 && container_ids.as_ref().map_or(true, |v| v.is_empty())
                 && arrangement_id.is_none()
             {
-                return Err(
-                    "render-pool-gel-svg requires sequence ids, --containers, or --arrangement"
-                        .to_string(),
-                );
+                return Err(format!(
+                    "{cmd_name} requires sequence ids, --containers, or --arrangement"
+                ));
             }
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let result = engine

@@ -6,11 +6,11 @@ use std::{
     sync::{OnceLock, RwLock},
 };
 
-const DEFAULT_MAIN_IMAGE_PATH: &str = "docs/backgrounds/Lab_Hood.jpg";
-const DEFAULT_SEQUENCE_IMAGE_PATH: &str = "docs/backgrounds/Lab_PCR_Machines.jpg";
-const DEFAULT_POOL_IMAGE_PATH: &str = "docs/backgrounds/Lab_Plates_Piles.jpg";
-const DEFAULT_CONFIGURATION_IMAGE_PATH: &str = "docs/backgrounds/Lab_Glas_Dry.jpg";
-const DEFAULT_HELP_IMAGE_PATH: &str = "docs/backgrounds/Lab_Tubes.jpg";
+const DEFAULT_MAIN_IMAGE_PATH: &str = "assets/backgrounds/Rostock_Neuer_Markt.jpeg";
+const DEFAULT_SEQUENCE_IMAGE_PATH: &str = "assets/backgrounds/Lab_PCR_Machines.jpg";
+const DEFAULT_POOL_IMAGE_PATH: &str = "assets/backgrounds/Lab_Plates_Piles.jpg";
+const DEFAULT_CONFIGURATION_IMAGE_PATH: &str = "assets/backgrounds/Lab_Glas_Dry.jpg";
+const DEFAULT_HELP_IMAGE_PATH: &str = "assets/backgrounds/Lab_Tubes.jpg";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowBackdropKind {
@@ -77,6 +77,12 @@ impl WindowBackdropSettings {
     }
 
     pub fn apply_runtime_defaults_if_legacy(&mut self) {
+        self.main_image_path = migrate_legacy_image_path(&self.main_image_path);
+        self.sequence_image_path = migrate_legacy_image_path(&self.sequence_image_path);
+        self.pool_image_path = migrate_legacy_image_path(&self.pool_image_path);
+        self.configuration_image_path = migrate_legacy_image_path(&self.configuration_image_path);
+        self.help_image_path = migrate_legacy_image_path(&self.help_image_path);
+
         let all_empty = self.main_image_path.trim().is_empty()
             && self.sequence_image_path.trim().is_empty()
             && self.pool_image_path.trim().is_empty()
@@ -127,6 +133,23 @@ fn kind_color(kind: WindowBackdropKind) -> Color32 {
 
 fn alpha_to_u8(opacity: f32) -> u8 {
     (opacity.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn migrate_legacy_image_path(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if PathBuf::from(trimmed).exists() {
+        return trimmed.to_string();
+    }
+    if let Some(suffix) = trimmed.strip_prefix("docs/backgrounds/") {
+        let candidate = format!("assets/backgrounds/{suffix}");
+        if PathBuf::from(&candidate).exists() {
+            return candidate;
+        }
+    }
+    trimmed.to_string()
 }
 
 fn resolve_runtime_asset_path(path: &str) -> Option<String> {

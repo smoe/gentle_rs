@@ -54,6 +54,7 @@ order. Durable architecture constraints and decisions remain in
   - single-click selects
   - double-click opens sequence/pool context
   - hover exposes node context (pool range and ladder hints for pool nodes)
+  - serial arrangements are rendered as dedicated graph nodes linked from lane-source sequences
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Scrollable/resizable Engine Ops area and shared-shell panel.
@@ -239,11 +240,11 @@ Planned upgrades:
 - Generalize virtual gels from pool-only usage to any container/tube:
   - support one-lane "single-product proof" use cases
   - support mixed cardinality lanes (single-sequence and pool containers)
-- Introduce arrangement nodes in lineage/DALG:
-  - arrangement is an explicit node type that groups multiple input tubes under
-    one experimental setup
-  - first arrangement mode: `serial` (gel lanes)
-  - later arrangement mode: `plate` (plate-reader/assay modeling)
+- Extend arrangement nodes in lineage/DALG:
+  - arrangement is already modeled and rendered as an explicit node type that
+    groups multiple input tubes under one experimental setup
+  - current arrangement mode: `serial` (gel lanes)
+  - next arrangement mode: `plate` (plate-reader/assay modeling)
 - Enforce same-setup semantics for one serial arrangement:
   - all lanes in one virtual gel share one run configuration and one ladder
     context

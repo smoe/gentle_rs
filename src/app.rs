@@ -8,7 +8,7 @@ use std::{
     process::Command,
     sync::{
         Arc, RwLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -71,6 +71,9 @@ const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+const NATIVE_WINDOW_FOCUS_INDEX_NONE: usize = usize::MAX;
+static NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED: AtomicUsize =
+    AtomicUsize::new(NATIVE_WINDOW_FOCUS_INDEX_NONE);
 
 fn normalize_agent_model_name(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -282,6 +285,12 @@ pub fn request_open_settings_from_native_menu() {
 }
 
 pub fn request_open_windows_from_native_menu() {
+    NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED.store(NATIVE_WINDOW_FOCUS_INDEX_NONE, Ordering::SeqCst);
+    NATIVE_WINDOWS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_focus_window_index_from_native_menu(index: usize) {
+    NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED.store(index, Ordering::SeqCst);
     NATIVE_WINDOWS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -747,8 +756,15 @@ struct BlastPoolOption {
     members: Vec<String>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LineageNodeKind {
+    Sequence,
+    Arrangement,
+}
+
 #[derive(Clone)]
 struct LineageRow {
+    kind: LineageNodeKind,
     node_id: String,
     seq_id: String,
     display_name: String,
@@ -760,6 +776,10 @@ struct LineageRow {
     circular: bool,
     pool_size: usize,
     pool_members: Vec<String>,
+    arrangement_id: Option<String>,
+    arrangement_mode: Option<String>,
+    lane_container_ids: Vec<String>,
+    ladders: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -776,6 +796,8 @@ struct ArrangementRow {
     arrangement_id: String,
     mode: String,
     name: String,
+    created_by_op: String,
+    created_at: u128,
     lane_count: usize,
     lane_container_ids: Vec<String>,
     ladders: Vec<String>,
@@ -1507,7 +1529,18 @@ Error: `{err}`"
 
     fn consume_native_windows_request(&mut self) {
         if NATIVE_WINDOWS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
-            self.queue_focus_viewport(ViewportId::ROOT);
+            let requested_index = NATIVE_WINDOWS_FOCUS_INDEX_REQUESTED
+                .swap(NATIVE_WINDOW_FOCUS_INDEX_NONE, Ordering::SeqCst);
+            if requested_index == NATIVE_WINDOW_FOCUS_INDEX_NONE {
+                self.queue_focus_viewport(ViewportId::ROOT);
+                return;
+            }
+            let entries = self.collect_open_window_entries();
+            if let Some(entry) = entries.get(requested_index) {
+                self.queue_focus_viewport(entry.viewport_id);
+            } else {
+                self.queue_focus_viewport(ViewportId::ROOT);
+            }
         }
     }
 
@@ -8569,6 +8602,7 @@ Error: `{err}`"
                         .cloned()
                         .unwrap_or_else(|| vec![node.seq_id.clone()]);
                     LineageRow {
+                        kind: LineageNodeKind::Sequence,
                         node_id: node.node_id.clone(),
                         seq_id: node.seq_id.clone(),
                         display_name,
@@ -8583,6 +8617,10 @@ Error: `{err}`"
                         circular,
                         pool_size,
                         pool_members,
+                        arrangement_id: None,
+                        arrangement_mode: None,
+                        lane_container_ids: vec![],
+                        ladders: vec![],
                     }
                 })
                 .collect();
@@ -8622,6 +8660,11 @@ Error: `{err}`"
                     arrangement_id: id.clone(),
                     mode: format!("{:?}", arrangement.mode),
                     name: arrangement.name.clone().unwrap_or_default(),
+                    created_by_op: arrangement
+                        .created_by_op
+                        .clone()
+                        .unwrap_or_else(|| "CreateArrangementSerial".to_string()),
+                    created_at: arrangement.created_at_unix_ms,
                     lane_count: arrangement.lane_container_ids.len(),
                     lane_container_ids: arrangement.lane_container_ids.clone(),
                     ladders: arrangement.ladders.clone(),
@@ -8978,11 +9021,74 @@ Error: `{err}`"
         );
         let mut graph_compact_labels = self.lineage_graph_compact_labels;
         let mut persist_workspace_after_frame = false;
+        let mut graph_rows = self.lineage_rows.clone();
+        let mut graph_edges = self.lineage_edges.clone();
+        let mut graph_op_label_by_id = self.lineage_op_label_by_id.clone();
+        let seq_node_by_seq_id: HashMap<String, String> = self
+            .lineage_rows
+            .iter()
+            .map(|row| (row.seq_id.clone(), row.node_id.clone()))
+            .collect();
+        let container_members_by_id: HashMap<String, Vec<String>> = self
+            .lineage_containers
+            .iter()
+            .map(|row| (row.container_id.clone(), row.members.clone()))
+            .collect();
+        for arrangement in &self.lineage_arrangements {
+            let arrangement_node_id = format!("arr:{}", arrangement.arrangement_id);
+            let mut source_node_ids: Vec<String> = vec![];
+            let mut seen_sources: HashSet<String> = HashSet::new();
+            for container_id in &arrangement.lane_container_ids {
+                if let Some(members) = container_members_by_id.get(container_id) {
+                    for seq_id in members {
+                        if let Some(source_node_id) = seq_node_by_seq_id.get(seq_id).cloned() {
+                            if seen_sources.insert(source_node_id.clone()) {
+                                source_node_ids.push(source_node_id.clone());
+                                graph_edges.push((
+                                    source_node_id,
+                                    arrangement_node_id.clone(),
+                                    arrangement.created_by_op.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            graph_op_label_by_id
+                .entry(arrangement.created_by_op.clone())
+                .or_insert_with(|| "Arrange serial lanes".to_string());
+            graph_rows.push(LineageRow {
+                kind: LineageNodeKind::Arrangement,
+                node_id: arrangement_node_id,
+                seq_id: arrangement.arrangement_id.clone(),
+                display_name: if arrangement.name.trim().is_empty() {
+                    arrangement.arrangement_id.clone()
+                } else {
+                    arrangement.name.clone()
+                },
+                origin: "Arrangement".to_string(),
+                created_by_op: arrangement.created_by_op.clone(),
+                created_at: arrangement.created_at,
+                parents: source_node_ids,
+                length: 0,
+                circular: false,
+                pool_size: 1,
+                pool_members: vec![],
+                arrangement_id: Some(arrangement.arrangement_id.clone()),
+                arrangement_mode: Some(arrangement.mode.clone()),
+                lane_container_ids: arrangement.lane_container_ids.clone(),
+                ladders: arrangement.ladders.clone(),
+            });
+        }
+        graph_rows.sort_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then(a.node_id.cmp(&b.node_id))
+        });
         if self.lineage_graph_view {
             if self.lineage_graph_offsets_synced_stamp != self.lineage_cache_stamp {
                 let offset_count_before = self.lineage_graph_node_offsets.len();
-                let active_node_ids = self
-                    .lineage_rows
+                let active_node_ids = graph_rows
                     .iter()
                     .map(|row| row.node_id.clone())
                     .collect::<std::collections::HashSet<_>>();
@@ -9020,6 +9126,7 @@ Error: `{err}`"
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
                 ui.colored_label(egui::Color32::from_rgb(180, 120, 70), "◆ pool");
+                ui.colored_label(egui::Color32::from_rgb(108, 154, 122), "▭ arrangement");
                 ui.separator();
                 let zoom_out_resp = self.track_hover_status(
                     ui.button("−").on_hover_text("Zoom out"),
@@ -9095,9 +9202,9 @@ Error: `{err}`"
                 }
             });
             ui.separator();
-            let rows = &self.lineage_rows;
-            let lineage_edges = &self.lineage_edges;
-            let op_label_by_id = &self.lineage_op_label_by_id;
+            let rows = &graph_rows;
+            let lineage_edges = &graph_edges;
+            let op_label_by_id = &graph_op_label_by_id;
             let graph_resize_max_height = ui.available_height().max(220.0);
             let graph_resize_width = ui.available_width().max(360.0);
             egui::Resize::default()
@@ -9215,14 +9322,20 @@ Error: `{err}`"
                                 let Some(pos) = pos_by_node.get(&row.node_id).copied() else {
                                     return false;
                                 };
-                                let glyph_hit = if row.pool_size > 1 {
-                                    egui::Rect::from_center_size(
+                                let glyph_hit = match row.kind {
+                                    LineageNodeKind::Arrangement => egui::Rect::from_center_size(
                                         pos,
-                                        Vec2::new(34.0 * graph_zoom, 28.0 * graph_zoom),
+                                        Vec2::new(56.0 * graph_zoom, 28.0 * graph_zoom),
                                     )
-                                    .contains(pointer)
-                                } else {
-                                    pointer.distance(pos) <= 19.0 * graph_zoom
+                                    .contains(pointer),
+                                    LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                        egui::Rect::from_center_size(
+                                            pos,
+                                            Vec2::new(34.0 * graph_zoom, 28.0 * graph_zoom),
+                                        )
+                                        .contains(pointer)
+                                    }
+                                    LineageNodeKind::Sequence => pointer.distance(pos) <= 19.0 * graph_zoom,
                                 };
                                 if glyph_hit {
                                     return true;
@@ -9247,10 +9360,32 @@ Error: `{err}`"
                                     return true;
                                 }
                                 if !simplify_labels {
-                                    let detail_text = if row.pool_size > 1 {
-                                        format!("{} ({} bp) | pool={}", row.seq_id, row.length, row.pool_size)
-                                    } else {
-                                        format!("{} ({} bp)", row.seq_id, row.length)
+                                    let detail_text = match row.kind {
+                                        LineageNodeKind::Arrangement => {
+                                            let ladders = if row.ladders.is_empty() {
+                                                "auto".to_string()
+                                            } else {
+                                                row.ladders.join(" + ")
+                                            };
+                                            format!(
+                                                "{} lane(s) | mode={} | ladders={}",
+                                                row.lane_container_ids.len(),
+                                                row.arrangement_mode
+                                                    .as_deref()
+                                                    .unwrap_or("Serial")
+                                                    .to_lowercase(),
+                                                ladders
+                                            )
+                                        }
+                                        LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                            format!(
+                                                "{} ({} bp) | pool={}",
+                                                row.seq_id, row.length, row.pool_size
+                                            )
+                                        }
+                                        LineageNodeKind::Sequence => {
+                                            format!("{} ({} bp)", row.seq_id, row.length)
+                                        }
                                     };
                                     let details_galley = painter.layout_no_wrap(
                                         detail_text,
@@ -9403,35 +9538,69 @@ Error: `{err}`"
                                         egui::Color32::from_rgb(235, 196, 150),
                                     )
                                 };
-                                if row.pool_size > 1 {
-                                    let points = vec![
-                                        pos + Vec2::new(0.0, -16.0 * graph_zoom),
-                                        pos + Vec2::new(16.0 * graph_zoom, 0.0),
-                                        pos + Vec2::new(0.0, 16.0 * graph_zoom),
-                                        pos + Vec2::new(-16.0 * graph_zoom, 0.0),
-                                    ];
-                                    painter.add(egui::Shape::convex_polygon(
-                                        points,
-                                        if is_selected {
-                                            egui::Color32::from_rgb(205, 140, 80)
-                                        } else {
-                                            egui::Color32::from_rgb(180, 120, 70)
-                                        },
-                                        highlight_stroke,
-                                    ));
-                                } else {
-                                    painter.circle_filled(
-                                        pos,
-                                        node_radius,
-                                        if is_selected {
-                                            egui::Color32::from_rgb(70, 125, 215)
-                                        } else {
-                                            egui::Color32::from_rgb(90, 140, 210)
-                                        },
-                                    );
-                                    painter.circle_stroke(pos, node_radius, highlight_stroke);
+                                match row.kind {
+                                    LineageNodeKind::Arrangement => {
+                                        let rect = egui::Rect::from_center_size(
+                                            pos,
+                                            Vec2::new(56.0 * graph_zoom, 28.0 * graph_zoom),
+                                        );
+                                        painter.rect_filled(
+                                            rect,
+                                            5.0 * graph_zoom,
+                                            if is_selected {
+                                                egui::Color32::from_rgb(98, 140, 112)
+                                            } else {
+                                                egui::Color32::from_rgb(108, 154, 122)
+                                            },
+                                        );
+                                        painter.rect_stroke(
+                                            rect,
+                                            5.0 * graph_zoom,
+                                            highlight_stroke,
+                                        );
+                                    }
+                                    LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                        let points = vec![
+                                            pos + Vec2::new(0.0, -16.0 * graph_zoom),
+                                            pos + Vec2::new(16.0 * graph_zoom, 0.0),
+                                            pos + Vec2::new(0.0, 16.0 * graph_zoom),
+                                            pos + Vec2::new(-16.0 * graph_zoom, 0.0),
+                                        ];
+                                        painter.add(egui::Shape::convex_polygon(
+                                            points,
+                                            if is_selected {
+                                                egui::Color32::from_rgb(205, 140, 80)
+                                            } else {
+                                                egui::Color32::from_rgb(180, 120, 70)
+                                            },
+                                            highlight_stroke,
+                                        ));
+                                    }
+                                    LineageNodeKind::Sequence => {
+                                        painter.circle_filled(
+                                            pos,
+                                            node_radius,
+                                            if is_selected {
+                                                egui::Color32::from_rgb(70, 125, 215)
+                                            } else {
+                                                egui::Color32::from_rgb(90, 140, 210)
+                                            },
+                                        );
+                                        painter.circle_stroke(pos, node_radius, highlight_stroke);
+                                    }
                                 }
-                                let node_id_label = Self::compact_lineage_node_label(&row.node_id, 10);
+                                let node_id_label = match row.kind {
+                                    LineageNodeKind::Arrangement => row
+                                        .arrangement_id
+                                        .as_ref()
+                                        .map(|id| Self::compact_lineage_node_label(id, 12))
+                                        .unwrap_or_else(|| {
+                                            Self::compact_lineage_node_label(&row.node_id, 12)
+                                        }),
+                                    LineageNodeKind::Sequence => {
+                                        Self::compact_lineage_node_label(&row.node_id, 10)
+                                    }
+                                };
                                 painter.text(
                                     pos,
                                     egui::Align2::CENTER_CENTER,
@@ -9452,10 +9621,32 @@ Error: `{err}`"
                                     egui::Color32::BLACK,
                                 );
                                 if !simplify_labels {
-                                    let detail_text = if row.pool_size > 1 {
-                                        format!("{} ({} bp) | pool={}", row.seq_id, row.length, row.pool_size)
-                                    } else {
-                                        format!("{} ({} bp)", row.seq_id, row.length)
+                                    let detail_text = match row.kind {
+                                        LineageNodeKind::Arrangement => {
+                                            let ladders = if row.ladders.is_empty() {
+                                                "auto".to_string()
+                                            } else {
+                                                row.ladders.join(" + ")
+                                            };
+                                            format!(
+                                                "{} lane(s) | mode={} | ladders={}",
+                                                row.lane_container_ids.len(),
+                                                row.arrangement_mode
+                                                    .as_deref()
+                                                    .unwrap_or("Serial")
+                                                    .to_lowercase(),
+                                                ladders
+                                            )
+                                        }
+                                        LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                            format!(
+                                                "{} ({} bp) | pool={}",
+                                                row.seq_id, row.length, row.pool_size
+                                            )
+                                        }
+                                        LineageNodeKind::Sequence => {
+                                            format!("{} ({} bp)", row.seq_id, row.length)
+                                        }
                                     };
                                     painter.text(
                                         pos + Vec2::new(22.0 * graph_zoom, 10.0 * graph_zoom),
@@ -9473,7 +9664,7 @@ Error: `{err}`"
                             if let Some(row) = hit_row {
                                 let mut hover_pool_range: Option<(usize, usize)> = None;
                                 let mut hover_ladder_hint: Option<String> = None;
-                                if row.pool_size > 1 {
+                                if row.kind == LineageNodeKind::Sequence && row.pool_size > 1 {
                                     let member_lengths: Vec<(String, usize)> = {
                                         let engine = self.engine.read().unwrap();
                                         row.pool_members
@@ -9508,7 +9699,9 @@ Error: `{err}`"
                                         }
                                     }
                                 }
-                                let tooltip_member_preview = if row.pool_size > 1 {
+                                let tooltip_member_preview = if row.kind == LineageNodeKind::Sequence
+                                    && row.pool_size > 1
+                                {
                                     row.pool_members
                                         .iter()
                                         .take(6)
@@ -9520,26 +9713,77 @@ Error: `{err}`"
                                 };
                                 resp.clone().on_hover_ui_at_pointer(|ui| {
                                     ui.strong(&row.display_name);
-                                    ui.monospace(format!(
-                                        "{} | {} bp | {}",
-                                        row.seq_id,
-                                        row.length,
-                                        if row.circular { "circular" } else { "linear" }
-                                    ));
+                                    match row.kind {
+                                        LineageNodeKind::Arrangement => {
+                                            let ladders = if row.ladders.is_empty() {
+                                                "auto".to_string()
+                                            } else {
+                                                row.ladders.join(" + ")
+                                            };
+                                            ui.monospace(format!(
+                                                "{} | mode={} | lanes={} | ladders={}",
+                                                row.arrangement_id
+                                                    .as_deref()
+                                                    .unwrap_or(&row.seq_id),
+                                                row.arrangement_mode
+                                                    .as_deref()
+                                                    .unwrap_or("Serial")
+                                                    .to_lowercase(),
+                                                row.lane_container_ids.len(),
+                                                ladders
+                                            ));
+                                        }
+                                        LineageNodeKind::Sequence => {
+                                            ui.monospace(format!(
+                                                "{} | {} bp | {}",
+                                                row.seq_id,
+                                                row.length,
+                                                if row.circular { "circular" } else { "linear" }
+                                            ));
+                                        }
+                                    }
                                     ui.small(format!("node={} | origin={}", row.node_id, row.origin));
                                     ui.small(format!("parents={} | op={}", row.parents.len(), row.created_by_op));
-                                    if row.pool_size > 1 {
-                                        ui.separator();
-                                        ui.small(format!("pool members={}", row.pool_size));
-                                        if let Some((min_bp, max_bp)) = hover_pool_range {
-                                            ui.small(format!("pool range={}..{} bp", min_bp, max_bp));
+                                    match row.kind {
+                                        LineageNodeKind::Arrangement => {
+                                            if !row.lane_container_ids.is_empty() {
+                                                ui.separator();
+                                                let preview = row
+                                                    .lane_container_ids
+                                                    .iter()
+                                                    .take(6)
+                                                    .cloned()
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ");
+                                                ui.small(format!("lane containers: {preview}"));
+                                                if row.lane_container_ids.len() > 6 {
+                                                    ui.small(format!(
+                                                        "... and {} more",
+                                                        row.lane_container_ids.len() - 6
+                                                    ));
+                                                }
+                                            }
                                         }
-                                        if let Some(ladders) = &hover_ladder_hint {
-                                            ui.small(format!("suggested ladders={}", ladders));
+                                        LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                            ui.separator();
+                                            ui.small(format!("pool members={}", row.pool_size));
+                                            if let Some((min_bp, max_bp)) = hover_pool_range {
+                                                ui.small(format!(
+                                                    "pool range={}..{} bp",
+                                                    min_bp, max_bp
+                                                ));
+                                            }
+                                            if let Some(ladders) = &hover_ladder_hint {
+                                                ui.small(format!("suggested ladders={}", ladders));
+                                            }
+                                            if !tooltip_member_preview.is_empty() {
+                                                ui.small(format!(
+                                                    "members: {}",
+                                                    tooltip_member_preview
+                                                ));
+                                            }
                                         }
-                                        if !tooltip_member_preview.is_empty() {
-                                            ui.small(format!("members: {}", tooltip_member_preview));
-                                        }
+                                        LineageNodeKind::Sequence => {}
                                     }
                                 });
                             }
@@ -9606,11 +9850,22 @@ Error: `{err}`"
                                 }
                                 if let Some(row) = hit_row {
                                     if resp.double_clicked() {
-                                        if row.pool_size > 1 {
-                                            open_pool =
-                                                Some((row.seq_id.clone(), row.pool_members.clone()));
-                                        } else {
-                                            open_seq = Some(row.seq_id.clone());
+                                        match row.kind {
+                                            LineageNodeKind::Arrangement => {
+                                                if !row.lane_container_ids.is_empty() {
+                                                    open_lane_containers =
+                                                        Some(row.lane_container_ids.clone());
+                                                }
+                                            }
+                                            LineageNodeKind::Sequence if row.pool_size > 1 => {
+                                                open_pool = Some((
+                                                    row.seq_id.clone(),
+                                                    row.pool_members.clone(),
+                                                ));
+                                            }
+                                            LineageNodeKind::Sequence => {
+                                                open_seq = Some(row.seq_id.clone());
+                                            }
                                         }
                                     }
                                 }

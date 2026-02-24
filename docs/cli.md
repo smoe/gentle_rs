@@ -370,6 +370,7 @@ cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg
 cargo run --bin gentle_cli -- render-pool-gel-svg frag_1,frag_2 digest.gel.svg --ladders "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"
 cargo run --bin gentle_cli -- render-pool-gel-svg - digest.gel.svg --containers container-3,container-8
 cargo run --bin gentle_cli -- render-pool-gel-svg - digest.gel.svg --arrangement arrangement-2
+cargo run --bin gentle_cli -- render-gel-svg - digest.gel.svg --arrangement arrangement-2
 cargo run --bin gentle_cli -- arrange-serial container-3,container-8 --id arrangement-2 --name "Digest run A" --ladders "NEB 100bp DNA Ladder"
 cargo run --bin gentle_cli -- ladders list
 cargo run --bin gentle_cli -- ladders list --filter NEB
@@ -470,6 +471,7 @@ Shared shell command:
     - `rna-info SEQ_ID`
     - `render-lineage-svg OUTPUT.svg`
     - `render-pool-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
+    - `render-gel-svg IDS|'-' OUTPUT.svg [--ladders NAME[,NAME]] [--containers ID[,ID]] [--arrangement ARR_ID]`
     - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
@@ -580,6 +582,8 @@ Rendering export commands:
   - Optional `--ladders` overrides auto ladder selection.
   - If `--ladders` is omitted, engine auto-selects one or two ladders based on
     pool bp range.
+- `render-gel-svg ...`
+  - Alias for `render-pool-gel-svg ...` with identical semantics.
 - `arrange-serial CONTAINER_IDS [--id ARR_ID] [--name TEXT] [--ladders NAME[,NAME]]`
   - Calls engine operation `CreateArrangementSerial`.
   - Persists a serial lane setup that can be reused by `render-pool-gel-svg --arrangement`.
