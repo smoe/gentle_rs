@@ -429,6 +429,7 @@ cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patte
 cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_flow.gsh'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
+cargo run --bin gentle_cli -- shell 'set-param tfbs_display_min_llr_quantile 0.95'
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -1117,6 +1118,32 @@ Set regulatory-overlay max linear view span threshold (`50000` recommended for a
 ```json
 {"SetParameter":{"name":"regulatory_feature_max_view_span_bp","value":50000}}
 ```
+
+Set TFBS display filtering parameters shared by GUI and SVG export:
+
+```json
+{"SetParameter":{"name":"show_tfbs","value":true}}
+{"SetParameter":{"name":"tfbs_display_use_llr_bits","value":true}}
+{"SetParameter":{"name":"tfbs_display_min_llr_bits","value":0.0}}
+{"SetParameter":{"name":"tfbs_display_use_llr_quantile","value":true}}
+{"SetParameter":{"name":"tfbs_display_min_llr_quantile","value":0.95}}
+{"SetParameter":{"name":"tfbs_display_use_true_log_odds_bits","value":false}}
+{"SetParameter":{"name":"tfbs_display_min_true_log_odds_bits","value":0.0}}
+{"SetParameter":{"name":"tfbs_display_use_true_log_odds_quantile","value":false}}
+{"SetParameter":{"name":"tfbs_display_min_true_log_odds_quantile","value":0.95}}
+```
+
+Supported TFBS display parameter names:
+
+- `show_tfbs`
+- `tfbs_display_use_llr_bits`
+- `tfbs_display_min_llr_bits`
+- `tfbs_display_use_llr_quantile`
+- `tfbs_display_min_llr_quantile` (quantile in range `0.0..1.0`)
+- `tfbs_display_use_true_log_odds_bits`
+- `tfbs_display_min_true_log_odds_bits`
+- `tfbs_display_use_true_log_odds_quantile`
+- `tfbs_display_min_true_log_odds_quantile` (quantile in range `0.0..1.0`)
 
 Set VCF display filtering parameters shared by GUI and SVG export:
 

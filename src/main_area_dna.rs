@@ -334,7 +334,10 @@ mod tests {
         engine::{GentleEngine, ProjectState},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
-    use std::sync::{Arc, RwLock};
+    use std::{
+        collections::BTreeSet,
+        sync::{Arc, RwLock},
+    };
 
     fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
         Feature {
@@ -534,6 +537,68 @@ mod tests {
 
         let dna = area.dna().read().expect("DNA lock poisoned");
         assert_eq!(dna.features().len(), 1);
+    }
+
+    #[test]
+    fn feature_multi_select_toggle_adds_and_removes_ids() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "gene_1")]));
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "gene_2")]));
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.focus_feature(0);
+        area.toggle_feature_multi_select(1);
+        assert_eq!(
+            area.multi_selected_feature_ids,
+            BTreeSet::from([0usize, 1usize])
+        );
+        assert_eq!(area.get_selected_feature_id(), Some(1));
+
+        area.toggle_feature_multi_select(1);
+        assert_eq!(area.multi_selected_feature_ids, BTreeSet::from([0usize]));
+        assert_eq!(area.get_selected_feature_id(), Some(0));
+    }
+
+    #[test]
+    fn feature_multi_select_toggle_clears_when_last_feature_is_removed() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(120).as_str()).expect("sequence");
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "gene_1")]));
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.focus_feature(0);
+        area.toggle_feature_multi_select(0);
+        assert!(area.multi_selected_feature_ids.is_empty());
+        assert_eq!(area.get_selected_feature_id(), None);
+        assert_eq!(area.focused_feature_id, None);
+    }
+
+    #[test]
+    fn clear_multi_select_keeps_primary_feature_selected() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(240).as_str()).expect("sequence");
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "gene_1")]));
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "gene_2")]));
+        dna.features_mut()
+            .push(make_feature("gene", vec![("label", "gene_3")]));
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.focus_feature(0);
+        area.toggle_feature_multi_select(1);
+        area.toggle_feature_multi_select(2);
+        assert_eq!(
+            area.multi_selected_feature_ids,
+            BTreeSet::from([0usize, 1usize, 2usize])
+        );
+        assert_eq!(area.focused_feature_id, Some(2));
+
+        area.clear_multi_select_keep_primary();
+        assert_eq!(area.multi_selected_feature_ids, BTreeSet::from([2usize]));
+        assert_eq!(area.focused_feature_id, Some(2));
+        assert_eq!(area.get_selected_feature_id(), Some(2));
     }
 }
 
@@ -838,6 +903,7 @@ pub struct MainAreaDna {
     feature_tree_filter: String,
     pending_feature_tree_scroll_to: Option<usize>,
     focused_feature_id: Option<usize>,
+    multi_selected_feature_ids: BTreeSet<usize>,
     description_cache_initialized: bool,
     description_cache_selected_id: Option<usize>,
     description_cache_selected_restriction_key: Option<String>,
@@ -1057,6 +1123,7 @@ impl MainAreaDna {
             feature_tree_filter: String::new(),
             pending_feature_tree_scroll_to: None,
             focused_feature_id: None,
+            multi_selected_feature_ids: BTreeSet::new(),
             description_cache_initialized: false,
             description_cache_selected_id: None,
             description_cache_selected_restriction_key: None,
@@ -1120,14 +1187,16 @@ impl MainAreaDna {
             })
             .unwrap_or(false);
         if selected_feature_invalid {
-            self.clear_feature_focus();
+            self.map_dna.select_feature(None);
         }
+        self.prune_multi_selected_feature_ids();
         self.update_dna_map();
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
         self.sync_from_engine_display();
         self.update_dna_map();
+        self.sync_linear_external_feature_labels();
     }
 
     fn active_sequence_is_genome_anchored(&self, engine: &GentleEngine) -> bool {
@@ -4433,15 +4502,36 @@ impl MainAreaDna {
         Some((start, end))
     }
 
-    fn focus_feature(&mut self, feature_id: usize) {
-        if self.focused_feature_id == Some(feature_id)
-            && self.pending_feature_tree_scroll_to.is_none()
-        {
-            return;
+    fn sync_linear_external_feature_labels(&self) {
+        self.map_dna
+            .set_linear_external_labeled_feature_numbers(self.multi_selected_feature_ids.clone());
+    }
+
+    fn prune_multi_selected_feature_ids(&mut self) {
+        let feature_count = self
+            .dna
+            .read()
+            .map(|dna| dna.features().len())
+            .unwrap_or_default();
+        self.multi_selected_feature_ids
+            .retain(|feature_id| *feature_id < feature_count);
+        let next_focused = self
+            .focused_feature_id
+            .filter(|feature_id| self.multi_selected_feature_ids.contains(feature_id))
+            .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+        self.focused_feature_id = next_focused;
+        self.map_dna.select_feature(next_focused);
+        self.sync_linear_external_feature_labels();
+        if next_focused.is_none() {
+            self.pending_feature_tree_scroll_to = None;
+            self.dna_display
+                .write()
+                .expect("DNA display lock poisoned")
+                .deselect();
         }
-        self.focused_feature_id = Some(feature_id);
-        self.map_dna.select_feature(Some(feature_id));
-        self.pending_feature_tree_scroll_to = Some(feature_id);
+    }
+
+    fn apply_feature_selection_range(&mut self, feature_id: usize, center_linear_view: bool) {
         let Some((start, end)) = self.feature_bounds(feature_id) else {
             return;
         };
@@ -4455,7 +4545,7 @@ impl MainAreaDna {
             .select(Selection::new(start, end, sequence_length));
         self.map_sequence.request_scroll_to_selection();
 
-        if !self.is_circular() {
+        if center_linear_view && !self.is_circular() {
             let center = start.saturating_add(end.saturating_sub(start) / 2);
             let (_, span, len) = self.current_linear_viewport();
             if len > 0 {
@@ -4465,6 +4555,72 @@ impl MainAreaDna {
                 self.set_linear_viewport(new_start, span);
             }
         }
+    }
+
+    fn focus_feature(&mut self, feature_id: usize) {
+        if self.focused_feature_id == Some(feature_id)
+            && self.multi_selected_feature_ids.len() == 1
+            && self.multi_selected_feature_ids.contains(&feature_id)
+            && self.pending_feature_tree_scroll_to.is_none()
+        {
+            return;
+        }
+        self.focused_feature_id = Some(feature_id);
+        self.multi_selected_feature_ids.clear();
+        self.multi_selected_feature_ids.insert(feature_id);
+        self.map_dna.select_feature(Some(feature_id));
+        self.sync_linear_external_feature_labels();
+        self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.apply_feature_selection_range(feature_id, true);
+    }
+
+    fn toggle_feature_multi_select(&mut self, feature_id: usize) {
+        if self.multi_selected_feature_ids.remove(&feature_id) {
+            if self.multi_selected_feature_ids.is_empty() {
+                self.clear_feature_focus();
+                return;
+            }
+            let next_focused = self
+                .focused_feature_id
+                .filter(|focused| self.multi_selected_feature_ids.contains(focused))
+                .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+            self.focused_feature_id = next_focused;
+            self.map_dna.select_feature(next_focused);
+            if let Some(next_focused) = next_focused {
+                self.pending_feature_tree_scroll_to = Some(next_focused);
+                self.apply_feature_selection_range(next_focused, false);
+            }
+            self.sync_linear_external_feature_labels();
+            return;
+        }
+
+        self.multi_selected_feature_ids.insert(feature_id);
+        self.focused_feature_id = Some(feature_id);
+        self.map_dna.select_feature(Some(feature_id));
+        self.sync_linear_external_feature_labels();
+        self.pending_feature_tree_scroll_to = Some(feature_id);
+        self.apply_feature_selection_range(feature_id, false);
+    }
+
+    fn clear_multi_select_keep_primary(&mut self) {
+        if self.multi_selected_feature_ids.len() <= 1 {
+            return;
+        }
+        let primary = self
+            .focused_feature_id
+            .filter(|feature_id| self.multi_selected_feature_ids.contains(feature_id))
+            .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+        let Some(primary) = primary else {
+            self.clear_feature_focus();
+            return;
+        };
+        self.multi_selected_feature_ids.clear();
+        self.multi_selected_feature_ids.insert(primary);
+        self.focused_feature_id = Some(primary);
+        self.map_dna.select_feature(Some(primary));
+        self.sync_linear_external_feature_labels();
+        self.pending_feature_tree_scroll_to = Some(primary);
+        self.apply_feature_selection_range(primary, false);
     }
 
     fn fit_feature_in_linear_view(&self, feature_id: usize) {
@@ -4494,7 +4650,9 @@ impl MainAreaDna {
 
     fn clear_feature_focus(&mut self) {
         self.focused_feature_id = None;
+        self.multi_selected_feature_ids.clear();
         self.map_dna.select_feature(None);
+        self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
         self.dna_display
             .write()
@@ -4504,6 +4662,8 @@ impl MainAreaDna {
 
     fn clear_feature_focus_keep_map_selection(&mut self) {
         self.focused_feature_id = None;
+        self.multi_selected_feature_ids.clear();
+        self.sync_linear_external_feature_labels();
         self.pending_feature_tree_scroll_to = None;
         self.dna_display
             .write()
@@ -7882,6 +8042,28 @@ impl MainAreaDna {
                 .map(|s| s.as_str())
                 .unwrap_or("<Unnamed DNA sequence>"),
         );
+        let multi_select_count = self.multi_selected_feature_ids.len();
+        if multi_select_count > 1 {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("Multi-select active ({multi_select_count})"))
+                        .size(10.5)
+                        .strong()
+                        .color(egui::Color32::from_rgb(7, 56, 96))
+                        .background_color(egui::Color32::from_rgb(218, 234, 248)),
+                )
+                .on_hover_text("Multiple features are selected and forced to use external labels");
+                if ui
+                    .small_button("Clear multi-select")
+                    .on_hover_text(
+                        "Keep the currently focused feature selected and remove other selections",
+                    )
+                    .clicked()
+                {
+                    self.clear_multi_select_keep_primary();
+                }
+            });
+        }
         let seq_key = self.seq_id.as_deref().unwrap_or("_global").to_string();
         let viewport = self.active_linear_viewport_range();
         let viewport_limited = viewport.is_some();
@@ -7966,7 +8148,7 @@ impl MainAreaDna {
             );
         }
 
-        let selected_id = self.get_selected_feature_id();
+        let selected_feature_ids = self.multi_selected_feature_ids.clone();
         let (
             show_cds_features,
             show_gene_features,
@@ -8119,7 +8301,7 @@ impl MainAreaDna {
         }
         let mut group_keys = grouped_features.keys().collect::<Vec<_>>();
         group_keys.sort();
-        let mut clicked_feature: Option<usize> = None;
+        let mut clicked_feature: Option<(usize, bool)> = None;
         let mut fit_feature: Option<usize> = None;
         let can_fit_linear = !self.is_circular();
         let feature_font_size = feature_details_font_size;
@@ -8129,9 +8311,9 @@ impl MainAreaDna {
                 continue;
             };
             let visible_count = entries.iter().filter(|entry| entry.visible_in_view).count();
-            let has_selected = selected_id
-                .map(|selected| entries.iter().any(|entry| entry.id == selected))
-                .unwrap_or(false);
+            let has_selected = entries
+                .iter()
+                .any(|entry| selected_feature_ids.contains(&entry.id));
             egui::CollapsingHeader::new(
                 egui::RichText::new(Self::format_feature_tree_count_label(
                     kind.as_str(),
@@ -8184,21 +8366,20 @@ impl MainAreaDna {
 
                 let mut render_entry =
                     |ui: &mut egui::Ui, entry: &FeatureTreeEntry, grouped_entry: bool| {
-                        let selected = selected_id == Some(entry.id);
-                        let button_label =
-                            if grouped_entry
-                                && !entry.prefer_grouped_label
-                                && !entry.range_label.is_empty()
-                            {
-                                entry.range_label.clone()
-                            } else if entry.show_range_inline_when_ungrouped
-                                && !grouped_entry
-                                && !entry.range_label.is_empty()
-                            {
-                                format!("{} [{}]", entry.feature_label, entry.range_label)
-                            } else {
-                                entry.feature_label.clone()
-                            };
+                        let selected = selected_feature_ids.contains(&entry.id);
+                        let button_label = if grouped_entry
+                            && !entry.prefer_grouped_label
+                            && !entry.range_label.is_empty()
+                        {
+                            entry.range_label.clone()
+                        } else if entry.show_range_inline_when_ungrouped
+                            && !grouped_entry
+                            && !entry.range_label.is_empty()
+                        {
+                            format!("{} [{}]", entry.feature_label, entry.range_label)
+                        } else {
+                            entry.feature_label.clone()
+                        };
                         let mut button_text =
                             egui::RichText::new(button_label).size(feature_font_size);
                         if viewport_limited && !entry.visible_in_view {
@@ -8223,7 +8404,8 @@ impl MainAreaDna {
                                 self.pending_feature_tree_scroll_to = None;
                             }
                             if response.clicked() {
-                                clicked_feature = Some(entry.id);
+                                let additive = ui.input(|i| i.modifiers.command);
+                                clicked_feature = Some((entry.id, additive));
                             }
                             response.context_menu(|ui| {
                                 if ui
@@ -8231,7 +8413,7 @@ impl MainAreaDna {
                                     .on_hover_text("Center selected feature without changing zoom")
                                     .clicked()
                                 {
-                                    clicked_feature = Some(entry.id);
+                                    clicked_feature = Some((entry.id, false));
                                     ui.close_menu();
                                 }
                                 let fit_response = ui.add_enabled(
@@ -8246,7 +8428,7 @@ impl MainAreaDna {
                                     fit_response.on_hover_text("Available in linear map mode only")
                                 };
                                 if fit_response.clicked() {
-                                    clicked_feature = Some(entry.id);
+                                    clicked_feature = Some((entry.id, false));
                                     fit_feature = Some(entry.id);
                                     ui.close_menu();
                                 }
@@ -8273,9 +8455,9 @@ impl MainAreaDna {
                     else {
                         continue;
                     };
-                    let subgroup_has_selected = selected_id
-                        .map(|selected| subgroup_entries.iter().any(|entry| entry.id == selected))
-                        .unwrap_or(false);
+                    let subgroup_has_selected = subgroup_entries
+                        .iter()
+                        .any(|entry| selected_feature_ids.contains(&entry.id));
                     let subgroup_visible_count = subgroup_entries
                         .iter()
                         .filter(|entry| entry.visible_in_view)
@@ -8312,8 +8494,12 @@ impl MainAreaDna {
                 }
             });
         }
-        if let Some(id) = clicked_feature {
-            self.focus_feature(id);
+        if let Some((id, additive)) = clicked_feature {
+            if additive {
+                self.toggle_feature_multi_select(id);
+            } else {
+                self.focus_feature(id);
+            }
         }
         if let Some(id) = fit_feature {
             self.fit_feature_in_linear_view(id);
@@ -8499,9 +8685,17 @@ impl MainAreaDna {
     }
 
     pub fn update_dna_map(&mut self) {
-        if self.is_circular() != self.map_dna.is_circular() {
+        let topology_changed = self.is_circular() != self.map_dna.is_circular();
+        if topology_changed {
             self.map_dna = RenderDna::new(self.dna.clone(), self.dna_display.clone());
+            let selected = self
+                .focused_feature_id
+                .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+            if selected.is_some() {
+                self.map_dna.select_feature(selected);
+            }
         }
+        self.sync_linear_external_feature_labels();
     }
 
     pub fn render_middle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
@@ -8628,6 +8822,7 @@ impl MainAreaDna {
             }
 
             if response.clicked() {
+                let additive = ctx.input(|i| i.modifiers.command);
                 let previous_selected = self.map_dna.get_selected_feature_id();
                 let previous_restriction = self
                     .map_dna
@@ -8640,7 +8835,15 @@ impl MainAreaDna {
                     .map_dna
                     .get_selected_restriction_site()
                     .map(|site| site.key.to_string());
-                if next_selected != previous_selected {
+                if additive {
+                    if let Some(feature_id) = next_selected {
+                        self.toggle_feature_multi_select(feature_id);
+                    } else if next_restriction.is_some() {
+                        self.clear_feature_focus_keep_map_selection();
+                    } else {
+                        self.clear_feature_focus();
+                    }
+                } else if next_selected != previous_selected {
                     if let Some(feature_id) = next_selected {
                         self.focus_feature(feature_id);
                     } else if next_restriction.is_some() {

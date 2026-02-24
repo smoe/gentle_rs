@@ -51,6 +51,8 @@ const HELICAL_MIN_X_COMPRESSION: f32 = 0.2;
 const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
 const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
+const FEATURE_EXTERNAL_LABEL_FONT_SIZE: f32 = 11.0;
+const FEATURE_EXTERNAL_LABEL_HEIGHT: f32 = 16.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -110,6 +112,7 @@ pub struct RenderDnaLinear {
     selected_enzyme: Option<RestrictionEnzymePosition>,
     hovered_feature_number: Option<usize>,
     hover_enzyme: Option<RestrictionEnzymePosition>,
+    external_labeled_feature_numbers: BTreeSet<usize>,
 }
 
 impl RenderDnaLinear {
@@ -127,6 +130,7 @@ impl RenderDnaLinear {
             selected_enzyme: None,
             hovered_feature_number: None,
             hover_enzyme: None,
+            external_labeled_feature_numbers: BTreeSet::new(),
         }
     }
 
@@ -875,6 +879,10 @@ impl RenderDnaLinear {
         }
     }
 
+    pub fn set_external_labeled_feature_numbers(&mut self, feature_numbers: BTreeSet<usize>) {
+        self.external_labeled_feature_numbers = feature_numbers;
+    }
+
     pub fn coordinate_to_basepair(&self, x: f32) -> Result<i64, String> {
         if !self.area.contains(Pos2::new(x, self.baseline_y())) {
             return Err("Coordinate is outside the DNA visualization area.".to_string());
@@ -1463,14 +1471,27 @@ impl RenderDnaLinear {
     }
 
     fn draw_features(&self, painter: &egui::Painter, detail: LinearDetailLevel) {
-        let show_features = self
+        let (show_features, external_font_size, external_bg_opacity) = self
             .display
             .read()
-            .map(|display| display.show_features())
-            .unwrap_or(false);
+            .map(|display| {
+                (
+                    display.show_features(),
+                    display.linear_external_feature_label_font_size(),
+                    display.linear_external_feature_label_background_opacity(),
+                )
+            })
+            .unwrap_or((false, FEATURE_EXTERNAL_LABEL_FONT_SIZE, 0.9));
         if !show_features {
             return;
         }
+        let external_label_height =
+            (external_font_size + 5.0).clamp(FEATURE_EXTERNAL_LABEL_HEIGHT, 28.0);
+        let external_label_lane_step = (external_font_size + 2.0).clamp(LABEL_ROW_HEIGHT, 24.0);
+        let external_bg_alpha = (external_bg_opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+
+        let mut top_label_lanes: Vec<f32> = vec![];
+        let mut bottom_label_lanes: Vec<f32> = vec![];
 
         for feature in &self.features {
             let selected = self.selected_feature_number == Some(feature.feature_number);
@@ -1546,7 +1567,12 @@ impl RenderDnaLinear {
             let inline_possible = !feature.is_regulatory
                 && label_rect.height() >= FEATURE_INLINE_LABEL_FONT_SIZE + 2.0
                 && label_rect.width() >= label_width + 4.0;
-            if inline_possible {
+            let force_external = selected
+                || hovered
+                || self
+                    .external_labeled_feature_numbers
+                    .contains(&feature.feature_number);
+            if inline_possible && !force_external {
                 let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
                 text_painter.text(
                     label_rect.center(),
@@ -1560,6 +1586,87 @@ impl RenderDnaLinear {
                 );
                 continue;
             }
+            if !force_external {
+                continue;
+            }
+
+            let place_top = label_rect.center().y <= self.baseline_y();
+            let max_width = (self.area.width() - 8.0).max(44.0);
+            let label_width = label_width.max(42.0).min(max_width);
+            let left_bound = self.area.left() + 2.0;
+            let right_bound = self.area.right() - 2.0;
+            let mut label_left = label_rect.center().x - label_width * 0.5;
+            if label_left < left_bound {
+                label_left = left_bound;
+            }
+            if label_left + label_width > right_bound {
+                label_left = (right_bound - label_width).max(left_bound);
+            }
+            let label_right = (label_left + label_width).min(right_bound);
+            let lane = if place_top {
+                Self::allocate_lane(&mut top_label_lanes, label_left, label_right, 6.0)
+            } else {
+                Self::allocate_lane(&mut bottom_label_lanes, label_left, label_right, 6.0)
+            };
+            let mut label_center_y = if place_top {
+                label_rect.top() - 4.0 - external_label_lane_step * lane as f32
+            } else {
+                label_rect.bottom() + 4.0 + external_label_lane_step * lane as f32
+            };
+            let min_y = self.area.top() + external_label_height * 0.5;
+            let max_y = self.area.bottom() - external_label_height * 0.5;
+            label_center_y = label_center_y.clamp(min_y, max_y);
+            let label_bg = Rect::from_center_size(
+                Pos2::new((label_left + label_right) * 0.5, label_center_y),
+                Vec2::new(
+                    (label_right - label_left).max(8.0) + 6.0,
+                    external_label_height,
+                ),
+            );
+            let connector_x = label_rect
+                .center()
+                .x
+                .clamp(label_bg.left() + 2.0, label_bg.right() - 2.0);
+            let connector_from = Pos2::new(
+                connector_x,
+                if place_top {
+                    label_rect.top()
+                } else {
+                    label_rect.bottom()
+                },
+            );
+            let connector_to = Pos2::new(
+                connector_x,
+                if place_top {
+                    label_bg.bottom()
+                } else {
+                    label_bg.top()
+                },
+            );
+            painter.line_segment(
+                [connector_from, connector_to],
+                Stroke::new(0.8, feature.color.gamma_multiply(0.75)),
+            );
+            painter.rect_filled(
+                label_bg,
+                2.0,
+                Color32::from_rgba_unmultiplied(252, 252, 252, external_bg_alpha),
+            );
+            painter.rect_stroke(
+                label_bg,
+                2.0,
+                Stroke::new(1.0, feature.color.gamma_multiply(0.75)),
+            );
+            painter.text(
+                label_bg.center(),
+                Align2::CENTER_CENTER,
+                label,
+                FontId {
+                    size: external_font_size,
+                    family: FontFamily::Monospace,
+                },
+                Color32::from_rgb(24, 24, 24),
+            );
         }
     }
 

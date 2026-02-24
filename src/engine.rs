@@ -16112,6 +16112,11 @@ impl GentleEngine {
                 | "vcf_display_pass_only"
                 | "vcf_display_use_min_qual"
                 | "vcf_display_use_max_qual"
+                | "show_tfbs"
+                | "tfbs_display_use_llr_bits"
+                | "tfbs_display_use_llr_quantile"
+                | "tfbs_display_use_true_log_odds_bits"
+                | "tfbs_display_use_true_log_odds_quantile"
                 | "auto_hide_sequence_panel_when_linear_bases_visible"
                 | "linear_show_double_strand_bases"
                 | "show_linear_double_strand_bases"
@@ -16136,6 +16141,19 @@ impl GentleEngine {
                         }
                         "vcf_display_use_max_qual" => {
                             self.state.display.vcf_display_use_max_qual = raw
+                        }
+                        "show_tfbs" => self.state.display.show_tfbs = raw,
+                        "tfbs_display_use_llr_bits" => {
+                            self.state.display.tfbs_display_use_llr_bits = raw
+                        }
+                        "tfbs_display_use_llr_quantile" => {
+                            self.state.display.tfbs_display_use_llr_quantile = raw
+                        }
+                        "tfbs_display_use_true_log_odds_bits" => {
+                            self.state.display.tfbs_display_use_true_log_odds_bits = raw
+                        }
+                        "tfbs_display_use_true_log_odds_quantile" => {
+                            self.state.display.tfbs_display_use_true_log_odds_quantile = raw
                         }
                         "auto_hide_sequence_panel_when_linear_bases_visible" => {
                             self.state
@@ -16165,6 +16183,47 @@ impl GentleEngine {
                     result
                         .messages
                         .push(format!("Set parameter '{}' to {}", name, raw));
+                }
+                "tfbs_display_min_llr_bits" | "tfbs_display_min_true_log_odds_bits" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {} requires a number", name),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("{} must be a finite number", name),
+                        });
+                    }
+                    if name == "tfbs_display_min_llr_bits" {
+                        self.state.display.tfbs_display_min_llr_bits = raw;
+                    } else {
+                        self.state.display.tfbs_display_min_true_log_odds_bits = raw;
+                    }
+                    result
+                        .messages
+                        .push(format!("Set parameter '{}' to {:.6}", name, raw));
+                }
+                "tfbs_display_min_llr_quantile" | "tfbs_display_min_true_log_odds_quantile" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {} requires a number", name),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!("{} must be a finite number", name),
+                        });
+                    }
+                    Self::validate_tf_thresholds(raw)?;
+                    if name == "tfbs_display_min_llr_quantile" {
+                        self.state.display.tfbs_display_min_llr_quantile = raw;
+                    } else {
+                        self.state.display.tfbs_display_min_true_log_odds_quantile = raw;
+                    }
+                    result
+                        .messages
+                        .push(format!("Set parameter '{}' to {:.6}", name, raw));
                 }
                 "vcf_display_min_qual" | "vcf_display_max_qual" => {
                     let raw = value.as_f64().ok_or_else(|| EngineError {
@@ -19086,6 +19145,71 @@ ORIGIN
             })
             .unwrap_err();
         assert!(err.message.contains("must be >= 1"));
+    }
+
+    #[test]
+    fn test_set_parameter_tfbs_display_filter_fields() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "show_tfbs".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "tfbs_display_use_llr_bits".to_string(),
+                value: serde_json::json!(false),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "tfbs_display_min_llr_bits".to_string(),
+                value: serde_json::json!(-2.5),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "tfbs_display_use_true_log_odds_quantile".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "tfbs_display_min_true_log_odds_quantile".to_string(),
+                value: serde_json::json!(0.8),
+            })
+            .unwrap();
+        assert!(engine.state().display.show_tfbs);
+        assert!(!engine.state().display.tfbs_display_use_llr_bits);
+        assert!((engine.state().display.tfbs_display_min_llr_bits + 2.5).abs() < f64::EPSILON);
+        assert!(
+            engine
+                .state()
+                .display
+                .tfbs_display_use_true_log_odds_quantile
+        );
+        assert!(
+            (engine
+                .state()
+                .display
+                .tfbs_display_min_true_log_odds_quantile
+                - 0.8)
+                .abs()
+                < f64::EPSILON
+        );
+    }
+
+    #[test]
+    fn test_set_parameter_tfbs_display_quantile_out_of_range_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "tfbs_display_min_llr_quantile".to_string(),
+                value: serde_json::json!(1.1),
+            })
+            .unwrap_err();
+        assert!(err.message.contains("between 0.0 and 1.0"));
     }
 
     #[test]

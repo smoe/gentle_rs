@@ -8,6 +8,7 @@ use crate::{
 use eframe::egui::{self, Color32, PointerState, Rect, Response, Sense, Ui, Vec2, Widget};
 use gb_io::seq::Feature;
 use std::{
+    collections::BTreeSet,
     fmt::Debug,
     panic::{AssertUnwindSafe, catch_unwind},
     path::Path,
@@ -150,6 +151,14 @@ impl RenderDna {
                     renderer.select_feature(feature_number);
                     renderer.select_restriction_enzyme(None);
                 }
+            }
+        }
+    }
+
+    pub fn set_linear_external_labeled_feature_numbers(&self, feature_numbers: BTreeSet<usize>) {
+        if let RenderDna::Linear(renderer) = self {
+            if let Ok(mut renderer) = renderer.write() {
+                renderer.set_external_labeled_feature_numbers(feature_numbers);
             }
         }
     }

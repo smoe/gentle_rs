@@ -8437,9 +8437,18 @@ pub fn execute_shell_command_with_options(
             let json_text = parse_json_payload(payload)?;
             let op: Operation = serde_json::from_str(&json_text)
                 .map_err(|e| format!("Invalid operation JSON: {e}"))?;
+            let before_state = serde_json::to_value(engine.snapshot()).ok();
             let op_result = engine.apply(op).map_err(|e| e.to_string())?;
-            let state_changed =
-                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            let state_changed = if let Some(before) = before_state {
+                serde_json::to_value(engine.snapshot())
+                    .map(|after| after != before)
+                    .unwrap_or_else(|_| {
+                        !op_result.created_seq_ids.is_empty()
+                            || !op_result.changed_seq_ids.is_empty()
+                    })
+            } else {
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty()
+            };
             ShellRunResult {
                 state_changed,
                 output: json!({ "result": op_result }),
@@ -8449,10 +8458,21 @@ pub fn execute_shell_command_with_options(
             let json_text = parse_json_payload(payload)?;
             let workflow: Workflow = serde_json::from_str(&json_text)
                 .map_err(|e| format!("Invalid workflow JSON: {e}"))?;
+            let before_state = serde_json::to_value(engine.snapshot()).ok();
             let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
-            let state_changed = results
-                .iter()
-                .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty());
+            let state_changed = if let Some(before) = before_state {
+                serde_json::to_value(engine.snapshot())
+                    .map(|after| after != before)
+                    .unwrap_or_else(|_| {
+                        results
+                            .iter()
+                            .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty())
+                    })
+            } else {
+                results
+                    .iter()
+                    .any(|r| !r.created_seq_ids.is_empty() || !r.changed_seq_ids.is_empty())
+            };
             ShellRunResult {
                 state_changed,
                 output: json!({ "results": results }),
@@ -11380,5 +11400,37 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             (engine.state().display.vcf_display_min_qual - 33.5).abs() < f64::EPSILON,
             "vcf_display_min_qual should be updated by set-param"
         );
+    }
+
+    #[test]
+    fn execute_set_param_updates_tfbs_display_state() {
+        let mut engine = GentleEngine::new();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::SetParameter {
+                name: "tfbs_display_min_llr_quantile".to_string(),
+                value_json: "0.85".to_string(),
+            },
+        )
+        .expect("execute set-param");
+        assert!(out.state_changed);
+        assert!(
+            (engine.state().display.tfbs_display_min_llr_quantile - 0.85).abs() < f64::EPSILON,
+            "tfbs_display_min_llr_quantile should be updated by set-param"
+        );
+    }
+
+    #[test]
+    fn execute_op_set_display_visibility_marks_state_changed() {
+        let mut engine = GentleEngine::new();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::Op {
+                payload: r#"{"SetDisplayVisibility":{"target":"Tfbs","visible":true}}"#.to_string(),
+            },
+        )
+        .expect("execute op");
+        assert!(out.state_changed);
+        assert!(engine.state().display.show_tfbs);
     }
 }

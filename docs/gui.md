@@ -112,6 +112,12 @@ Feature tree grouping:
   available), while transcript identifiers are shown on individual mRNA entries.
 - Group headings show counts as `visible/total` in linear mode (current stretch
   shown in the map), and as total count in circular mode.
+- `Cmd` (macOS) / `Ctrl` (Windows/Linux) click on feature rows toggles
+  multi-selection.
+- In linear mode, multi-selected features are forced to use external labels
+  (including short features), improving disambiguation.
+- When multi-selection is active, the feature-tree header shows a
+  `Multi-select active (N)` chip and a one-click `Clear multi-select` action.
 - Right-clicking a feature row opens per-feature actions:
   - `Focus feature (current zoom)`
   - `Fit feature in view` (linear map mode)
