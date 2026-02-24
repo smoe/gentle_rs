@@ -418,6 +418,7 @@ pub struct GENtleApp {
     lineage_arrangements: Vec<ArrangementRow>,
     clean_state_fingerprint: u64,
     dirty_cache_stamp: u64,
+    last_display_sync_stamp: u64,
     dirty_cache_valid: bool,
     dirty_cache_value: bool,
     dirty_cache_last_deep_check: Instant,
@@ -795,6 +796,23 @@ struct LineageRow {
     arrangement_mode: Option<String>,
     lane_container_ids: Vec<String>,
     ladders: Vec<String>,
+    genome_anchor_summary: Option<SequenceGenomeAnchorSummary>,
+    genome_anchor_display: Option<String>,
+    is_full_genome_sequence: bool,
+}
+
+#[derive(Clone, Debug)]
+struct AnchorProvenanceSnapshot {
+    catalog_path: Option<String>,
+    cache_dir: Option<String>,
+    recorded_at_unix_ms: u128,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct GenomeLengthCacheKey {
+    catalog_path: String,
+    genome_id: String,
+    cache_dir: Option<String>,
 }
 
 #[derive(Clone)]
@@ -943,6 +961,7 @@ impl Default for GENtleApp {
             lineage_arrangements: vec![],
             clean_state_fingerprint: 0,
             dirty_cache_stamp: 0,
+            last_display_sync_stamp: 0,
             dirty_cache_valid: false,
             dirty_cache_value: false,
             dirty_cache_last_deep_check: Instant::now(),
@@ -1284,6 +1303,10 @@ impl GENtleApp {
         target.show_open_reading_frames = source.show_open_reading_frames;
         target.show_methylation_sites = source.show_methylation_sites;
         target.feature_details_font_size = source.feature_details_font_size;
+        target.linear_external_feature_label_font_size =
+            source.linear_external_feature_label_font_size;
+        target.linear_external_feature_label_background_opacity =
+            source.linear_external_feature_label_background_opacity;
         target.linear_view_start_bp = source.linear_view_start_bp;
         target.linear_view_span_bp = source.linear_view_span_bp;
         target.linear_sequence_base_text_max_view_span_bp =
@@ -1897,12 +1920,37 @@ Error: `{err}`"
             || self.agent_task.is_some()
     }
 
-    fn refresh_sequence_windows_from_engine_state(&mut self) {
+    fn refresh_sequence_windows_for_seq_ids(&mut self, seq_ids: &[String]) -> usize {
+        if seq_ids.is_empty() {
+            return 0;
+        }
+        let target_ids: HashSet<&str> = seq_ids.iter().map(|id| id.as_str()).collect();
+        let mut refreshed = 0usize;
         for window in self.windows.values() {
             if let Ok(mut guard) = window.write() {
-                guard.refresh_from_engine_settings();
+                let should_refresh = guard
+                    .sequence_id()
+                    .as_deref()
+                    .map(|seq_id| target_ids.contains(seq_id))
+                    .unwrap_or(false);
+                if should_refresh {
+                    guard.refresh_from_engine_state();
+                    refreshed += 1;
+                }
             }
         }
+        refreshed
+    }
+
+    fn refresh_sequence_windows_from_engine_state(&mut self) -> usize {
+        let mut refreshed = 0usize;
+        for window in self.windows.values() {
+            if let Ok(mut guard) = window.write() {
+                guard.refresh_from_engine_state();
+                refreshed += 1;
+            }
+        }
+        refreshed
     }
 
     fn handle_engine_state_after_history_transition(&mut self) {
@@ -2485,6 +2533,14 @@ Error: `{err}`"
             .to_bits()
             .hash(&mut hasher);
         display
+            .linear_external_feature_label_font_size
+            .to_bits()
+            .hash(&mut hasher);
+        display
+            .linear_external_feature_label_background_opacity
+            .to_bits()
+            .hash(&mut hasher);
+        display
             .auto_hide_sequence_panel_when_linear_bases_visible
             .hash(&mut hasher);
         display.linear_view_start_bp.hash(&mut hasher);
@@ -2506,6 +2562,16 @@ Error: `{err}`"
             .linear_reverse_strand_use_upside_down_letters
             .hash(&mut hasher);
 
+        hasher.finish()
+    }
+
+    fn current_display_change_stamp(&self) -> u64 {
+        let display_bytes = {
+            let engine = self.engine.read().unwrap();
+            serde_json::to_vec(&engine.state().display).unwrap_or_default()
+        };
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        display_bytes.hash(&mut hasher);
         hasher.finish()
     }
 
@@ -2851,6 +2917,23 @@ Error: `{err}`"
         "Free text matches source/path/track. Scoped terms: source:BED source:VCF path:peaks.bed track:chip"
     }
 
+    fn append_filter_term(filter_text: &mut String, term: &str) {
+        let normalized = term.trim();
+        if normalized.is_empty() {
+            return;
+        }
+        if filter_text
+            .split_whitespace()
+            .any(|existing| existing.eq_ignore_ascii_case(normalized))
+        {
+            return;
+        }
+        if !filter_text.trim().is_empty() {
+            filter_text.push(' ');
+        }
+        filter_text.push_str(normalized);
+    }
+
     fn open_helper_genome_prepare_dialog(&mut self) {
         self.genome_catalog_path = DEFAULT_HELPER_GENOME_CATALOG_PATH.to_string();
         self.genome_cache_dir = "data/helper_genomes".to_string();
@@ -2907,6 +2990,164 @@ Error: `{err}`"
             .unwrap()
             .describe_sequence_genome_anchor(seq_id)
             .ok()
+    }
+
+    fn latest_genome_anchor_provenance_by_seq(
+        state: &ProjectState,
+    ) -> HashMap<String, AnchorProvenanceSnapshot> {
+        let mut out: HashMap<String, AnchorProvenanceSnapshot> = HashMap::new();
+        let Some(entries) = state
+            .metadata
+            .get("provenance")
+            .and_then(|v| v.get("genome_extractions"))
+            .and_then(|v| v.as_array())
+        else {
+            return out;
+        };
+        for entry in entries {
+            let Some(seq_id) = entry
+                .get("seq_id")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            else {
+                continue;
+            };
+            let recorded_at_unix_ms = entry
+                .get("recorded_at_unix_ms")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u128)
+                .unwrap_or(0);
+            let snapshot = AnchorProvenanceSnapshot {
+                catalog_path: entry
+                    .get("catalog_path")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.to_string()),
+                cache_dir: entry
+                    .get("cache_dir")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.to_string()),
+                recorded_at_unix_ms,
+            };
+            let replace = out
+                .get(seq_id)
+                .map(|existing| recorded_at_unix_ms >= existing.recorded_at_unix_ms)
+                .unwrap_or(true);
+            if replace {
+                out.insert(seq_id.to_string(), snapshot);
+            }
+        }
+        out
+    }
+
+    fn normalize_chromosome_alias(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        let core = lower.strip_prefix("chr").unwrap_or(&lower);
+        if core.is_empty() {
+            return String::new();
+        }
+        if matches!(core, "m" | "mt" | "mitochondria" | "mitochondrion") {
+            return "mt".to_string();
+        }
+        if core.chars().all(|ch| ch.is_ascii_digit()) {
+            let normalized = core.trim_start_matches('0');
+            if normalized.is_empty() {
+                return "0".to_string();
+            }
+            return normalized.to_string();
+        }
+        if core.len() == 1 && matches!(core, "x" | "y" | "w" | "z") {
+            return core.to_ascii_uppercase();
+        }
+        core.to_string()
+    }
+
+    fn chromosome_aliases_match(left: &str, right: &str) -> bool {
+        Self::normalize_chromosome_alias(left) == Self::normalize_chromosome_alias(right)
+    }
+
+    fn format_genome_anchor_summary(anchor: &SequenceGenomeAnchorSummary) -> String {
+        let strand = anchor.strand.unwrap_or('+');
+        format!(
+            "{} | {}:{}-{} (strand {})",
+            anchor.genome_id, anchor.chromosome, anchor.start_1based, anchor.end_1based, strand
+        )
+    }
+
+    fn chromosome_length_for_anchor(
+        anchor: &SequenceGenomeAnchorSummary,
+        provenance: Option<&AnchorProvenanceSnapshot>,
+        chromosome_length_cache: &mut HashMap<
+            GenomeLengthCacheKey,
+            Option<Vec<GenomeChromosomeRecord>>,
+        >,
+    ) -> Option<usize> {
+        let provenance = provenance?;
+        let catalog_path = provenance.catalog_path.as_deref()?.trim();
+        if catalog_path.is_empty() {
+            return None;
+        }
+        let cache_dir = provenance
+            .cache_dir
+            .as_ref()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        let key = GenomeLengthCacheKey {
+            catalog_path: catalog_path.to_string(),
+            genome_id: anchor.genome_id.clone(),
+            cache_dir: cache_dir.clone(),
+        };
+        let lengths = chromosome_length_cache
+            .entry(key.clone())
+            .or_insert_with(|| {
+                let catalog = GenomeCatalog::from_json_file(&key.catalog_path).ok()?;
+                catalog
+                    .list_chromosome_lengths(&key.genome_id, key.cache_dir.as_deref())
+                    .ok()
+            })
+            .as_ref()?;
+        lengths
+            .iter()
+            .find(|record| Self::chromosome_aliases_match(&record.chromosome, &anchor.chromosome))
+            .map(|record| record.length_bp)
+    }
+
+    fn sequence_represents_full_genome(
+        anchor: &SequenceGenomeAnchorSummary,
+        seq_len: usize,
+        provenance: Option<&AnchorProvenanceSnapshot>,
+        chromosome_length_cache: &mut HashMap<
+            GenomeLengthCacheKey,
+            Option<Vec<GenomeChromosomeRecord>>,
+        >,
+    ) -> bool {
+        if anchor.start_1based != 1 {
+            return false;
+        }
+        let Some(span_len) = anchor
+            .end_1based
+            .checked_sub(anchor.start_1based)
+            .and_then(|delta| delta.checked_add(1))
+        else {
+            return false;
+        };
+        if span_len != seq_len {
+            return false;
+        }
+        let Some(chrom_length) =
+            Self::chromosome_length_for_anchor(anchor, provenance, chromosome_length_cache)
+        else {
+            return false;
+        };
+        chrom_length == seq_len && anchor.end_1based == chrom_length
     }
 
     fn load_bed_track_subscriptions_from_state(&mut self) {
@@ -3185,6 +3426,13 @@ Error: `{err}`"
                     ),
                     tracked_note
                 );
+                let refreshed = self.refresh_sequence_windows_from_engine_state();
+                if refreshed > 0 {
+                    self.genome_track_status.push_str(&format!(
+                        " | refreshed {} open sequence window(s)",
+                        refreshed
+                    ));
+                }
                 self.push_job_event(
                     BackgroundJobKind::TrackImport,
                     BackgroundJobEventPhase::Completed,
@@ -3241,6 +3489,13 @@ Error: `{err}`"
                     ),
                     &report,
                 );
+                let refreshed = self.refresh_sequence_windows_from_engine_state();
+                if refreshed > 0 {
+                    self.genome_track_status.push_str(&format!(
+                        " | refreshed {} open sequence window(s)",
+                        refreshed
+                    ));
+                }
                 self.push_job_event(
                     BackgroundJobKind::TrackImport,
                     BackgroundJobEventPhase::Completed,
@@ -4969,6 +5224,18 @@ Error: `{err}`"
                         ),
                         elapsed
                     );
+                    let refreshed_windows = if result.changed_seq_ids.is_empty() {
+                        self.refresh_sequence_windows_from_engine_state()
+                    } else {
+                        self.refresh_sequence_windows_for_seq_ids(&result.changed_seq_ids)
+                    };
+                    if refreshed_windows > 0 {
+                        self.genome_track_status.push_str(&format!(
+                            "\nrefreshed {} open sequence window(s)",
+                            refreshed_windows
+                        ));
+                        ctx.request_repaint();
+                    }
                     self.push_job_event(
                         BackgroundJobKind::TrackImport,
                         BackgroundJobEventPhase::Completed,
@@ -7093,6 +7360,20 @@ Error: `{err}`"
                 self.genome_track_subscription_filter.clear();
             }
         });
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Presets:");
+            for preset in [
+                "source:bed",
+                "source:bigwig",
+                "source:vcf",
+                "path:.bed",
+                "track:chip",
+            ] {
+                if ui.small_button(preset).clicked() {
+                    Self::append_filter_term(&mut self.genome_track_subscription_filter, preset);
+                }
+            }
+        });
 
         let mut apply_now_index: Option<usize> = None;
         let mut remove_index: Option<usize> = None;
@@ -8773,6 +9054,16 @@ Error: `{err}`"
         let (rows, lineage_edges, op_label_by_id, containers, arrangements) = {
             let engine = self.engine.read().unwrap();
             let state = engine.state();
+            let anchor_by_seq: HashMap<String, SequenceGenomeAnchorSummary> = engine
+                .list_sequence_genome_anchor_summaries()
+                .into_iter()
+                .map(|summary| (summary.seq_id.clone(), summary))
+                .collect();
+            let anchor_provenance_by_seq = Self::latest_genome_anchor_provenance_by_seq(state);
+            let mut chromosome_length_cache: HashMap<
+                GenomeLengthCacheKey,
+                Option<Vec<GenomeChromosomeRecord>>,
+            > = HashMap::new();
             let mut op_created_count: HashMap<String, usize> = HashMap::new();
             let mut op_created_ids: HashMap<String, Vec<String>> = HashMap::new();
             let mut op_label_by_id: HashMap<String, String> = HashMap::new();
@@ -8824,6 +9115,22 @@ Error: `{err}`"
                         .and_then(|op| op_created_ids.get(op))
                         .cloned()
                         .unwrap_or_else(|| vec![node.seq_id.clone()]);
+                    let genome_anchor_summary = anchor_by_seq.get(&node.seq_id).cloned();
+                    let genome_anchor_display = genome_anchor_summary
+                        .as_ref()
+                        .map(Self::format_genome_anchor_summary);
+                    let is_full_genome_sequence = genome_anchor_summary
+                        .as_ref()
+                        .map(|anchor| {
+                            let provenance = anchor_provenance_by_seq.get(&node.seq_id);
+                            Self::sequence_represents_full_genome(
+                                anchor,
+                                length,
+                                provenance,
+                                &mut chromosome_length_cache,
+                            )
+                        })
+                        .unwrap_or(false);
                     LineageRow {
                         kind: LineageNodeKind::Sequence,
                         node_id: node.node_id.clone(),
@@ -8844,6 +9151,9 @@ Error: `{err}`"
                         arrangement_mode: None,
                         lane_container_ids: vec![],
                         ladders: vec![],
+                        genome_anchor_summary,
+                        genome_anchor_display,
+                        is_full_genome_sequence,
                     }
                 })
                 .collect();
@@ -9301,6 +9611,9 @@ Error: `{err}`"
                 arrangement_mode: Some(arrangement.mode.clone()),
                 lane_container_ids: arrangement.lane_container_ids.clone(),
                 ladders: arrangement.ladders.clone(),
+                genome_anchor_summary: None,
+                genome_anchor_display: None,
+                is_full_genome_sequence: false,
             });
         }
         graph_rows.sort_by(|a, b| {
@@ -9967,6 +10280,22 @@ Error: `{err}`"
                                     }
                                     ui.small(format!("node={} | origin={}", row.node_id, row.origin));
                                     ui.small(format!("parents={} | op={}", row.parents.len(), row.created_by_op));
+                                    if let Some(anchor) = &row.genome_anchor_summary {
+                                        let strand = anchor.strand.unwrap_or('+');
+                                        let mut anchor_text = format!(
+                                            "anchor={} {}:{}-{} (strand {})",
+                                            anchor.genome_id,
+                                            anchor.chromosome,
+                                            anchor.start_1based,
+                                            anchor.end_1based,
+                                            strand
+                                        );
+                                        if row.is_full_genome_sequence {
+                                            anchor_text
+                                                .push_str(" | full chromosome/genome sequence");
+                                        }
+                                        ui.small(anchor_text);
+                                    }
                                     match row.kind {
                                         LineageNodeKind::Arrangement => {
                                             if !row.lane_container_ids.is_empty() {
@@ -10138,6 +10467,7 @@ Error: `{err}`"
                             ui.strong("Op");
                             ui.strong("Length");
                             ui.strong("Topology");
+                            ui.strong("Genome anchor");
                             ui.strong("Action");
                             ui.end_row();
                             for row in &self.lineage_rows {
@@ -10158,6 +10488,38 @@ Error: `{err}`"
                                 ui.monospace(&row.created_by_op);
                                 ui.monospace(format!("{} bp", row.length));
                                 ui.label(if row.circular { "circular" } else { "linear" });
+                                match row.kind {
+                                    LineageNodeKind::Arrangement => {
+                                        ui.label("-");
+                                    }
+                                    LineageNodeKind::Sequence => {
+                                        let mut anchor_text = row
+                                            .genome_anchor_display
+                                            .clone()
+                                            .unwrap_or_else(|| "-".to_string());
+                                        if row.is_full_genome_sequence {
+                                            anchor_text.push_str(" [full chromosome/genome]");
+                                        }
+                                        let response = ui.monospace(anchor_text);
+                                        if let Some(anchor) = &row.genome_anchor_summary {
+                                            let strand = anchor.strand.unwrap_or('+');
+                                            let mut hover = format!(
+                                                "Genome anchor: {}:{}-{} (strand {}, genome '{}')",
+                                                anchor.chromosome,
+                                                anchor.start_1based,
+                                                anchor.end_1based,
+                                                strand,
+                                                anchor.genome_id
+                                            );
+                                            if row.is_full_genome_sequence {
+                                                hover.push_str(
+                                                    "\nCovers full chromosome/genome length in prepared reference.",
+                                                );
+                                            }
+                                            response.on_hover_text(hover);
+                                        }
+                                    }
+                                }
                                 if ui
                                     .button("Select")
                                     .on_hover_text(
@@ -10521,6 +10883,12 @@ Error: `{err}`"
         self.configuration_graphics.show_open_reading_frames = defaults.show_open_reading_frames;
         self.configuration_graphics.show_methylation_sites = defaults.show_methylation_sites;
         self.configuration_graphics.feature_details_font_size = defaults.feature_details_font_size;
+        self.configuration_graphics
+            .linear_external_feature_label_font_size =
+            defaults.linear_external_feature_label_font_size;
+        self.configuration_graphics
+            .linear_external_feature_label_background_opacity =
+            defaults.linear_external_feature_label_background_opacity;
         self.configuration_graphics.linear_view_start_bp = defaults.linear_view_start_bp;
         self.configuration_graphics.linear_view_span_bp = defaults.linear_view_span_bp;
         self.configuration_graphics
@@ -10701,6 +11069,15 @@ Error: `{err}`"
         refreshed
     }
 
+    fn sync_open_windows_if_display_changed(&mut self, ctx: &egui::Context) {
+        let stamp = self.current_display_change_stamp();
+        if self.last_display_sync_stamp == stamp {
+            return;
+        }
+        self.last_display_sync_stamp = stamp;
+        self.refresh_open_sequence_windows(ctx);
+    }
+
     fn render_configuration_external_tab(&mut self, ui: &mut Ui) {
         ui.label("Configure external application integration used by shared engine features.");
         ui.separator();
@@ -10846,6 +11223,7 @@ Error: `{err}`"
         ui.label("Configure project-level graphics visibility defaults.");
         ui.separator();
         let mut changed = false;
+        let mut live_font_changed = false;
         let mut backdrop_changed = false;
 
         ui.heading("Panels");
@@ -10958,6 +11336,48 @@ Error: `{err}`"
                 .changed()
             {
                 changed = true;
+                live_font_changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Linear external feature label font");
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self
+                            .configuration_graphics
+                            .linear_external_feature_label_font_size,
+                        8.0..=24.0,
+                    )
+                    .step_by(0.25)
+                    .suffix(" px"),
+                )
+                .on_hover_text(
+                    "Font size for linear-map externalized feature labels (with connector lines)",
+                )
+                .changed()
+            {
+                changed = true;
+                live_font_changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Linear external feature label background");
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self
+                            .configuration_graphics
+                            .linear_external_feature_label_background_opacity,
+                        0.0..=1.0,
+                    )
+                    .step_by(0.01),
+                )
+                .on_hover_text("Background opacity used behind linear external feature labels")
+                .changed()
+            {
+                changed = true;
+                live_font_changed = true;
             }
         });
 
@@ -11126,6 +11546,15 @@ Error: `{err}`"
 
         if changed {
             self.configuration_graphics_dirty = true;
+        }
+        if live_font_changed {
+            self.apply_configuration_graphics_to_engine_state();
+            self.configuration_graphics_dirty = true;
+            let refreshed = self.refresh_open_sequence_windows(ui.ctx());
+            self.configuration_status = format!(
+                "Applied font settings live; refreshed {} open sequence window(s)",
+                refreshed
+            );
         }
         if backdrop_changed {
             self.configuration_window_backdrops_dirty = true;
@@ -12563,6 +12992,7 @@ impl eframe::App for GENtleApp {
             self.poll_agent_assistant_task(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.sync_tracked_bed_tracks_for_new_anchors();
+            self.sync_open_windows_if_display_changed(ctx);
 
             // Show menu bar
             egui::TopBottomPanel::top("top").show(ctx, |ui| {
@@ -12639,19 +13069,50 @@ impl eframe::App for GENtleApp {
 mod tests {
     use super::{
         BackgroundJobEventPhase, BackgroundJobKind, EngineError, ErrorCode, GENtleApp,
-        GenomePrepareTask, GenomePrepareTaskMessage, MAX_RECENT_PROJECTS,
+        GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
+        GenomeTrackImportTaskMessage, MAX_RECENT_PROJECTS,
+    };
+    use crate::{
+        dna_sequence::DNAsequence,
+        engine::{GentleEngine, OpResult, ProjectState},
+        window::Window,
     };
     use eframe::egui;
     use std::{
         fs,
         sync::{
-            Arc,
+            Arc, RwLock,
             atomic::{AtomicBool, Ordering},
             mpsc,
         },
         time::Instant,
     };
     use tempfile::tempdir;
+
+    fn make_test_app_with_open_windows(seq_ids: &[&str]) -> GENtleApp {
+        let mut state = ProjectState::default();
+        for seq_id in seq_ids {
+            state.sequences.insert(
+                (*seq_id).to_string(),
+                DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+            );
+        }
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut app = GENtleApp::default();
+        app.engine = engine.clone();
+        for (index, seq_id) in seq_ids.iter().enumerate() {
+            let window = Window::new_dna(
+                DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+                (*seq_id).to_string(),
+                engine.clone(),
+            );
+            app.windows.insert(
+                egui::ViewportId::from_hash_of(format!("test-window-{index}-{seq_id}")),
+                Arc::new(RwLock::new(window)),
+            );
+        }
+        app
+    }
 
     #[test]
     fn load_help_doc_returns_fallback_when_missing() {
@@ -12820,5 +13281,78 @@ mod tests {
                 && event.phase == BackgroundJobEventPhase::Failed
                 && event.job_id == Some(7)
         }));
+    }
+
+    #[test]
+    fn refresh_sequence_windows_for_seq_ids_targets_matching_windows_only() {
+        let mut app = make_test_app_with_open_windows(&["seq_a", "seq_b"]);
+        let refreshed = app.refresh_sequence_windows_for_seq_ids(&["seq_b".to_string()]);
+        assert_eq!(refreshed, 1);
+    }
+
+    #[test]
+    fn poll_track_import_refreshes_only_changed_sequence_windows() {
+        let mut app = make_test_app_with_open_windows(&["seq_a", "seq_b"]);
+        let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+        app.genome_track_import_task = Some(GenomeTrackImportTask {
+            job_id: 91,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            receiver: rx,
+        });
+        tx.send(GenomeTrackImportTaskMessage::Done {
+            job_id: 91,
+            result: Ok(OpResult {
+                op_id: "op_track_refresh_changed".to_string(),
+                created_seq_ids: vec![],
+                changed_seq_ids: vec!["seq_b".to_string()],
+                warnings: vec![],
+                messages: vec!["Imported 5 BED feature(s)".to_string()],
+            }),
+        })
+        .expect("send track import done");
+
+        app.poll_genome_track_import_task(&egui::Context::default());
+
+        assert!(app.genome_track_import_task.is_none());
+        assert!(
+            app.genome_track_status
+                .contains("refreshed 1 open sequence window(s)"),
+            "status was: {}",
+            app.genome_track_status
+        );
+    }
+
+    #[test]
+    fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
+        let mut app = make_test_app_with_open_windows(&["seq_a", "seq_b"]);
+        let (tx, rx) = mpsc::channel::<GenomeTrackImportTaskMessage>();
+        app.genome_track_import_task = Some(GenomeTrackImportTask {
+            job_id: 92,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            receiver: rx,
+        });
+        tx.send(GenomeTrackImportTaskMessage::Done {
+            job_id: 92,
+            result: Ok(OpResult {
+                op_id: "op_track_refresh_fallback".to_string(),
+                created_seq_ids: vec![],
+                changed_seq_ids: vec![],
+                warnings: vec![],
+                messages: vec!["Imported 5 BED feature(s)".to_string()],
+            }),
+        })
+        .expect("send track import done");
+
+        app.poll_genome_track_import_task(&egui::Context::default());
+
+        assert!(app.genome_track_import_task.is_none());
+        assert!(
+            app.genome_track_status
+                .contains("refreshed 2 open sequence window(s)"),
+            "status was: {}",
+            app.genome_track_status
+        );
     }
 }

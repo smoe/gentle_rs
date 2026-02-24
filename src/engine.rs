@@ -139,6 +139,8 @@ pub struct DisplaySettings {
     pub linear_hide_backbone_when_sequence_bases_visible: bool,
     pub linear_reverse_strand_use_upside_down_letters: bool,
     pub feature_details_font_size: f32,
+    pub linear_external_feature_label_font_size: f32,
+    pub linear_external_feature_label_background_opacity: f32,
 }
 
 impl DisplaySettings {
@@ -193,6 +195,8 @@ impl Default for DisplaySettings {
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
             feature_details_font_size: 8.25,
+            linear_external_feature_label_font_size: 11.0,
+            linear_external_feature_label_background_opacity: 0.9,
         }
     }
 }
@@ -15986,6 +15990,62 @@ impl GentleEngine {
                         self.state.display.feature_details_font_size
                     ));
                 }
+                "linear_external_feature_label_font_size"
+                | "linear_feature_label_font_size"
+                | "feature_label_font_size" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a number"),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message:
+                                "linear_external_feature_label_font_size must be a finite number"
+                                    .to_string(),
+                        });
+                    }
+                    if !(8.0..=24.0).contains(&raw) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "linear_external_feature_label_font_size must be between 8.0 and 24.0".to_string(),
+                        });
+                    }
+                    self.state.display.linear_external_feature_label_font_size = raw as f32;
+                    result.messages.push(format!(
+                        "Set parameter 'linear_external_feature_label_font_size' to {:.2}",
+                        self.state.display.linear_external_feature_label_font_size
+                    ));
+                }
+                "linear_external_feature_label_background_opacity"
+                | "linear_feature_label_background_opacity"
+                | "feature_label_background_opacity" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a number"),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "linear_external_feature_label_background_opacity must be a finite number".to_string(),
+                        });
+                    }
+                    if !(0.0..=1.0).contains(&raw) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "linear_external_feature_label_background_opacity must be between 0.0 and 1.0".to_string(),
+                        });
+                    }
+                    self.state
+                        .display
+                        .linear_external_feature_label_background_opacity = raw as f32;
+                    result.messages.push(format!(
+                        "Set parameter 'linear_external_feature_label_background_opacity' to {:.3}",
+                        self.state
+                            .display
+                            .linear_external_feature_label_background_opacity
+                    ));
+                }
                 "regulatory_feature_max_view_span_bp"
                 | "regulatory_max_view_span_bp"
                 | "regulatory_max_span_bp" => {
@@ -16999,6 +17059,41 @@ exit 2
                 .any(|m| m.contains("feature_details_font_size"))
         );
         assert!((engine.state().display.feature_details_font_size - 9.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_set_parameter_linear_external_feature_label_style() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_external_feature_label_font_size".to_string(),
+                value: serde_json::json!(12.5),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_external_feature_label_background_opacity".to_string(),
+                value: serde_json::json!(0.6),
+            })
+            .unwrap();
+        assert!(
+            (engine
+                .state()
+                .display
+                .linear_external_feature_label_font_size
+                - 12.5)
+                .abs()
+                < f32::EPSILON
+        );
+        assert!(
+            (engine
+                .state()
+                .display
+                .linear_external_feature_label_background_opacity
+                - 0.6)
+                .abs()
+                < f32::EPSILON
+        );
     }
 
     #[test]
@@ -19021,6 +19116,35 @@ ORIGIN
             err.message
                 .contains("feature_details_font_size must be between 8.0 and 24.0")
         );
+    }
+
+    #[test]
+    fn test_set_parameter_linear_external_feature_label_font_size_out_of_range_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "linear_external_feature_label_font_size".to_string(),
+                value: serde_json::json!(30.0),
+            })
+            .unwrap_err();
+        assert!(
+            err.message
+                .contains("linear_external_feature_label_font_size must be between 8.0 and 24.0")
+        );
+    }
+
+    #[test]
+    fn test_set_parameter_linear_external_feature_label_background_opacity_out_of_range_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "linear_external_feature_label_background_opacity".to_string(),
+                value: serde_json::json!(1.5),
+            })
+            .unwrap_err();
+        assert!(err.message.contains(
+            "linear_external_feature_label_background_opacity must be between 0.0 and 1.0"
+        ));
     }
 
     #[test]

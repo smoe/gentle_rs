@@ -127,8 +127,9 @@ Notes:
 - Auto-updated documentation with embedded graphics remains postponed.
 - Zoom/pan policy is not yet unified across canvases and should converge to a
   modifier-key-centric contract.
-- Feature-tree grouping/count UX currently lacks dedicated UI regression tests
-  (second-level grouping toggle and visible/total per-group count labeling).
+- Feature-tree grouping/filter logic and track-import open-window refresh now
+  have deterministic unit regression coverage; dedicated UI-level snapshot tests
+  (visual collapse/expand/count rendering) are still pending.
 - Backdrop-image ingest and UX hardening are still incomplete:
   - monochrome conversion currently relies on tinting/asset choice and needs a
     stricter renderer-side grayscale pass

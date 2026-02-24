@@ -50,6 +50,7 @@ const REGULATORY_LANE_PADDING: f32 = 2.0;
 const HELICAL_MIN_X_COMPRESSION: f32 = 0.2;
 const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
 const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
+const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LinearViewport {
@@ -75,6 +76,7 @@ struct FeaturePosition {
     label: String,
     kind_upper: String,
     color: Color32,
+    is_regulatory: bool,
     is_pointy: bool,
     is_reverse: bool,
     rect: Rect,
@@ -306,6 +308,20 @@ impl RenderDnaLinear {
     fn estimate_label_width(label: &str) -> f32 {
         let chars = label.chars().count().max(1) as f32;
         chars * LABEL_CHAR_WIDTH
+    }
+
+    fn truncate_label(label: &str, max_chars: usize) -> String {
+        if max_chars == 0 {
+            return String::new();
+        }
+        let total = label.chars().count();
+        if total <= max_chars {
+            return label.to_string();
+        }
+        let keep = max_chars.saturating_sub(1);
+        let mut out = label.chars().take(keep).collect::<String>();
+        out.push('…');
+        out
     }
 
     fn allocate_lane(lane_ends: &mut Vec<f32>, start: f32, end: f32, padding: f32) -> usize {
@@ -811,6 +827,7 @@ impl RenderDnaLinear {
                 label: seed.label,
                 kind_upper: seed.kind_upper,
                 color: seed.color,
+                is_regulatory: seed.is_regulatory,
                 is_pointy: seed.is_pointy && !seed.is_regulatory,
                 is_reverse: seed.is_reverse,
                 rect,
@@ -1185,6 +1202,24 @@ impl RenderDnaLinear {
         progress.clamp(0.0, 1.0) * HELICAL_MAX_Y_PHASE_SCALE
     }
 
+    fn helical_indicator_max_span(&self, viewport: LinearViewport) -> Option<usize> {
+        let (enabled, max_span) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_sequence_helical_letters_enabled(),
+                    display.linear_sequence_helical_max_view_span_bp(),
+                )
+            })
+            .unwrap_or((false, 0));
+        if enabled && max_span > 0 && viewport.span > 0 && viewport.span <= max_span {
+            Some(max_span)
+        } else {
+            None
+        }
+    }
+
     fn draw_name_and_length(&self, painter: &egui::Painter, viewport: LinearViewport) {
         let name = self
             .dna
@@ -1222,6 +1257,18 @@ impl RenderDnaLinear {
             },
             Color32::DARK_GRAY,
         );
+        if let Some(max_span) = self.helical_indicator_max_span(viewport) {
+            painter.text(
+                Pos2::new(self.area.right() - 6.0, self.area.top() + 21.0),
+                Align2::RIGHT_TOP,
+                format!("HELIX ON (<= {max_span} bp)"),
+                FontId {
+                    size: 10.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::from_rgb(12, 120, 62),
+            );
+        }
     }
 
     fn orf_colors() -> HashMap<i32, Color32> {
@@ -1488,23 +1535,31 @@ impl RenderDnaLinear {
             if matches!(feature.kind_upper.as_str(), "MRNA" | "EXON") {
                 continue;
             }
+            let label = Self::truncate_label(feature.label.trim(), 56);
             let label_rect = feature
                 .exon_rects
                 .iter()
                 .copied()
                 .max_by(|a, b| a.width().total_cmp(&b.width()))
                 .unwrap_or(feature.rect);
-            let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
-            text_painter.text(
-                label_rect.center(),
-                Align2::CENTER_CENTER,
-                &feature.label,
-                FontId {
-                    size: 10.0,
-                    family: FontFamily::Monospace,
-                },
-                Self::feature_label_color(feature.color),
-            );
+            let label_width = Self::estimate_label_width(&label);
+            let inline_possible = !feature.is_regulatory
+                && label_rect.height() >= FEATURE_INLINE_LABEL_FONT_SIZE + 2.0
+                && label_rect.width() >= label_width + 4.0;
+            if inline_possible {
+                let text_painter = painter.with_clip_rect(label_rect.shrink2(Vec2::new(1.0, 1.0)));
+                text_painter.text(
+                    label_rect.center(),
+                    Align2::CENTER_CENTER,
+                    &label,
+                    FontId {
+                        size: FEATURE_INLINE_LABEL_FONT_SIZE,
+                        family: FontFamily::Monospace,
+                    },
+                    Self::feature_label_color(feature.color),
+                );
+                continue;
+            }
         }
     }
 

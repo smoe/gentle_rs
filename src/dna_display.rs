@@ -202,11 +202,21 @@ pub struct DnaDisplay {
     linear_hide_backbone_when_sequence_bases_visible: bool,
     linear_reverse_strand_use_upside_down_letters: bool,
     feature_details_font_size: f32,
+    linear_external_feature_label_font_size: f32,
+    linear_external_feature_label_background_opacity: f32,
 }
 
 impl DnaDisplay {
     fn clamp_feature_details_font_size(value: f32) -> f32 {
         value.clamp(8.0, 24.0)
+    }
+
+    fn clamp_linear_external_feature_label_font_size(value: f32) -> f32 {
+        value.clamp(8.0, 24.0)
+    }
+
+    fn clamp_linear_external_feature_label_background_opacity(value: f32) -> f32 {
+        value.clamp(0.0, 1.0)
     }
 
     fn clamp_linear_sequence_base_text_max_view_span_bp(value: usize) -> usize {
@@ -659,6 +669,34 @@ impl DnaDisplay {
             self.mark_layout_dirty();
         }
     }
+
+    pub fn linear_external_feature_label_font_size(&self) -> f32 {
+        Self::clamp_linear_external_feature_label_font_size(
+            self.linear_external_feature_label_font_size,
+        )
+    }
+
+    pub fn set_linear_external_feature_label_font_size(&mut self, value: f32) {
+        let value = Self::clamp_linear_external_feature_label_font_size(value);
+        if (self.linear_external_feature_label_font_size - value).abs() > f32::EPSILON {
+            self.linear_external_feature_label_font_size = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn linear_external_feature_label_background_opacity(&self) -> f32 {
+        Self::clamp_linear_external_feature_label_background_opacity(
+            self.linear_external_feature_label_background_opacity,
+        )
+    }
+
+    pub fn set_linear_external_feature_label_background_opacity(&mut self, value: f32) {
+        let value = Self::clamp_linear_external_feature_label_background_opacity(value);
+        if (self.linear_external_feature_label_background_opacity - value).abs() > f32::EPSILON {
+            self.linear_external_feature_label_background_opacity = value;
+            self.mark_layout_dirty();
+        }
+    }
 }
 
 impl Default for DnaDisplay {
@@ -698,6 +736,8 @@ impl Default for DnaDisplay {
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
             feature_details_font_size: 8.25,
+            linear_external_feature_label_font_size: 11.0,
+            linear_external_feature_label_background_opacity: 0.9,
         }
     }
 }

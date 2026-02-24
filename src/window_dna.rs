@@ -95,4 +95,9 @@ impl WindowDna {
     pub fn refresh_from_engine_settings(&mut self) {
         self.main_area.refresh_from_engine_settings();
     }
+
+    pub fn refresh_from_engine_state(&mut self) {
+        self.main_area.refresh_from_engine_sequence_state();
+        self.main_area.refresh_from_engine_settings();
+    }
 }

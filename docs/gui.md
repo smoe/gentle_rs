@@ -108,8 +108,13 @@ Feature tree grouping:
   feature-kind section depending on that mode.
 - `Auto (duplicates)` flattens singleton subgroups and only keeps grouped
   branches where duplicate labels exist.
+- `mRNA` rows are grouped by their associated gene (when gene qualifiers are
+  available), while transcript identifiers are shown on individual mRNA entries.
 - Group headings show counts as `visible/total` in linear mode (current stretch
   shown in the map), and as total count in circular mode.
+- Right-clicking a feature row opens per-feature actions:
+  - `Focus feature (current zoom)`
+  - `Fit feature in view` (linear map mode)
 - `Filter` narrows all feature rows in the tree.
   - free text searches kind/label/range and selected qualifiers
   - scoped terms are supported:
@@ -120,6 +125,9 @@ Feature tree grouping:
     - `track:chip`
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
+  - one-click preset chips are available below the filter box
+- Selecting an `mRNA`/`exon` feature opens the splicing expert view in a
+  dedicated, resizable window instead of the inline description pane.
 
 Circular map label behavior:
 
@@ -659,6 +667,7 @@ Current linear map conventions are:
       (`10 bp` occupies approximately the width of `2` letter cells)
   - forward/reverse strand letter placement remains symmetric around the DNA
     baseline (with optional 180° reverse-letter rotation)
+  - when active, the map header shows `HELIX ON (<= N bp)` in green
 
 ## Circular map conventions
 
@@ -1011,10 +1020,13 @@ Notes:
   They render as dense signal tracks (lane-packed in linear view) and appear in
   the feature tree under a dedicated `Tracks` category, grouped by experiment
   (`gentle_track_name`).
+- If the target sequence is already open, its sequence window refreshes
+  automatically after import so the new track features are visible immediately.
 - The tracked-subscription table in `Genome -> Import Genome Tracks...` includes
   a textual `Filter` box:
   - free text searches source/path/track name
   - scoped terms are supported (`source:`, `path:`/`file:`, `track:`)
+  - one-click preset chips are available below the filter box
   - UI shows `Showing N of M tracked files` so it is clear when filters hide rows
 - Prepare/Retrieve dialogs show resolved source types for the selected entry
   (`local`, `ncbi_assembly`, `genbank_accession`, `remote_http`).

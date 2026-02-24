@@ -329,7 +329,12 @@ struct EngineOpsUiState {
 #[cfg(test)]
 mod tests {
     use super::MainAreaDna;
+    use crate::{
+        dna_sequence::DNAsequence,
+        engine::{GentleEngine, ProjectState},
+    };
     use gb_io::seq::{Feature, FeatureKind, Location};
+    use std::sync::{Arc, RwLock};
 
     fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
         Feature {
@@ -398,6 +403,80 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_matches_filter_scoped_track_source_and_path_terms() {
+        let feature = make_feature(
+            "track",
+            vec![
+                ("gentle_track_source", "BED"),
+                ("gentle_track_name", "chip_signal_tp73"),
+                ("gentle_track_file", "/tmp/tracks/tp73_peaks.bed"),
+                ("label", "TP73 peaks"),
+                ("note", "enhancer-like signal"),
+            ],
+        );
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "source:bed track:chip path:tp73_peaks.bed",
+            "tracks",
+            "TP73 peaks",
+            "1..10"
+        ));
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "file:tp73_peaks.bed note:enhancer",
+            "tracks",
+            "TP73 peaks",
+            "1..10"
+        ));
+        assert!(!MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "path:missing.bed",
+            "tracks",
+            "TP73 peaks",
+            "1..10"
+        ));
+    }
+
+    #[test]
+    fn feature_tree_matches_filter_scoped_range_terms() {
+        let feature = make_feature("gene", vec![("label", "TP73")]);
+        assert!(MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "range:6128..16430",
+            "gene",
+            "TP73",
+            "6128..16430"
+        ));
+        assert!(!MainAreaDna::feature_tree_matches_filter(
+            &feature,
+            "range:7000..8000",
+            "gene",
+            "TP73",
+            "6128..16430"
+        ));
+    }
+
+    #[test]
+    fn feature_tree_should_group_respects_grouping_mode() {
+        assert!(!MainAreaDna::feature_tree_should_group(
+            super::FeatureTreeGroupingMode::Off,
+            8
+        ));
+        assert!(!MainAreaDna::feature_tree_should_group(
+            super::FeatureTreeGroupingMode::Auto,
+            1
+        ));
+        assert!(MainAreaDna::feature_tree_should_group(
+            super::FeatureTreeGroupingMode::Auto,
+            2
+        ));
+        assert!(MainAreaDna::feature_tree_should_group(
+            super::FeatureTreeGroupingMode::Always,
+            1
+        ));
+    }
+
+    #[test]
     fn feature_tree_display_label_disambiguates_rna_by_transcript_id() {
         let feature = make_feature(
             "mRNA",
@@ -416,6 +495,45 @@ mod tests {
             MainAreaDna::feature_tree_display_label(&feature, "TP73-AS3", "6128..16430"),
             "TP73-AS3 [6128..16430]"
         );
+    }
+
+    #[test]
+    fn feature_tree_subgroup_label_groups_mrna_by_gene() {
+        let feature = make_feature(
+            "mRNA",
+            vec![
+                ("label", "NM_001126112.3"),
+                ("gene", "TP73"),
+                ("transcript_id", "NM_001126112.3"),
+            ],
+        );
+        assert_eq!(
+            MainAreaDna::feature_tree_subgroup_label(
+                &feature,
+                "NM_001126112.3",
+                super::FeatureTreeGroupingMode::Auto
+            ),
+            Some("TP73".to_string())
+        );
+    }
+
+    #[test]
+    fn refresh_from_engine_sequence_state_reloads_open_sequence() {
+        let initial_dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        let mut updated_dna = DNAsequence::from_sequence("AAAA").expect("sequence");
+        updated_dna
+            .features_mut()
+            .push(make_feature("gene", vec![("label", "TP53")]));
+
+        let mut state = ProjectState::default();
+        state.sequences.insert("seq1".to_string(), updated_dna);
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut area = MainAreaDna::new(initial_dna, Some("seq1".to_string()), Some(engine));
+
+        area.refresh_from_engine_sequence_state();
+
+        let dna = area.dna().read().expect("DNA lock poisoned");
+        assert_eq!(dna.features().len(), 1);
     }
 }
 
@@ -730,6 +848,9 @@ pub struct MainAreaDna {
     description_cache_details: Vec<String>,
     description_cache_expert_view: Option<FeatureExpertView>,
     description_cache_expert_error: Option<String>,
+    show_splicing_expert_window: bool,
+    splicing_expert_window_feature_id: Option<usize>,
+    splicing_expert_window_view: Option<SplicingExpertView>,
     linear_drag_selection_anchor_bp: Option<usize>,
 }
 
@@ -946,6 +1067,9 @@ impl MainAreaDna {
             description_cache_details: Vec::new(),
             description_cache_expert_view: None,
             description_cache_expert_error: None,
+            show_splicing_expert_window: false,
+            splicing_expert_window_feature_id: None,
+            splicing_expert_window_view: None,
             linear_drag_selection_anchor_bp: None,
         };
         ret.sync_from_engine_display();
@@ -967,6 +1091,38 @@ impl MainAreaDna {
 
     pub fn opened_from_pool_context(&self) -> bool {
         self.opened_from_pool_context
+    }
+
+    pub fn refresh_from_engine_sequence_state(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            return;
+        };
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let updated_dna = {
+            let Ok(guard) = engine.try_read() else {
+                return;
+            };
+            guard.state().sequences.get(&seq_id).cloned()
+        };
+        let Some(updated_dna) = updated_dna else {
+            return;
+        };
+        *self.dna.write().expect("DNA lock poisoned") = updated_dna;
+        let selected_feature_invalid = self
+            .get_selected_feature_id()
+            .map(|id| {
+                self.dna
+                    .read()
+                    .map(|dna| id >= dna.features().len())
+                    .unwrap_or(true)
+            })
+            .unwrap_or(false);
+        if selected_feature_invalid {
+            self.clear_feature_focus();
+        }
+        self.update_dna_map();
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
@@ -1804,6 +1960,8 @@ impl MainAreaDna {
                         mut helical_max_span_bp,
                         mut auto_hide_sequence_panel,
                         mut detail_font_size,
+                        mut external_label_font_size,
+                        mut external_label_bg_opacity,
                     ) = self
                         .dna_display
                         .read()
@@ -1817,9 +1975,11 @@ impl MainAreaDna {
                                 display.linear_sequence_helical_max_view_span_bp(),
                                 display.auto_hide_sequence_panel_when_linear_bases_visible(),
                                 display.feature_details_font_size(),
+                                display.linear_external_feature_label_font_size(),
+                                display.linear_external_feature_label_background_opacity(),
                             )
                         })
-                        .unwrap_or((true, false, true, 500, false, 2000, false, 8.25));
+                        .unwrap_or((true, false, true, 500, false, 2000, false, 8.25, 11.0, 0.9));
                     if ui
                         .checkbox(
                             &mut show_double_strand,
@@ -1965,6 +2125,50 @@ impl MainAreaDna {
                             .expect("DNA display lock poisoned")
                             .set_feature_details_font_size(detail_font_size);
                         self.sync_feature_details_font_size_to_engine(detail_font_size);
+                    }
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut external_label_font_size, 8.0..=24.0)
+                                .step_by(0.25)
+                                .text("External feature label font")
+                                .suffix(" px"),
+                        )
+                        .on_hover_text(
+                            "Font size for externalized linear feature labels drawn with leader lines",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_external_feature_label_font_size(
+                                external_label_font_size,
+                            );
+                        self.sync_linear_external_feature_label_font_size_to_engine(
+                            external_label_font_size,
+                        );
+                    }
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut external_label_bg_opacity, 0.0..=1.0)
+                                .step_by(0.01)
+                                .text("External feature label background")
+                                .suffix(" opacity"),
+                        )
+                        .on_hover_text(
+                            "Background opacity for externalized linear feature labels",
+                        )
+                        .changed()
+                    {
+                        self.dna_display
+                            .write()
+                            .expect("DNA display lock poisoned")
+                            .set_linear_external_feature_label_background_opacity(
+                                external_label_bg_opacity,
+                            );
+                        self.sync_linear_external_feature_label_background_opacity_to_engine(
+                            external_label_bg_opacity,
+                        );
                     }
                 }
             })
@@ -3441,64 +3645,6 @@ impl MainAreaDna {
                     self.sync_tfbs_display_criteria_to_engine(tfbs_display);
                     self.save_engine_ops_state();
                 }
-                ui.separator();
-                ui.label("VCF display filter (applies to GUI + SVG export)");
-                let mut vcf_display = self
-                    .dna_display
-                    .read()
-                    .expect("DNA display lock poisoned")
-                    .vcf_display_criteria();
-                let before_vcf = vcf_display.clone();
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut vcf_display.show_snp, "SNP");
-                    ui.checkbox(&mut vcf_display.show_ins, "INS");
-                    ui.checkbox(&mut vcf_display.show_del, "DEL");
-                    ui.checkbox(&mut vcf_display.show_sv, "SV");
-                    ui.checkbox(&mut vcf_display.show_other, "OTHER");
-                });
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut vcf_display.pass_only, "PASS only");
-                    ui.small("Hide non-PASS calls when enabled.");
-                });
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut vcf_display.use_min_qual, "min QUAL");
-                    ui.add_enabled(
-                        vcf_display.use_min_qual,
-                        egui::DragValue::new(&mut vcf_display.min_qual).speed(0.5),
-                    );
-                    ui.checkbox(&mut vcf_display.use_max_qual, "max QUAL");
-                    ui.add_enabled(
-                        vcf_display.use_max_qual,
-                        egui::DragValue::new(&mut vcf_display.max_qual).speed(0.5),
-                    );
-                });
-                let mut vcf_keys_changed = false;
-                ui.horizontal(|ui| {
-                    ui.label("required INFO keys (comma-separated)");
-                    if ui
-                        .text_edit_singleline(&mut self.vcf_display_required_info_keys)
-                        .changed()
-                    {
-                        vcf_keys_changed = true;
-                    }
-                });
-                vcf_display.required_info_keys = Self::parse_ids(&self.vcf_display_required_info_keys);
-                if !vcf_display.show_snp
-                    && !vcf_display.show_ins
-                    && !vcf_display.show_del
-                    && !vcf_display.show_sv
-                    && !vcf_display.show_other
-                {
-                    ui.small("No VCF class enabled: all VCF overlays are hidden.");
-                }
-                if vcf_display != before_vcf || vcf_keys_changed {
-                    self.dna_display
-                        .write()
-                        .expect("DNA display lock poisoned")
-                        .set_vcf_display_criteria(vcf_display.clone());
-                    self.sync_vcf_display_criteria_to_engine(&vcf_display);
-                    self.save_engine_ops_state();
-                }
                 if let Some(task) = &self.tfbs_task {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
@@ -3623,6 +3769,68 @@ impl MainAreaDna {
                             }
                         }
                     }
+                }
+                    });
+
+                egui::CollapsingHeader::new("VCF display filter")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                ui.label("VCF display filter (applies to GUI + SVG export)");
+                let mut vcf_display = self
+                    .dna_display
+                    .read()
+                    .expect("DNA display lock poisoned")
+                    .vcf_display_criteria();
+                let before_vcf = vcf_display.clone();
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut vcf_display.show_snp, "SNP");
+                    ui.checkbox(&mut vcf_display.show_ins, "INS");
+                    ui.checkbox(&mut vcf_display.show_del, "DEL");
+                    ui.checkbox(&mut vcf_display.show_sv, "SV");
+                    ui.checkbox(&mut vcf_display.show_other, "OTHER");
+                });
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut vcf_display.pass_only, "PASS only");
+                    ui.small("Hide non-PASS calls when enabled.");
+                });
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut vcf_display.use_min_qual, "min QUAL");
+                    ui.add_enabled(
+                        vcf_display.use_min_qual,
+                        egui::DragValue::new(&mut vcf_display.min_qual).speed(0.5),
+                    );
+                    ui.checkbox(&mut vcf_display.use_max_qual, "max QUAL");
+                    ui.add_enabled(
+                        vcf_display.use_max_qual,
+                        egui::DragValue::new(&mut vcf_display.max_qual).speed(0.5),
+                    );
+                });
+                let mut vcf_keys_changed = false;
+                ui.horizontal(|ui| {
+                    ui.label("required INFO keys (comma-separated)");
+                    if ui
+                        .text_edit_singleline(&mut self.vcf_display_required_info_keys)
+                        .changed()
+                    {
+                        vcf_keys_changed = true;
+                    }
+                });
+                vcf_display.required_info_keys = Self::parse_ids(&self.vcf_display_required_info_keys);
+                if !vcf_display.show_snp
+                    && !vcf_display.show_ins
+                    && !vcf_display.show_del
+                    && !vcf_display.show_sv
+                    && !vcf_display.show_other
+                {
+                    ui.small("No VCF class enabled: all VCF overlays are hidden.");
+                }
+                if vcf_display != before_vcf || vcf_keys_changed {
+                    self.dna_display
+                        .write()
+                        .expect("DNA display lock poisoned")
+                        .set_vcf_display_criteria(vcf_display.clone());
+                    self.sync_vcf_display_criteria_to_engine(&vcf_display);
+                    self.save_engine_ops_state();
                 }
                     });
 
@@ -3844,6 +4052,28 @@ impl MainAreaDna {
         guard.state_mut().display.feature_details_font_size = value.clamp(8.0, 24.0);
     }
 
+    fn sync_linear_external_feature_label_font_size_to_engine(&self, value: f32) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard
+            .state_mut()
+            .display
+            .linear_external_feature_label_font_size = value.clamp(8.0, 24.0);
+    }
+
+    fn sync_linear_external_feature_label_background_opacity_to_engine(&self, value: f32) {
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard
+            .state_mut()
+            .display
+            .linear_external_feature_label_background_opacity = value.clamp(0.0, 1.0);
+    }
+
     fn sync_linear_sequence_base_text_max_view_span_to_engine(&self, value: usize) {
         let Some(engine) = &self.engine else {
             return;
@@ -3990,6 +4220,12 @@ impl MainAreaDna {
             settings.auto_hide_sequence_panel_when_linear_bases_visible,
         );
         display.set_feature_details_font_size(settings.feature_details_font_size);
+        display.set_linear_external_feature_label_font_size(
+            settings.linear_external_feature_label_font_size,
+        );
+        display.set_linear_external_feature_label_background_opacity(
+            settings.linear_external_feature_label_background_opacity,
+        );
     }
 
     fn current_linear_viewport(&self) -> (usize, usize, usize) {
@@ -4229,6 +4465,31 @@ impl MainAreaDna {
                 self.set_linear_viewport(new_start, span);
             }
         }
+    }
+
+    fn fit_feature_in_linear_view(&self, feature_id: usize) {
+        if self.is_circular() {
+            return;
+        }
+        let Some((start, end)) = self.feature_bounds(feature_id) else {
+            return;
+        };
+        let sequence_length = self.dna.read().expect("DNA lock poisoned").len();
+        if sequence_length == 0 {
+            return;
+        }
+        let feature_span = end
+            .saturating_sub(start)
+            .saturating_add(1)
+            .clamp(1, sequence_length);
+        let padding = (feature_span / 4).max(8);
+        let target_span = feature_span
+            .saturating_add(padding.saturating_mul(2))
+            .clamp(1, sequence_length);
+        let center = start.saturating_add(feature_span / 2);
+        let max_start = sequence_length.saturating_sub(target_span);
+        let new_start = center.saturating_sub(target_span / 2).min(max_start);
+        self.set_linear_viewport(new_start, target_span);
     }
 
     fn clear_feature_focus(&mut self) {
@@ -4780,6 +5041,59 @@ impl MainAreaDna {
                 self.render_splicing_expert_view_ui(ui, splicing)
             }
         }
+    }
+
+    fn sync_splicing_expert_window_state(&mut self) {
+        match self.description_cache_expert_view.as_ref() {
+            Some(FeatureExpertView::Splicing(view)) => {
+                let needs_refresh = self.splicing_expert_window_feature_id
+                    != Some(view.target_feature_id)
+                    || self
+                        .splicing_expert_window_view
+                        .as_ref()
+                        .map(|cached| {
+                            cached.seq_id != view.seq_id
+                                || cached.region_start_1based != view.region_start_1based
+                                || cached.region_end_1based != view.region_end_1based
+                                || cached.transcript_count != view.transcript_count
+                        })
+                        .unwrap_or(true);
+                if needs_refresh {
+                    self.splicing_expert_window_feature_id = Some(view.target_feature_id);
+                    self.splicing_expert_window_view = Some(view.clone());
+                    self.show_splicing_expert_window = true;
+                }
+            }
+            _ => {
+                self.splicing_expert_window_feature_id = None;
+                self.splicing_expert_window_view = None;
+                self.show_splicing_expert_window = false;
+            }
+        }
+    }
+
+    fn render_splicing_expert_window(&mut self, ctx: &egui::Context) {
+        if !self.show_splicing_expert_window {
+            return;
+        }
+        let Some(view) = self.splicing_expert_window_view.clone() else {
+            self.show_splicing_expert_window = false;
+            return;
+        };
+        let mut open = self.show_splicing_expert_window;
+        let title = format!("Splicing Expert - {} ({})", view.group_label, view.seq_id);
+        egui::Window::new(title)
+            .id(egui::Id::new(format!(
+                "splicing_expert_window_{}_{}",
+                view.seq_id, view.target_feature_id
+            )))
+            .open(&mut open)
+            .resizable(true)
+            .default_size(Vec2::new(1180.0, 760.0))
+            .show(ctx, |ui| {
+                self.render_splicing_expert_view_ui(ui, &view);
+            });
+        self.show_splicing_expert_window = open;
     }
 
     fn apply_sequence_derivation(&mut self, op: Operation) {
@@ -7298,11 +7612,30 @@ impl MainAreaDna {
         if RenderDna::is_restriction_site_feature(feature) {
             return RenderDna::restriction_site_group_label(feature);
         }
+        if feature.kind.to_string().eq_ignore_ascii_case("MRNA") {
+            if let Some(gene_label) = Self::feature_tree_first_nonempty_qualifier(
+                feature,
+                &["gene", "gene_name", "locus_tag", "gene_id"],
+            ) {
+                return Some(gene_label);
+            }
+        }
         let normalized_label = feature_label.trim();
         if normalized_label.is_empty() {
             None
         } else {
             Some(normalized_label.to_string())
+        }
+    }
+
+    fn feature_tree_should_group(
+        grouping_mode: FeatureTreeGroupingMode,
+        subgroup_count: usize,
+    ) -> bool {
+        match grouping_mode {
+            FeatureTreeGroupingMode::Off => false,
+            FeatureTreeGroupingMode::Auto => subgroup_count > 1,
+            FeatureTreeGroupingMode::Always => true,
         }
     }
 
@@ -7511,6 +7844,23 @@ impl MainAreaDna {
         "Free text matches kind/label/range and qualifiers. Scoped terms: kind:mrna label:tp73 range:6128..16430 track:chip path:peaks.bed note:enhancer"
     }
 
+    fn append_filter_term(filter_text: &mut String, term: &str) {
+        let normalized = term.trim();
+        if normalized.is_empty() {
+            return;
+        }
+        if filter_text
+            .split_whitespace()
+            .any(|existing| existing.eq_ignore_ascii_case(normalized))
+        {
+            return;
+        }
+        if !filter_text.trim().is_empty() {
+            filter_text.push(' ');
+        }
+        filter_text.push_str(normalized);
+    }
+
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         struct FeatureTreeEntry {
             id: usize,
@@ -7518,6 +7868,7 @@ impl MainAreaDna {
             range_label: String,
             subgroup_key: Option<String>,
             subgroup_label: Option<String>,
+            prefer_grouped_label: bool,
             show_range_inline_when_ungrouped: bool,
             visible_in_view: bool,
         }
@@ -7588,6 +7939,23 @@ impl MainAreaDna {
                 self.feature_tree_filter.clear();
                 self.pending_feature_tree_scroll_to = None;
                 self.save_engine_ops_state();
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.small("Presets:");
+            for preset in [
+                "kind:tracks",
+                "source:bed",
+                "source:vcf",
+                "path:.bed",
+                "note:enhancer",
+                "label:tp73",
+            ] {
+                if ui.small_button(preset).clicked() {
+                    Self::append_filter_term(&mut self.feature_tree_filter, preset);
+                    self.pending_feature_tree_scroll_to = None;
+                    self.save_engine_ops_state();
+                }
             }
         });
         if viewport_limited {
@@ -7714,6 +8082,11 @@ impl MainAreaDna {
                     let subgroup_key = subgroup_label
                         .as_ref()
                         .map(|label| label.trim().to_ascii_uppercase());
+                    let prefer_grouped_label = feature
+                        .kind
+                        .to_string()
+                        .to_ascii_uppercase()
+                        .contains("RNA");
                     let show_range_inline_when_ungrouped = matches!(
                         feature.kind.to_string().to_ascii_uppercase().as_str(),
                         "MRNA" | "GENE"
@@ -7726,6 +8099,7 @@ impl MainAreaDna {
                             range_label,
                             subgroup_key,
                             subgroup_label,
+                            prefer_grouped_label,
                             show_range_inline_when_ungrouped,
                             visible_in_view,
                         },
@@ -7746,6 +8120,8 @@ impl MainAreaDna {
         let mut group_keys = grouped_features.keys().collect::<Vec<_>>();
         group_keys.sort();
         let mut clicked_feature: Option<usize> = None;
+        let mut fit_feature: Option<usize> = None;
+        let can_fit_linear = !self.is_circular();
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
         for kind in group_keys {
@@ -7781,19 +8157,14 @@ impl MainAreaDna {
                     HashMap::new();
                 let mut ungrouped_entries: Vec<&FeatureTreeEntry> = Vec::new();
                 for entry in entries {
-                    let should_group = match grouping_mode {
-                        FeatureTreeGroupingMode::Off => false,
-                        FeatureTreeGroupingMode::Auto => {
-                            entry
-                                .subgroup_key
-                                .as_ref()
-                                .and_then(|subgroup_key| subgroup_cardinality.get(subgroup_key))
-                                .copied()
-                                .unwrap_or(0)
-                                > 1
-                        }
-                        FeatureTreeGroupingMode::Always => true,
-                    };
+                    let subgroup_count = entry
+                        .subgroup_key
+                        .as_ref()
+                        .and_then(|subgroup_key| subgroup_cardinality.get(subgroup_key))
+                        .copied()
+                        .unwrap_or(0);
+                    let should_group =
+                        Self::feature_tree_should_group(grouping_mode, subgroup_count);
                     if let (Some(subgroup_key), Some(subgroup_label)) =
                         (&entry.subgroup_key, &entry.subgroup_label)
                     {
@@ -7814,15 +8185,20 @@ impl MainAreaDna {
                 let mut render_entry =
                     |ui: &mut egui::Ui, entry: &FeatureTreeEntry, grouped_entry: bool| {
                         let selected = selected_id == Some(entry.id);
-                        let button_label = if grouped_entry && !entry.range_label.is_empty() {
-                            entry.range_label.clone()
-                        } else if entry.show_range_inline_when_ungrouped
-                            && !entry.range_label.is_empty()
-                        {
-                            format!("{} [{}]", entry.feature_label, entry.range_label)
-                        } else {
-                            entry.feature_label.clone()
-                        };
+                        let button_label =
+                            if grouped_entry
+                                && !entry.prefer_grouped_label
+                                && !entry.range_label.is_empty()
+                            {
+                                entry.range_label.clone()
+                            } else if entry.show_range_inline_when_ungrouped
+                                && !grouped_entry
+                                && !entry.range_label.is_empty()
+                            {
+                                format!("{} [{}]", entry.feature_label, entry.range_label)
+                            } else {
+                                entry.feature_label.clone()
+                            };
                         let mut button_text =
                             egui::RichText::new(button_label).size(feature_font_size);
                         if viewport_limited && !entry.visible_in_view {
@@ -7849,6 +8225,32 @@ impl MainAreaDna {
                             if response.clicked() {
                                 clicked_feature = Some(entry.id);
                             }
+                            response.context_menu(|ui| {
+                                if ui
+                                    .button("Focus feature (current zoom)")
+                                    .on_hover_text("Center selected feature without changing zoom")
+                                    .clicked()
+                                {
+                                    clicked_feature = Some(entry.id);
+                                    ui.close_menu();
+                                }
+                                let fit_response = ui.add_enabled(
+                                    can_fit_linear,
+                                    egui::Button::new("Fit feature in view"),
+                                );
+                                let fit_response = if can_fit_linear {
+                                    fit_response.on_hover_text(
+                                        "Adjust linear viewport so this feature is fully visible",
+                                    )
+                                } else {
+                                    fit_response.on_hover_text("Available in linear map mode only")
+                                };
+                                if fit_response.clicked() {
+                                    clicked_feature = Some(entry.id);
+                                    fit_feature = Some(entry.id);
+                                    ui.close_menu();
+                                }
+                            });
                         });
                     };
 
@@ -7912,6 +8314,9 @@ impl MainAreaDna {
         }
         if let Some(id) = clicked_feature {
             self.focus_feature(id);
+        }
+        if let Some(id) = fit_feature {
+            self.fit_feature_in_linear_view(id);
         }
     }
 
@@ -8022,6 +8427,7 @@ impl MainAreaDna {
                 }
             }
         }
+        self.sync_splicing_expert_window_state();
     }
 
     pub fn render_description(&mut self, ui: &mut egui::Ui) {
@@ -8050,7 +8456,33 @@ impl MainAreaDna {
                         .strong()
                         .size(self.feature_details_font_size()),
                 );
-                self.render_feature_expert_view_ui(ui, view);
+                match view {
+                    FeatureExpertView::Splicing(splicing) => {
+                        ui.label(
+                            egui::RichText::new(
+                                "Splicing expert view opens in a dedicated window for readability.",
+                            )
+                            .size(self.feature_details_font_size()),
+                        );
+                        let button_label = if self.show_splicing_expert_window {
+                            "Focus Splicing Window"
+                        } else {
+                            "Open Splicing Window"
+                        };
+                        if ui
+                            .button(button_label)
+                            .on_hover_text(
+                                "Open or focus the dedicated splicing expert window for this feature",
+                            )
+                            .clicked()
+                        {
+                            self.splicing_expert_window_feature_id = Some(splicing.target_feature_id);
+                            self.splicing_expert_window_view = Some(splicing.clone());
+                            self.show_splicing_expert_window = true;
+                        }
+                    }
+                    _ => self.render_feature_expert_view_ui(ui, view),
+                }
             } else if let Some(err) = &self.description_cache_expert_error {
                 ui.separator();
                 ui.label(
@@ -8247,5 +8679,6 @@ impl MainAreaDna {
                 }
             }
         });
+        self.render_splicing_expert_window(ctx);
     }
 }

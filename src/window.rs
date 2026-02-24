@@ -41,4 +41,10 @@ impl Window {
             Self::Dna(window) => window.refresh_from_engine_settings(),
         }
     }
+
+    pub fn refresh_from_engine_state(&mut self) {
+        match self {
+            Self::Dna(window) => window.refresh_from_engine_state(),
+        }
+    }
 }
