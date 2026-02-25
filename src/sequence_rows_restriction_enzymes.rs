@@ -1,3 +1,5 @@
+//! Restriction-enzyme sequence-row renderer implementation.
+
 use crate::{dna_display::DnaDisplay, dna_sequence::DNAsequence};
 use eframe::egui::{Align2, FontFamily, FontId, Painter, Pos2, Rect, Stroke, Vec2};
 use std::sync::{Arc, RwLock};

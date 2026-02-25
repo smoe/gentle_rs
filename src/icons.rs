@@ -1,3 +1,5 @@
+//! Embedded icon/resource helpers for GUI rendering.
+
 // Some icons used in the GUI
 
 use eframe::egui;

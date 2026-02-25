@@ -1,34 +1,53 @@
+//! Shared shell command grammar and executor for GENtle.
+//!
+//! This module parses textual shell input into typed commands and executes them
+//! against the shared engine. It is intentionally reused by both the GUI Shell
+//! panel and `gentle_cli shell` so command behavior stays adapter-equivalent.
+//!
+//! Core responsibilities:
+//! - Tokenize/parse shell syntax into structured `ShellCommand` values.
+//! - Execute commands through `GentleEngine` and shared operation paths.
+//! - Return deterministic, machine-readable command results and diagnostics.
+//! - Provide help/introspection renderers backed by glossary-driven docs.
+//! - Bridge adapter-facing command families (for example resources, agents,
+//!   and UI intents) without duplicating core biology logic.
+//!
+//! Safety and consistency constraints:
+//! - Suggested agent commands execute through the same parser/executor path.
+//! - Recursive/nested `agents ask` execution from suggested commands is blocked.
+//! - Screenshot-capture routes remain explicitly policy-gated.
+
 use crate::{
     agent_bridge::{
-        AGENT_BASE_URL_ENV, AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV,
-        AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV,
-        AGENT_TIMEOUT_SECS_ENV, AgentExecutionIntent, agent_system_availability,
-        invoke_agent_support_with_env_overrides, load_agent_system_catalog,
+        agent_system_availability, invoke_agent_support_with_env_overrides,
+        load_agent_system_catalog, AgentExecutionIntent, AGENT_BASE_URL_ENV,
+        AGENT_CONNECT_TIMEOUT_SECS_ENV, AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV,
+        AGENT_MODEL_ENV, AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV,
     },
     dna_ladder::LadderMolecule,
     dna_sequence::DNAsequence,
     engine::{
-        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
-        CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
-        CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget, GUIDE_DESIGN_METADATA_KEY,
+        CandidateFeatureBoundaryMode, CandidateFeatureGeometryMode, CandidateFeatureStrandRelation,
+        CandidateMacroTemplateParam, CandidateObjectiveDirection, CandidateObjectiveSpec,
+        CandidateTieBreakPolicy, CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget,
         GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
-        ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
-        Workflow, WorkflowMacroTemplateParam,
+        ProjectState, RenderSvgMode, SequenceAnchor, Workflow, WorkflowMacroTemplateParam,
+        CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, GUIDE_DESIGN_METADATA_KEY,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
     },
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
-        GenomeGeneRecord,
+        GenomeCatalog, GenomeGeneRecord, DEFAULT_GENOME_CATALOG_PATH,
+        DEFAULT_HELPER_GENOME_CATALOG_PATH,
     },
     resource_sync,
     shell_docs::{
-        HelpOutputFormat, shell_help_json as render_shell_help_json,
+        shell_help_json as render_shell_help_json,
         shell_help_markdown as render_shell_help_markdown,
         shell_help_text as render_shell_help_text,
         shell_topic_help_json as render_shell_topic_help_json,
         shell_topic_help_markdown as render_shell_topic_help_markdown,
-        shell_topic_help_text as render_shell_topic_help_text,
+        shell_topic_help_text as render_shell_topic_help_text, HelpOutputFormat,
     },
     tf_motifs,
 };
@@ -38,7 +57,7 @@ use objc2_app_kit::NSApplication;
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -9527,12 +9546,10 @@ filter set1 set2 --metric score --min 10
         .expect("generate candidates");
         assert!(generated.state_changed);
         assert_eq!(generated.output["set_name"].as_str(), Some("windows"));
-        assert!(
-            generated.output["result"]["messages"]
-                .as_array()
-                .map(|messages| !messages.is_empty())
-                .unwrap_or(false)
-        );
+        assert!(generated.output["result"]["messages"]
+            .as_array()
+            .map(|messages| !messages.is_empty())
+            .unwrap_or(false));
 
         let score_distance = execute_shell_command(
             &mut engine,
@@ -9907,12 +9924,10 @@ filter set1 set2 --metric score --min 10
         .expect("run template");
         assert!(run.state_changed);
         assert_eq!(run.output["template_name"].as_str(), Some("scan"));
-        assert!(
-            engine
-                .list_candidate_sets()
-                .iter()
-                .any(|set| set.name == "hits")
-        );
+        assert!(engine
+            .list_candidate_sets()
+            .iter()
+            .any(|set| set.name == "hits"));
     }
 
     #[test]
@@ -10940,11 +10955,9 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             .and_then(|v| v.get("created_seq_ids"))
             .and_then(|v| v.as_array())
             .expect("created_seq_ids");
-        assert!(
-            created
-                .iter()
-                .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false))
-        );
+        assert!(created
+            .iter()
+            .any(|v| v.as_str().map(|id| id == "slice_ext5").unwrap_or(false)));
         let seq = engine
             .state()
             .sequences

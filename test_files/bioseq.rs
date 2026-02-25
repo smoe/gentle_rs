@@ -1,3 +1,5 @@
+//! Local Bioseq API experiment snippet kept as reference test data code.
+
 use ncbi::biblio::{
     Affil, AffilStd, AuthList, AuthListNames, Author, CitGen, CitSub, CitSubMedium,
 };

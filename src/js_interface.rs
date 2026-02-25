@@ -1,3 +1,5 @@
+//! JavaScript adapter wrappers over shared engine contracts.
+
 use crate::{
     app::GENtleApp,
     dna_sequence::DNAsequence,

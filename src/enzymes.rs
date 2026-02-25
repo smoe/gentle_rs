@@ -1,3 +1,5 @@
+//! Restriction-enzyme catalog loading and convenience selection helpers.
+
 use crate::{protease::Protease, restriction_enzyme::RestrictionEnzyme};
 use anyhow::{Result, anyhow};
 use std::fs;

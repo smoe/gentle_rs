@@ -1,3 +1,5 @@
+//! JavaScript shell binary entry point over shared engine operations.
+
 use gentle::about;
 use gentle::js_interface::JavaScriptInterface;
 use rustyline::DefaultEditor;

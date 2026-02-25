@@ -1,3 +1,5 @@
+//! CLI binary entry point exposing direct commands and shared shell routing.
+
 use gentle::{
     about,
     engine::{

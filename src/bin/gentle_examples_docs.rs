@@ -1,3 +1,5 @@
+//! Documentation helper binary that renders workflow examples into generated snippets.
+
 use gentle::workflow_examples::{
     DEFAULT_WORKFLOW_EXAMPLE_DIR, DEFAULT_WORKFLOW_SNIPPET_DIR, generate_workflow_example_docs,
     load_workflow_examples, validate_example_required_files,

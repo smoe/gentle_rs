@@ -1,3 +1,5 @@
+//! Blank-row renderer implementation.
+
 use eframe::egui::Vec2;
 
 #[derive(Clone, Debug, Default)]

@@ -1,3 +1,5 @@
+//! Position-specific scoring matrix (motif) primitives.
+
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;

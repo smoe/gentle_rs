@@ -1,26 +1,39 @@
 //! Genome and helper-genome infrastructure.
 //!
-//! This module centralizes catalog-driven sequence/annotation source resolution,
-//! one-time preparation (download/copy/index), gene-index extraction, region
-//! retrieval, BLAST integration, and inspection metadata used by GUI/CLI/JS/Lua.
+//! This module owns catalog-driven source resolution, preparation/indexing,
+//! annotation normalization, extraction, and BLAST helpers used across GUI, CLI,
+//! JavaScript, and Lua adapters.
 //!
-//! High-level responsibilities:
-//! - Validate and normalize genome catalog entries (`assets/genomes.json` and
-//!   helper catalogs).
-//! - Materialize prepared genome installs into cache directories with manifests.
-//! - Build and consume FASTA index (`.fai`) and gene-index sidecars.
-//! - Provide deterministic region extraction by chromosome and coordinate.
-//! - Parse annotation sources (GenBank plus tabular GFF/GTF) into shared gene
-//!   records with robust malformed-line reporting.
-//! - Resolve optional NCBI assembly/genbank accessions into concrete sources.
-//! - Expose prepared-install inspection primitives (size, checksum, source type,
-//!   chromosome lengths).
-//! - Provide BLAST report execution wrappers and parse results into typed hits.
+//! Catalog and source-resolution model:
+//! - Catalog entries describe sequence/annotation origins using local paths,
+//!   remote URLs, and optional NCBI assembly/GenBank accessions.
+//! - Preparation resolves those descriptors into concrete, reproducible local
+//!   artifacts under the configured cache/install layout.
+//! - Helper-genome catalog flows share the same preparation contracts so
+//!   retrieval/extraction behavior remains adapter-equivalent.
 //!
-//! Design intent:
-//! - Keep source handling deterministic and auditable via manifest metadata.
-//! - Treat parsing/indexing as fault-tolerant but explicit (warnings are
-//!   surfaced, silent data loss is avoided).
+//! Preparation/indexing lifecycle and side effects:
+//! - Fetch/copy sequence + annotation inputs into a prepared install directory.
+//! - Build FASTA index sidecars (`.fai`) and gene-index sidecars for fast lookup.
+//! - Optionally build BLAST databases and record executable/index metadata.
+//! - Persist install manifest fields (sources, checksums, paths, timestamps,
+//!   source types) so provenance and reuse decisions are auditable.
+//!
+//! Annotation parsing behavior:
+//! - GenBank remains the canonical annotation import path.
+//! - Tabular GFF/GTF parsing is additive and normalized into shared
+//!   `GenomeGeneRecord` structures consumed by engine operations.
+//! - Malformed annotation lines are skipped with bounded warning summaries
+//!   (including capped file/line context) rather than causing silent drift.
+//!
+//! Extraction and BLAST contracts:
+//! - Region/gene extraction is coordinate-driven and deterministic by prepared
+//!   source + chromosome + range.
+//! - BLAST wrappers expose typed report records and preserve tool invocation
+//!   context needed for diagnostics.
+//! - Expected failure modes include missing catalogs/sources, missing external
+//!   binaries, malformed records, network/download issues, and caller-requested
+//!   cancellation/timebox exits.
 
 use crate::feature_location::feature_is_reverse;
 use flate2::read::GzDecoder;
@@ -3635,7 +3648,7 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::{Compression, write::GzEncoder};
+    use flate2::{write::GzEncoder, Compression};
     use std::env;
     use tempfile::tempdir;
 
@@ -3720,20 +3733,16 @@ mod tests {
         let manifest =
             GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
                 .unwrap();
-        assert!(
-            manifest
-                .sequence_sha1
-                .as_ref()
-                .map(|v| !v.is_empty())
-                .unwrap_or(false)
-        );
-        assert!(
-            manifest
-                .annotation_sha1
-                .as_ref()
-                .map(|v| !v.is_empty())
-                .unwrap_or(false)
-        );
+        assert!(manifest
+            .sequence_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
+        assert!(manifest
+            .annotation_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
         let gene_index_path = manifest
             .gene_index_path
             .expect("gene index path should be set");
@@ -3747,20 +3756,16 @@ mod tests {
         assert!(inspection.annotation_present);
         assert!(inspection.fasta_index_ready);
         assert!(inspection.gene_index_ready);
-        assert!(
-            inspection
-                .sequence_sha1
-                .as_ref()
-                .map(|v| !v.is_empty())
-                .unwrap_or(false)
-        );
-        assert!(
-            inspection
-                .annotation_sha1
-                .as_ref()
-                .map(|v| !v.is_empty())
-                .unwrap_or(false)
-        );
+        assert!(inspection
+            .sequence_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
+        assert!(inspection
+            .annotation_sha1
+            .as_ref()
+            .map(|v| !v.is_empty())
+            .unwrap_or(false));
 
         let second = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(second.reused_existing);
@@ -3936,11 +3941,9 @@ mod tests {
             })
             .unwrap_err();
         assert!(first_err.contains("missing_annotation.gtf"));
-        assert!(
-            first_phases
-                .iter()
-                .any(|phase| phase == "download_sequence")
-        );
+        assert!(first_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
 
         let sequence_path = cache_dir.join("toygenome").join("sequence.fa");
         assert!(sequence_path.exists());
@@ -3953,11 +3956,9 @@ mod tests {
             })
             .unwrap_err();
         assert!(second_err.contains("missing_annotation.gtf"));
-        assert!(
-            !second_phases
-                .iter()
-                .any(|phase| phase == "download_sequence")
-        );
+        assert!(!second_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
         assert!(second_phases.iter().any(|phase| phase == "reuse_sequence"));
     }
 
@@ -4005,16 +4006,12 @@ mod tests {
             })
             .unwrap();
         assert!(!first.reused_existing);
-        assert!(
-            first_phases
-                .iter()
-                .any(|phase| phase == "download_sequence")
-        );
-        assert!(
-            first_phases
-                .iter()
-                .any(|phase| phase == "download_annotation")
-        );
+        assert!(first_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
+        assert!(first_phases
+            .iter()
+            .any(|phase| phase == "download_annotation"));
 
         let mut second_phases: Vec<String> = vec![];
         let second = catalog
@@ -4024,16 +4021,12 @@ mod tests {
             })
             .unwrap();
         assert!(second.reused_existing);
-        assert!(
-            !second_phases
-                .iter()
-                .any(|phase| phase == "download_sequence")
-        );
-        assert!(
-            !second_phases
-                .iter()
-                .any(|phase| phase == "download_annotation")
-        );
+        assert!(!second_phases
+            .iter()
+            .any(|phase| phase == "download_sequence"));
+        assert!(!second_phases
+            .iter()
+            .any(|phase| phase == "download_annotation"));
         assert!(second_phases.iter().any(|phase| phase == "index_blast"));
         assert!(second_phases.iter().any(|phase| phase == "ready"));
     }
@@ -4114,12 +4107,10 @@ mod tests {
         let report = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(!report.blast_index_ready);
         assert!(!report.warnings.is_empty());
-        assert!(
-            report
-                .warnings
-                .iter()
-                .any(|w| w.to_ascii_lowercase().contains("makeblastdb"))
-        );
+        assert!(report
+            .warnings
+            .iter()
+            .any(|w| w.to_ascii_lowercase().contains("makeblastdb")));
 
         let inspection = catalog
             .inspect_prepared_genome("ToyGenome", None)
@@ -4176,19 +4167,15 @@ mod tests {
             && g.gene_name.as_deref() == Some("A;B")
             && g.biotype.as_deref() == Some("lncRNA")
             && g.strand == Some('-')));
-        assert!(
-            genes
-                .iter()
-                .any(|g| g.gene_id.as_deref() == Some("12345") && g.gene_name.is_none())
-        );
+        assert!(genes
+            .iter()
+            .any(|g| g.gene_id.as_deref() == Some("12345") && g.gene_name.is_none()));
         assert!(genes.iter().any(|g| g.gene_id.as_deref() == Some("GENE4")
             && g.start_1based == 1001
             && g.end_1based == 1050));
-        assert!(
-            genes
-                .iter()
-                .any(|g| g.gene_id.as_deref() == Some("chr1_1200_1300"))
-        );
+        assert!(genes
+            .iter()
+            .any(|g| g.gene_id.as_deref() == Some("chr1_1200_1300")));
     }
 
     #[test]
@@ -4435,11 +4422,9 @@ mod tests {
         .unwrap();
         assert!(!genes.is_empty());
         assert_eq!(report.source_format, "genbank");
-        assert!(
-            genes
-                .iter()
-                .any(|g| g.biotype.as_deref() == Some("promoter"))
-        );
+        assert!(genes
+            .iter()
+            .any(|g| g.biotype.as_deref() == Some("promoter")));
         assert!(genes.iter().any(|g| {
             g.biotype.as_deref() == Some("origin_of_replication")
                 && g.start_1based <= 2978

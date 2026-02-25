@@ -1,3 +1,5 @@
+//! IUPAC nucleotide-code conversion and validation helpers.
+
 const DNA_BITMASK_A: u8 = 1;
 const DNA_BITMASK_C: u8 = 2;
 const DNA_BITMASK_G: u8 = 4;

@@ -1,3 +1,5 @@
+//! Restriction-enzyme site model and cut geometry utilities.
+
 use crate::dna_sequence::DNAsequence;
 use serde::{Deserialize, Serialize};
 use std::fmt;

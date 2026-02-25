@@ -1,3 +1,5 @@
+//! Lua shell binary entry point over shared engine operations.
+
 use gentle::about;
 use gentle::lua_interface::LuaInterface;
 use mlua::Value as LuaValue;

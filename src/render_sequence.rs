@@ -1,3 +1,5 @@
+//! Sequence export helpers and render-side formatting.
+
 use crate::{
     dna_display::{AminoAcidFrame, DnaDisplay},
     dna_sequence::DNAsequence,

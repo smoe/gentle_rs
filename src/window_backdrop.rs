@@ -1,3 +1,5 @@
+//! Window backdrop configuration and rendering helpers.
+
 use eframe::egui::{self, Color32, Rect, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{

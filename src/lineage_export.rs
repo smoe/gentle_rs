@@ -1,3 +1,5 @@
+//! Lineage graph export and serialization utilities.
+
 use crate::engine::ProjectState;
 use std::collections::{HashMap, HashSet};
 use svg::Document;

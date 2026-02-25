@@ -1,3 +1,5 @@
+//! Expert-view data contracts for feature-centric deep-inspection UIs.
+
 use serde::{Deserialize, Serialize};
 
 pub const TFBS_EXPERT_INSTRUCTION: &str = "TFBS expert view: each column is one PSSM position. Bar height is information content (2 - entropy in bits) from column base frequencies. Colored segments show A/C/G/T relative frequencies; the black polyline marks the matched base across positions.";

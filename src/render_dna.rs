@@ -1,3 +1,5 @@
+//! Shared DNA rendering entry points.
+
 use crate::{
     dna_display::{DnaDisplay, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,

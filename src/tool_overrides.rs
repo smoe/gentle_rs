@@ -1,3 +1,5 @@
+//! Process-local tool-path override registry.
+
 use std::{
     collections::HashMap,
     sync::{LazyLock, RwLock},

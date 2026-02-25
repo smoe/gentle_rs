@@ -1,3 +1,5 @@
+//! Virtual pool gel model and rendering primitives.
+
 use crate::DNA_LADDERS;
 use std::collections::{BTreeMap, BTreeSet};
 use svg::Document;

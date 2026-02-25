@@ -1,3 +1,5 @@
+//! Legacy left-panel UI implementation retained as obsolete reference code.
+
 use crate::{main_area::MainArea, window_dna::WindowDna};
 use eframe::egui::{self, CollapsingHeader};
 use std::sync::Arc;

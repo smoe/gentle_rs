@@ -1,3 +1,5 @@
+//! Feature location/strand utilities used across render and engine code.
+
 use gb_io::seq::{Feature, Location};
 
 pub fn collect_location_strands(location: &Location, reverse: bool, strands: &mut Vec<bool>) {

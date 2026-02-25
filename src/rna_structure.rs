@@ -1,3 +1,5 @@
+//! RNA structure wrappers and tool integration glue.
+
 use crate::dna_sequence::DNAsequence;
 use serde::{Deserialize, Serialize};
 use std::{

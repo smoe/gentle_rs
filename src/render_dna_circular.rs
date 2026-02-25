@@ -1,3 +1,5 @@
+//! Circular-map DNA renderer.
+
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,

@@ -1,3 +1,5 @@
+//! Legacy facility constants and helpers retained as obsolete reference code.
+
 // Various constants and DNA-related functions
 
 use crate::dna_ladder::DNALadders;

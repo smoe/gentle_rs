@@ -1,3 +1,5 @@
+//! Curated workflow example payloads and templates.
+
 use crate::engine::{Engine, GentleEngine, ProjectState, Workflow};
 use serde::{Deserialize, Serialize};
 use std::{

@@ -1,3 +1,5 @@
+//! About/help metadata and version presentation helpers.
+
 pub const GENTLE_DISPLAY_VERSION: &str = env!("GENTLE_DISPLAY_VERSION");
 pub const GENTLE_BUILD_N: &str = env!("GENTLE_BUILD_N");
 

@@ -1,3 +1,5 @@
+//! Top-level GUI application wiring and event loop state.
+
 use std::{
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, HashMap, HashSet},

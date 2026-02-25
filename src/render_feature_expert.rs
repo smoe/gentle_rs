@@ -1,3 +1,5 @@
+//! Feature expert-view SVG renderer.
+
 use crate::feature_expert::{
     FeatureExpertView, RestrictionSiteExpertView, SplicingExpertView, TfbsExpertView,
 };

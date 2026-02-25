@@ -1,3 +1,5 @@
+//! DNA base-row renderer implementation.
+
 use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, iupac_code::IupacCode,
     render_sequence::RenderSequence,

@@ -1,3 +1,5 @@
+//! Lua adapter wrappers over shared engine contracts.
+
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{

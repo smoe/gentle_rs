@@ -1,3 +1,5 @@
+//! Sequence-row abstraction shared by specialized row renderers.
+
 use crate::{
     dna_display::DnaDisplay, sequence_rows_blank::RowBlank, sequence_rows_dna::RowDna,
     sequence_rows_restriction_enzymes::RowRestrictionEnzymes,

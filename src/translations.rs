@@ -1,3 +1,5 @@
+//! UI translation catalogs and language helpers.
+
 use csv::ReaderBuilder;
 use std::collections::HashMap;
 

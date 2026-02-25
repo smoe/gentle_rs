@@ -1,3 +1,5 @@
+//! TF-motif registry and matching support.
+
 use lazy_static::lazy_static;
 use serde::Deserialize;
 use std::{collections::HashMap, fs, sync::RwLock};

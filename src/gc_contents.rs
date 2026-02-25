@@ -1,3 +1,5 @@
+//! GC-content computations and display helpers.
+
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_SECTION_SIZE_BP: usize = 100;

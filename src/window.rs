@@ -1,3 +1,5 @@
+//! Generic GUI window abstraction.
+
 use crate::{dna_sequence::DNAsequence, engine::GentleEngine, window_dna::WindowDna};
 use eframe::egui;
 use std::sync::{Arc, RwLock};

@@ -1,3 +1,5 @@
+//! GUI binary entry point that boots the native GENtle desktop application.
+
 use eframe::{NativeOptions, egui};
 use gentle::{about, app};
 use std::{

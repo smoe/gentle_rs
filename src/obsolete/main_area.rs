@@ -1,3 +1,5 @@
+//! Legacy main-area UI implementation retained as obsolete reference code.
+
 use std::sync::{Arc, RwLock};
 
 use crate::{dna_sequence::DNAsequence, main_area_dna::MainAreaDna};

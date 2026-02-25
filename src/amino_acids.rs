@@ -1,3 +1,5 @@
+//! Amino-acid lookup tables and codon translation helpers.
+
 use csv::ReaderBuilder;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};

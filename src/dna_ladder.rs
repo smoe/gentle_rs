@@ -1,3 +1,5 @@
+//! DNA/RNA ladder catalogs and migration helper utilities.
+
 use serde_json::Value;
 use std::collections::HashMap;
 

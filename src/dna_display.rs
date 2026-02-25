@@ -1,3 +1,5 @@
+//! Shared DNA display configuration and visibility policies.
+
 use crate::gc_contents::DEFAULT_SECTION_SIZE_BP;
 use std::collections::BTreeSet;
 

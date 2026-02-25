@@ -1,3 +1,5 @@
+//! Resource synchronization (REBASE/JASPAR) parsing and snapshot writing.
+
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
 

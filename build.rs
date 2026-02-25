@@ -1,3 +1,5 @@
+//! Build script that stamps compile-time version metadata and embeds platform resources.
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn display_version_prefix() -> String {

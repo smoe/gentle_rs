@@ -1,3 +1,5 @@
+//! DNA sequence-window wrapper and per-window controls.
+
 use crate::{
     app::request_open_help_from_native_menu,
     dna_sequence::DNAsequence,

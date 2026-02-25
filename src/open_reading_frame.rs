@@ -1,3 +1,5 @@
+//! Open-reading-frame detection logic.
+
 use crate::{amino_acids::AminoAcids, iupac_code::IupacCode};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

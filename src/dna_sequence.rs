@@ -1,3 +1,5 @@
+//! Core DNA sequence model and sequence-level biological operations.
+
 use crate::{
     gc_contents::GcContents,
     iupac_code::IupacCode,

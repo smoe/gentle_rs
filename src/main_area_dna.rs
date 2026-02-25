@@ -1,3 +1,5 @@
+//! Main sequence-window GUI controller and interaction orchestration.
+
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,

@@ -1,3 +1,5 @@
+//! Legacy circular DNA SVG renderer retained as obsolete reference code.
+
 // THIS FILE IS CURRENTLY NOT IN USE
 
 use gb_io::seq::Feature;

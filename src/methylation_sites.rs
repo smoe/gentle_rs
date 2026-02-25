@@ -1,3 +1,5 @@
+//! Methylation-site detection and state helpers.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

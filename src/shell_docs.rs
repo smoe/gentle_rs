@@ -1,3 +1,5 @@
+//! Generated/derived shell-help documentation helpers.
+
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::OnceLock;

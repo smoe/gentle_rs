@@ -1,3 +1,5 @@
+//! Shared export surfaces (SVG and snapshot pathways).
+
 use crate::{
     dna_sequence::DNAsequence, engine::DisplaySettings, feature_location::feature_is_reverse,
     gc_contents::GcContents, restriction_enzyme::RestrictionEnzymeKey,
