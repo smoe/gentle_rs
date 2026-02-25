@@ -109,8 +109,8 @@ Window visual identity rule:
 
 - Backdrop styling is decorative and optional; it must never reduce readability
   of sequence/map labels, controls, or quantitative overlays.
-- Window-type coloring must remain stable (`main`, `sequence`, `pool`,
-  `configuration`, `help`) and should not encode scientific semantics.
+- Window-type coloring must remain stable (`main`, `sequence`, `splicing`,
+  `pool`, `configuration`, `help`) and should not encode scientific semantics.
 - Backdrop images are expected to be monochrome or monochrome-tinted in
   rendering, with low opacity and a fast global disable path.
 

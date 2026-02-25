@@ -48,8 +48,10 @@ Tabs:
     map overlays and SVG export.
   - Configure optional `Window Styling (experimental)`:
     - enable subtle themed backdrops
-    - optional per-window image watermark paths (`main`, `sequence`, `pool`, `configuration`, `help`)
-    - image-path editor is a table (`Window`, `Path`, `Actions`) with vertical scrolling when needed
+    - per-window tint color picker (`main`, `sequence`, `splicing`, `pool`, `configuration`, `help`)
+    - optional per-window image watermark paths (`main`, `sequence`, `splicing`, `pool`, `configuration`, `help`)
+    - styling editor is a table (`Window`, `Tint`, `Path`, `Actions`)
+    - row actions include `Browse...`, `Clear`, and `Reset Color`
     - tint/image opacity controls
   - Applies to sequence windows through the shared engine display state.
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
@@ -58,6 +60,8 @@ Persistence:
 
 - Configuration is persisted in an app settings file at `~/.gentle_gui_settings.json`.
 - Saved settings are restored on app startup.
+- Window-styling color/image selections persist in the same settings file after
+  `Apply Window Styling`.
 
 Configuration screenshots:
 
@@ -134,6 +138,8 @@ Feature tree grouping:
   - one-click preset chips are available below the filter box
 - Selecting an `mRNA`/`exon` feature opens the splicing expert view in a
   dedicated, resizable window instead of the inline description pane.
+- The splicing expert window uses its own window-styling slot (`splicing`) so
+  tint/image backdrop can be configured separately from DNA and pool windows.
 
 Circular map label behavior:
 

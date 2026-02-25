@@ -3648,7 +3648,7 @@ fn parse_annotation_attributes(raw: &str) -> HashMap<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flate2::{write::GzEncoder, Compression};
+    use flate2::{Compression, write::GzEncoder};
     use std::env;
     use tempfile::tempdir;
 
@@ -3733,16 +3733,20 @@ mod tests {
         let manifest =
             GenomeCatalog::load_manifest(&cache_dir.join("toygenome").join("manifest.json"))
                 .unwrap();
-        assert!(manifest
-            .sequence_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
-        assert!(manifest
-            .annotation_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
+        assert!(
+            manifest
+                .sequence_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(
+            manifest
+                .annotation_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
         let gene_index_path = manifest
             .gene_index_path
             .expect("gene index path should be set");
@@ -3756,16 +3760,20 @@ mod tests {
         assert!(inspection.annotation_present);
         assert!(inspection.fasta_index_ready);
         assert!(inspection.gene_index_ready);
-        assert!(inspection
-            .sequence_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
-        assert!(inspection
-            .annotation_sha1
-            .as_ref()
-            .map(|v| !v.is_empty())
-            .unwrap_or(false));
+        assert!(
+            inspection
+                .sequence_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(
+            inspection
+                .annotation_sha1
+                .as_ref()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
+        );
 
         let second = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(second.reused_existing);
@@ -3941,9 +3949,11 @@ mod tests {
             })
             .unwrap_err();
         assert!(first_err.contains("missing_annotation.gtf"));
-        assert!(first_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
+        assert!(
+            first_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
 
         let sequence_path = cache_dir.join("toygenome").join("sequence.fa");
         assert!(sequence_path.exists());
@@ -3956,9 +3966,11 @@ mod tests {
             })
             .unwrap_err();
         assert!(second_err.contains("missing_annotation.gtf"));
-        assert!(!second_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
+        assert!(
+            !second_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
         assert!(second_phases.iter().any(|phase| phase == "reuse_sequence"));
     }
 
@@ -4006,12 +4018,16 @@ mod tests {
             })
             .unwrap();
         assert!(!first.reused_existing);
-        assert!(first_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
-        assert!(first_phases
-            .iter()
-            .any(|phase| phase == "download_annotation"));
+        assert!(
+            first_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
+        assert!(
+            first_phases
+                .iter()
+                .any(|phase| phase == "download_annotation")
+        );
 
         let mut second_phases: Vec<String> = vec![];
         let second = catalog
@@ -4021,12 +4037,16 @@ mod tests {
             })
             .unwrap();
         assert!(second.reused_existing);
-        assert!(!second_phases
-            .iter()
-            .any(|phase| phase == "download_sequence"));
-        assert!(!second_phases
-            .iter()
-            .any(|phase| phase == "download_annotation"));
+        assert!(
+            !second_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
+        assert!(
+            !second_phases
+                .iter()
+                .any(|phase| phase == "download_annotation")
+        );
         assert!(second_phases.iter().any(|phase| phase == "index_blast"));
         assert!(second_phases.iter().any(|phase| phase == "ready"));
     }
@@ -4107,10 +4127,12 @@ mod tests {
         let report = catalog.prepare_genome_once("ToyGenome").unwrap();
         assert!(!report.blast_index_ready);
         assert!(!report.warnings.is_empty());
-        assert!(report
-            .warnings
-            .iter()
-            .any(|w| w.to_ascii_lowercase().contains("makeblastdb")));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.to_ascii_lowercase().contains("makeblastdb"))
+        );
 
         let inspection = catalog
             .inspect_prepared_genome("ToyGenome", None)
@@ -4167,15 +4189,19 @@ mod tests {
             && g.gene_name.as_deref() == Some("A;B")
             && g.biotype.as_deref() == Some("lncRNA")
             && g.strand == Some('-')));
-        assert!(genes
-            .iter()
-            .any(|g| g.gene_id.as_deref() == Some("12345") && g.gene_name.is_none()));
+        assert!(
+            genes
+                .iter()
+                .any(|g| g.gene_id.as_deref() == Some("12345") && g.gene_name.is_none())
+        );
         assert!(genes.iter().any(|g| g.gene_id.as_deref() == Some("GENE4")
             && g.start_1based == 1001
             && g.end_1based == 1050));
-        assert!(genes
-            .iter()
-            .any(|g| g.gene_id.as_deref() == Some("chr1_1200_1300")));
+        assert!(
+            genes
+                .iter()
+                .any(|g| g.gene_id.as_deref() == Some("chr1_1200_1300"))
+        );
     }
 
     #[test]
@@ -4422,9 +4448,11 @@ mod tests {
         .unwrap();
         assert!(!genes.is_empty());
         assert_eq!(report.source_format, "genbank");
-        assert!(genes
-            .iter()
-            .any(|g| g.biotype.as_deref() == Some("promoter")));
+        assert!(
+            genes
+                .iter()
+                .any(|g| g.biotype.as_deref() == Some("promoter"))
+        );
         assert!(genes.iter().any(|g| {
             g.biotype.as_deref() == Some("origin_of_replication")
                 && g.start_1based <= 2978

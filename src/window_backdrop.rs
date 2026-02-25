@@ -10,14 +10,90 @@ use std::{
 
 const DEFAULT_MAIN_IMAGE_PATH: &str = "assets/backgrounds/Rostock_Neuer_Markt.jpeg";
 const DEFAULT_SEQUENCE_IMAGE_PATH: &str = "assets/backgrounds/Lab_PCR_Machines.jpg";
+const DEFAULT_SPLICING_IMAGE_PATH: &str = "assets/backgrounds/Lab_Hood.jpg";
 const DEFAULT_POOL_IMAGE_PATH: &str = "assets/backgrounds/Lab_Plates_Piles.jpg";
 const DEFAULT_CONFIGURATION_IMAGE_PATH: &str = "assets/backgrounds/Lab_Glas_Dry.jpg";
 const DEFAULT_HELP_IMAGE_PATH: &str = "assets/backgrounds/Lab_Tubes.jpg";
+
+const DEFAULT_MAIN_TINT_RGB: [u8; 3] = [158, 108, 66];
+const DEFAULT_SEQUENCE_TINT_RGB: [u8; 3] = [176, 116, 72];
+const DEFAULT_SPLICING_TINT_RGB: [u8; 3] = [113, 135, 86];
+const DEFAULT_POOL_TINT_RGB: [u8; 3] = [148, 95, 58];
+const DEFAULT_CONFIGURATION_TINT_RGB: [u8; 3] = [169, 118, 79];
+const DEFAULT_HELP_TINT_RGB: [u8; 3] = [141, 92, 56];
+
+fn default_main_image_path() -> String {
+    DEFAULT_MAIN_IMAGE_PATH.to_string()
+}
+
+fn default_sequence_image_path() -> String {
+    DEFAULT_SEQUENCE_IMAGE_PATH.to_string()
+}
+
+fn default_splicing_image_path() -> String {
+    DEFAULT_SPLICING_IMAGE_PATH.to_string()
+}
+
+fn default_pool_image_path() -> String {
+    DEFAULT_POOL_IMAGE_PATH.to_string()
+}
+
+fn default_configuration_image_path() -> String {
+    DEFAULT_CONFIGURATION_IMAGE_PATH.to_string()
+}
+
+fn default_help_image_path() -> String {
+    DEFAULT_HELP_IMAGE_PATH.to_string()
+}
+
+fn default_main_tint_rgb() -> [u8; 3] {
+    DEFAULT_MAIN_TINT_RGB
+}
+
+fn default_sequence_tint_rgb() -> [u8; 3] {
+    DEFAULT_SEQUENCE_TINT_RGB
+}
+
+fn default_splicing_tint_rgb() -> [u8; 3] {
+    DEFAULT_SPLICING_TINT_RGB
+}
+
+fn default_pool_tint_rgb() -> [u8; 3] {
+    DEFAULT_POOL_TINT_RGB
+}
+
+fn default_configuration_tint_rgb() -> [u8; 3] {
+    DEFAULT_CONFIGURATION_TINT_RGB
+}
+
+fn default_help_tint_rgb() -> [u8; 3] {
+    DEFAULT_HELP_TINT_RGB
+}
+
+pub fn default_tint_rgb_for_kind(kind: WindowBackdropKind) -> [u8; 3] {
+    match kind {
+        WindowBackdropKind::Main => DEFAULT_MAIN_TINT_RGB,
+        WindowBackdropKind::Sequence => DEFAULT_SEQUENCE_TINT_RGB,
+        WindowBackdropKind::Splicing => DEFAULT_SPLICING_TINT_RGB,
+        WindowBackdropKind::Pool => DEFAULT_POOL_TINT_RGB,
+        WindowBackdropKind::Configuration => DEFAULT_CONFIGURATION_TINT_RGB,
+        WindowBackdropKind::Help => DEFAULT_HELP_TINT_RGB,
+    }
+}
+
+fn sanitize_opacity(value: f32, default: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, 0.25)
+    } else {
+        default
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowBackdropKind {
     Main,
     Sequence,
+    Splicing,
     Pool,
     Configuration,
     Help,
@@ -28,6 +104,7 @@ impl WindowBackdropKind {
         match self {
             Self::Main => "GENtle",
             Self::Sequence => "DNA",
+            Self::Splicing => "SPLICING",
             Self::Pool => "POOL",
             Self::Configuration => "SETTINGS",
             Self::Help => "HELP",
@@ -43,11 +120,30 @@ pub struct WindowBackdropSettings {
     pub tint_opacity: f32,
     pub image_opacity: f32,
     pub show_text_watermark: bool,
+    #[serde(default = "default_main_image_path")]
     pub main_image_path: String,
+    #[serde(default = "default_sequence_image_path")]
     pub sequence_image_path: String,
+    #[serde(default = "default_splicing_image_path")]
+    pub splicing_image_path: String,
+    #[serde(default = "default_pool_image_path")]
     pub pool_image_path: String,
+    #[serde(default = "default_configuration_image_path")]
     pub configuration_image_path: String,
+    #[serde(default = "default_help_image_path")]
     pub help_image_path: String,
+    #[serde(default = "default_main_tint_rgb")]
+    pub main_tint_rgb: [u8; 3],
+    #[serde(default = "default_sequence_tint_rgb")]
+    pub sequence_tint_rgb: [u8; 3],
+    #[serde(default = "default_splicing_tint_rgb")]
+    pub splicing_tint_rgb: [u8; 3],
+    #[serde(default = "default_pool_tint_rgb")]
+    pub pool_tint_rgb: [u8; 3],
+    #[serde(default = "default_configuration_tint_rgb")]
+    pub configuration_tint_rgb: [u8; 3],
+    #[serde(default = "default_help_tint_rgb")]
+    pub help_tint_rgb: [u8; 3],
 }
 
 impl Default for WindowBackdropSettings {
@@ -58,11 +154,18 @@ impl Default for WindowBackdropSettings {
             tint_opacity: 0.16,
             image_opacity: 0.22,
             show_text_watermark: false,
-            main_image_path: DEFAULT_MAIN_IMAGE_PATH.to_string(),
-            sequence_image_path: DEFAULT_SEQUENCE_IMAGE_PATH.to_string(),
-            pool_image_path: DEFAULT_POOL_IMAGE_PATH.to_string(),
-            configuration_image_path: DEFAULT_CONFIGURATION_IMAGE_PATH.to_string(),
-            help_image_path: DEFAULT_HELP_IMAGE_PATH.to_string(),
+            main_image_path: default_main_image_path(),
+            sequence_image_path: default_sequence_image_path(),
+            splicing_image_path: default_splicing_image_path(),
+            pool_image_path: default_pool_image_path(),
+            configuration_image_path: default_configuration_image_path(),
+            help_image_path: default_help_image_path(),
+            main_tint_rgb: default_main_tint_rgb(),
+            sequence_tint_rgb: default_sequence_tint_rgb(),
+            splicing_tint_rgb: default_splicing_tint_rgb(),
+            pool_tint_rgb: default_pool_tint_rgb(),
+            configuration_tint_rgb: default_configuration_tint_rgb(),
+            help_tint_rgb: default_help_tint_rgb(),
         }
     }
 }
@@ -72,33 +175,53 @@ impl WindowBackdropSettings {
         match kind {
             WindowBackdropKind::Main => self.main_image_path.as_str(),
             WindowBackdropKind::Sequence => self.sequence_image_path.as_str(),
+            WindowBackdropKind::Splicing => self.splicing_image_path.as_str(),
             WindowBackdropKind::Pool => self.pool_image_path.as_str(),
             WindowBackdropKind::Configuration => self.configuration_image_path.as_str(),
             WindowBackdropKind::Help => self.help_image_path.as_str(),
         }
     }
 
+    pub fn tint_color_for_kind(&self, kind: WindowBackdropKind) -> Color32 {
+        let [r, g, b] = match kind {
+            WindowBackdropKind::Main => self.main_tint_rgb,
+            WindowBackdropKind::Sequence => self.sequence_tint_rgb,
+            WindowBackdropKind::Splicing => self.splicing_tint_rgb,
+            WindowBackdropKind::Pool => self.pool_tint_rgb,
+            WindowBackdropKind::Configuration => self.configuration_tint_rgb,
+            WindowBackdropKind::Help => self.help_tint_rgb,
+        };
+        Color32::from_rgb(r, g, b)
+    }
+
     pub fn apply_runtime_defaults_if_legacy(&mut self) {
         self.main_image_path = migrate_legacy_image_path(&self.main_image_path);
         self.sequence_image_path = migrate_legacy_image_path(&self.sequence_image_path);
+        self.splicing_image_path = migrate_legacy_image_path(&self.splicing_image_path);
         self.pool_image_path = migrate_legacy_image_path(&self.pool_image_path);
         self.configuration_image_path = migrate_legacy_image_path(&self.configuration_image_path);
         self.help_image_path = migrate_legacy_image_path(&self.help_image_path);
 
-        let all_empty = self.main_image_path.trim().is_empty()
+        self.tint_opacity = sanitize_opacity(self.tint_opacity, 0.16);
+        self.image_opacity = sanitize_opacity(self.image_opacity, 0.22);
+
+        let legacy_rows_empty = self.main_image_path.trim().is_empty()
             && self.sequence_image_path.trim().is_empty()
             && self.pool_image_path.trim().is_empty()
             && self.configuration_image_path.trim().is_empty()
             && self.help_image_path.trim().is_empty();
-        if all_empty {
-            self.main_image_path = DEFAULT_MAIN_IMAGE_PATH.to_string();
-            self.sequence_image_path = DEFAULT_SEQUENCE_IMAGE_PATH.to_string();
-            self.pool_image_path = DEFAULT_POOL_IMAGE_PATH.to_string();
-            self.configuration_image_path = DEFAULT_CONFIGURATION_IMAGE_PATH.to_string();
-            self.help_image_path = DEFAULT_HELP_IMAGE_PATH.to_string();
+        if legacy_rows_empty {
+            self.main_image_path = default_main_image_path();
+            self.sequence_image_path = default_sequence_image_path();
+            if self.splicing_image_path.trim().is_empty() {
+                self.splicing_image_path = default_splicing_image_path();
+            }
+            self.pool_image_path = default_pool_image_path();
+            self.configuration_image_path = default_configuration_image_path();
+            self.help_image_path = default_help_image_path();
         }
 
-        if all_empty && !self.enabled {
+        if legacy_rows_empty && !self.enabled {
             self.enabled = true;
         }
     }
@@ -120,16 +243,6 @@ pub fn current_window_backdrop_settings() -> WindowBackdropSettings {
 pub fn set_window_backdrop_settings(settings: WindowBackdropSettings) {
     if let Ok(mut slot) = active_settings().write() {
         *slot = settings;
-    }
-}
-
-fn kind_color(kind: WindowBackdropKind) -> Color32 {
-    match kind {
-        WindowBackdropKind::Main => Color32::from_rgb(158, 108, 66),
-        WindowBackdropKind::Sequence => Color32::from_rgb(176, 116, 72),
-        WindowBackdropKind::Pool => Color32::from_rgb(148, 95, 58),
-        WindowBackdropKind::Configuration => Color32::from_rgb(169, 118, 79),
-        WindowBackdropKind::Help => Color32::from_rgb(141, 92, 56),
     }
 }
 
@@ -235,30 +348,32 @@ pub fn paint_window_backdrop(
     }
 
     let rect = ui.max_rect();
-    let accent = kind_color(kind);
+    let accent = settings.tint_color_for_kind(kind);
     let tint_alpha = alpha_to_u8(settings.tint_opacity);
     let image_alpha = alpha_to_u8(settings.image_opacity);
     let painter = ui.painter_at(rect);
 
-    if settings.draw_images {
+    if settings.draw_images && image_alpha > 0 {
         let path = settings.image_path_for_kind(kind).trim();
         if let Some(resolved_uri) = resolve_runtime_asset_uri(path) {
-            let mut image = egui::Image::new(resolved_uri).tint(Color32::from_rgba_unmultiplied(
-                196,
-                196,
-                196,
-                image_alpha,
-            ));
-
-            if let Ok(egui::load::TexturePoll::Ready { texture }) =
-                image.load_for_size(ui.ctx(), rect.size())
+            let image_tint = Color32::from_rgba_unmultiplied(196, 196, 196, image_alpha);
+            match egui::Image::new(resolved_uri)
+                .show_loading_spinner(false)
+                .load_for_size(ui.ctx(), rect.size())
             {
-                let uv = cover_uv_rect(texture.size, rect.size());
-                image = image.uv(uv);
+                Ok(egui::load::TexturePoll::Ready { texture }) => {
+                    let uv = cover_uv_rect(texture.size, rect.size());
+                    painter.image(texture.id, rect, uv, image_tint);
+                }
+                Ok(egui::load::TexturePoll::Pending { .. }) => {
+                    // Keep repainting while the backdrop is loading, but do not show
+                    // a spinner arc for full-window background images.
+                    ui.ctx().request_repaint();
+                }
+                Err(_) => {
+                    // Keep tint/watermark fallback only when image loading fails.
+                }
             }
-
-            // Paint-only backdrop: this must never participate in layout, so main content remains visible.
-            image.paint_at(ui, rect);
         }
     }
 
@@ -285,7 +400,11 @@ pub fn paint_window_backdrop(
 
 #[cfg(test)]
 mod tests {
-    use super::{cover_uv_rect, resolve_runtime_asset_uri};
+    use super::{
+        DEFAULT_SEQUENCE_IMAGE_PATH, DEFAULT_SPLICING_IMAGE_PATH, WindowBackdropKind,
+        WindowBackdropSettings, cover_uv_rect, default_tint_rgb_for_kind,
+        resolve_runtime_asset_uri,
+    };
     use eframe::egui::Vec2;
 
     #[test]
@@ -329,5 +448,82 @@ mod tests {
         assert!(uv.max.y < 1.0);
         assert_eq!(uv.min.x, 0.0);
         assert_eq!(uv.max.x, 1.0);
+    }
+
+    #[test]
+    fn default_settings_include_splicing_backdrop_path() {
+        let settings = WindowBackdropSettings::default();
+        assert_eq!(
+            settings.image_path_for_kind(WindowBackdropKind::Splicing),
+            DEFAULT_SPLICING_IMAGE_PATH
+        );
+    }
+
+    #[test]
+    fn default_settings_include_distinct_splicing_tint() {
+        let settings = WindowBackdropSettings::default();
+        let sequence = settings.tint_color_for_kind(WindowBackdropKind::Sequence);
+        let splicing = settings.tint_color_for_kind(WindowBackdropKind::Splicing);
+        assert_ne!(sequence, splicing);
+    }
+
+    #[test]
+    fn serde_defaults_fill_missing_image_and_color_fields() {
+        let legacy_json = r#"{
+            "enabled": true,
+            "draw_images": true,
+            "tint_opacity": 0.16,
+            "image_opacity": 0.22,
+            "show_text_watermark": false,
+            "main_image_path": "assets/backgrounds/legacy_main.jpg"
+        }"#;
+        let parsed: WindowBackdropSettings =
+            serde_json::from_str(legacy_json).expect("deserialize legacy backdrop settings");
+
+        assert_eq!(parsed.main_image_path, "assets/backgrounds/legacy_main.jpg");
+        assert_eq!(parsed.sequence_image_path, DEFAULT_SEQUENCE_IMAGE_PATH);
+        assert_eq!(parsed.splicing_image_path, DEFAULT_SPLICING_IMAGE_PATH);
+        let main_tint = parsed.tint_color_for_kind(WindowBackdropKind::Main);
+        let sequence_tint = parsed.tint_color_for_kind(WindowBackdropKind::Sequence);
+        assert_ne!(main_tint, eframe::egui::Color32::BLACK);
+        assert_ne!(sequence_tint, eframe::egui::Color32::BLACK);
+    }
+
+    #[test]
+    fn default_tint_accessor_matches_defaults() {
+        let settings = WindowBackdropSettings::default();
+        for kind in [
+            WindowBackdropKind::Main,
+            WindowBackdropKind::Sequence,
+            WindowBackdropKind::Splicing,
+            WindowBackdropKind::Pool,
+            WindowBackdropKind::Configuration,
+            WindowBackdropKind::Help,
+        ] {
+            let expected = default_tint_rgb_for_kind(kind);
+            let actual = settings.tint_color_for_kind(kind);
+            assert_eq!(
+                actual,
+                eframe::egui::Color32::from_rgb(expected[0], expected[1], expected[2])
+            );
+        }
+    }
+
+    #[test]
+    fn apply_runtime_defaults_clamps_invalid_opacity_values() {
+        let mut settings = WindowBackdropSettings {
+            tint_opacity: f32::NAN,
+            image_opacity: 10.0,
+            ..WindowBackdropSettings::default()
+        };
+        settings.apply_runtime_defaults_if_legacy();
+        assert_eq!(settings.tint_opacity, 0.16);
+        assert_eq!(settings.image_opacity, 0.25);
+
+        settings.tint_opacity = -1.0;
+        settings.image_opacity = -0.2;
+        settings.apply_runtime_defaults_if_legacy();
+        assert_eq!(settings.tint_opacity, 0.0);
+        assert_eq!(settings.image_opacity, 0.0);
     }
 }

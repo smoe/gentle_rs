@@ -10938,14 +10938,55 @@ Error: `{err}`"
     fn window_backdrop_row_mut<'a>(
         settings: &'a mut WindowBackdropSettings,
         row_index: usize,
-    ) -> (&'static str, &'a mut String) {
+    ) -> (
+        WindowBackdropKind,
+        &'static str,
+        &'a mut [u8; 3],
+        &'a mut String,
+    ) {
         match row_index {
-            0 => ("Main", &mut settings.main_image_path),
-            1 => ("Sequence", &mut settings.sequence_image_path),
-            2 => ("Pool", &mut settings.pool_image_path),
-            3 => ("Configuration", &mut settings.configuration_image_path),
-            4 => ("Help", &mut settings.help_image_path),
-            _ => ("Unknown", &mut settings.main_image_path),
+            0 => (
+                WindowBackdropKind::Main,
+                "Main",
+                &mut settings.main_tint_rgb,
+                &mut settings.main_image_path,
+            ),
+            1 => (
+                WindowBackdropKind::Sequence,
+                "Sequence",
+                &mut settings.sequence_tint_rgb,
+                &mut settings.sequence_image_path,
+            ),
+            2 => (
+                WindowBackdropKind::Splicing,
+                "Splicing",
+                &mut settings.splicing_tint_rgb,
+                &mut settings.splicing_image_path,
+            ),
+            3 => (
+                WindowBackdropKind::Pool,
+                "Pool",
+                &mut settings.pool_tint_rgb,
+                &mut settings.pool_image_path,
+            ),
+            4 => (
+                WindowBackdropKind::Configuration,
+                "Configuration",
+                &mut settings.configuration_tint_rgb,
+                &mut settings.configuration_image_path,
+            ),
+            5 => (
+                WindowBackdropKind::Help,
+                "Help",
+                &mut settings.help_tint_rgb,
+                &mut settings.help_image_path,
+            ),
+            _ => (
+                WindowBackdropKind::Main,
+                "Unknown",
+                &mut settings.main_tint_rgb,
+                &mut settings.main_image_path,
+            ),
         }
     }
 
@@ -10974,89 +11015,96 @@ Error: `{err}`"
         settings: &mut WindowBackdropSettings,
         changed: &mut bool,
     ) {
-        const ROW_COUNT: usize = 5;
-        const MIN_VISIBLE_ROWS: f32 = 2.0;
-        let row_height = ui.spacing().interact_size.y.max(24.0);
-        let header_height = row_height;
-        let desired_height = header_height + row_height * ROW_COUNT as f32 + 12.0;
-        let minimum_height = header_height + row_height * MIN_VISIBLE_ROWS + 12.0;
-        let table_height = desired_height.min(ui.available_height().max(minimum_height));
-
-        ui.label("Background image paths");
-        egui::ScrollArea::vertical()
-            .id_salt("window_backdrop_path_table")
-            .max_height(table_height)
+        const ROW_COUNT: usize = 6;
+        ui.label("Per-window tint and image paths");
+        egui::Grid::new("window_backdrop_path_grid")
+            .num_columns(4)
+            .striped(true)
+            .spacing(egui::vec2(10.0, 6.0))
             .show(ui, |ui| {
-                egui::Grid::new("window_backdrop_path_grid")
-                    .num_columns(3)
-                    .striped(true)
-                    .spacing(egui::vec2(10.0, 6.0))
-                    .show(ui, |ui| {
-                        ui.strong("Window");
-                        ui.strong("Path");
-                        ui.strong("Actions");
-                        ui.end_row();
+                ui.strong("Window");
+                ui.strong("Tint");
+                ui.strong("Path");
+                ui.strong("Actions");
+                ui.end_row();
 
-                        for row_index in 0..ROW_COUNT {
-                            let (label, value) = Self::window_backdrop_row_mut(settings, row_index);
-                            ui.label(label);
+                for row_index in 0..ROW_COUNT {
+                    let (kind, label, tint_rgb, value) =
+                        Self::window_backdrop_row_mut(settings, row_index);
+                    ui.label(label);
 
-                            ui.horizontal(|ui| {
-                                let field_width = (ui.available_width() - 20.0).max(140.0);
-                                if ui
-                                    .add_sized(
-                                        [field_width, 0.0],
-                                        egui::TextEdit::singleline(value)
-                                            .hint_text("/absolute/path/to/image.png"),
-                                    )
-                                    .on_hover_text(
-                                        "Optional absolute or working-directory-relative image path for this window type",
-                                    )
-                                    .changed()
-                                {
-                                    *changed = true;
-                                }
-                                let (status_color, status_message) =
-                                    Self::window_backdrop_path_status(value);
-                                ui.label(egui::RichText::new("●").color(status_color))
-                                    .on_hover_text(status_message);
-                            });
+                    ui.horizontal(|ui| {
+                        let mut color = egui::Color32::from_rgb(tint_rgb[0], tint_rgb[1], tint_rgb[2]);
+                        let response = ui
+                            .color_edit_button_srgba(&mut color)
+                            .on_hover_text("Pick tint color for this window type");
+                        if response.changed() {
+                            *tint_rgb = [color.r(), color.g(), color.b()];
+                            *changed = true;
+                        }
+                        ui.monospace(format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b()));
+                    });
 
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .small_button("Browse...")
-                                    .on_hover_text("Pick an image file for this window backdrop")
-                                    .clicked()
-                                {
-                                    if let Some(path) = rfd::FileDialog::new()
-                                        .add_filter(
-                                            "Images",
-                                            &["png", "jpg", "jpeg", "gif", "bmp", "webp"],
-                                        )
-                                        .pick_file()
-                                    {
-                                        *value = path.display().to_string();
-                                        *changed = true;
-                                    }
-                                }
-                                if ui
-                                    .add_enabled(
-                                        !value.trim().is_empty(),
-                                        egui::Button::new("Clear"),
-                                    )
-                                    .on_hover_text("Clear custom image path for this window type")
-                                    .clicked()
-                                {
-                                    value.clear();
-                                    *changed = true;
-                                }
-                            });
+                    ui.horizontal(|ui| {
+                        let field_width = (ui.available_width() - 20.0).max(140.0);
+                        if ui
+                            .add_sized(
+                                [field_width, 0.0],
+                                egui::TextEdit::singleline(value)
+                                    .hint_text("/absolute/path/to/image.png"),
+                            )
+                            .on_hover_text(
+                                "Optional absolute or working-directory-relative image path for this window type",
+                            )
+                            .changed()
+                        {
+                            *changed = true;
+                        }
+                        let (status_color, status_message) = Self::window_backdrop_path_status(value);
+                        ui.label(egui::RichText::new("●").color(status_color))
+                            .on_hover_text(status_message);
+                    });
 
-                            ui.end_row();
+                    ui.horizontal(|ui| {
+                        let default_tint = window_backdrop::default_tint_rgb_for_kind(kind);
+                        if ui
+                            .small_button("Browse...")
+                            .on_hover_text("Pick an image file for this window backdrop")
+                            .clicked()
+                        {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Images", &["png", "jpg", "jpeg", "gif", "bmp", "webp"])
+                                .pick_file()
+                            {
+                                *value = path.display().to_string();
+                                *changed = true;
+                            }
+                        }
+                        if ui
+                            .add_enabled(!value.trim().is_empty(), egui::Button::new("Clear"))
+                            .on_hover_text("Clear custom image path for this window type")
+                            .clicked()
+                        {
+                            value.clear();
+                            *changed = true;
+                        }
+                        if ui
+                            .add_enabled(
+                                *tint_rgb != default_tint,
+                                egui::Button::new("Reset Color"),
+                            )
+                            .on_hover_text("Reset tint color for this window type")
+                            .clicked()
+                        {
+                            *tint_rgb = default_tint;
+                            *changed = true;
                         }
                     });
-        });
-        ui.small("Scroll when space is limited; at least two rows remain visible.");
+
+                    ui.end_row();
+                }
+            });
+        ui.small("Color and image settings are saved to app settings after Apply Window Styling.");
     }
 
     fn refresh_open_sequence_windows(&mut self, ctx: &egui::Context) -> usize {

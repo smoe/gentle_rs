@@ -85,10 +85,11 @@ order. Durable architecture constraints and decisions remain in
   - markdown images render at constrained width
   - image captions are authored inline in markdown (`*Figure: ...*`)
 - Experimental window backdrop styling path:
-  - optional per-window-type accent tint (`main`, `sequence`, `pool`,
-    `configuration`, `help`)
+  - optional per-window-type accent tint (`main`, `sequence`, `splicing`,
+    `pool`, `configuration`, `help`)
   - optional image watermark path per window type
-  - configuration UI now includes image-file pickers and live path validation
+  - configuration UI now includes tint color pickers, image-file pickers,
+    and live path validation
   - persisted in app settings and live-applied from Configuration -> Graphics
 
 ### High-level parity snapshot

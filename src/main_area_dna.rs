@@ -25,6 +25,9 @@ use crate::{
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_sequence::RenderSequence,
     tf_motifs,
+    window_backdrop::{
+        WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
+    },
 };
 use eframe::egui::{self, Frame, PointerState, Vec2};
 use serde::{Deserialize, Serialize};
@@ -5206,30 +5209,24 @@ impl MainAreaDna {
     }
 
     fn sync_splicing_expert_window_state(&mut self) {
-        match self.description_cache_expert_view.as_ref() {
-            Some(FeatureExpertView::Splicing(view)) => {
-                let needs_refresh = self.splicing_expert_window_feature_id
-                    != Some(view.target_feature_id)
-                    || self
-                        .splicing_expert_window_view
-                        .as_ref()
-                        .map(|cached| {
-                            cached.seq_id != view.seq_id
-                                || cached.region_start_1based != view.region_start_1based
-                                || cached.region_end_1based != view.region_end_1based
-                                || cached.transcript_count != view.transcript_count
-                        })
-                        .unwrap_or(true);
-                if needs_refresh {
-                    self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-                    self.splicing_expert_window_view = Some(view.clone());
-                    self.show_splicing_expert_window = true;
-                }
-            }
-            _ => {
-                self.splicing_expert_window_feature_id = None;
-                self.splicing_expert_window_view = None;
-                self.show_splicing_expert_window = false;
+        if let Some(FeatureExpertView::Splicing(view)) = self.description_cache_expert_view.as_ref()
+        {
+            let needs_refresh = self.splicing_expert_window_feature_id
+                != Some(view.target_feature_id)
+                || self
+                    .splicing_expert_window_view
+                    .as_ref()
+                    .map(|cached| {
+                        cached.seq_id != view.seq_id
+                            || cached.region_start_1based != view.region_start_1based
+                            || cached.region_end_1based != view.region_end_1based
+                            || cached.transcript_count != view.transcript_count
+                    })
+                    .unwrap_or(true);
+            if needs_refresh {
+                self.splicing_expert_window_feature_id = Some(view.target_feature_id);
+                self.splicing_expert_window_view = Some(view.clone());
+                self.show_splicing_expert_window = true;
             }
         }
     }
@@ -5253,9 +5250,15 @@ impl MainAreaDna {
             .resizable(true)
             .default_size(Vec2::new(1180.0, 760.0))
             .show(ctx, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                 self.render_splicing_expert_view_ui(ui, &view);
             });
         self.show_splicing_expert_window = open;
+        if !open {
+            self.splicing_expert_window_feature_id = None;
+            self.splicing_expert_window_view = None;
+        }
     }
 
     fn apply_sequence_derivation(&mut self, op: Operation) {
