@@ -32,6 +32,8 @@ Access:
 - Main window menu: `File -> Configuration...` or `Settings -> Configuration...`
 - macOS app menu: `GENtle -> GENtle Settings...`
 - Shortcut: `Cmd+,`
+- Re-selecting `Configuration...` while already open focuses the existing window
+  (single-instance behavior).
 
 Tabs:
 
@@ -44,6 +46,7 @@ Tabs:
   - Validate executable availability/version from within the UI.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
+  - Configure feature-details font size (`Feature detail font size`, live-applied).
   - Configure GC-content bin size (`GC bin size`, default `100 bp`) used by
     map overlays and SVG export.
   - Configure optional `Window Styling (experimental)`:
@@ -85,6 +88,8 @@ The project main window (lineage page) supports two views:
 - `Graph`: node/edge lineage visualization
 - `Containers`: container list with kind/member-count, open actions, and per-container gel export
 - `Arrangements`: serial lane setups across containers, with arrangement-level gel export
+- In `Table` view, the lineage grid supports both horizontal and vertical
+  scrolling; `Node`/`Op` cells use compact IDs with full values on hover.
 
 Project overview screenshot:
 
@@ -517,6 +522,8 @@ GENtle tracks open native windows and can raise a selected one to front.
   strip with:
   - `Help`: opens the GUI manual
   - `Main`: raises the main project window
+- `Cmd+W` closes the focused native window (sequence and auxiliary viewports,
+  including Configuration/Help/BLAST/Track Import/Agent Assistant/History).
 - Help shortcuts:
   - `F1` (Windows/Linux)
   - `Ctrl+F1` (fallback in function-key reserved environments)

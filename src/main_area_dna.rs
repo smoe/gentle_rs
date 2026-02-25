@@ -506,6 +506,56 @@ mod tests {
     }
 
     #[test]
+    fn compact_shared_affix_labels_shortens_redundant_regulatory_labels() {
+        let labels = vec![
+            "H3K27ac-H3K4me1 hESC enhancer GRCh37_chr1:3597253-3597988 (ATAC-STARR-seq)"
+                .to_string(),
+            "H3K27ac-H3K4me1 hESC enhancer GRCh37_chr1:3600129-3600889 (ATAC-STARR-seq)"
+                .to_string(),
+            "H3K27ac-H3K4me1 hESC enhancer GRCh37_chr1:3605575-3606096 (ATAC-STARR-seq)"
+                .to_string(),
+        ];
+        let compacted = MainAreaDna::compact_shared_affix_labels(&labels);
+        assert_eq!(compacted.len(), labels.len());
+        for (original, compacted) in labels.iter().zip(compacted.iter()) {
+            let compacted = compacted.as_ref().expect("expected compacted label");
+            assert!(
+                compacted.starts_with("...") || compacted.ends_with("..."),
+                "compacted={compacted}"
+            );
+            assert!(
+                compacted.chars().any(|ch| ch.is_ascii_digit()),
+                "compacted={compacted}"
+            );
+            assert!(compacted.len() < original.len());
+        }
+    }
+
+    #[test]
+    fn compact_shared_affix_labels_skips_small_or_weakly_shared_sets() {
+        let small = vec![
+            "regulatory enhancer chr1:1-100".to_string(),
+            "regulatory enhancer chr1:200-300".to_string(),
+        ];
+        assert!(
+            MainAreaDna::compact_shared_affix_labels(&small)
+                .into_iter()
+                .all(|entry| entry.is_none())
+        );
+
+        let weak_shared = vec![
+            "TP73 enhancer chr1:100-200".to_string(),
+            "MYC promoter chr8:20-80".to_string(),
+            "CTCF silencer chr11:400-520".to_string(),
+        ];
+        assert!(
+            MainAreaDna::compact_shared_affix_labels(&weak_shared)
+                .into_iter()
+                .all(|entry| entry.is_none())
+        );
+    }
+
+    #[test]
     fn feature_tree_subgroup_label_groups_mrna_by_gene() {
         let feature = make_feature(
             "mRNA",
@@ -7870,6 +7920,120 @@ impl MainAreaDna {
         format!("{base_label} [{discriminator}]")
     }
 
+    fn shared_prefix_chars(labels: &[String]) -> usize {
+        let Some(first) = labels.first() else {
+            return 0;
+        };
+        let mut prefix: Vec<char> = first.chars().collect();
+        for label in labels.iter().skip(1) {
+            let chars: Vec<char> = label.chars().collect();
+            let mut keep = 0usize;
+            let shared_len = prefix.len().min(chars.len());
+            while keep < shared_len && prefix[keep] == chars[keep] {
+                keep += 1;
+            }
+            prefix.truncate(keep);
+            if prefix.is_empty() {
+                break;
+            }
+        }
+        prefix.len()
+    }
+
+    fn shared_suffix_chars(labels: &[String]) -> usize {
+        let Some(first) = labels.first() else {
+            return 0;
+        };
+        let mut suffix: Vec<char> = first.chars().rev().collect();
+        for label in labels.iter().skip(1) {
+            let chars: Vec<char> = label.chars().rev().collect();
+            let mut keep = 0usize;
+            let shared_len = suffix.len().min(chars.len());
+            while keep < shared_len && suffix[keep] == chars[keep] {
+                keep += 1;
+            }
+            suffix.truncate(keep);
+            if suffix.is_empty() {
+                break;
+            }
+        }
+        suffix.len()
+    }
+
+    fn compact_label_with_shared_affixes(
+        label: &str,
+        prefix_chars: usize,
+        suffix_chars: usize,
+    ) -> Option<String> {
+        if label.trim().is_empty() {
+            return None;
+        }
+        let chars: Vec<char> = label.chars().collect();
+        if chars.is_empty() {
+            return None;
+        }
+
+        let prefix_chars = prefix_chars.min(chars.len());
+        let suffix_chars = suffix_chars.min(chars.len().saturating_sub(prefix_chars));
+        if prefix_chars == 0 && suffix_chars == 0 {
+            return None;
+        }
+        if chars.len() <= prefix_chars.saturating_add(suffix_chars).saturating_add(4) {
+            return None;
+        }
+
+        let mut middle: String = chars[prefix_chars..(chars.len() - suffix_chars)]
+            .iter()
+            .collect();
+        middle = middle
+            .trim_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
+            .to_string();
+        if middle.chars().count() < 4 {
+            return None;
+        }
+
+        let compact = match (prefix_chars > 0, suffix_chars > 0) {
+            (true, true) => format!("...{middle}..."),
+            (true, false) => format!("...{middle}"),
+            (false, true) => format!("{middle}..."),
+            (false, false) => middle,
+        };
+        if compact.chars().count().saturating_add(2) >= chars.len() {
+            None
+        } else {
+            Some(compact)
+        }
+    }
+
+    fn compact_shared_affix_labels(labels: &[String]) -> Vec<Option<String>> {
+        if labels.len() < 3 {
+            return vec![None; labels.len()];
+        }
+        let shared_prefix = Self::shared_prefix_chars(labels);
+        let shared_suffix = Self::shared_suffix_chars(labels);
+
+        let shared_prefix = if shared_prefix >= 12 {
+            shared_prefix
+        } else {
+            0
+        };
+        let shared_suffix = if shared_suffix >= 10 {
+            shared_suffix
+        } else {
+            0
+        };
+        if shared_prefix == 0 && shared_suffix == 0 {
+            return vec![None; labels.len()];
+        }
+
+        labels
+            .iter()
+            .map(|label| {
+                Self::compact_label_with_shared_affixes(label, shared_prefix, shared_suffix)
+            })
+            .collect()
+    }
+
     fn feature_tree_matches_filter(
         feature: &gb_io::seq::Feature,
         filter_text: &str,
@@ -8036,6 +8200,7 @@ impl MainAreaDna {
             prefer_grouped_label: bool,
             show_range_inline_when_ungrouped: bool,
             visible_in_view: bool,
+            is_regulatory: bool,
         }
 
         ui.heading(
@@ -8269,6 +8434,7 @@ impl MainAreaDna {
                     let subgroup_key = subgroup_label
                         .as_ref()
                         .map(|label| label.trim().to_ascii_uppercase());
+                    let is_regulatory = RenderDna::is_regulatory_feature(feature);
                     let prefer_grouped_label = feature
                         .kind
                         .to_string()
@@ -8289,6 +8455,7 @@ impl MainAreaDna {
                             prefer_grouped_label,
                             show_range_inline_when_ungrouped,
                             visible_in_view,
+                            is_regulatory,
                         },
                     ))
                 })
@@ -8369,9 +8536,60 @@ impl MainAreaDna {
                     }
                 }
 
+                let compact_regulatory_feature_labels = {
+                    let regulatory_entries = entries
+                        .iter()
+                        .filter(|entry| entry.is_regulatory)
+                        .collect::<Vec<_>>();
+                    let labels = regulatory_entries
+                        .iter()
+                        .map(|entry| entry.feature_label.clone())
+                        .collect::<Vec<_>>();
+                    let compacted = Self::compact_shared_affix_labels(&labels);
+                    let mut by_id = HashMap::new();
+                    for (entry, compacted_label) in regulatory_entries.into_iter().zip(compacted) {
+                        if let Some(compacted_label) = compacted_label {
+                            by_id.insert(entry.id, compacted_label);
+                        }
+                    }
+                    by_id
+                };
+
+                let compact_regulatory_subgroup_labels = {
+                    let regulatory_subgroups = grouped_entries
+                        .iter()
+                        .filter_map(|(subgroup_key, (subgroup_label, subgroup_entries))| {
+                            if subgroup_entries.iter().any(|entry| entry.is_regulatory) {
+                                Some((subgroup_key.clone(), subgroup_label.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    let labels = regulatory_subgroups
+                        .iter()
+                        .map(|(_, subgroup_label)| subgroup_label.clone())
+                        .collect::<Vec<_>>();
+                    let compacted = Self::compact_shared_affix_labels(&labels);
+                    let mut by_key = HashMap::new();
+                    for ((subgroup_key, _), compacted_label) in
+                        regulatory_subgroups.into_iter().zip(compacted)
+                    {
+                        if let Some(compacted_label) = compacted_label {
+                            by_key.insert(subgroup_key, compacted_label);
+                        }
+                    }
+                    by_key
+                };
+
                 let mut render_entry =
                     |ui: &mut egui::Ui, entry: &FeatureTreeEntry, grouped_entry: bool| {
                         let selected = selected_feature_ids.contains(&entry.id);
+                        let compacted_feature_label =
+                            compact_regulatory_feature_labels.get(&entry.id).cloned();
+                        let compacted_feature_active = compacted_feature_label.is_some();
+                        let display_feature_label =
+                            compacted_feature_label.unwrap_or_else(|| entry.feature_label.clone());
                         let button_label = if grouped_entry
                             && !entry.prefer_grouped_label
                             && !entry.range_label.is_empty()
@@ -8381,9 +8599,9 @@ impl MainAreaDna {
                             && !grouped_entry
                             && !entry.range_label.is_empty()
                         {
-                            format!("{} [{}]", entry.feature_label, entry.range_label)
+                            format!("{} [{}]", display_feature_label, entry.range_label)
                         } else {
-                            entry.feature_label.clone()
+                            display_feature_label
                         };
                         let mut button_text =
                             egui::RichText::new(button_label).size(feature_font_size);
@@ -8393,16 +8611,20 @@ impl MainAreaDna {
                         ui.horizontal(|ui| {
                             let button = egui::Button::new(button_text).selected(selected);
                             let mut response = ui.add(button);
-                            if grouped_entry {
+                            let mut hover_lines: Vec<String> = Vec::new();
+                            if grouped_entry || compacted_feature_active {
                                 let hover_text = if entry.range_label.is_empty() {
                                     entry.feature_label.clone()
                                 } else {
                                     format!("{} ({})", entry.feature_label, entry.range_label)
                                 };
-                                response = response.on_hover_text(hover_text);
-                            } else if viewport_limited && !entry.visible_in_view {
-                                response =
-                                    response.on_hover_text("Outside current linear view span");
+                                hover_lines.push(hover_text);
+                            }
+                            if viewport_limited && !entry.visible_in_view {
+                                hover_lines.push("Outside current linear view span".to_string());
+                            }
+                            if !hover_lines.is_empty() {
+                                response = response.on_hover_text(hover_lines.join("\n"));
                             }
                             if selected && self.pending_feature_tree_scroll_to == Some(entry.id) {
                                 response.scroll_to_me(Some(egui::Align::Center));
@@ -8467,13 +8689,17 @@ impl MainAreaDna {
                         .iter()
                         .filter(|entry| entry.visible_in_view)
                         .count();
+                    let subgroup_label_compacted = compact_regulatory_subgroup_labels
+                        .get(&subgroup_key)
+                        .cloned()
+                        .unwrap_or_else(|| subgroup_label.clone());
                     let subgroup_heading = Self::format_feature_tree_count_label(
-                        subgroup_label,
+                        &subgroup_label_compacted,
                         subgroup_visible_count,
                         subgroup_entries.len(),
                         viewport_limited,
                     );
-                    egui::CollapsingHeader::new(
+                    let subgroup_response = egui::CollapsingHeader::new(
                         egui::RichText::new(subgroup_heading)
                             .size(feature_font_size)
                             .strong(),
@@ -8492,6 +8718,11 @@ impl MainAreaDna {
                             render_entry(ui, entry, true);
                         }
                     });
+                    if subgroup_label_compacted != *subgroup_label {
+                        subgroup_response
+                            .header_response
+                            .on_hover_text(subgroup_label.clone());
+                    }
                 }
 
                 for entry in ungrouped_entries {

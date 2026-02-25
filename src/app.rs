@@ -1797,10 +1797,21 @@ Error: `{err}`"
     }
 
     fn open_configuration_dialog(&mut self) {
+        if self.show_configuration_dialog {
+            self.queue_focus_viewport(Self::configuration_viewport_id());
+            return;
+        }
         self.sync_configuration_from_runtime();
         self.configuration_tab = ConfigurationTab::ExternalApplications;
         self.show_configuration_dialog = true;
         self.configuration_status.clear();
+        self.queue_focus_viewport(Self::configuration_viewport_id());
+    }
+
+    fn viewport_close_requested_or_shortcut(ctx: &egui::Context) -> bool {
+        let close_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::W);
+        let shortcut_triggered = ctx.input_mut(|i| i.consume_shortcut(&close_shortcut));
+        shortcut_triggered || ctx.input(|i| i.viewport().close_requested())
     }
 
     fn open_command_palette_dialog(&mut self) {
@@ -6133,7 +6144,7 @@ Error: `{err}`"
                 self.render_reference_genome_prepare_contents(ui);
             });
 
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_reference_genome_prepare_dialog = false;
             }
         });
@@ -6829,7 +6840,7 @@ Error: `{err}`"
                 self.render_reference_genome_blast_contents(ui);
             });
 
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_reference_genome_blast_dialog = false;
             }
         });
@@ -7541,7 +7552,7 @@ Error: `{err}`"
                 self.render_genome_bed_track_contents(ui);
             });
 
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_genome_bed_track_dialog = false;
             }
         });
@@ -8120,7 +8131,7 @@ Error: `{err}`"
                     self.render_agent_assistant_contents(ui);
                 });
 
-                if ctx.input(|i| i.viewport().close_requested()) {
+                if Self::viewport_close_requested_or_shortcut(ctx) {
                     self.show_agent_assistant_dialog = false;
                 }
             },
@@ -9027,7 +9038,7 @@ Error: `{err}`"
                 }
 
                 // "Close window" action
-                if ctx.input(|i| i.viewport().close_requested()) {
+                if Self::viewport_close_requested_or_shortcut(ctx) {
                     if let Ok(mut to_close) = windows_to_close.write() {
                         to_close.push(id);
                     } else {
@@ -10454,13 +10465,17 @@ Error: `{err}`"
                     }
                 });
         } else {
+            let table_max_height = ui.available_height().clamp(220.0, 520.0);
             egui::ScrollArea::both()
                 .id_salt("lineage_table_scroll")
                 .auto_shrink([false, false])
+                .max_height(table_max_height)
                 .show(ui, |ui| {
+                    ui.set_min_width(1080.0);
                     egui::Grid::new("lineage_table_grid")
                         .striped(true)
-                        .min_col_width(90.0)
+                        .min_col_width(72.0)
+                        .spacing(egui::vec2(10.0, 6.0))
                         .show(ui, |ui| {
                             ui.strong("Node");
                             ui.strong("Sequence");
@@ -10473,7 +10488,25 @@ Error: `{err}`"
                             ui.strong("Action");
                             ui.end_row();
                             for row in &self.lineage_rows {
-                                ui.monospace(&row.node_id);
+                                let node_display = Self::compact_lineage_node_label(&row.node_id, 10);
+                                let node_response = ui
+                                    .allocate_ui_with_layout(
+                                        egui::vec2(84.0, ui.spacing().interact_size.y),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(node_display.clone())
+                                                        .monospace(),
+                                                )
+                                                .truncate(),
+                                            )
+                                        },
+                                    )
+                                    .inner;
+                                if node_display != row.node_id {
+                                    node_response.on_hover_text(row.node_id.clone());
+                                }
                                 if ui
                                     .button(&row.seq_id)
                                     .on_hover_text("Open this sequence in a dedicated window")
@@ -10487,7 +10520,25 @@ Error: `{err}`"
                                     row.parents.join(" + ")
                                 });
                                 ui.label(&row.origin);
-                                ui.monospace(&row.created_by_op);
+                                let op_display = Self::compact_lineage_node_label(&row.created_by_op, 11);
+                                let op_response = ui
+                                    .allocate_ui_with_layout(
+                                        egui::vec2(92.0, ui.spacing().interact_size.y),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(op_display.clone())
+                                                        .monospace(),
+                                                )
+                                                .truncate(),
+                                            )
+                                        },
+                                    )
+                                    .inner;
+                                if op_display != row.created_by_op {
+                                    op_response.on_hover_text(row.created_by_op.clone());
+                                }
                                 ui.monospace(format!("{} bp", row.length));
                                 ui.label(if row.circular { "circular" } else { "linear" });
                                 match row.kind {
@@ -11746,7 +11797,7 @@ Error: `{err}`"
                 self.render_configuration_contents(ui);
             });
 
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_configuration_dialog = false;
             }
         });
@@ -11914,7 +11965,7 @@ Error: `{err}`"
                     egui::CentralPanel::default().show(ctx, |ui| {
                         render_contents(ui);
                     });
-                    if ctx.input(|i| i.viewport().close_requested()) {
+                    if Self::viewport_close_requested_or_shortcut(ctx) {
                         open = false;
                     }
                 }
@@ -12202,7 +12253,7 @@ Error: `{err}`"
                 egui::CentralPanel::default().show(ctx, |ui| {
                     render_contents(ui);
                 });
-                if ctx.input(|i| i.viewport().close_requested()) {
+                if Self::viewport_close_requested_or_shortcut(ctx) {
                     open = false;
                 }
             }
@@ -12262,7 +12313,7 @@ Error: `{err}`"
                 self.render_help_contents(ui);
             });
 
-            if ctx.input(|i| i.viewport().close_requested()) {
+            if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_help_dialog = false;
             }
         });
@@ -13171,6 +13222,26 @@ mod tests {
             "fallback help markdown",
         );
         assert_eq!(loaded, "fallback help markdown");
+    }
+
+    #[test]
+    fn open_configuration_dialog_focuses_existing_window_without_resetting_edits() {
+        let mut app = GENtleApp::default();
+        app.open_configuration_dialog();
+        app.configuration_graphics.feature_details_font_size = 19.25;
+        app.configuration_graphics_dirty = true;
+        app.configuration_status = "editing".to_string();
+
+        app.open_configuration_dialog();
+
+        assert!(app.show_configuration_dialog);
+        assert!(app.configuration_graphics_dirty);
+        assert_eq!(app.configuration_graphics.feature_details_font_size, 19.25);
+        assert_eq!(app.configuration_status, "editing");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::configuration_viewport_id())
+        );
     }
 
     #[test]
