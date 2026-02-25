@@ -117,14 +117,25 @@ Feature tree grouping:
   feature-kind section depending on that mode.
 - `Auto (duplicates)` flattens singleton subgroups and only keeps grouped
   branches where duplicate labels exist.
+- `gene` entries remain ungrouped (flat rows), even in grouped modes, because
+  identifiers are expected to be unique.
 - `mRNA` rows are grouped by their associated gene (when gene qualifiers are
   available), while transcript identifiers are shown on individual mRNA entries.
+- Regulatory entries (`enhancer`/`silencer`) are grouped in nested branches:
+  - primary branch: regulatory class (`enhancer`, `silencer`)
+  - secondary branch:
+    - `active region` when labels start with that prefix
+    - enhancer marker token groups (for example `H3K4me1`,
+      `H3K27ac-H3K4me1`)
+  - per-entry labels remove grouped prefixes to reduce redundancy.
 - Group headings show counts as `visible/total` in linear mode (current stretch
   shown in the map), and as total count in circular mode.
 - `Cmd` (macOS) / `Ctrl` (Windows/Linux) click on feature rows toggles
   multi-selection.
 - In linear mode, multi-selected features are forced to use external labels
   (including short features), improving disambiguation.
+- The feature-tree pane is horizontally resizable; when narrowed, the tree uses
+  horizontal scrolling for long labels.
 - When multi-selection is active, the feature-tree header shows a
   `Multi-select active (N)` chip and a one-click `Clear multi-select` action.
 - Right-clicking a feature row opens per-feature actions:

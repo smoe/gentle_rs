@@ -327,6 +327,8 @@ struct EngineOpsUiState {
     feature_tree_grouping_mode: FeatureTreeGroupingMode,
     #[serde(default)]
     feature_tree_filter: String,
+    #[serde(default = "default_feature_tree_panel_width")]
+    feature_tree_panel_width: f32,
     #[serde(default)]
     feature_tree_second_level_grouping: bool, // legacy compatibility
 }
@@ -506,52 +508,90 @@ mod tests {
     }
 
     #[test]
-    fn compact_shared_affix_labels_shortens_redundant_regulatory_labels() {
-        let labels = vec![
-            "H3K27ac-H3K4me1 hESC enhancer GRCh37_chr1:3597253-3597988 (ATAC-STARR-seq)"
-                .to_string(),
-            "H3K27ac-H3K4me1 hESC enhancer GRCh37_chr1:3600129-3600889 (ATAC-STARR-seq)"
-                .to_string(),
-            "H3K27ac-H3K4me1 hESC enhancer GRCh37_chr1:3605575-3606096 (ATAC-STARR-seq)"
-                .to_string(),
-        ];
-        let compacted = MainAreaDna::compact_shared_affix_labels(&labels);
-        assert_eq!(compacted.len(), labels.len());
-        for (original, compacted) in labels.iter().zip(compacted.iter()) {
-            let compacted = compacted.as_ref().expect("expected compacted label");
-            assert!(
-                compacted.starts_with("...") || compacted.ends_with("..."),
-                "compacted={compacted}"
-            );
-            assert!(
-                compacted.chars().any(|ch| ch.is_ascii_digit()),
-                "compacted={compacted}"
-            );
-            assert!(compacted.len() < original.len());
-        }
+    fn feature_tree_subgroup_label_does_not_group_gene_features() {
+        let feature = make_feature("gene", vec![("gene", "TP73")]);
+        assert_eq!(
+            MainAreaDna::feature_tree_subgroup_label(
+                &feature,
+                "TP73",
+                super::FeatureTreeGroupingMode::Always
+            ),
+            None
+        );
     }
 
     #[test]
-    fn compact_shared_affix_labels_skips_small_or_weakly_shared_sets() {
-        let small = vec![
-            "regulatory enhancer chr1:1-100".to_string(),
-            "regulatory enhancer chr1:200-300".to_string(),
-        ];
-        assert!(
-            MainAreaDna::compact_shared_affix_labels(&small)
-                .into_iter()
-                .all(|entry| entry.is_none())
+    fn derive_regulatory_feature_grouping_groups_enhancers_by_marker_and_strips_prefix() {
+        let feature = make_feature(
+            "regulatory",
+            vec![
+                ("regulatory_class", "enhancer"),
+                (
+                    "note",
+                    "H3K4me1 hESC enhancer chr1:3600129-3600889 (GRCh37/hg19 assembly coordinates)",
+                ),
+            ],
         );
-
-        let weak_shared = vec![
-            "TP73 enhancer chr1:100-200".to_string(),
-            "MYC promoter chr8:20-80".to_string(),
-            "CTCF silencer chr11:400-520".to_string(),
-        ];
+        let grouped = MainAreaDna::derive_regulatory_feature_grouping(
+            &feature,
+            "enhancer: H3K4me1 hESC enhancer chr1:3600129-3600889 (GRCh37/hg19 assembly coordinates)",
+        )
+        .expect("expected regulatory grouping");
+        assert_eq!(grouped.primary_key, "enhancer");
+        assert_eq!(grouped.secondary_label.as_deref(), Some("H3K4me1"));
         assert!(
-            MainAreaDna::compact_shared_affix_labels(&weak_shared)
-                .into_iter()
-                .all(|entry| entry.is_none())
+            !grouped
+                .display_label
+                .to_ascii_lowercase()
+                .starts_with("enhancer")
+        );
+        assert!(grouped.display_label.contains("chr1:"));
+    }
+
+    #[test]
+    fn derive_regulatory_feature_grouping_uses_active_region_secondary_group() {
+        let feature = make_feature(
+            "regulatory",
+            vec![
+                ("regulatory_class", "silencer"),
+                ("note", "active region_65"),
+            ],
+        );
+        let grouped =
+            MainAreaDna::derive_regulatory_feature_grouping(&feature, "silencer: active region_65")
+                .expect("expected regulatory grouping");
+        assert_eq!(grouped.primary_key, "silencer");
+        assert_eq!(grouped.secondary_key.as_deref(), Some("active_region"));
+        assert_eq!(grouped.secondary_label.as_deref(), Some("active region"));
+        assert!(
+            !grouped
+                .display_label
+                .to_ascii_lowercase()
+                .starts_with("active region")
+        );
+    }
+
+    #[test]
+    fn derive_regulatory_feature_grouping_falls_back_to_label_prefix_when_class_missing() {
+        let feature = make_feature(
+            "regulatory",
+            vec![(
+                "note",
+                "fragment chr1:3596796-3596963 (GRCh37/hg19 assembly coordinates)",
+            )],
+        );
+        let grouped = MainAreaDna::derive_regulatory_feature_grouping(
+            &feature,
+            "silencer: fragment chr1:3596796-3596963 (GRCh37/hg19 assembly coordinates)",
+        )
+        .expect("expected fallback grouping");
+        assert_eq!(grouped.primary_key, "silencer");
+        assert!(grouped.secondary_key.is_none());
+        assert!(
+            !grouped
+                .display_label
+                .to_ascii_lowercase()
+                .starts_with("silencer")
         );
     }
 
@@ -673,9 +713,16 @@ fn default_anchor_boundary_start() -> AnchorBoundary {
     AnchorBoundary::Start
 }
 
+fn default_feature_tree_panel_width() -> f32 {
+    FEATURE_TREE_DEFAULT_WIDTH_PX
+}
+
 const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
 const UI_SIZE_MIN_PX: f32 = 1.0;
 const UI_SIZE_MAX_PX: f32 = 4096.0;
+const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
+const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
+const FEATURE_TREE_MAX_WIDTH_PX: f32 = 680.0;
 const DECLUTTER_NOISE_SCORE_THRESHOLD: usize = 100;
 const DECLUTTER_VISIBLE_FEATURE_THRESHOLD: usize = 70;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
@@ -743,6 +790,15 @@ impl FeatureTreeGroupingMode {
             Self::Always => "Always",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct RegulatoryFeatureGrouping {
+    primary_key: String,
+    primary_label: String,
+    secondary_key: Option<String>,
+    secondary_label: Option<String>,
+    display_label: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -956,6 +1012,7 @@ pub struct MainAreaDna {
     pool_gel_ladders: String,
     feature_tree_grouping_mode: FeatureTreeGroupingMode,
     feature_tree_filter: String,
+    feature_tree_panel_width: f32,
     pending_feature_tree_scroll_to: Option<usize>,
     focused_feature_id: Option<usize>,
     multi_selected_feature_ids: BTreeSet<usize>,
@@ -976,6 +1033,14 @@ pub struct MainAreaDna {
 }
 
 impl MainAreaDna {
+    fn clamp_feature_tree_panel_width(width: f32) -> f32 {
+        if width.is_finite() {
+            width.clamp(FEATURE_TREE_MIN_WIDTH_PX, FEATURE_TREE_MAX_WIDTH_PX)
+        } else {
+            FEATURE_TREE_DEFAULT_WIDTH_PX
+        }
+    }
+
     fn sanitize_widget_size(size: Vec2) -> Vec2 {
         let sanitize = |value: f32| -> f32 {
             if value.is_finite() {
@@ -1176,6 +1241,7 @@ impl MainAreaDna {
             pool_gel_ladders: String::new(),
             feature_tree_grouping_mode: FeatureTreeGroupingMode::Off,
             feature_tree_filter: String::new(),
+            feature_tree_panel_width: FEATURE_TREE_DEFAULT_WIDTH_PX,
             pending_feature_tree_scroll_to: None,
             focused_feature_id: None,
             multi_selected_feature_ids: BTreeSet::new(),
@@ -7306,6 +7372,7 @@ impl MainAreaDna {
             pool_gel_ladders: self.pool_gel_ladders.clone(),
             feature_tree_grouping_mode: self.feature_tree_grouping_mode,
             feature_tree_filter: self.feature_tree_filter.clone(),
+            feature_tree_panel_width: self.feature_tree_panel_width,
             feature_tree_second_level_grouping: !matches!(
                 self.feature_tree_grouping_mode,
                 FeatureTreeGroupingMode::Off
@@ -7457,6 +7524,8 @@ impl MainAreaDna {
                 s.feature_tree_grouping_mode
             };
         self.feature_tree_filter = s.feature_tree_filter;
+        self.feature_tree_panel_width =
+            Self::clamp_feature_tree_panel_width(s.feature_tree_panel_width);
         let tfbs_criteria = TfbsDisplayCriteria {
             use_llr_bits: s.tfbs_display_use_llr_bits,
             min_llr_bits: s.tfbs_display_min_llr_bits,
@@ -7827,6 +7896,15 @@ impl MainAreaDna {
         if RenderDna::is_restriction_site_feature(feature) {
             return RenderDna::restriction_site_group_label(feature);
         }
+        if feature.kind.to_string().eq_ignore_ascii_case("GENE") {
+            return None;
+        }
+        if RenderDna::is_regulatory_feature(feature)
+            && !RenderDna::is_track_feature(feature)
+            && !RenderDna::is_tfbs_feature(feature)
+        {
+            return None;
+        }
         if feature.kind.to_string().eq_ignore_ascii_case("MRNA") {
             if let Some(gene_label) = Self::feature_tree_first_nonempty_qualifier(
                 feature,
@@ -7920,118 +7998,139 @@ impl MainAreaDna {
         format!("{base_label} [{discriminator}]")
     }
 
-    fn shared_prefix_chars(labels: &[String]) -> usize {
-        let Some(first) = labels.first() else {
-            return 0;
-        };
-        let mut prefix: Vec<char> = first.chars().collect();
-        for label in labels.iter().skip(1) {
-            let chars: Vec<char> = label.chars().collect();
-            let mut keep = 0usize;
-            let shared_len = prefix.len().min(chars.len());
-            while keep < shared_len && prefix[keep] == chars[keep] {
-                keep += 1;
-            }
-            prefix.truncate(keep);
-            if prefix.is_empty() {
-                break;
-            }
-        }
-        prefix.len()
-    }
-
-    fn shared_suffix_chars(labels: &[String]) -> usize {
-        let Some(first) = labels.first() else {
-            return 0;
-        };
-        let mut suffix: Vec<char> = first.chars().rev().collect();
-        for label in labels.iter().skip(1) {
-            let chars: Vec<char> = label.chars().rev().collect();
-            let mut keep = 0usize;
-            let shared_len = suffix.len().min(chars.len());
-            while keep < shared_len && suffix[keep] == chars[keep] {
-                keep += 1;
-            }
-            suffix.truncate(keep);
-            if suffix.is_empty() {
-                break;
-            }
-        }
-        suffix.len()
-    }
-
-    fn compact_label_with_shared_affixes(
-        label: &str,
-        prefix_chars: usize,
-        suffix_chars: usize,
-    ) -> Option<String> {
-        if label.trim().is_empty() {
-            return None;
-        }
-        let chars: Vec<char> = label.chars().collect();
-        if chars.is_empty() {
-            return None;
-        }
-
-        let prefix_chars = prefix_chars.min(chars.len());
-        let suffix_chars = suffix_chars.min(chars.len().saturating_sub(prefix_chars));
-        if prefix_chars == 0 && suffix_chars == 0 {
-            return None;
-        }
-        if chars.len() <= prefix_chars.saturating_add(suffix_chars).saturating_add(4) {
-            return None;
-        }
-
-        let mut middle: String = chars[prefix_chars..(chars.len() - suffix_chars)]
-            .iter()
-            .collect();
-        middle = middle
-            .trim_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation())
-            .to_string();
-        if middle.chars().count() < 4 {
-            return None;
-        }
-
-        let compact = match (prefix_chars > 0, suffix_chars > 0) {
-            (true, true) => format!("...{middle}..."),
-            (true, false) => format!("...{middle}"),
-            (false, true) => format!("{middle}..."),
-            (false, false) => middle,
-        };
-        if compact.chars().count().saturating_add(2) >= chars.len() {
-            None
-        } else {
-            Some(compact)
-        }
-    }
-
-    fn compact_shared_affix_labels(labels: &[String]) -> Vec<Option<String>> {
-        if labels.len() < 3 {
-            return vec![None; labels.len()];
-        }
-        let shared_prefix = Self::shared_prefix_chars(labels);
-        let shared_suffix = Self::shared_suffix_chars(labels);
-
-        let shared_prefix = if shared_prefix >= 12 {
-            shared_prefix
-        } else {
-            0
-        };
-        let shared_suffix = if shared_suffix >= 10 {
-            shared_suffix
-        } else {
-            0
-        };
-        if shared_prefix == 0 && shared_suffix == 0 {
-            return vec![None; labels.len()];
-        }
-
-        labels
-            .iter()
-            .map(|label| {
-                Self::compact_label_with_shared_affixes(label, shared_prefix, shared_suffix)
+    fn trim_feature_tree_prefix_separators(value: &str) -> String {
+        value
+            .trim_start_matches(|ch: char| {
+                ch.is_whitespace() || matches!(ch, ':' | '-' | '_' | ';' | ',')
             })
-            .collect()
+            .trim()
+            .to_string()
+    }
+
+    fn strip_case_insensitive_prefix(value: &str, prefix: &str) -> Option<String> {
+        let trimmed = value.trim_start();
+        let lower_trimmed = trimmed.to_ascii_lowercase();
+        let lower_prefix = prefix.trim().to_ascii_lowercase();
+        if lower_prefix.is_empty() {
+            return None;
+        }
+        if lower_trimmed == lower_prefix {
+            return Some(String::new());
+        }
+        for separator in [":", " ", "_", "-"] {
+            let pattern = format!("{lower_prefix}{separator}");
+            if lower_trimmed.starts_with(&pattern) {
+                return Some(trimmed[pattern.len()..].to_string());
+            }
+        }
+        None
+    }
+
+    fn extract_histone_like_marker(value: &str) -> Option<String> {
+        let token = value
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_matches(|ch: char| matches!(ch, ':' | ';' | ',' | '(' | ')' | '[' | ']'));
+        if token.len() < 4 {
+            return None;
+        }
+        let starts_with_h = token
+            .chars()
+            .next()
+            .map(|ch| ch.eq_ignore_ascii_case(&'h'))
+            .unwrap_or(false);
+        if !starts_with_h {
+            return None;
+        }
+        let mut has_digit = false;
+        for ch in token.chars() {
+            if ch.is_ascii_digit() {
+                has_digit = true;
+            }
+            if !(ch.is_ascii_alphanumeric() || ch == '-' || ch == '_') {
+                return None;
+            }
+        }
+        if has_digit {
+            Some(token.to_string())
+        } else {
+            None
+        }
+    }
+
+    fn derive_regulatory_feature_grouping(
+        feature: &gb_io::seq::Feature,
+        full_label: &str,
+    ) -> Option<RegulatoryFeatureGrouping> {
+        if !RenderDna::is_regulatory_feature(feature)
+            || RenderDna::is_track_feature(feature)
+            || RenderDna::is_tfbs_feature(feature)
+        {
+            return None;
+        }
+
+        let mut primary =
+            Self::feature_tree_first_nonempty_qualifier(feature, &["regulatory_class"])
+                .map(|value| value.to_ascii_lowercase());
+        if primary.is_none() {
+            let label_lower = full_label.trim().to_ascii_lowercase();
+            for candidate in ["enhancer", "silencer"] {
+                if label_lower == candidate
+                    || label_lower.starts_with(&format!("{candidate}:"))
+                    || label_lower.starts_with(&format!("{candidate} "))
+                    || label_lower.starts_with(&format!("{candidate}_"))
+                    || label_lower.starts_with(&format!("{candidate}-"))
+                {
+                    primary = Some(candidate.to_string());
+                    break;
+                }
+            }
+        }
+        let primary = primary?;
+
+        let mut display_label = Self::strip_case_insensitive_prefix(full_label, &primary)
+            .unwrap_or_else(|| full_label.to_string());
+        display_label = Self::trim_feature_tree_prefix_separators(&display_label);
+
+        let mut secondary_key: Option<String> = None;
+        let mut secondary_label: Option<String> = None;
+
+        if let Some(stripped_active) =
+            Self::strip_case_insensitive_prefix(&display_label, "active region")
+                .or_else(|| Self::strip_case_insensitive_prefix(&display_label, "active_region"))
+        {
+            secondary_key = Some("active_region".to_string());
+            secondary_label = Some("active region".to_string());
+            let candidate = Self::trim_feature_tree_prefix_separators(&stripped_active);
+            if candidate.chars().count() >= 2 {
+                display_label = candidate;
+            }
+        } else if primary == "enhancer"
+            && let Some(marker) = Self::extract_histone_like_marker(&display_label)
+        {
+            secondary_key = Some(format!("marker:{}", marker.to_ascii_lowercase()));
+            secondary_label = Some(marker.clone());
+            if let Some(after_marker) = Self::strip_case_insensitive_prefix(&display_label, &marker)
+            {
+                let candidate = Self::trim_feature_tree_prefix_separators(&after_marker);
+                if candidate.chars().count() >= 2 {
+                    display_label = candidate;
+                }
+            }
+        }
+
+        if display_label.trim().is_empty() {
+            display_label = full_label.trim().to_string();
+        }
+
+        Some(RegulatoryFeatureGrouping {
+            primary_key: primary.clone(),
+            primary_label: primary,
+            secondary_key,
+            secondary_label,
+            display_label,
+        })
     }
 
     fn feature_tree_matches_filter(
@@ -8193,6 +8292,7 @@ impl MainAreaDna {
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         struct FeatureTreeEntry {
             id: usize,
+            feature_label_full: String,
             feature_label: String,
             range_label: String,
             subgroup_key: Option<String>,
@@ -8201,6 +8301,11 @@ impl MainAreaDna {
             show_range_inline_when_ungrouped: bool,
             visible_in_view: bool,
             is_regulatory: bool,
+            disable_grouping: bool,
+            regulatory_primary_group_key: Option<String>,
+            regulatory_primary_group_label: Option<String>,
+            regulatory_secondary_group_key: Option<String>,
+            regulatory_secondary_group_label: Option<String>,
         }
 
         ui.heading(
@@ -8414,15 +8519,21 @@ impl MainAreaDna {
                         }
                     };
                     let range_label = RenderDna::feature_range_text(feature);
-                    let display_label =
+                    let full_display_label =
                         Self::feature_tree_display_label(feature, &base_label, &range_label);
+                    let regulatory_grouping =
+                        Self::derive_regulatory_feature_grouping(feature, &full_display_label);
+                    let display_label = regulatory_grouping
+                        .as_ref()
+                        .map(|grouping| grouping.display_label.clone())
+                        .unwrap_or_else(|| full_display_label.clone());
                     if filter_active {
                         filter_total_count += 1;
                         if !Self::feature_tree_matches_filter(
                             feature,
                             &feature_filter_text,
                             &kind_label,
-                            &display_label,
+                            &full_display_label,
                             &range_label,
                         ) {
                             return None;
@@ -8444,10 +8555,12 @@ impl MainAreaDna {
                         feature.kind.to_string().to_ascii_uppercase().as_str(),
                         "MRNA" | "GENE"
                     );
+                    let disable_grouping = feature.kind.to_string().eq_ignore_ascii_case("GENE");
                     Some((
                         kind_label,
                         FeatureTreeEntry {
                             id,
+                            feature_label_full: full_display_label,
                             feature_label: display_label,
                             range_label,
                             subgroup_key,
@@ -8456,6 +8569,19 @@ impl MainAreaDna {
                             show_range_inline_when_ungrouped,
                             visible_in_view,
                             is_regulatory,
+                            disable_grouping,
+                            regulatory_primary_group_key: regulatory_grouping
+                                .as_ref()
+                                .map(|grouping| grouping.primary_key.clone()),
+                            regulatory_primary_group_label: regulatory_grouping
+                                .as_ref()
+                                .map(|grouping| grouping.primary_label.clone()),
+                            regulatory_secondary_group_key: regulatory_grouping
+                                .as_ref()
+                                .and_then(|grouping| grouping.secondary_key.clone()),
+                            regulatory_secondary_group_label: regulatory_grouping
+                                .as_ref()
+                                .and_then(|grouping| grouping.secondary_label.clone()),
                         },
                     ))
                 })
@@ -8509,8 +8635,29 @@ impl MainAreaDna {
                 }
                 let mut grouped_entries: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
                     HashMap::new();
+                let mut regulatory_primary_groups: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
+                    HashMap::new();
                 let mut ungrouped_entries: Vec<&FeatureTreeEntry> = Vec::new();
                 for entry in entries {
+                    if matches!(grouping_mode, FeatureTreeGroupingMode::Off) {
+                        ungrouped_entries.push(entry);
+                        continue;
+                    }
+                    if entry.disable_grouping {
+                        ungrouped_entries.push(entry);
+                        continue;
+                    }
+                    if let (Some(primary_key), Some(primary_label)) = (
+                        &entry.regulatory_primary_group_key,
+                        &entry.regulatory_primary_group_label,
+                    ) {
+                        regulatory_primary_groups
+                            .entry(primary_key.clone())
+                            .or_insert_with(|| (primary_label.clone(), Vec::new()))
+                            .1
+                            .push(entry);
+                        continue;
+                    }
                     let subgroup_count = entry
                         .subgroup_key
                         .as_ref()
@@ -8536,61 +8683,14 @@ impl MainAreaDna {
                     }
                 }
 
-                let compact_regulatory_feature_labels = {
-                    let regulatory_entries = entries
-                        .iter()
-                        .filter(|entry| entry.is_regulatory)
-                        .collect::<Vec<_>>();
-                    let labels = regulatory_entries
-                        .iter()
-                        .map(|entry| entry.feature_label.clone())
-                        .collect::<Vec<_>>();
-                    let compacted = Self::compact_shared_affix_labels(&labels);
-                    let mut by_id = HashMap::new();
-                    for (entry, compacted_label) in regulatory_entries.into_iter().zip(compacted) {
-                        if let Some(compacted_label) = compacted_label {
-                            by_id.insert(entry.id, compacted_label);
-                        }
-                    }
-                    by_id
-                };
-
-                let compact_regulatory_subgroup_labels = {
-                    let regulatory_subgroups = grouped_entries
-                        .iter()
-                        .filter_map(|(subgroup_key, (subgroup_label, subgroup_entries))| {
-                            if subgroup_entries.iter().any(|entry| entry.is_regulatory) {
-                                Some((subgroup_key.clone(), subgroup_label.clone()))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    let labels = regulatory_subgroups
-                        .iter()
-                        .map(|(_, subgroup_label)| subgroup_label.clone())
-                        .collect::<Vec<_>>();
-                    let compacted = Self::compact_shared_affix_labels(&labels);
-                    let mut by_key = HashMap::new();
-                    for ((subgroup_key, _), compacted_label) in
-                        regulatory_subgroups.into_iter().zip(compacted)
-                    {
-                        if let Some(compacted_label) = compacted_label {
-                            by_key.insert(subgroup_key, compacted_label);
-                        }
-                    }
-                    by_key
-                };
-
                 let mut render_entry =
-                    |ui: &mut egui::Ui, entry: &FeatureTreeEntry, grouped_entry: bool| {
+                    |ui: &mut egui::Ui,
+                     entry: &FeatureTreeEntry,
+                     grouped_entry: bool,
+                     show_range_only_when_grouped: bool| {
                         let selected = selected_feature_ids.contains(&entry.id);
-                        let compacted_feature_label =
-                            compact_regulatory_feature_labels.get(&entry.id).cloned();
-                        let compacted_feature_active = compacted_feature_label.is_some();
-                        let display_feature_label =
-                            compacted_feature_label.unwrap_or_else(|| entry.feature_label.clone());
                         let button_label = if grouped_entry
+                            && show_range_only_when_grouped
                             && !entry.prefer_grouped_label
                             && !entry.range_label.is_empty()
                         {
@@ -8599,9 +8699,9 @@ impl MainAreaDna {
                             && !grouped_entry
                             && !entry.range_label.is_empty()
                         {
-                            format!("{} [{}]", display_feature_label, entry.range_label)
+                            format!("{} [{}]", entry.feature_label, entry.range_label)
                         } else {
-                            display_feature_label
+                            entry.feature_label.clone()
                         };
                         let mut button_text =
                             egui::RichText::new(button_label).size(feature_font_size);
@@ -8612,13 +8712,23 @@ impl MainAreaDna {
                             let button = egui::Button::new(button_text).selected(selected);
                             let mut response = ui.add(button);
                             let mut hover_lines: Vec<String> = Vec::new();
-                            if grouped_entry || compacted_feature_active {
+                            let feature_label_with_range = if entry.range_label.is_empty() {
+                                entry.feature_label_full.clone()
+                            } else {
+                                format!("{} ({})", entry.feature_label_full, entry.range_label)
+                            };
+                            if grouped_entry && show_range_only_when_grouped {
+                                hover_lines.push(feature_label_with_range);
+                            } else if entry.feature_label_full != entry.feature_label {
+                                hover_lines.push(feature_label_with_range);
+                            }
+                            if entry.is_regulatory && entry.feature_label != entry.feature_label_full {
                                 let hover_text = if entry.range_label.is_empty() {
                                     entry.feature_label.clone()
                                 } else {
                                     format!("{} ({})", entry.feature_label, entry.range_label)
                                 };
-                                hover_lines.push(hover_text);
+                                hover_lines.push(format!("Display: {hover_text}"));
                             }
                             if viewport_limited && !entry.visible_in_view {
                                 hover_lines.push("Outside current linear view span".to_string());
@@ -8663,6 +8773,135 @@ impl MainAreaDna {
                         });
                     };
 
+                let mut regulatory_primary_keys =
+                    regulatory_primary_groups.keys().cloned().collect::<Vec<_>>();
+                regulatory_primary_keys.sort_by(|left, right| {
+                    let left_label = regulatory_primary_groups
+                        .get(left)
+                        .map(|(label, _)| label.as_str())
+                        .unwrap_or("");
+                    let right_label = regulatory_primary_groups
+                        .get(right)
+                        .map(|(label, _)| label.as_str())
+                        .unwrap_or("");
+                    left_label
+                        .to_ascii_lowercase()
+                        .cmp(&right_label.to_ascii_lowercase())
+                        .then_with(|| left.cmp(right))
+                });
+
+                for primary_key in regulatory_primary_keys {
+                    let Some((primary_label, primary_entries)) =
+                        regulatory_primary_groups.get(&primary_key)
+                    else {
+                        continue;
+                    };
+                    let primary_has_selected = primary_entries
+                        .iter()
+                        .any(|entry| selected_feature_ids.contains(&entry.id));
+                    let primary_visible_count = primary_entries
+                        .iter()
+                        .filter(|entry| entry.visible_in_view)
+                        .count();
+                    let primary_heading = Self::format_feature_tree_count_label(
+                        primary_label,
+                        primary_visible_count,
+                        primary_entries.len(),
+                        viewport_limited,
+                    );
+                    egui::CollapsingHeader::new(
+                        egui::RichText::new(primary_heading)
+                            .size(feature_font_size)
+                            .strong(),
+                    )
+                    .id_salt(format!(
+                        "feature_kind_reg_primary_{seq_key}_{kind}_{primary_key}"
+                    ))
+                    .open(if primary_has_selected {
+                        Some(true)
+                    } else {
+                        None
+                    })
+                    .show(ui, |ui| {
+                        let mut secondary_groups: HashMap<String, (String, Vec<&FeatureTreeEntry>)> =
+                            HashMap::new();
+                        let mut secondary_ungrouped: Vec<&FeatureTreeEntry> = Vec::new();
+                        for entry in primary_entries.iter().copied() {
+                            if let (Some(secondary_key), Some(secondary_label)) = (
+                                &entry.regulatory_secondary_group_key,
+                                &entry.regulatory_secondary_group_label,
+                            ) {
+                                secondary_groups
+                                    .entry(secondary_key.clone())
+                                    .or_insert_with(|| (secondary_label.clone(), Vec::new()))
+                                    .1
+                                    .push(entry);
+                            } else {
+                                secondary_ungrouped.push(entry);
+                            }
+                        }
+
+                        let mut secondary_keys = secondary_groups.keys().cloned().collect::<Vec<_>>();
+                        secondary_keys.sort_by(|left, right| {
+                            let left_label = secondary_groups
+                                .get(left)
+                                .map(|(label, _)| label.as_str())
+                                .unwrap_or("");
+                            let right_label = secondary_groups
+                                .get(right)
+                                .map(|(label, _)| label.as_str())
+                                .unwrap_or("");
+                            left_label
+                                .to_ascii_lowercase()
+                                .cmp(&right_label.to_ascii_lowercase())
+                                .then_with(|| left.cmp(right))
+                        });
+
+                        for secondary_key in secondary_keys {
+                            let Some((secondary_label, secondary_entries)) =
+                                secondary_groups.get(&secondary_key)
+                            else {
+                                continue;
+                            };
+                            let secondary_has_selected = secondary_entries
+                                .iter()
+                                .any(|entry| selected_feature_ids.contains(&entry.id));
+                            let secondary_visible_count = secondary_entries
+                                .iter()
+                                .filter(|entry| entry.visible_in_view)
+                                .count();
+                            let secondary_heading = Self::format_feature_tree_count_label(
+                                secondary_label,
+                                secondary_visible_count,
+                                secondary_entries.len(),
+                                viewport_limited,
+                            );
+                            egui::CollapsingHeader::new(
+                                egui::RichText::new(secondary_heading)
+                                    .size(feature_font_size)
+                                    .strong(),
+                            )
+                            .id_salt(format!(
+                                "feature_kind_reg_secondary_{seq_key}_{kind}_{primary_key}_{secondary_key}"
+                            ))
+                            .open(if secondary_has_selected {
+                                Some(true)
+                            } else {
+                                None
+                            })
+                            .show(ui, |ui| {
+                                for entry in secondary_entries {
+                                    render_entry(ui, entry, true, false);
+                                }
+                            });
+                        }
+
+                        for entry in secondary_ungrouped {
+                            render_entry(ui, entry, false, false);
+                        }
+                    });
+                }
+
                 let mut subgroup_keys = grouped_entries.keys().cloned().collect::<Vec<_>>();
                 subgroup_keys.sort_by(|left, right| {
                     let left_label = grouped_entries
@@ -8689,17 +8928,13 @@ impl MainAreaDna {
                         .iter()
                         .filter(|entry| entry.visible_in_view)
                         .count();
-                    let subgroup_label_compacted = compact_regulatory_subgroup_labels
-                        .get(&subgroup_key)
-                        .cloned()
-                        .unwrap_or_else(|| subgroup_label.clone());
                     let subgroup_heading = Self::format_feature_tree_count_label(
-                        &subgroup_label_compacted,
+                        subgroup_label,
                         subgroup_visible_count,
                         subgroup_entries.len(),
                         viewport_limited,
                     );
-                    let subgroup_response = egui::CollapsingHeader::new(
+                    egui::CollapsingHeader::new(
                         egui::RichText::new(subgroup_heading)
                             .size(feature_font_size)
                             .strong(),
@@ -8715,18 +8950,13 @@ impl MainAreaDna {
                     })
                     .show(ui, |ui| {
                         for entry in subgroup_entries {
-                            render_entry(ui, entry, true);
+                            render_entry(ui, entry, true, true);
                         }
                     });
-                    if subgroup_label_compacted != *subgroup_label {
-                        subgroup_response
-                            .header_response
-                            .on_hover_text(subgroup_label.clone());
-                    }
                 }
 
                 for entry in ungrouped_entries {
-                    render_entry(ui, entry, false);
+                    render_entry(ui, entry, false, false);
                 }
             });
         }
@@ -8939,22 +9169,44 @@ impl MainAreaDna {
             self.update_dna_map();
 
             Frame::none().show(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(320.0);
-                    let tree_height = (ui.available_height() * 0.55).max(180.0);
-                    egui::ScrollArea::vertical()
-                        .id_salt(format!(
-                            "feature_tree_scroll_{}",
-                            self.seq_id.as_deref().unwrap_or("<no-seq-id>")
-                        ))
-                        .auto_shrink([false, false])
-                        .max_height(tree_height)
-                        .show(ui, |ui| {
-                            self.render_features(ui);
-                        });
-                    ui.separator();
-                    self.render_description(ui);
-                });
+                let resize_id = format!(
+                    "feature_tree_panel_resize_{}",
+                    self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                );
+                let max_tree_width = FEATURE_TREE_MAX_WIDTH_PX
+                    .min(ui.available_width().max(FEATURE_TREE_MIN_WIDTH_PX));
+                let mut resized_tree_width =
+                    Self::clamp_feature_tree_panel_width(self.feature_tree_panel_width)
+                        .min(max_tree_width);
+                egui::Resize::default()
+                    .id_salt(resize_id)
+                    .default_width(resized_tree_width)
+                    .min_width(FEATURE_TREE_MIN_WIDTH_PX)
+                    .max_width(max_tree_width.max(FEATURE_TREE_MIN_WIDTH_PX))
+                    .resizable(egui::Vec2b::new(true, false))
+                    .show(ui, |ui| {
+                        resized_tree_width =
+                            Self::clamp_feature_tree_panel_width(ui.max_rect().width());
+                        let tree_height = (ui.available_height() * 0.55).max(180.0);
+                        egui::ScrollArea::both()
+                            .id_salt(format!(
+                                "feature_tree_scroll_{}",
+                                self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                            ))
+                            .auto_shrink([false, false])
+                            .max_height(tree_height)
+                            .show(ui, |ui| {
+                                self.render_features(ui);
+                            });
+                        ui.separator();
+                        self.render_description(ui);
+                    });
+                let clamped_tree_width =
+                    Self::clamp_feature_tree_panel_width(resized_tree_width).min(max_tree_width);
+                if (self.feature_tree_panel_width - clamped_tree_width).abs() > 0.5 {
+                    self.feature_tree_panel_width = clamped_tree_width;
+                    self.save_engine_ops_state();
+                }
             });
 
             ui.separator();
