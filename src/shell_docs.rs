@@ -79,12 +79,16 @@ fn normalize_interface_filter(raw: Option<&str>) -> Result<Option<String>, Strin
     if normalized.is_empty() || normalized == "all" {
         return Ok(None);
     }
+    if normalized == "mcp" {
+        // MCP currently reuses the shared shell command surface.
+        return Ok(Some("cli-shell".to_string()));
+    }
     let valid = ["cli-direct", "cli-shell", "gui-shell", "js", "lua"];
     if valid.contains(&normalized.as_str()) {
         Ok(Some(normalized))
     } else {
         Err(format!(
-            "Unsupported --interface '{}' (expected all|cli-direct|cli-shell|gui-shell|js|lua)",
+            "Unsupported --interface '{}' (expected all|cli-direct|cli-shell|gui-shell|js|lua|mcp)",
             raw
         ))
     }
@@ -250,7 +254,7 @@ pub fn shell_help_text(interface_filter: Option<&str>) -> Result<String, String>
     out.push_str(
         "Use `help COMMAND ...` for command-specific help.\n\
 Use `help [--format json|markdown]` to export machine-readable docs.\n\
-Use `--interface` to filter (`all|cli-direct|cli-shell|gui-shell|js|lua`).",
+Use `--interface` to filter (`all|cli-direct|cli-shell|gui-shell|js|lua|mcp`).",
     );
     Ok(out)
 }
@@ -324,4 +328,21 @@ pub fn shell_topic_help_json(
         "topic": topic.join(" "),
         "doc": doc_record(doc)
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interface_filter_accepts_mcp_alias() {
+        let normalized = normalize_interface_filter(Some("mcp")).expect("normalize filter");
+        assert_eq!(normalized.as_deref(), Some("cli-shell"));
+    }
+
+    #[test]
+    fn shell_help_text_lists_mcp_interface_value() {
+        let text = shell_help_text(None).expect("render help");
+        assert!(text.contains("|mcp"));
+    }
 }

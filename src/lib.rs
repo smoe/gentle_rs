@@ -49,6 +49,8 @@ pub mod lineage_export;
 pub mod lua_interface;
 /// Main sequence-window GUI controller and interaction orchestration.
 pub mod main_area_dna;
+/// MCP stdio server adapter exposing read-only tool endpoints.
+pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
 /// NCBI GenBank XML (`GBSet/GBSeq`) parsing and dialect detection helpers.

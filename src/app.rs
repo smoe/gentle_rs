@@ -1350,10 +1350,9 @@ impl GENtleApp {
             source.linear_sequence_helical_letters_enabled;
         target.linear_sequence_helical_max_view_span_bp =
             source.linear_sequence_helical_max_view_span_bp;
-        target.linear_sequence_helical_phase_offset_bp =
-            Self::clamp_linear_helical_phase_offset_bp(
-                source.linear_sequence_helical_phase_offset_bp,
-            );
+        target.linear_sequence_helical_phase_offset_bp = Self::clamp_linear_helical_phase_offset_bp(
+            source.linear_sequence_helical_phase_offset_bp,
+        );
         target.linear_show_double_strand_bases = source.linear_show_double_strand_bases;
         target.linear_hide_backbone_when_sequence_bases_visible =
             source.linear_hide_backbone_when_sequence_bases_visible;

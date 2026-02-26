@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-25
+Last updated: 2026-02-26
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -103,7 +103,8 @@ order. Durable architecture constraints and decisions remain in
 | Feature expert views (TFBS/restriction/splicing) via shared engine model | Done |
 | Candidate strand-relation controls across adapters | Done |
 | Alternative-splicing interpretation (lanes/boundaries/events/evidence) | Done (expert-view baseline) |
-| Cloning-mode macro presets (SnapGene-style workflows) | Planned |
+| Cloning-mode macro presets (SnapGene-style workflows) | Partial (starter templates only) |
+| AI communication routes (agent bridge + MCP server) | Partial (agent bridge + guarded MCP op/workflow baseline implemented) |
 | Gel simulation realism and arrangement modeling | Partial |
 | Shared operation protocol usage | Partial |
 
@@ -114,49 +115,86 @@ Notes:
   `cargo run --bin gentle_cli -- state-summary` for current runtime inventory.
 - `import-pool` and some resource utilities remain adapter-level contracts.
 
-## 2. Active known gaps
+## 2. Active known gaps (priority-ordered)
 
-- View-model contract is not yet formalized as a frontend-neutral schema.
-- Some utilities are still adapter-level rather than engine operations
-  (notably `import-pool` and resource-sync utilities).
-- No dedicated engine operation yet for exporting a full run/process as a
-  technical-assistant protocol text artifact.
-- guideRNA workflow is still incomplete (guide-candidate model, oligo
-  generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).
-- Screenshot bridge execution is intentionally disabled by current security
-  policy despite historical implementation work.
-- Auto-updated documentation with embedded graphics remains postponed.
-- Zoom/pan policy is not yet unified across canvases and should converge to a
-  modifier-key-centric contract.
-- Feature-tree grouping/filter logic and track-import open-window refresh now
-  have deterministic unit regression coverage; dedicated UI-level snapshot tests
-  (visual collapse/expand/count rendering) are still pending.
-- Backdrop-image ingest and UX hardening are still incomplete:
-  - monochrome conversion currently relies on tinting/asset choice and needs a
-    stricter renderer-side grayscale pass
-  - per-window readability guardrails (contrast checks, auto-dimming) are not
-    yet enforced
-- Standardized cloning protocol macros are not yet packaged as first-class
-  reusable templates (restriction-only, Gibson, Golden Gate, Gateway, TOPO,
-  TA/GC, In-Fusion, NEBuilder HiFi).
-- UI-intent command family exists for GUI routing, but mutating-intent guard
-  policy is not yet fully hardened for agent/voice-driven invocation paths.
-- Chromosomal-scale track overview is still missing: BED-derived features should
-  also be visualized at chromosome level, including an optional density view for
-  large regions.
-- Feature expert-view scope now includes TFBS, restriction sites, and
-  splicing groups; future extension to additional feature classes should
-  preserve the same `FeatureExpertTarget -> FeatureExpertView -> SVG` contract.
-- Dedicated primary map-mode splicing visualization (outside expert/detail
-  panel) is still pending; current baseline is available via expert payload,
-  GUI expert panel, and SVG export.
-- XML sequence/annotation import baseline is now integrated for NCBI
-  GenBank XML (`GBSet/GBSeq`) through shared runtime import paths; remaining
-  XML dialect support (`INSDSet/INSDSeq`) is still pending.
-- Cross-application clipboard interoperability for sequence + feature transfer
-  is not yet implemented; current baseline supports deterministic in-app
-  extraction into new sequences, while external copy/paste still needs a
-  versioned import/export/intent contract.
+1. Cloning routine standardization is incomplete:
+   - no first-class cloning-routine catalog exists yet to map protocol
+     vocabulary to selectable macro entries with explicit family/status metadata
+   - workflow macro templates do not yet declare typed input/output contracts
+   - lineage graph does not yet render explicit macro-instance box nodes with
+     input/output edges
+   - protocol-family template packs are still incomplete (restriction-only,
+     Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi)
+2. MCP route now has guarded mutating execution (`op`/`workflow`), but parity
+   breadth is still incomplete (for example UI-intent routing and broader
+   adapter-equivalence coverage).
+3. Mutating-intent safety policy is not yet fully hardened across agent, voice,
+   and MCP invocation paths.
+4. Core architecture parity gaps remain:
+   - some utilities are still adapter-level rather than engine operations
+     (notably `import-pool` and resource-sync utilities)
+   - no dedicated engine operation yet for exporting a full run/process as a
+     technical-assistant protocol text artifact
+   - view-model contract is not yet formalized as a frontend-neutral schema
+5. guideRNA workflow remains incomplete (guide-candidate model, oligo
+   generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).
+6. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
+7. Visualization and workflow UX gaps remain:
+   - chromosomal-scale BED overview/density view is missing
+   - dedicated primary map-mode splicing view is still pending
+   - zoom/pan policy is not yet unified across canvases
+   - UI-level snapshot tests for feature-tree grouping/collapse are pending
+   - backdrop-image readability guardrails and stricter grayscale handling are
+     incomplete
+8. Cross-application clipboard interoperability for sequence + feature transfer
+   is not yet implemented (current baseline is deterministic in-app extraction).
+9. Screenshot bridge execution remains disabled by security policy.
+10. Auto-updated documentation with embedded graphics remains postponed.
+
+### MCP server communication track
+
+Goal: add MCP as a first-class AI communication route while keeping one
+deterministic engine contract across all adapters.
+
+Current baseline:
+
+- `gentle_mcp` stdio server is implemented.
+- baseline tools implemented:
+  - `capabilities`
+  - `state_summary`
+  - `op` (shared engine operation execution; requires explicit `confirm=true`)
+  - `workflow` (shared engine workflow execution; requires explicit `confirm=true`)
+  - `help`
+- successful mutating calls persist state to the resolved `state_path`.
+- shared shell + operation contracts already exist for deterministic execution.
+
+Planned work:
+
+1. Add safe UI-intent routing through existing `ui ...` contracts.
+2. Add adapter-equivalence tests (CLI shell vs MCP tool invocations) for key
+   cloning flows.
+3. Keep structured schema compatibility clear across JSON-RPC envelopes and
+   MCP tool result payloads.
+4. Keep zero MCP-only biology logic branches.
+
+UI-intent tool routine (implementation outline):
+
+1. Capability discovery:
+   - add MCP UI-intent discovery surface mirroring `ui intents` output
+   - include action/target schema and argument contracts in structured payload
+2. Deterministic resolution:
+   - add helper routes equivalent to `ui prepared-genomes` /
+     `ui latest-prepared` for target disambiguation before open/focus
+   - return explicit disambiguation payloads when multiple targets match
+3. Guarded execution:
+   - route `open`/`focus` through shared `ui ...` parser/executor path
+   - require explicit confirmation for mutating UI intents when introduced
+4. Result contract:
+   - return machine-readable execution report (`executed`, `resolved_target`,
+     warnings/errors, follow-up choices)
+5. Parity tests:
+   - add deterministic equivalence tests asserting MCP UI-intent calls and CLI
+     shell `ui ...` commands produce matching resolved targets and outcomes
 
 ### Alternative-splicing interpretation track (baseline implemented; follow-ups)
 
@@ -202,6 +240,34 @@ Status:
    - extend cross-format parity fixtures/tests to include additional XML edge
      cases (multi-record, qualifier-only, interval-only locations).
    - keep large exploratory XML samples out of committed default fixtures.
+
+### Cloning routine catalog + macro-box graph track (new)
+
+Goal: map current cloning vocabulary to executable GENtle routines and represent
+macro instances as explicit graph boxes with typed inputs/outputs.
+
+Current baseline:
+
+- shared workflow macro persistence and execution are implemented
+  (`UpsertWorkflowMacroTemplate`, `macros template-*`, `macros run`).
+- starter macro import pack exists (`assets/cloning_patterns.json`).
+- routine-family coverage and graph visualization are still incomplete.
+
+Planned work:
+
+1. Add a versioned cloning-routine catalog manifest with family/tag/status and
+   template bindings.
+2. Extend macro templates with optional typed input/output port contracts.
+3. Persist macro-run instance records (resolved bindings + emitted op ids).
+4. Render macro instances as box nodes in lineage/workflow graph with explicit
+   input/output edges; support multiple instances of the same routine per
+   project.
+5. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
+   Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
+
+Detailed plan and support crosswalk:
+
+- `docs/cloning_routine_catalog_plan.md`
 
 ### Text/voice control track (new)
 
@@ -265,6 +331,8 @@ Implementation note:
   shared engine/shell operations, then exposed identically in GUI/CLI/JS/Lua.
 - Templates must emit auditable operation logs suitable for DALG-derived
   protocol export.
+- Routine vocabulary crosswalk and graph-node rollout plan are maintained in
+  `docs/cloning_routine_catalog_plan.md`.
 
 #### B) Agarose gel simulation improvements (high value)
 
@@ -402,51 +470,62 @@ Planned upgrades:
 
 ## 3. Recommended execution order
 
-### Phase A: parity hardening
+### Phase A: AI communication + safety plane
+
+- Expand MCP server from guarded op/workflow baseline to broader deterministic
+  tool coverage over shared shell/engine routes.
+- Keep handlers thin and adapter-equivalent (no MCP-only biology branches).
+- Harden mutating-intent safety policy uniformly across agent, voice, and MCP
+  invocation paths.
+- Implement the UI-intent tool routine in this order:
+  discovery -> deterministic resolution -> guarded execution -> structured
+  result contract -> CLI-shell/MCP parity tests.
+- Keep `ui ...` intent routing deterministic and continue discoverability paths
+  (menu, command palette, shell/agent/MCP intent surfaces).
+
+### Phase B: cloning routine standardization
+
+- Execute cloning-routine catalog phases 1-4:
+  - catalog schema + routine indexing
+  - typed macro input/output contracts
+  - macro-run instance recording
+  - macro box nodes in lineage/workflow graph
+- Add protocol macro template packs for the cloning modes listed in Section 2
+  (restriction, Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion,
+  NEBuilder HiFi).
+
+### Phase C: engine/protocol parity hardening
 
 - Keep adapter-level helpers thin and aligned with engine operations.
-- Continue parity checks as new operations are introduced.
+- Promote remaining adapter-level utilities into first-class engine operations.
+- Add process-protocol export contract and richer versioned schema/error
+  policy.
+- Define shared frontend-neutral view-model schema for tracks/features/overlays.
+- Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
+
+### Phase D: visualization and workflow UX
+
 - Continue alternative-splicing follow-ups:
-  - add dense-fixture regression tests for boundary visibility and label safety
-  - harden invariants for coordinate-true exon/intron geometry
-  - promote expert-view baseline into a dedicated primary map-mode splicing view
-- Start with gel work:
-  - add arrangement authoring/editing UX (create/update/reorder lanes)
-  - add `plate` arrangement mode as first-class engine + adapter entity
-  - keep and harden one-run/one-setup semantics per serial arrangement
-  - add gel realism upgrades (topology, intensity, co-migration, lane tables)
-- Add protocol macro template packs for the cloning modes listed in Section 2.
+  - dense-fixture regression tests for boundary visibility and label safety
+  - coordinate-true geometry invariants
+  - dedicated primary map-mode splicing view
+- Continue gel work:
+  - arrangement authoring/editing UX (create/update/reorder lanes)
+  - `plate` arrangement mode as first-class engine + adapter entity
+  - one-run/one-setup semantics per serial arrangement
+  - realism upgrades (topology, intensity, co-migration, lane tables)
 - Add visual benchmark fixtures and readability regression gates for map export.
+- Unify zoom/pan policy and close remaining feature-tree UI snapshot gaps.
 
-### Phase B: GUI routing discipline
+### Phase E: integration polish and deferred policy items
 
-- Keep UI logic thin; route business logic through engine operations only.
-- Add `ui ...` intent routing path so shell/agent commands can open/focus GUI
-  dialogs without bypassing existing `src/app.rs` dialog openers.
-- Keep prepared-reference discoverability strong:
-  - menu route (`File/Genome -> Prepared References...`)
-  - command-palette route (`Prepared References`)
-  - shell/agent route (`ui open prepared-references`)
-  - shell/agent one-shot disambiguation route
-    (`ui open prepared-references --species human --latest`).
+- Add cross-application clipboard interoperability through versioned contracts.
+- Keep screenshot re-enable work as the final item and only after explicit
+  endpoint-security exception/approval.
+- Keep auto-updated documentation with embedded graphics postponed until above
+  safety/contract priorities are complete.
 
-### Phase C: shared view-model contract
-
-- Define frontend-neutral schema for tracks, features, labels, overlays,
-  selections, and interaction metadata.
-
-### Phase D: protocol hardening
-
-- Versioned schemas and compatibility policy.
-- Richer error taxonomy and validation.
-- Operation provenance metadata (engine version/timestamps/input references).
-- Process-protocol export contract.
-- UI-intent protocol/versioning and compatibility guarantees for agent/voice
-  callers.
-- Keep screenshot re-enable work as the last item in this phase and only after
-  explicit endpoint-security exception/approval.
-
-### Phase E: interpretation (later)
+### Phase F: interpretation (later)
 
 - Image/sketch to `StatePatchProposal` translation with confidence scoring and
   explicit confirmation before apply.

@@ -40,6 +40,10 @@ path = "src/bin/gentle_cli.rs"
 name = "gentle_examples_docs"
 path = "src/bin/gentle_examples_docs.rs"
 
+[[bin]]
+name = "gentle_mcp"
+path = "src/bin/gentle_mcp.rs"
+
 [lib]
 name = "gentle"
 

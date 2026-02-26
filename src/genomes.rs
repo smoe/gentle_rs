@@ -3254,8 +3254,12 @@ where
     if !on_progress(0, total_bytes) {
         return Err(prepare_cancelled_error("XML annotation parse start"));
     }
-    let parsed = parse_gbseq_xml_file(path.to_string_lossy().as_ref())
-        .map_err(|e| format!("Could not parse XML annotation file '{}': {e}", path.display()))?;
+    let parsed = parse_gbseq_xml_file(path.to_string_lossy().as_ref()).map_err(|e| {
+        format!(
+            "Could not parse XML annotation file '{}': {e}",
+            path.display()
+        )
+    })?;
     let records = collect_genbank_like_gene_records(&parsed);
     let total_done = total_bytes.unwrap_or(0);
     if !on_progress(total_done, total_bytes) {
@@ -4552,10 +4556,9 @@ mod tests {
         let td = tempdir().unwrap();
         let xml_path = td.path().join("insd.annotation.xml");
         fs::write(&xml_path, "<INSDSet><INSDSeq/></INSDSet>").expect("write INSD XML");
-        let err = parse_annotation_gene_records_with_progress(xml_path.as_path(), |_done, _total| {
-            true
-        })
-        .expect_err("INSDSet should be rejected");
+        let err =
+            parse_annotation_gene_records_with_progress(xml_path.as_path(), |_done, _total| true)
+                .expect_err("INSDSet should be rejected");
         assert!(
             err.contains("Unsupported XML dialect"),
             "expected unsupported-dialect error, got: {err}"

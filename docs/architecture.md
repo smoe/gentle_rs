@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-24
+Last updated: 2026-02-26
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -23,6 +23,7 @@ GENtle is a DNA/cloning workbench with multiple access paths:
 - JavaScript shell for scripted experiments
 - Lua shell for scripted experiments
 - CLI for automation and AI tools
+- MCP server route for tool-based AI integration
 
 The long-term requirement is strict behavioral parity:
 
@@ -41,7 +42,7 @@ Wet-lab semantic rule (target model):
 
 Strategic aims:
 
-1. Keep one deterministic engine contract across GUI, CLI, JS, and Lua.
+1. Keep one deterministic engine contract across GUI, CLI, JS, Lua, and MCP.
 2. Preserve provenance so every derived result can be traced and replayed.
 3. Make every process exportable as a human-readable protocol text that a
    technical assistant can follow step by step (inputs, operations, expected
@@ -125,8 +126,8 @@ Discoverability rule:
 - Command discoverability and documentation should be glossary-driven:
   - shell command help is generated from `docs/glossary.json` (single source of truth)
   - the help viewer should support interface/language filtering (GUI shell,
-    CLI shell, CLI direct, JS, Lua, or all) to avoid duplicated manuals while
-    keeping context-specific views.
+    CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated manuals
+    while keeping context-specific views.
 - Prepared-reference inspection must remain directly reachable from
   `File -> Prepared References...` and `Genome -> Prepared References...`, and
   searchable as `Prepared References` in Command Palette.
@@ -138,13 +139,14 @@ Discoverability rule:
 GENtle should follow a single-engine architecture:
 
 1. `Core engine` (single source of truth)
-2. `Adapters/frontends` (GUI, JS, Lua, CLI)
+2. `Adapters/frontends` (GUI, JS, Lua, CLI, MCP server)
 3. `View model/renderers` (presentation layer only)
 
 ### Non-negotiable invariant
 
 Frontends must not implement their own cloning/business logic.
 They only translate user input into engine operations and display results.
+This includes MCP tool handlers.
 
 ## 3. Implementation status and roadmap
 
@@ -338,6 +340,29 @@ Practical rule:
       feature opt-in (example:
       `cargo test --features snapshot-tests -q render_export::tests::snapshot_`)
 
+### MCP server (implemented guarded mutating baseline)
+
+Current baseline:
+
+- `gentle_mcp` stdio server route is available.
+- Exposed tools:
+  - `capabilities`
+  - `state_summary`
+  - `op` (shared engine operation execution; explicit `confirm=true` required)
+  - `workflow` (shared engine workflow execution; explicit `confirm=true` required)
+  - `help`
+- Handlers are thin and map to existing shared contracts
+  (`GentleEngine::capabilities`, state summary, `Engine::apply`,
+  `Engine::apply_workflow`, glossary-backed help).
+- Mutating MCP tools persist project state to disk after successful execution.
+- Structured JSON-RPC diagnostics are returned for invalid requests/params.
+
+Remaining expansion scope:
+
+- extend mutating tool breadth and shell/UI-intent routing over shared paths.
+- extend adapter-equivalence tests for MCP vs CLI shell on shared flows.
+- keep zero MCP-only biology logic branches.
+
 Feature expert-view command baseline (implemented):
 
 - `inspect-feature-expert` (shared shell) returns a structured expert view for
@@ -382,6 +407,31 @@ Remaining additions for full text/voice GUI control:
    cross-application copy/paste can be routed through auditable engine
    operations rather than frontend-only ad hoc handlers.
 
+UI-intent tool routine (target contract for MCP/agent/voice adapters):
+
+1. Discover:
+   - caller requests current intent capability catalog (`ui intents` equivalent)
+   - adapter returns stable action/target list and required/optional arguments
+2. Resolve:
+   - caller resolves target selection deterministically (for example
+     `ui prepared-genomes` / `ui latest-prepared`) before open/focus execution
+   - ambiguous query results must return structured "needs disambiguation"
+     payloads instead of guessing
+3. Guard:
+   - mutating/destructive intents require explicit confirmation field in the
+     adapter request before execution
+   - non-mutating intents (`open`, `focus`, list/query helpers) execute without
+     mutating confirmation
+4. Execute:
+   - adapter maps request to existing shared `ui ...` command contracts
+     (single parser/executor path; no frontend-local behavior forks)
+   - GUI host performs only thin routing to existing window/dialog openers
+5. Report:
+   - adapter returns structured result with `executed`, `resolved_target`,
+     warnings/errors, and optional follow-up suggestions (for example candidate
+     target list for user choice)
+   - result payloads stay machine-readable and adapter-equivalent
+
 Voice path note:
 
 - Biology-by-voice should route through the same agent interface used for text
@@ -420,6 +470,12 @@ Minimum requirements:
 Current work satisfies (1) through (4) for most operations; remaining gaps are
 mainly view-model formalization and promoting remaining adapter-level utility
 contracts into stable engine operations.
+
+MCP direction:
+
+- MCP is the preferred standardized route for external AI tool orchestration.
+- `agents ask` remains supported as a complementary route for chat-like
+  assistance and suggested-command execution.
 
 ### Agent assistant bridge (implemented)
 
@@ -693,6 +749,11 @@ Interaction and export semantics:
 - Add shared GUI intent command plane (`ui intents`, `ui open|focus`, prepared
   query helpers) and wire it into GUI-host dialog openers with deterministic
   prepared-reference selection: accepted and implemented (baseline)
+- Add MCP server adapter that exposes shared deterministic command/operation
+  surfaces to external AI tools without duplicating biology logic:
+  accepted and implemented as a guarded mutating baseline (`capabilities`,
+  `state_summary`, `op`, `workflow`, `help`) with explicit confirmation
+  semantics for mutating tools
 - Replace runtime process-environment mutation for tool-path overrides with a
   process-local override registry (`tool_overrides`) to keep Rust 2024-safe
   behavior without unsafe env writes: accepted and implemented

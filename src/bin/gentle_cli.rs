@@ -429,7 +429,7 @@ fn usage() {
         "Usage:\n  \
   gentle_cli --help\n  \
   gentle_cli --version\n  \
-  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]\n  \
+  gentle_cli help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]\n  \
   gentle_cli [--state PATH|--project PATH] [--progress|--progress-stderr|--progress-stdout] COMMAND ...\n\n  \
   gentle_cli [--state PATH|--project PATH] capabilities\n  \
   gentle_cli [--state PATH|--project PATH] op '<operation-json>'\n  \

@@ -156,6 +156,19 @@ Adapter utility contracts (current, non-engine operations):
   - `--format text` renders human-readable help
   - `--format json` renders machine-readable help catalog/topic payload
   - `--format markdown` renders documentation-ready markdown
+  - `--interface` accepts: `all|cli-direct|cli-shell|gui-shell|js|lua|mcp`
+    (`mcp` currently aliases to shared shell command docs)
+
+- `gentle_mcp` (stdio MCP adapter, guarded mutating baseline)
+  - current tools:
+    - `capabilities`
+    - `state_summary`
+    - `op` (apply one `Operation`; requires explicit `confirm=true`)
+    - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
+    - `help`
+  - successful mutating calls persist state to the resolved `state_path`
+  - tool handlers are adapter wrappers over existing deterministic engine/shell
+    contracts (no MCP-only biology logic branch)
 
 - `macros run/template-list/template-show/template-put/template-delete/template-import/template-run`
   - shared-shell macro adapter family for full operation/workflow scripting

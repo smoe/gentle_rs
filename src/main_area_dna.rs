@@ -783,9 +783,18 @@ mod tests {
     #[test]
     fn splicing_expert_viewport_id_is_stable_and_feature_scoped() {
         let baseline = MainAreaDna::splicing_expert_viewport_id("seq1", 7);
-        assert_eq!(baseline, MainAreaDna::splicing_expert_viewport_id("seq1", 7));
-        assert_ne!(baseline, MainAreaDna::splicing_expert_viewport_id("seq1", 8));
-        assert_ne!(baseline, MainAreaDna::splicing_expert_viewport_id("seq2", 7));
+        assert_eq!(
+            baseline,
+            MainAreaDna::splicing_expert_viewport_id("seq1", 7)
+        );
+        assert_ne!(
+            baseline,
+            MainAreaDna::splicing_expert_viewport_id("seq1", 8)
+        );
+        assert_ne!(
+            baseline,
+            MainAreaDna::splicing_expert_viewport_id("seq2", 7)
+        );
     }
 }
 

@@ -23,24 +23,25 @@
 //!   cancellation signaling where supported.
 
 use crate::{
+    DNA_LADDERS, RNA_LADDERS,
     app::GENtleApp,
     dna_sequence::DNAsequence,
     enzymes::active_restriction_enzymes,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
-        is_prepare_cancelled_error, GenomeBlastReport, GenomeCatalog, GenomeGeneRecord,
-        GenomeSourcePlan, PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
+        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
+        PrepareGenomeReport, PreparedGenomeInspection, is_prepare_cancelled_error,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
     methylation_sites::MethylationMode,
-    pool_gel::{build_serial_gel_layout, export_pool_gel_svg, GelSampleInput},
+    pool_gel::{GelSampleInput, build_serial_gel_layout, export_pool_gel_svg},
     render_export::{export_circular_svg, export_linear_svg},
     render_feature_expert::render_feature_expert_svg,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
-    tf_motifs, DNA_LADDERS, RNA_LADDERS,
+    tf_motifs,
 };
 use flate2::read::GzDecoder;
 use regex::{Regex, RegexBuilder};
@@ -68,10 +69,11 @@ pub type RunId = String;
 pub type NodeId = String;
 pub type ContainerId = String;
 pub use crate::feature_expert::{
-    FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, SplicingBoundaryMarker,
+    FeatureExpertTarget, FeatureExpertView, RESTRICTION_EXPERT_INSTRUCTION,
+    RestrictionSiteExpertView, SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker,
     SplicingEventSummary, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    SplicingMatrixRow, SplicingRange, SplicingTranscriptLane, TfbsExpertColumn, TfbsExpertView,
-    RESTRICTION_EXPERT_INSTRUCTION, SPLICING_EXPERT_INSTRUCTION, TFBS_EXPERT_INSTRUCTION,
+    SplicingMatrixRow, SplicingRange, SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION,
+    TfbsExpertColumn, TfbsExpertView,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
@@ -6353,11 +6355,7 @@ impl GentleEngine {
                         }
                     }
                 }
-                if ambiguous {
-                    None
-                } else {
-                    strand
-                }
+                if ambiguous { None } else { strand }
             };
             match geometry_mode {
                 CandidateFeatureGeometryMode::FeatureSpan => {
@@ -10774,11 +10772,7 @@ impl GentleEngine {
                 break;
             }
         }
-        if block.is_empty() {
-            None
-        } else {
-            Some(block)
-        }
+        if block.is_empty() { None } else { Some(block) }
     }
 
     fn parse_genbank_accession_region(path: &str) -> Option<(String, usize, usize, String, char)> {
@@ -10835,11 +10829,7 @@ impl GentleEngine {
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
             .collect::<String>();
-        if token.is_empty() {
-            None
-        } else {
-            Some(token)
-        }
+        if token.is_empty() { None } else { Some(token) }
     }
 
     fn parse_genome_id_from_definition(definition: &str) -> Option<String> {
@@ -14811,22 +14801,14 @@ impl GentleEngine {
                 let forward_primer = match forward_primer {
                     Some(p) => {
                         let v = Self::normalize_iupac_text(&p)?;
-                        if v.is_empty() {
-                            None
-                        } else {
-                            Some(v)
-                        }
+                        if v.is_empty() { None } else { Some(v) }
                     }
                     None => None,
                 };
                 let reverse_primer = match reverse_primer {
                     Some(p) => {
                         let v = Self::normalize_iupac_text(&p)?;
-                        if v.is_empty() {
-                            None
-                        } else {
-                            Some(v)
-                        }
+                        if v.is_empty() { None } else { Some(v) }
                     }
                     None => None,
                 };
@@ -16413,7 +16395,7 @@ impl Engine for GentleEngine {
 mod tests {
     use super::*;
     use bio::io::fasta;
-    use flate2::{write::GzEncoder, Compression};
+    use flate2::{Compression, write::GzEncoder};
     use std::env;
     use std::fs;
     use std::io::Write;
@@ -16986,10 +16968,12 @@ exit 2
         let lineage = &engine.state().lineage;
         let x_node = lineage.seq_to_node.get("x").unwrap();
         let part_node = lineage.seq_to_node.get("part").unwrap();
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|e| e.from_node_id == *x_node && e.to_node_id == *part_node));
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|e| e.from_node_id == *x_node && e.to_node_id == *part_node)
+        );
     }
 
     #[test]
@@ -17017,14 +17001,18 @@ exit 2
         let a_node = lineage.seq_to_node.get("a").unwrap();
         let b_node = lineage.seq_to_node.get("b").unwrap();
         let ab_node = lineage.seq_to_node.get(&res.created_seq_ids[0]).unwrap();
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|e| e.from_node_id == *a_node && e.to_node_id == *ab_node));
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|e| e.from_node_id == *b_node && e.to_node_id == *ab_node));
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|e| e.from_node_id == *a_node && e.to_node_id == *ab_node)
+        );
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|e| e.from_node_id == *b_node && e.to_node_id == *ab_node)
+        );
     }
 
     #[test]
@@ -17128,10 +17116,12 @@ exit 2
         let s_node = lineage.seq_to_node.get("s").unwrap();
         for derived in ["s_rev", "s_comp", "s_rc", "s_branch"] {
             let dnode = lineage.seq_to_node.get(derived).unwrap();
-            assert!(lineage
-                .edges
-                .iter()
-                .any(|e| e.from_node_id == *s_node && e.to_node_id == *dnode));
+            assert!(
+                lineage
+                    .edges
+                    .iter()
+                    .any(|e| e.from_node_id == *s_node && e.to_node_id == *dnode)
+            );
         }
     }
 
@@ -17150,10 +17140,11 @@ exit 2
                 value: serde_json::json!(1234),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("max_fragments_per_container")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("max_fragments_per_container"))
+        );
         assert_eq!(engine.state().parameters.max_fragments_per_container, 1234);
     }
 
@@ -17166,10 +17157,11 @@ exit 2
                 value: serde_json::json!(9.5),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("feature_details_font_size")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("feature_details_font_size"))
+        );
         assert!((engine.state().display.feature_details_font_size - 9.5).abs() < f32::EPSILON);
     }
 
@@ -17217,10 +17209,11 @@ exit 2
                 value: serde_json::json!(50000),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("regulatory_feature_max_view_span_bp")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("regulatory_feature_max_view_span_bp"))
+        );
         assert_eq!(
             engine.state().display.regulatory_feature_max_view_span_bp,
             50_000
@@ -17236,10 +17229,11 @@ exit 2
                 value: serde_json::json!(250),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("gc_content_bin_size_bp")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("gc_content_bin_size_bp"))
+        );
         assert_eq!(engine.state().display.gc_content_bin_size_bp, 250);
     }
 
@@ -17252,10 +17246,11 @@ exit 2
                 value: serde_json::json!(1200),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("linear_sequence_base_text_max_view_span_bp")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("linear_sequence_base_text_max_view_span_bp"))
+        );
         assert_eq!(
             engine
                 .state()
@@ -17793,9 +17788,10 @@ exit 2
                 require_all_mutations: Some(true),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("No amplicon introduced all requested mutations"));
+        assert!(
+            err.message
+                .contains("No amplicon introduced all requested mutations")
+        );
     }
 
     #[test]
@@ -17891,10 +17887,12 @@ exit 2
             })
             .unwrap();
         assert_eq!(res.created_seq_ids, vec!["tp73".to_string()]);
-        assert!(engine
-            .list_sequences_with_genome_anchor()
-            .iter()
-            .any(|seq_id| seq_id == "tp73"));
+        assert!(
+            engine
+                .list_sequences_with_genome_anchor()
+                .iter()
+                .any(|seq_id| seq_id == "tp73")
+        );
 
         let td = tempdir().unwrap();
         let bed_path = td.path().join("tp73_anchor_test.bed");
@@ -17910,20 +17908,23 @@ exit 2
                 clear_existing: Some(true),
             })
             .unwrap();
-        assert!(import_res
-            .changed_seq_ids
-            .iter()
-            .any(|seq_id| seq_id == "tp73"));
+        assert!(
+            import_res
+                .changed_seq_ids
+                .iter()
+                .any(|seq_id| seq_id == "tp73")
+        );
 
         let tp73 = engine
             .state()
             .sequences
             .get("tp73")
             .expect("tp73 should exist");
-        assert!(tp73
-            .features()
-            .iter()
-            .any(GentleEngine::is_generated_genome_bed_feature));
+        assert!(
+            tp73.features()
+                .iter()
+                .any(GentleEngine::is_generated_genome_bed_feature)
+        );
     }
 
     #[test]
@@ -18484,10 +18485,11 @@ ORIGIN
                 assert_eq!(tfbs.columns.len(), 4);
                 assert_eq!(tfbs.matched_sequence.len(), 4);
                 assert_eq!(tfbs.instruction, TFBS_EXPERT_INSTRUCTION);
-                assert!(tfbs
-                    .columns
-                    .iter()
-                    .all(|column| column.information_content_bits.is_finite()));
+                assert!(
+                    tfbs.columns
+                        .iter()
+                        .all(|column| column.information_content_bits.is_finite())
+                );
             }
             other => panic!("expected tfbs expert view, got {other:?}"),
         }
@@ -18524,15 +18526,17 @@ ORIGIN
                 assert_eq!(re.cut_pos_1based, key.pos() as usize + 1);
                 assert_eq!(re.recognition_start_1based, key.from() as usize + 1);
                 assert_eq!(re.recognition_end_1based, key.to() as usize);
-                assert!(re
-                    .enzyme_names
-                    .iter()
-                    .any(|name| name.eq_ignore_ascii_case("EcoRI")));
-                for name in names {
-                    assert!(re
-                        .enzyme_names
+                assert!(
+                    re.enzyme_names
                         .iter()
-                        .any(|entry| entry.eq_ignore_ascii_case(&name)));
+                        .any(|name| name.eq_ignore_ascii_case("EcoRI"))
+                );
+                for name in names {
+                    assert!(
+                        re.enzyme_names
+                            .iter()
+                            .any(|entry| entry.eq_ignore_ascii_case(&name))
+                    );
                 }
                 assert_eq!(re.instruction, RESTRICTION_EXPERT_INSTRUCTION);
             }
@@ -18561,14 +18565,18 @@ ORIGIN
                 assert!(!splicing.unique_exons.is_empty());
                 assert!(!splicing.boundaries.is_empty());
                 assert!(!splicing.junctions.is_empty());
-                assert!(splicing
-                    .boundaries
-                    .iter()
-                    .any(|m| m.side.eq_ignore_ascii_case("donor") && m.canonical));
-                assert!(splicing
-                    .boundaries
-                    .iter()
-                    .any(|m| m.side.eq_ignore_ascii_case("acceptor") && m.canonical));
+                assert!(
+                    splicing
+                        .boundaries
+                        .iter()
+                        .any(|m| m.side.eq_ignore_ascii_case("donor") && m.canonical)
+                );
+                assert!(
+                    splicing
+                        .boundaries
+                        .iter()
+                        .any(|m| m.side.eq_ignore_ascii_case("acceptor") && m.canonical)
+                );
                 assert_eq!(splicing.instruction, SPLICING_EXPERT_INSTRUCTION);
             }
             other => panic!("expected splicing expert view, got {other:?}"),
@@ -18793,10 +18801,12 @@ ORIGIN
                 ladders: Some(vec!["NEB 1kb DNA Ladder".to_string()]),
             })
             .unwrap();
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.contains("Created serial arrangement 'arr-test'")));
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|m| m.contains("Created serial arrangement 'arr-test'"))
+        );
         let arrangement = engine
             .state()
             .container_state
@@ -18871,10 +18881,12 @@ ORIGIN
                 arrangement_id: None,
             })
             .unwrap();
-        assert!(res_container
-            .messages
-            .iter()
-            .any(|m| m.contains("serial gel SVG")));
+        assert!(
+            res_container
+                .messages
+                .iter()
+                .any(|m| m.contains("serial gel SVG"))
+        );
         let svg_container = std::fs::read_to_string(path_container_text).unwrap();
         assert!(svg_container.contains("Serial Gel Preview"));
         assert!(svg_container.contains("Tube B"));
@@ -18891,10 +18903,12 @@ ORIGIN
                 arrangement_id: Some("arr-1".to_string()),
             })
             .unwrap();
-        assert!(res_arrangement
-            .messages
-            .iter()
-            .any(|m| m.contains("2 sample lane(s)")));
+        assert!(
+            res_arrangement
+                .messages
+                .iter()
+                .any(|m| m.contains("2 sample lane(s)"))
+        );
         let svg_arrangement = std::fs::read_to_string(path_arrangement_text).unwrap();
         assert!(svg_arrangement.contains("Serial Gel Preview"));
         assert!(svg_arrangement.contains("Tube A"));
@@ -18953,10 +18967,12 @@ ORIGIN
         assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
         assert!(catalog.ladder_count > 0);
         assert_eq!(catalog.ladder_count, catalog.ladders.len());
-        assert!(catalog
-            .ladders
-            .iter()
-            .any(|ladder| ladder.name == "NEB 100bp DNA Ladder"));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .any(|ladder| ladder.name == "NEB 100bp DNA Ladder")
+        );
     }
 
     #[test]
@@ -18971,18 +18987,21 @@ ORIGIN
                 name_filter: Some("NEB".to_string()),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("DNA ladders catalog")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("DNA ladders catalog"))
+        );
         let text = std::fs::read_to_string(path_text).unwrap();
         let catalog: DnaLadderCatalog = serde_json::from_str(&text).unwrap();
         assert_eq!(catalog.schema, "gentle.dna_ladders.v1");
         assert!(catalog.ladder_count > 0);
-        assert!(catalog
-            .ladders
-            .iter()
-            .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb")));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb"))
+        );
     }
 
     #[test]
@@ -18991,10 +19010,12 @@ ORIGIN
         assert_eq!(catalog.schema, "gentle.rna_ladders.v1");
         assert!(catalog.ladder_count > 0);
         assert_eq!(catalog.ladder_count, catalog.ladders.len());
-        assert!(catalog
-            .ladders
-            .iter()
-            .any(|ladder| ladder.name.contains("RNA")));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .any(|ladder| ladder.name.contains("RNA"))
+        );
     }
 
     #[test]
@@ -19009,18 +19030,21 @@ ORIGIN
                 name_filter: Some("NEB".to_string()),
             })
             .unwrap();
-        assert!(res
-            .messages
-            .iter()
-            .any(|m| m.contains("RNA ladders catalog")));
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("RNA ladders catalog"))
+        );
         let text = std::fs::read_to_string(path_text).unwrap();
         let catalog: RnaLadderCatalog = serde_json::from_str(&text).unwrap();
         assert_eq!(catalog.schema, "gentle.rna_ladders.v1");
         assert!(catalog.ladder_count > 0);
-        assert!(catalog
-            .ladders
-            .iter()
-            .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb")));
+        assert!(
+            catalog
+                .ladders
+                .iter()
+                .all(|ladder| ladder.name.to_ascii_lowercase().contains("neb"))
+        );
     }
 
     #[test]
@@ -19255,9 +19279,10 @@ ORIGIN
                 value: serde_json::json!("small"),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("feature_details_font_size requires a number"));
+        assert!(
+            err.message
+                .contains("feature_details_font_size requires a number")
+        );
     }
 
     #[test]
@@ -19269,9 +19294,10 @@ ORIGIN
                 value: serde_json::json!(3.0),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("feature_details_font_size must be between 8.0 and 24.0"));
+        assert!(
+            err.message
+                .contains("feature_details_font_size must be between 8.0 and 24.0")
+        );
     }
 
     #[test]
@@ -19283,9 +19309,10 @@ ORIGIN
                 value: serde_json::json!(30.0),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("linear_external_feature_label_font_size must be between 8.0 and 24.0"));
+        assert!(
+            err.message
+                .contains("linear_external_feature_label_font_size must be between 8.0 and 24.0")
+        );
     }
 
     #[test]
@@ -19311,9 +19338,10 @@ ORIGIN
                 value: serde_json::json!(10),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("linear_sequence_helical_phase_offset_bp must be between 0 and 9"));
+        assert!(
+            err.message
+                .contains("linear_sequence_helical_phase_offset_bp must be between 0 and 9")
+        );
     }
 
     #[test]
@@ -19325,9 +19353,10 @@ ORIGIN
                 value: serde_json::json!("wide"),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("regulatory_feature_max_view_span_bp requires a non-negative integer"));
+        assert!(
+            err.message
+                .contains("regulatory_feature_max_view_span_bp requires a non-negative integer")
+        );
     }
 
     #[test]
@@ -19339,9 +19368,10 @@ ORIGIN
                 value: serde_json::json!("fine"),
             })
             .unwrap_err();
-        assert!(err
-            .message
-            .contains("gc_content_bin_size_bp requires a positive integer"));
+        assert!(
+            err.message
+                .contains("gc_content_bin_size_bp requires a positive integer")
+        );
     }
 
     #[test]
@@ -19553,10 +19583,11 @@ ORIGIN
                 timeout_seconds: None,
             })
             .unwrap();
-        assert!(prep
-            .messages
-            .iter()
-            .any(|m| m.contains("Prepared genome 'ToyGenome'")));
+        assert!(
+            prep.messages
+                .iter()
+                .any(|m| m.contains("Prepared genome 'ToyGenome'"))
+        );
         let catalog_path_str = catalog_path.to_string_lossy().to_string();
         let catalog_names = GentleEngine::list_reference_genomes(Some(&catalog_path_str)).unwrap();
         assert!(catalog_names.contains(&"ToyGenome".to_string()));
@@ -19756,10 +19787,12 @@ ORIGIN
             .seq_to_node
             .get("toy_slice_ext5")
             .expect("child lineage node should exist");
-        assert!(lineage
-            .edges
-            .iter()
-            .any(|edge| edge.from_node_id == *parent && edge.to_node_id == *child));
+        assert!(
+            lineage
+                .edges
+                .iter()
+                .any(|edge| edge.from_node_id == *parent && edge.to_node_id == *child)
+        );
 
         let provenance = engine
             .state()
@@ -20084,10 +20117,12 @@ ORIGIN
             })
             .unwrap();
         assert_eq!(result.created_seq_ids, vec!["anch_ext".to_string()]);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.contains("clipped at chromosome start position 1")));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("clipped at chromosome start position 1"))
+        );
     }
 
     #[test]
@@ -20204,11 +20239,13 @@ ORIGIN
             })
             .collect();
         assert_eq!(generated_gz.len(), 1);
-        assert!(generated_gz[0]
-            .qualifier_values("label".into())
-            .next()
-            .map(|v| v.contains("peak_a"))
-            .unwrap_or(false));
+        assert!(
+            generated_gz[0]
+                .qualifier_values("label".into())
+                .next()
+                .map(|v| v.contains("peak_a"))
+                .unwrap_or(false)
+        );
     }
 
     #[cfg(unix)]
@@ -20382,10 +20419,12 @@ ORIGIN
             .unwrap();
         assert!(plain.changed_seq_ids.contains(&"toy_slice".to_string()));
         assert!(plain.warnings.iter().any(|w| w.contains("VCF line")));
-        assert!(plain
-            .warnings
-            .iter()
-            .any(|w| w.contains("did not match anchor chromosome")));
+        assert!(
+            plain
+                .warnings
+                .iter()
+                .any(|w| w.contains("did not match anchor chromosome"))
+        );
         assert!(plain.warnings.iter().any(|w| w.contains("chr2")));
 
         let dna_plain = engine.state().sequences.get("toy_slice").unwrap();
@@ -20395,9 +20434,11 @@ ORIGIN
             .filter(|f| GentleEngine::is_generated_genome_vcf_feature(f))
             .collect();
         assert_eq!(plain_features.len(), 3);
-        assert!(plain_features
-            .iter()
-            .any(|f| { f.qualifier_values("vcf_alt".into()).any(|v| v == "<DEL>") }));
+        assert!(
+            plain_features
+                .iter()
+                .any(|f| { f.qualifier_values("vcf_alt".into()).any(|v| v == "<DEL>") })
+        );
 
         let vcf_gz = td.path().join("variants.vcf.gz");
         write_gzip(
@@ -20415,10 +20456,12 @@ ORIGIN
             })
             .unwrap();
         assert!(filtered.changed_seq_ids.contains(&"toy_slice".to_string()));
-        assert!(filtered
-            .warnings
-            .iter()
-            .any(|w| w.contains("QUAL-based score filters")));
+        assert!(
+            filtered
+                .warnings
+                .iter()
+                .any(|w| w.contains("QUAL-based score filters"))
+        );
 
         let dna_filtered = engine.state().sequences.get("toy_slice").unwrap();
         let filtered_features: Vec<_> = dna_filtered
@@ -20621,10 +20664,12 @@ ORIGIN
             )
             .unwrap();
         assert!(cancelled);
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.contains("import cancelled")));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("import cancelled"))
+        );
         let dna = engine.state().sequences.get("toy_slice").unwrap();
         let features: Vec<_> = dna
             .features()
@@ -20672,10 +20717,11 @@ ORIGIN
                 timeout_seconds: None,
             })
             .unwrap();
-        assert!(prep
-            .messages
-            .iter()
-            .any(|m| m.contains("[genbank_accession]")));
+        assert!(
+            prep.messages
+                .iter()
+                .any(|m| m.contains("[genbank_accession]"))
+        );
 
         let plan = GentleEngine::describe_reference_genome_sources(
             Some(&catalog_path_str),
@@ -20883,10 +20929,12 @@ ORIGIN
         assert_eq!(report.subscriptions_considered, 0);
         assert_eq!(report.target_sequences, 0);
         assert_eq!(report.applied_imports, 0);
-        assert!(!engine
-            .state()
-            .metadata
-            .contains_key(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY));
+        assert!(
+            !engine
+                .state()
+                .metadata
+                .contains_key(GENOME_TRACK_KNOWN_ANCHORS_METADATA_KEY)
+        );
     }
 
     #[test]

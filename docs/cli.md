@@ -4,13 +4,14 @@ This page documents command-line entry points for GENtle.
 
 ## Overview
 
-GENtle currently provides five binaries:
+GENtle currently provides six binaries:
 
 - `gentle`: graphical desktop app (GUI)
 - `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
 - `gentle_js`: interactive JavaScript shell
 - `gentle_lua`: interactive Lua shell
 - `gentle_examples_docs`: generates adapter snippets from canonical protocol examples
+- `gentle_mcp`: MCP stdio server (guarded mutating baseline tools)
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.
@@ -78,6 +79,7 @@ cargo run --bin gentle_js
 cargo run --bin gentle_lua
 cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle_examples_docs -- --check
+cargo run --bin gentle_mcp -- --help
 cargo run --bin gentle -- --version
 cargo run --bin gentle_cli -- --version
 ```
@@ -90,6 +92,7 @@ cargo run --release --bin gentle_js
 cargo run --release --bin gentle_lua
 cargo run --release --bin gentle_cli -- capabilities
 cargo run --release --bin gentle_examples_docs -- --check
+cargo run --release --bin gentle_mcp -- --help
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- --version
 ```
@@ -228,6 +231,25 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 - `docs/examples/generated/guides_filter_and_generate_oligos.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
+
+## `gentle_mcp` (MCP stdio server)
+
+`gentle_mcp` starts a Model Context Protocol server over stdio.
+
+Current baseline tools:
+
+- `capabilities`
+- `state_summary`
+- `op` (apply one operation; requires `confirm=true`)
+- `workflow` (apply one workflow; requires `confirm=true`)
+- `help`
+
+Run:
+
+```bash
+cargo run --bin gentle_mcp
+cargo run --bin gentle_mcp -- --state path/to/project.gentle.json
+```
 
 ## `gentle_lua` (Lua shell)
 
@@ -546,7 +568,7 @@ Shared shell command:
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (currently disabled by security policy)
-    - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua]`
+    - `help [COMMAND ...] [--format text|json|markdown] [--interface all|cli-direct|cli-shell|gui-shell|js|lua|mcp]`
   - Use single quotes around JSON payloads to preserve whitespace:
     - `gentle_cli shell 'workflow {"run_id":"r1","ops":[]}'`
   - Structured help export for automation:
