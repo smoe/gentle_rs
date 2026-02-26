@@ -4,6 +4,7 @@ use crate::{
     gc_contents::GcContents,
     iupac_code::IupacCode,
     methylation_sites::{MethylationMode, MethylationSites},
+    ncbi_genbank_xml::parse_gbseq_xml_file,
     open_reading_frame::OpenReadingFrame,
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey, RestrictionEnzymeSite},
 };
@@ -202,6 +203,13 @@ impl DNAsequence {
         let text = std::fs::read_to_string(filename)?;
         let parsed = parse_embl_records(&text)?;
         Ok(parsed
+            .into_iter()
+            .map(DNAsequence::from_genbank_seq)
+            .collect())
+    }
+
+    pub fn from_ncbi_gbseq_xml_file(filename: &str) -> Result<Vec<DNAsequence>> {
+        Ok(parse_gbseq_xml_file(filename)?
             .into_iter()
             .map(DNAsequence::from_genbank_seq)
             .collect())
@@ -1091,7 +1099,7 @@ impl From<String> for DNAsequence {
 mod tests {
     use super::*;
     use crate::{app::GENtleApp, enzymes::Enzymes};
-    use std::io::Write;
+    use std::{fs, io::Write};
     use tempfile::Builder;
 
     #[test]
@@ -1201,12 +1209,18 @@ mod tests {
                 .unwrap();
         let embl = DNAsequence::from_embl_file("test_files/fixtures/import_parity/toy.small.embl")
             .unwrap();
+        let xml = DNAsequence::from_ncbi_gbseq_xml_file(
+            "test_files/fixtures/import_parity/toy.small.gbseq.xml",
+        )
+        .unwrap();
         let fasta = fasta.first().unwrap();
         let genbank = genbank.first().unwrap();
         let embl = embl.first().unwrap();
+        let xml = xml.first().unwrap();
         assert_eq!(fasta.len(), 120);
         assert_eq!(genbank.len(), 120);
         assert_eq!(embl.len(), 120);
+        assert_eq!(xml.len(), 120);
         assert_eq!(
             fasta.get_forward_string().to_ascii_uppercase(),
             genbank.get_forward_string().to_ascii_uppercase()
@@ -1214,6 +1228,10 @@ mod tests {
         assert_eq!(
             genbank.get_forward_string().to_ascii_uppercase(),
             embl.get_forward_string().to_ascii_uppercase()
+        );
+        assert_eq!(
+            genbank.get_forward_string().to_ascii_uppercase(),
+            xml.get_forward_string().to_ascii_uppercase()
         );
         let gene_names: Vec<String> = genbank
             .features()
@@ -1228,6 +1246,38 @@ mod tests {
             .collect();
         assert!(gene_names.iter().any(|name| name == "toyA"));
         assert!(gene_names.iter().any(|name| name == "toyB"));
+    }
+
+    #[test]
+    fn test_toy_small_gbseq_xml_load_from_file_by_extension_and_fallback() {
+        let xml_path = "test_files/fixtures/import_parity/toy.small.gbseq.xml";
+        let xml_loaded = GENtleApp::load_from_file(xml_path).expect("load XML by extension");
+        assert_eq!(xml_loaded.len(), 120);
+        assert!(
+            xml_loaded
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+        );
+
+        let xml_text = fs::read_to_string(xml_path).expect("read XML fixture");
+        let mut tmp = Builder::new()
+            .suffix(".txt")
+            .tempfile()
+            .expect("temp disguised XML");
+        tmp.write_all(xml_text.as_bytes())
+            .expect("write disguised XML");
+        let fallback_loaded = GENtleApp::load_from_file(
+            tmp.path()
+                .to_str()
+                .expect("temp path should be valid UTF-8"),
+        )
+        .expect("load XML via fallback probe");
+        assert_eq!(fallback_loaded.len(), 120);
+        assert_eq!(
+            fallback_loaded.get_forward_string().to_ascii_uppercase(),
+            xml_loaded.get_forward_string().to_ascii_uppercase()
+        );
     }
 
     #[test]

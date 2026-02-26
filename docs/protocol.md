@@ -126,6 +126,13 @@ Current draft operations:
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)
 
+`LoadFile` import detection semantics (current):
+
+- deterministic probe order: `GenBank -> EMBL -> FASTA -> XML`
+- XML scope: `GBSet/GBSeq` is supported
+- unsupported XML dialects (for example `INSDSet/INSDSeq`) return explicit
+  schema/dialect diagnostics
+
 `ExtendGenomeAnchor` side semantics:
 
 - `side` accepts `five_prime` or `three_prime`.

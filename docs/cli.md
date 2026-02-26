@@ -317,6 +317,7 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 Current CLI workflows rely on sequence files supported by internal loaders:
 
 - GenBank
+- EMBL
 - FASTA
   - default interpretation: synthetic blunt `dsDNA`
   - optional FASTA-header metadata tokens for synthetic oligos:
@@ -327,6 +328,9 @@ Current CLI workflows rely on sequence files supported by internal loaders:
       - `forward_3=...` (alias `f3=...`)
       - `reverse_5=...` (alias `r5=...`)
       - `reverse_3=...` (alias `r3=...`)
+- NCBI GenBank XML (`GBSet/GBSeq`)
+  - currently rejected with explicit diagnostics for unsupported XML dialects
+    (for example `INSDSet/INSDSeq`)
 
 Example FASTA headers:
 

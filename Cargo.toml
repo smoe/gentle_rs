@@ -52,6 +52,7 @@ snapshot-tests = []
 serde = { version = "^1", features = ["derive"] }
 serde_json = "^1"
 serde_with = "*"
+quick-xml = { version = "0.37", features = ["serialize"] }
 bio = "^1"
 lazy_static = "^1"
 csv = "^1"

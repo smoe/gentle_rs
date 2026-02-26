@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-24
+Last updated: 2026-02-25
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -150,9 +150,9 @@ Notes:
 - Dedicated primary map-mode splicing visualization (outside expert/detail
   panel) is still pending; current baseline is available via expert payload,
   GUI expert panel, and SVG export.
-- XML sequence/annotation import is not yet integrated into the shared runtime
-  import paths; current primary format remains GenBank (+ FASTA for
-  sequence-only).
+- XML sequence/annotation import baseline is now integrated for NCBI
+  GenBank XML (`GBSet/GBSeq`) through shared runtime import paths; remaining
+  XML dialect support (`INSDSet/INSDSeq`) is still pending.
 - Cross-application clipboard interoperability for sequence + feature transfer
   is not yet implemented; current baseline supports deterministic in-app
   extraction into new sequences, while external copy/paste still needs a
@@ -183,39 +183,25 @@ Status:
 
 Goal: add XML import support without creating a second semantic model.
 
-Execution order:
+Status:
 
-1. Parser scaffolding and format detection:
-   - Add explicit format detection at import boundaries (`LoadFile`,
-     annotation parser dispatch) with deterministic precedence:
-     GenBank -> EMBL -> FASTA -> XML.
-   - Introduce one normalized intermediate import record
-     (sequence, topology, feature list, source metadata) used by all formats.
-2. Sequence + annotation XML adapter (priority scope):
-   - Implement `GBSet/GBSeq` parsing first (smallest useful scope for NCBI
-     GenBank XML).
-   - Map XML fields to existing `DNAsequence` + feature qualifier structures so
-     downstream operations remain unchanged.
-   - Reuse the same annotation-to-`GenomeGeneRecord` extraction rules currently
-     used for GenBank feature normalization.
-3. Annotation-index and genome/helper pipeline integration:
-   - Extend annotation parser dispatch in `src/genomes.rs` so prepared
-     genome/helper workflows can ingest XML annotation sources.
-   - Keep GenBank as preferred catalog source and XML as optional, explicit
-     fallback.
-4. Adapter/UI exposure and diagnostics:
-   - Add XML file filters in GUI open dialogs and document support in CLI/GUI
-     manuals.
-   - Emit clear unsupported-dialect errors (for example native Bioseq XML when
-     only GBSeq adapter is enabled).
-5. Parity tests and fixture governance:
-   - Add cross-format parity tests based on tiny paired fixtures:
-     `test_files/fixtures/import_parity/toy.small.fa`,
-     `test_files/fixtures/import_parity/toy.small.gb`,
-     `test_files/fixtures/import_parity/toy.small.gbseq.xml`.
-   - Assert equal sequence length/content and equivalent mapped gene intervals
-     across GenBank and XML imports.
-   - Keep large exploratory XML samples out of committed default fixtures.
+1. Implemented baseline:
+   - deterministic runtime import detection order now includes XML fallback:
+     `GenBank -> EMBL -> FASTA -> XML`.
+   - `GBSet/GBSeq` sequence import is mapped to existing `DNAsequence` +
+     feature qualifier structures (no format-specific biology logic branch).
+   - genome annotation parser dispatch now ingests `.xml` annotation sources
+     and normalizes through existing GenBank-like `GenomeGeneRecord` mapping.
+   - GUI open-sequence dialog now exposes XML file filters and docs list XML
+     support explicitly.
+   - unsupported XML dialects (for example `INSDSet/INSDSeq`) return explicit,
+     deterministic diagnostics.
+2. Remaining follow-ups:
+   - implement additive `INSDSet/INSDSeq` adapter without diverging semantic
+     normalization.
+   - extend cross-format parity fixtures/tests to include additional XML edge
+     cases (multi-record, qualifier-only, interval-only locations).
+   - keep large exploratory XML samples out of committed default fixtures.
 
 ### Text/voice control track (new)
 

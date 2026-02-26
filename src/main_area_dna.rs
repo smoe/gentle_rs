@@ -572,6 +572,54 @@ mod tests {
     }
 
     #[test]
+    fn derive_regulatory_feature_grouping_accepts_active_region_colon_prefix_variant() {
+        let feature = make_feature(
+            "regulatory",
+            vec![
+                ("regulatory_class", "silencer"),
+                ("note", "active region: 122"),
+            ],
+        );
+        let grouped = MainAreaDna::derive_regulatory_feature_grouping(
+            &feature,
+            "silencer: active region: 122",
+        )
+        .expect("expected active-region grouping");
+        assert_eq!(grouped.primary_key, "silencer");
+        assert_eq!(grouped.secondary_key.as_deref(), Some("active_region"));
+        assert_eq!(grouped.secondary_label.as_deref(), Some("active region"));
+        assert_eq!(grouped.display_label, "122");
+    }
+
+    #[test]
+    fn derive_regulatory_feature_grouping_groups_enhancers_by_non_histone_marker() {
+        let feature = make_feature(
+            "regulatory",
+            vec![
+                ("regulatory_class", "enhancer"),
+                (
+                    "note",
+                    "CTCF-bound enhancer chr1:3650019-3650807 (GRCh37/hg19 assembly coordinates)",
+                ),
+            ],
+        );
+        let grouped = MainAreaDna::derive_regulatory_feature_grouping(
+            &feature,
+            "enhancer: CTCF-bound enhancer chr1:3650019-3650807 (GRCh37/hg19 assembly coordinates)",
+        )
+        .expect("expected marker grouping");
+        assert_eq!(grouped.primary_key, "enhancer");
+        assert_eq!(grouped.secondary_label.as_deref(), Some("CTCF"));
+        assert_eq!(grouped.secondary_key.as_deref(), Some("marker:ctcf"));
+        assert!(
+            grouped
+                .display_label
+                .to_ascii_lowercase()
+                .starts_with("bound enhancer chr1:")
+        );
+    }
+
+    #[test]
     fn derive_regulatory_feature_grouping_falls_back_to_label_prefix_when_class_missing() {
         let feature = make_feature(
             "regulatory",
@@ -593,6 +641,42 @@ mod tests {
                 .to_ascii_lowercase()
                 .starts_with("silencer")
         );
+    }
+
+    #[test]
+    fn derive_regulatory_feature_grouping_routes_non_enhancer_silencer_classes_to_other() {
+        let feature = make_feature(
+            "regulatory",
+            vec![
+                ("regulatory_class", "promoter"),
+                ("note", "promoter: TATA-rich region chr1:3650019-3650101"),
+            ],
+        );
+        let grouped = MainAreaDna::derive_regulatory_feature_grouping(
+            &feature,
+            "promoter: TATA-rich region chr1:3650019-3650101",
+        )
+        .expect("expected other-group routing");
+        assert_eq!(grouped.primary_key, "other");
+        assert_eq!(grouped.primary_label, "other");
+        assert!(grouped.secondary_key.is_none());
+        assert!(
+            grouped
+                .display_label
+                .to_ascii_lowercase()
+                .starts_with("promoter")
+        );
+    }
+
+    #[test]
+    fn derive_regulatory_feature_grouping_routes_unclassified_labels_to_other() {
+        let feature = make_feature("regulatory", vec![("note", "candidate boundary region")]);
+        let grouped =
+            MainAreaDna::derive_regulatory_feature_grouping(&feature, "candidate boundary region")
+                .expect("expected other-group routing");
+        assert_eq!(grouped.primary_key, "other");
+        assert_eq!(grouped.primary_label, "other");
+        assert!(grouped.secondary_key.is_none());
     }
 
     #[test]
@@ -694,6 +778,14 @@ mod tests {
         assert_eq!(area.multi_selected_feature_ids, BTreeSet::from([2usize]));
         assert_eq!(area.focused_feature_id, Some(2));
         assert_eq!(area.get_selected_feature_id(), Some(2));
+    }
+
+    #[test]
+    fn splicing_expert_viewport_id_is_stable_and_feature_scoped() {
+        let baseline = MainAreaDna::splicing_expert_viewport_id("seq1", 7);
+        assert_eq!(baseline, MainAreaDna::splicing_expert_viewport_id("seq1", 7));
+        assert_ne!(baseline, MainAreaDna::splicing_expert_viewport_id("seq1", 8));
+        assert_ne!(baseline, MainAreaDna::splicing_expert_viewport_id("seq2", 7));
     }
 }
 
@@ -2148,6 +2240,7 @@ impl MainAreaDna {
                         mut max_span_bp,
                         mut helical_letters_enabled,
                         mut helical_max_span_bp,
+                        mut helical_phase_offset_bp,
                         mut auto_hide_sequence_panel,
                         mut detail_font_size,
                         mut external_label_font_size,
@@ -2163,13 +2256,16 @@ impl MainAreaDna {
                                 display.linear_sequence_base_text_max_view_span_bp(),
                                 display.linear_sequence_helical_letters_enabled(),
                                 display.linear_sequence_helical_max_view_span_bp(),
+                                display.linear_sequence_helical_phase_offset_bp(),
                                 display.auto_hide_sequence_panel_when_linear_bases_visible(),
                                 display.feature_details_font_size(),
                                 display.linear_external_feature_label_font_size(),
                                 display.linear_external_feature_label_background_opacity(),
                             )
                         })
-                        .unwrap_or((true, false, true, 500, false, 2000, false, 8.25, 11.0, 0.9));
+                        .unwrap_or((
+                            true, false, true, 500, false, 2000, 0, false, 8.25, 11.0, 0.9,
+                        ));
                     if ui
                         .checkbox(
                             &mut show_double_strand,
@@ -2258,6 +2354,7 @@ impl MainAreaDna {
                         self.sync_linear_helical_settings_to_engine(
                             helical_letters_enabled,
                             helical_max_span_bp,
+                            helical_phase_offset_bp,
                         );
                     }
                     ui.horizontal(|ui| {
@@ -2283,6 +2380,34 @@ impl MainAreaDna {
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
                                 helical_max_span_bp,
+                                helical_phase_offset_bp,
+                            );
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Helical phase offset (mod 10)");
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut helical_phase_offset_bp)
+                                    .range(0..=9)
+                                    .speed(1.0)
+                                    .suffix(" bp"),
+                            )
+                            .on_hover_text(
+                                "Manual modulo-10 row offset for helical letters; use this to align motif columns",
+                            )
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_sequence_helical_phase_offset_bp(
+                                    helical_phase_offset_bp,
+                                );
+                            self.sync_linear_helical_settings_to_engine(
+                                helical_letters_enabled,
+                                helical_max_span_bp,
+                                helical_phase_offset_bp,
                             );
                         }
                     });
@@ -4297,7 +4422,12 @@ impl MainAreaDna {
         display.linear_reverse_strand_use_upside_down_letters = reverse_upside_down;
     }
 
-    fn sync_linear_helical_settings_to_engine(&self, enabled: bool, max_span: usize) {
+    fn sync_linear_helical_settings_to_engine(
+        &self,
+        enabled: bool,
+        max_span: usize,
+        phase_offset_bp: usize,
+    ) {
         let Some(engine) = &self.engine else {
             return;
         };
@@ -4305,6 +4435,7 @@ impl MainAreaDna {
         let display = &mut guard.state_mut().display;
         display.linear_sequence_helical_letters_enabled = enabled;
         display.linear_sequence_helical_max_view_span_bp = max_span;
+        display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
     }
 
     fn sync_linear_backbone_visibility_to_engine(&self, hide_when_bases_visible: bool) {
@@ -4398,6 +4529,9 @@ impl MainAreaDna {
         );
         display.set_linear_sequence_helical_max_view_span_bp(
             settings.linear_sequence_helical_max_view_span_bp,
+        );
+        display.set_linear_sequence_helical_phase_offset_bp(
+            settings.linear_sequence_helical_phase_offset_bp,
         );
         display.set_linear_show_double_strand_bases(settings.linear_show_double_strand_bases);
         display.set_linear_hide_backbone_when_sequence_bases_visible(
@@ -5082,10 +5216,21 @@ impl MainAreaDna {
             .monospace()
             .size(self.feature_details_font_size()),
         );
+        ui.add_space(2.0);
 
         let lane_count = view.transcripts.len().max(1);
         let lane_height = 26.0_f32;
-        let plot_height = 52.0 + lane_count as f32 * lane_height + 36.0;
+        let max_junction_support = view
+            .junctions
+            .iter()
+            .map(|junction| junction.support_transcript_count.max(1) as f32)
+            .fold(1.0_f32, f32::max);
+        // Reserve enough vertical headroom so high-support intron arcs do not get clipped
+        // by the text/status stripe above this canvas.
+        let axis_top_padding = (30.0 + max_junction_support * 2.0).clamp(18.0, 84.0) + 10.0;
+        let lanes_offset_from_axis = 30.0_f32;
+        let plot_height =
+            axis_top_padding + lanes_offset_from_axis + lane_count as f32 * lane_height + 36.0;
         let desired_width = (ui.available_width()).max(920.0);
 
         egui::ScrollArea::horizontal().show(ui, |ui| {
@@ -5098,8 +5243,8 @@ impl MainAreaDna {
             let label_x = rect.left() + 6.0;
             let plot_left = rect.left() + 220.0;
             let plot_right = rect.right() - 20.0;
-            let axis_y = rect.top() + 26.0;
-            let lanes_top = rect.top() + 56.0;
+            let axis_y = rect.top() + axis_top_padding;
+            let lanes_top = axis_y + lanes_offset_from_axis;
             let span = (view
                 .region_end_1based
                 .saturating_sub(view.region_start_1based))
@@ -5347,6 +5492,10 @@ impl MainAreaDna {
         }
     }
 
+    fn splicing_expert_viewport_id(seq_id: &str, feature_id: usize) -> egui::ViewportId {
+        egui::ViewportId::from_hash_of(("splicing_expert_viewport", seq_id, feature_id))
+    }
+
     fn render_splicing_expert_window(&mut self, ctx: &egui::Context) {
         if !self.show_splicing_expert_window {
             return;
@@ -5355,26 +5504,43 @@ impl MainAreaDna {
             self.show_splicing_expert_window = false;
             return;
         };
-        let mut open = self.show_splicing_expert_window;
         let title = format!("Splicing Expert - {} ({})", view.group_label, view.seq_id);
-        egui::Window::new(title)
-            .id(egui::Id::new(format!(
-                "splicing_expert_window_{}_{}",
-                view.seq_id, view.target_feature_id
-            )))
-            .open(&mut open)
-            .resizable(true)
-            .default_size(Vec2::new(1180.0, 760.0))
-            .show(ctx, |ui| {
+        let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([1180.0, 760.0])
+            .with_min_inner_size([860.0, 520.0]);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_splicing_expert_window;
+                egui::Window::new(title.clone())
+                    .id(egui::Id::new(format!(
+                        "splicing_expert_window_embedded_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    )))
+                    .open(&mut open)
+                    .resizable(true)
+                    .default_size(Vec2::new(1180.0, 760.0))
+                    .show(ctx, |ui| {
+                        let backdrop_settings = current_window_backdrop_settings();
+                        paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                        self.render_splicing_expert_view_ui(ui, &view);
+                    });
+                self.show_splicing_expert_window = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
                 self.render_splicing_expert_view_ui(ui, &view);
             });
-        self.show_splicing_expert_window = open;
-        if !open {
-            self.splicing_expert_window_feature_id = None;
-            self.splicing_expert_window_view = None;
-        }
+
+            let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
+            if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
+                self.show_splicing_expert_window = false;
+            }
+        });
     }
 
     fn apply_sequence_derivation(&mut self, op: Operation) {
@@ -8059,6 +8225,115 @@ impl MainAreaDna {
         }
     }
 
+    fn is_regulatory_marker_stopword(word: &str) -> bool {
+        matches!(
+            word,
+            "active"
+                | "region"
+                | "enhancer"
+                | "silencer"
+                | "promoter"
+                | "fragment"
+                | "regulatory"
+                | "putative"
+                | "candidate"
+                | "sequence"
+                | "assembly"
+                | "coordinates"
+                | "cell"
+                | "cells"
+                | "line"
+                | "human"
+                | "mouse"
+                | "hesc"
+                | "atac"
+                | "chip"
+                | "starr"
+                | "seq"
+                | "grch37"
+                | "grch38"
+                | "hg19"
+                | "hg38"
+        )
+    }
+
+    fn looks_like_protein_marker_token(token: &str) -> bool {
+        if token.len() < 2 {
+            return false;
+        }
+        let mut has_alpha = false;
+        let mut has_digit = false;
+        let mut letters = Vec::new();
+        for ch in token.chars() {
+            if ch.is_ascii_alphabetic() {
+                has_alpha = true;
+                letters.push(ch);
+            } else if ch.is_ascii_digit() {
+                has_digit = true;
+            } else if ch == '_' {
+                continue;
+            } else {
+                return false;
+            }
+        }
+        if !has_alpha {
+            return false;
+        }
+        let uppercase_letters = letters.iter().filter(|ch| ch.is_ascii_uppercase()).count();
+        let lowercase_letters = letters.iter().filter(|ch| ch.is_ascii_lowercase()).count();
+        let uppercase_like = uppercase_letters >= 2 && lowercase_letters == 0;
+        has_digit || uppercase_like
+    }
+
+    fn extract_regulatory_marker_token(value: &str) -> Option<String> {
+        let token = value
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .trim_matches(|ch: char| matches!(ch, ':' | ';' | ',' | '(' | ')' | '[' | ']'));
+        if token.is_empty() {
+            return None;
+        }
+        if let Some(histone) = Self::extract_histone_like_marker(token) {
+            return Some(histone);
+        }
+
+        let mut candidate = token.to_string();
+        for separator in ['-', '/', '|'] {
+            if let Some((head, _)) = candidate.split_once(separator) {
+                let head = head.trim();
+                if !head.is_empty() {
+                    candidate = head.to_string();
+                    break;
+                }
+            }
+        }
+        let candidate = candidate
+            .trim_matches(|ch: char| matches!(ch, ':' | ';' | ',' | '(' | ')' | '[' | ']'));
+        if candidate.is_empty() {
+            return None;
+        }
+
+        let lower = candidate.to_ascii_lowercase();
+        if Self::is_regulatory_marker_stopword(&lower) {
+            return None;
+        }
+        if lower.starts_with("chr")
+            && lower
+                .chars()
+                .nth(3)
+                .map(|ch| ch.is_ascii_digit())
+                .unwrap_or(false)
+        {
+            return None;
+        }
+        if Self::looks_like_protein_marker_token(candidate) {
+            Some(candidate.to_string())
+        } else {
+            None
+        }
+    }
+
     fn derive_regulatory_feature_grouping(
         feature: &gb_io::seq::Feature,
         full_label: &str,
@@ -8070,10 +8345,10 @@ impl MainAreaDna {
             return None;
         }
 
-        let mut primary =
+        let mut detected_primary =
             Self::feature_tree_first_nonempty_qualifier(feature, &["regulatory_class"])
                 .map(|value| value.to_ascii_lowercase());
-        if primary.is_none() {
+        if detected_primary.is_none() {
             let label_lower = full_label.trim().to_ascii_lowercase();
             for candidate in ["enhancer", "silencer"] {
                 if label_lower == candidate
@@ -8082,15 +8357,24 @@ impl MainAreaDna {
                     || label_lower.starts_with(&format!("{candidate}_"))
                     || label_lower.starts_with(&format!("{candidate}-"))
                 {
-                    primary = Some(candidate.to_string());
+                    detected_primary = Some(candidate.to_string());
                     break;
                 }
             }
         }
-        let primary = primary?;
 
-        let mut display_label = Self::strip_case_insensitive_prefix(full_label, &primary)
-            .unwrap_or_else(|| full_label.to_string());
+        let primary = match detected_primary.as_deref() {
+            Some("enhancer") => "enhancer".to_string(),
+            Some("silencer") => "silencer".to_string(),
+            _ => "other".to_string(),
+        };
+
+        let mut display_label = if primary == "other" {
+            full_label.to_string()
+        } else {
+            Self::strip_case_insensitive_prefix(full_label, &primary)
+                .unwrap_or_else(|| full_label.to_string())
+        };
         display_label = Self::trim_feature_tree_prefix_separators(&display_label);
 
         let mut secondary_key: Option<String> = None;
@@ -8107,7 +8391,7 @@ impl MainAreaDna {
                 display_label = candidate;
             }
         } else if primary == "enhancer"
-            && let Some(marker) = Self::extract_histone_like_marker(&display_label)
+            && let Some(marker) = Self::extract_regulatory_marker_token(&display_label)
         {
             secondary_key = Some(format!("marker:{}", marker.to_ascii_lowercase()));
             secondary_label = Some(marker.clone());
@@ -9131,6 +9415,16 @@ impl MainAreaDna {
                             self.splicing_expert_window_feature_id = Some(splicing.target_feature_id);
                             self.splicing_expert_window_view = Some(splicing.clone());
                             self.show_splicing_expert_window = true;
+                            let viewport_id = Self::splicing_expert_viewport_id(
+                                &splicing.seq_id,
+                                splicing.target_feature_id,
+                            );
+                            ui.ctx().send_viewport_cmd_to(
+                                viewport_id,
+                                egui::ViewportCommand::Visible(true),
+                            );
+                            ui.ctx()
+                                .send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Focus);
                         }
                     }
                     _ => self.render_feature_expert_view_ui(ui, view),
@@ -9185,21 +9479,25 @@ impl MainAreaDna {
                     .max_width(max_tree_width.max(FEATURE_TREE_MIN_WIDTH_PX))
                     .resizable(egui::Vec2b::new(true, false))
                     .show(ui, |ui| {
-                        resized_tree_width =
-                            Self::clamp_feature_tree_panel_width(ui.max_rect().width());
-                        let tree_height = (ui.available_height() * 0.55).max(180.0);
-                        egui::ScrollArea::both()
-                            .id_salt(format!(
-                                "feature_tree_scroll_{}",
-                                self.seq_id.as_deref().unwrap_or("<no-seq-id>")
-                            ))
-                            .auto_shrink([false, false])
-                            .max_height(tree_height)
-                            .show(ui, |ui| {
-                                self.render_features(ui);
-                            });
-                        ui.separator();
-                        self.render_description(ui);
+                        ui.vertical(|ui| {
+                            resized_tree_width =
+                                Self::clamp_feature_tree_panel_width(ui.max_rect().width());
+                            let tree_height = (ui.available_height() * 0.55).max(180.0);
+                            egui::ScrollArea::both()
+                                .id_salt(format!(
+                                    "feature_tree_scroll_{}",
+                                    self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                                ))
+                                .auto_shrink([false, false])
+                                .max_height(tree_height)
+                                .show(ui, |ui| {
+                                    ui.vertical(|ui| {
+                                        self.render_features(ui);
+                                    });
+                                });
+                            ui.separator();
+                            self.render_description(ui);
+                        });
                     });
                 let clamped_tree_width =
                     Self::clamp_feature_tree_panel_width(resized_tree_width).min(max_tree_width);

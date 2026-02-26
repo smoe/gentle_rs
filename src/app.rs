@@ -1266,6 +1266,34 @@ impl GENtleApp {
         }
     }
 
+    fn clamp_feature_details_font_size(value: f32) -> f32 {
+        if value.is_finite() {
+            value.clamp(8.0, 24.0)
+        } else {
+            8.25
+        }
+    }
+
+    fn clamp_external_feature_label_font_size(value: f32) -> f32 {
+        if value.is_finite() {
+            value.clamp(8.0, 24.0)
+        } else {
+            11.0
+        }
+    }
+
+    fn clamp_external_feature_label_background_opacity(value: f32) -> f32 {
+        if value.is_finite() {
+            value.clamp(0.0, 1.0)
+        } else {
+            0.9
+        }
+    }
+
+    fn clamp_linear_helical_phase_offset_bp(value: usize) -> usize {
+        value % 10
+    }
+
     fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
         target.show_sequence_panel = source.show_sequence_panel;
         target.auto_hide_sequence_panel_when_linear_bases_visible =
@@ -1304,11 +1332,16 @@ impl GENtleApp {
         target.gc_content_bin_size_bp = source.gc_content_bin_size_bp;
         target.show_open_reading_frames = source.show_open_reading_frames;
         target.show_methylation_sites = source.show_methylation_sites;
-        target.feature_details_font_size = source.feature_details_font_size;
+        target.feature_details_font_size =
+            Self::clamp_feature_details_font_size(source.feature_details_font_size);
         target.linear_external_feature_label_font_size =
-            source.linear_external_feature_label_font_size;
+            Self::clamp_external_feature_label_font_size(
+                source.linear_external_feature_label_font_size,
+            );
         target.linear_external_feature_label_background_opacity =
-            source.linear_external_feature_label_background_opacity;
+            Self::clamp_external_feature_label_background_opacity(
+                source.linear_external_feature_label_background_opacity,
+            );
         target.linear_view_start_bp = source.linear_view_start_bp;
         target.linear_view_span_bp = source.linear_view_span_bp;
         target.linear_sequence_base_text_max_view_span_bp =
@@ -1317,6 +1350,10 @@ impl GENtleApp {
             source.linear_sequence_helical_letters_enabled;
         target.linear_sequence_helical_max_view_span_bp =
             source.linear_sequence_helical_max_view_span_bp;
+        target.linear_sequence_helical_phase_offset_bp =
+            Self::clamp_linear_helical_phase_offset_bp(
+                source.linear_sequence_helical_phase_offset_bp,
+            );
         target.linear_show_double_strand_bases = source.linear_show_double_strand_bases;
         target.linear_hide_backbone_when_sequence_bases_visible =
             source.linear_hide_backbone_when_sequence_bases_visible;
@@ -2311,6 +2348,13 @@ Error: `{err}`"
         Ok(dna)
     }
 
+    fn load_dna_from_xml_file(filename: &str) -> Result<DNAsequence> {
+        let dna = dna_sequence::DNAsequence::from_ncbi_gbseq_xml_file(filename)?
+            .pop()
+            .ok_or_else(|| anyhow!("Could not read XML file {filename}"))?;
+        Ok(dna)
+    }
+
     fn new_dna_window(&mut self, seq_id: String, dna: DNAsequence) {
         self.new_windows
             .push(Window::new_dna(dna, seq_id, self.engine.clone()));
@@ -2405,6 +2449,7 @@ Error: `{err}`"
             Some("fa") | Some("fasta") | Some("fna") | Some("fas") => {
                 return Self::load_dna_from_fasta_file(path);
             }
+            Some("xml") => return Self::load_dna_from_xml_file(path),
             _ => {}
         }
 
@@ -2412,6 +2457,7 @@ Error: `{err}`"
             Self::load_dna_from_genbank_file,
             Self::load_dna_from_embl_file,
             Self::load_dna_from_fasta_file,
+            Self::load_dna_from_xml_file,
         ] {
             if let Ok(dna) = loader(path) {
                 return Ok(dna);
@@ -2725,7 +2771,20 @@ Error: `{err}`"
     }
 
     fn prompt_open_sequence(&mut self) {
-        if let Some(path) = rfd::FileDialog::new().pick_file() {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter(
+                "Supported sequence files",
+                &[
+                    "gb", "gbk", "gbff", "genbank", "embl", "emb", "fa", "fasta", "fna", "fas",
+                    "xml",
+                ],
+            )
+            .add_filter("GenBank", &["gb", "gbk", "gbff", "genbank"])
+            .add_filter("EMBL", &["embl", "emb"])
+            .add_filter("FASTA", &["fa", "fasta", "fna", "fas"])
+            .add_filter("NCBI GenBank XML (GBSet/GBSeq)", &["xml"])
+            .pick_file()
+        {
             let path = path.display().to_string();
             self.open_new_window_from_file(&path);
         }
@@ -11321,7 +11380,64 @@ Error: `{err}`"
     }
 
     fn render_configuration_graphics_tab(&mut self, ui: &mut Ui) {
+        let normalized_detail_font = Self::clamp_feature_details_font_size(
+            self.configuration_graphics.feature_details_font_size,
+        );
+        if (self.configuration_graphics.feature_details_font_size - normalized_detail_font).abs()
+            > f32::EPSILON
+        {
+            self.configuration_graphics.feature_details_font_size = normalized_detail_font;
+            self.configuration_graphics_dirty = true;
+        }
+        let normalized_external_label_font = Self::clamp_external_feature_label_font_size(
+            self.configuration_graphics
+                .linear_external_feature_label_font_size,
+        );
+        if (self
+            .configuration_graphics
+            .linear_external_feature_label_font_size
+            - normalized_external_label_font)
+            .abs()
+            > f32::EPSILON
+        {
+            self.configuration_graphics
+                .linear_external_feature_label_font_size = normalized_external_label_font;
+            self.configuration_graphics_dirty = true;
+        }
+        let normalized_external_label_bg = Self::clamp_external_feature_label_background_opacity(
+            self.configuration_graphics
+                .linear_external_feature_label_background_opacity,
+        );
+        if (self
+            .configuration_graphics
+            .linear_external_feature_label_background_opacity
+            - normalized_external_label_bg)
+            .abs()
+            > f32::EPSILON
+        {
+            self.configuration_graphics
+                .linear_external_feature_label_background_opacity = normalized_external_label_bg;
+            self.configuration_graphics_dirty = true;
+        }
+        let normalized_helical_phase_offset = Self::clamp_linear_helical_phase_offset_bp(
+            self.configuration_graphics
+                .linear_sequence_helical_phase_offset_bp,
+        );
+        if self
+            .configuration_graphics
+            .linear_sequence_helical_phase_offset_bp
+            != normalized_helical_phase_offset
+        {
+            self.configuration_graphics
+                .linear_sequence_helical_phase_offset_bp = normalized_helical_phase_offset;
+            self.configuration_graphics_dirty = true;
+        }
+
         ui.label("Configure project-level graphics visibility defaults.");
+        ui.small(format!(
+            "Current project feature-detail font: {:.2} px",
+            self.configuration_graphics.feature_details_font_size
+        ));
         ui.separator();
         let mut changed = false;
         let mut live_font_changed = false;
@@ -11417,6 +11533,27 @@ Error: `{err}`"
                 )
                 .on_hover_text(
                     "Helical-compressed DNA letters are shown when span <= this threshold and standard linear letters are no longer shown",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Helical phase offset");
+            if ui
+                .add(
+                    egui::DragValue::new(
+                        &mut self
+                            .configuration_graphics
+                            .linear_sequence_helical_phase_offset_bp,
+                    )
+                    .range(0..=9)
+                    .speed(1.0)
+                    .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "Manual modulo-10 row offset for helical DNA letters; use this to align motif columns",
                 )
                 .changed()
             {
@@ -13175,7 +13312,7 @@ mod tests {
     };
     use crate::{
         dna_sequence::DNAsequence,
-        engine::{GentleEngine, OpResult, ProjectState},
+        engine::{DisplaySettings, GentleEngine, OpResult, ProjectState},
         window::Window,
     };
     use eframe::egui;
@@ -13242,6 +13379,35 @@ mod tests {
             app.pending_focus_viewports
                 .contains(&GENtleApp::configuration_viewport_id())
         );
+    }
+
+    #[test]
+    fn apply_graphics_settings_to_display_clamps_font_and_opacity_values() {
+        let mut source = DisplaySettings::default();
+        let mut target = DisplaySettings::default();
+
+        source.feature_details_font_size = 250.0;
+        source.linear_external_feature_label_font_size = -50.0;
+        source.linear_external_feature_label_background_opacity = 2.0;
+        source.linear_sequence_helical_phase_offset_bp = 27;
+
+        GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
+
+        assert_eq!(target.feature_details_font_size, 24.0);
+        assert_eq!(target.linear_external_feature_label_font_size, 8.0);
+        assert_eq!(target.linear_external_feature_label_background_opacity, 1.0);
+        assert_eq!(target.linear_sequence_helical_phase_offset_bp, 7);
+
+        source.feature_details_font_size = f32::NAN;
+        source.linear_external_feature_label_font_size = f32::NAN;
+        source.linear_external_feature_label_background_opacity = f32::NAN;
+        source.linear_sequence_helical_phase_offset_bp = 10;
+        GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
+
+        assert_eq!(target.feature_details_font_size, 8.25);
+        assert_eq!(target.linear_external_feature_label_font_size, 11.0);
+        assert_eq!(target.linear_external_feature_label_background_opacity, 0.9);
+        assert_eq!(target.linear_sequence_helical_phase_offset_bp, 0);
     }
 
     #[test]

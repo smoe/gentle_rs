@@ -37,7 +37,7 @@ checks.
 - Primary usage:
   - Cross-format import/parity tests.
   - EMBL parser location/qualifier regression coverage.
-  - Planned XML import normalization tests against current GenBank baseline.
+  - XML import normalization tests against current GenBank baseline.
 - Purpose: tiny, reviewable fixture set for format-difference debugging.
 
 ### `import_parity/toy.multi.embl`

@@ -51,6 +51,8 @@ pub mod lua_interface;
 pub mod main_area_dna;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;
+/// NCBI GenBank XML (`GBSet/GBSeq`) parsing and dialect detection helpers.
+pub mod ncbi_genbank_xml;
 /// Open-reading-frame detection logic.
 pub mod open_reading_frame;
 /// Virtual pool gel model and rendering primitives.

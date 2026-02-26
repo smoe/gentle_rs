@@ -21,7 +21,7 @@
 //!
 //! Annotation parsing behavior:
 //! - GenBank remains the canonical annotation import path.
-//! - Tabular GFF/GTF parsing is additive and normalized into shared
+//! - XML (`GBSet/GBSeq`) and tabular GFF/GTF parsing are additive and normalized into shared
 //!   `GenomeGeneRecord` structures consumed by engine operations.
 //! - Malformed annotation lines are skipped with bounded warning summaries
 //!   (including capped file/line context) rather than causing silent drift.
@@ -36,6 +36,7 @@
 //!   cancellation/timebox exits.
 
 use crate::feature_location::feature_is_reverse;
+use crate::ncbi_genbank_xml::parse_gbseq_xml_file;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -2991,6 +2992,8 @@ where
 {
     if is_genbank_annotation_path(path) {
         parse_genbank_gene_records_with_progress(path, on_progress)
+    } else if is_xml_annotation_path(path) {
+        parse_xml_gbseq_gene_records_with_progress(path, on_progress)
     } else {
         parse_tabular_annotation_gene_records_with_progress(path, on_progress)
     }
@@ -3006,6 +3009,13 @@ fn is_genbank_annotation_path(path: &Path) -> bool {
         || lower.ends_with(".gbk")
         || lower.ends_with(".gbff")
         || lower.ends_with(".genbank")
+}
+
+fn is_xml_annotation_path(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|v| v.to_str())
+        .map(|name| name.to_ascii_lowercase().ends_with(".xml"))
+        .unwrap_or(false)
 }
 
 fn parse_tabular_annotation_gene_records_with_progress<F>(
@@ -3213,7 +3223,58 @@ where
             path.display()
         )
     })?;
+    let records = collect_genbank_like_gene_records(&parsed);
+    let total_done = total_bytes.unwrap_or(0);
+    if !on_progress(total_done, total_bytes) {
+        return Err(prepare_cancelled_error(
+            "GenBank annotation parse completion",
+        ));
+    }
+    let report = AnnotationParseReport {
+        path: canonical_or_display(path),
+        source_format: "genbank".to_string(),
+        total_lines: 0,
+        parsed_gene_records: records.len(),
+        skipped_lines: 0,
+        malformed_lines: 0,
+        issue_examples: vec![],
+        truncated_issue_count: 0,
+    };
+    Ok((records, report))
+}
 
+fn parse_xml_gbseq_gene_records_with_progress<F>(
+    path: &Path,
+    mut on_progress: F,
+) -> Result<(Vec<GenomeGeneRecord>, AnnotationParseReport), String>
+where
+    F: FnMut(u64, Option<u64>) -> bool,
+{
+    let total_bytes = fs::metadata(path).ok().map(|m| m.len());
+    if !on_progress(0, total_bytes) {
+        return Err(prepare_cancelled_error("XML annotation parse start"));
+    }
+    let parsed = parse_gbseq_xml_file(path.to_string_lossy().as_ref())
+        .map_err(|e| format!("Could not parse XML annotation file '{}': {e}", path.display()))?;
+    let records = collect_genbank_like_gene_records(&parsed);
+    let total_done = total_bytes.unwrap_or(0);
+    if !on_progress(total_done, total_bytes) {
+        return Err(prepare_cancelled_error("XML annotation parse completion"));
+    }
+    let report = AnnotationParseReport {
+        path: canonical_or_display(path),
+        source_format: "xml_gbseq".to_string(),
+        total_lines: 0,
+        parsed_gene_records: records.len(),
+        skipped_lines: 0,
+        malformed_lines: 0,
+        issue_examples: vec![],
+        truncated_issue_count: 0,
+    };
+    Ok((records, report))
+}
+
+fn collect_genbank_like_gene_records(parsed: &[gb_io::seq::Seq]) -> Vec<GenomeGeneRecord> {
     let mut records: Vec<GenomeGeneRecord> = vec![];
     for (record_idx, seq) in parsed.iter().enumerate() {
         let chromosome = genbank_record_chromosome(seq, record_idx);
@@ -3291,23 +3352,7 @@ where
             .then(a.start_1based.cmp(&b.start_1based))
             .then(a.end_1based.cmp(&b.end_1based))
     });
-    let total_done = total_bytes.unwrap_or(0);
-    if !on_progress(total_done, total_bytes) {
-        return Err(prepare_cancelled_error(
-            "GenBank annotation parse completion",
-        ));
-    }
-    let report = AnnotationParseReport {
-        path: canonical_or_display(path),
-        source_format: "genbank".to_string(),
-        total_lines: 0,
-        parsed_gene_records: records.len(),
-        skipped_lines: 0,
-        malformed_lines: 0,
-        issue_examples: vec![],
-        truncated_issue_count: 0,
-    };
-    Ok((records, report))
+    records
 }
 
 fn push_annotation_parse_issue(
@@ -4472,6 +4517,49 @@ mod tests {
                 && (1289..=1291).contains(&g.start_1based)
                 && (2219..=2221).contains(&g.end_1based)
         }));
+    }
+
+    #[test]
+    fn test_parse_xml_annotation_records_toy_small() {
+        let (xml_genes, report) = parse_annotation_gene_records_with_progress(
+            Path::new("test_files/fixtures/import_parity/toy.small.gbseq.xml"),
+            |_done, _total| true,
+        )
+        .expect("parse XML GBSeq annotations");
+        let (genbank_genes, _) = parse_annotation_gene_records_with_progress(
+            Path::new("test_files/fixtures/import_parity/toy.small.gb"),
+            |_done, _total| true,
+        )
+        .expect("parse GenBank toy annotations");
+        assert_eq!(report.source_format, "xml_gbseq");
+        for gene_name in ["toyA", "toyB"] {
+            let from_xml = xml_genes
+                .iter()
+                .find(|g| g.gene_name.as_deref() == Some(gene_name))
+                .expect("gene should exist in XML parse");
+            let from_genbank = genbank_genes
+                .iter()
+                .find(|g| g.gene_name.as_deref() == Some(gene_name))
+                .expect("gene should exist in GenBank parse");
+            assert_eq!(from_xml.start_1based, from_genbank.start_1based);
+            assert_eq!(from_xml.end_1based, from_genbank.end_1based);
+            assert_eq!(from_xml.strand, from_genbank.strand);
+        }
+    }
+
+    #[test]
+    fn test_parse_xml_annotation_rejects_insd_dialect() {
+        let td = tempdir().unwrap();
+        let xml_path = td.path().join("insd.annotation.xml");
+        fs::write(&xml_path, "<INSDSet><INSDSeq/></INSDSet>").expect("write INSD XML");
+        let err = parse_annotation_gene_records_with_progress(xml_path.as_path(), |_done, _total| {
+            true
+        })
+        .expect_err("INSDSet should be rejected");
+        assert!(
+            err.contains("Unsupported XML dialect"),
+            "expected unsupported-dialect error, got: {err}"
+        );
     }
 
     #[test]

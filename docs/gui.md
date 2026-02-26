@@ -122,11 +122,12 @@ Feature tree grouping:
 - `mRNA` rows are grouped by their associated gene (when gene qualifiers are
   available), while transcript identifiers are shown on individual mRNA entries.
 - Regulatory entries (`enhancer`/`silencer`) are grouped in nested branches:
-  - primary branch: regulatory class (`enhancer`, `silencer`)
+  - primary branch: regulatory class buckets (`enhancer`, `silencer`, `other`)
   - secondary branch:
     - `active region` when labels start with that prefix
-    - enhancer marker token groups (for example `H3K4me1`,
-      `H3K27ac-H3K4me1`)
+    - enhancer marker token groups (for example histone-like markers such as
+      `H3K4me1`/`H3K27ac-H3K4me1` and other protein-like tokens such as `CTCF`)
+    - unclassified/non-enhancer+silencer regulatory rows remain in `other`
   - per-entry labels remove grouped prefixes to reduce redundancy.
 - Group headings show counts as `visible/total` in linear mode (current stretch
   shown in the map), and as total count in circular mode.
@@ -136,6 +137,8 @@ Feature tree grouping:
   (including short features), improving disambiguation.
 - The feature-tree pane is horizontally resizable; when narrowed, the tree uses
   horizontal scrolling for long labels.
+- Feature detail text remains below the feature tree in the left pane and uses
+  the configurable feature-detail font size.
 - When multi-selection is active, the feature-tree header shows a
   `Multi-select active (N)` chip and a one-click `Clear multi-select` action.
 - Right-clicking a feature row opens per-feature actions:
@@ -154,6 +157,8 @@ Feature tree grouping:
   - one-click preset chips are available below the filter box
 - Selecting an `mRNA`/`exon` feature opens the splicing expert view in a
   dedicated, resizable window instead of the inline description pane.
+- The splicing expert window is a free-standing top-level window and can be
+  moved outside the DNA sequence window bounds.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 
@@ -1152,6 +1157,7 @@ Resource import behavior:
 Supported in the current flow:
 
 - GenBank files (`.gb`, `.gbk` and similar)
+- EMBL files (`.embl`, `.emb`)
 - FASTA files (`.fa`, `.fasta`)
   - default interpretation: synthetic blunt `dsDNA`
   - optional FASTA-header metadata tokens for synthetic oligos:
@@ -1162,6 +1168,8 @@ Supported in the current flow:
       - `forward_3=...` (alias `f3=...`)
       - `reverse_5=...` (alias `r5=...`)
       - `reverse_3=...` (alias `r3=...`)
+- NCBI GenBank XML files (`.xml`, `GBSet/GBSeq`)
+  - unsupported XML dialects are rejected with explicit diagnostics
 
 Example FASTA headers:
 
