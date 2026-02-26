@@ -6,8 +6,9 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode,
-        ExportFormat, GentleEngine, LigationProtocol, OpResult, Operation, OperationProgress,
-        PcrPrimerSpec, RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
+        ExportFormat, GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode, OpResult,
+        Operation, OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec,
+        TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -2249,6 +2250,7 @@ impl MainAreaDna {
                         mut max_span_bp,
                         mut helical_letters_enabled,
                         mut helical_max_span_bp,
+                        mut helical_layout_mode,
                         mut helical_phase_offset_bp,
                         mut auto_hide_sequence_panel,
                         mut detail_font_size,
@@ -2265,6 +2267,7 @@ impl MainAreaDna {
                                 display.linear_sequence_base_text_max_view_span_bp(),
                                 display.linear_sequence_helical_letters_enabled(),
                                 display.linear_sequence_helical_max_view_span_bp(),
+                                display.linear_sequence_letter_layout_mode(),
                                 display.linear_sequence_helical_phase_offset_bp(),
                                 display.auto_hide_sequence_panel_when_linear_bases_visible(),
                                 display.feature_details_font_size(),
@@ -2273,7 +2276,18 @@ impl MainAreaDna {
                             )
                         })
                         .unwrap_or((
-                            true, false, true, 500, false, 2000, 0, false, 8.25, 11.0, 0.9,
+                            true,
+                            false,
+                            true,
+                            500,
+                            false,
+                            2000,
+                            LinearSequenceLetterLayoutMode::ContinuousHelical,
+                            0,
+                            false,
+                            8.25,
+                            11.0,
+                            0.9,
                         ));
                     if ui
                         .checkbox(
@@ -2363,9 +2377,51 @@ impl MainAreaDna {
                         self.sync_linear_helical_settings_to_engine(
                             helical_letters_enabled,
                             helical_max_span_bp,
+                            helical_layout_mode,
                             helical_phase_offset_bp,
                         );
                     }
+                    ui.horizontal(|ui| {
+                        ui.label("Helical letter layout");
+                        let mut changed = false;
+                        egui::ComboBox::from_id_salt("linear_helical_letter_layout_mode")
+                            .selected_text(match helical_layout_mode {
+                                LinearSequenceLetterLayoutMode::ContinuousHelical => {
+                                    "Continuous helical"
+                                }
+                                LinearSequenceLetterLayoutMode::Condensed10Row => {
+                                    "Condensed 10-row"
+                                }
+                            })
+                            .show_ui(ui, |ui| {
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut helical_layout_mode,
+                                        LinearSequenceLetterLayoutMode::ContinuousHelical,
+                                        "Continuous helical",
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut helical_layout_mode,
+                                        LinearSequenceLetterLayoutMode::Condensed10Row,
+                                        "Condensed 10-row",
+                                    )
+                                    .changed();
+                            });
+                        if changed {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_sequence_letter_layout_mode(helical_layout_mode);
+                            self.sync_linear_helical_settings_to_engine(
+                                helical_letters_enabled,
+                                helical_max_span_bp,
+                                helical_layout_mode,
+                                helical_phase_offset_bp,
+                            );
+                        }
+                    });
                     ui.horizontal(|ui| {
                         ui.label("Helical letters max span");
                         if ui
@@ -2389,6 +2445,7 @@ impl MainAreaDna {
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
                                 helical_max_span_bp,
+                                helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
                         }
@@ -2416,6 +2473,7 @@ impl MainAreaDna {
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
                                 helical_max_span_bp,
+                                helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
                         }
@@ -4435,6 +4493,7 @@ impl MainAreaDna {
         &self,
         enabled: bool,
         max_span: usize,
+        layout_mode: LinearSequenceLetterLayoutMode,
         phase_offset_bp: usize,
     ) {
         let Some(engine) = &self.engine else {
@@ -4444,6 +4503,7 @@ impl MainAreaDna {
         let display = &mut guard.state_mut().display;
         display.linear_sequence_helical_letters_enabled = enabled;
         display.linear_sequence_helical_max_view_span_bp = max_span;
+        display.linear_sequence_letter_layout_mode = layout_mode;
         display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
     }
 
@@ -4539,6 +4599,7 @@ impl MainAreaDna {
         display.set_linear_sequence_helical_max_view_span_bp(
             settings.linear_sequence_helical_max_view_span_bp,
         );
+        display.set_linear_sequence_letter_layout_mode(settings.linear_sequence_letter_layout_mode);
         display.set_linear_sequence_helical_phase_offset_bp(
             settings.linear_sequence_helical_phase_offset_bp,
         );

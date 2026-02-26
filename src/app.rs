@@ -31,8 +31,9 @@ use crate::{
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
         DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GenomeTrackImportProgress,
-        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, OpResult,
-        Operation, OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
+        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, ProjectState,
+        SequenceGenomeAnchorSummary,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -1350,6 +1351,7 @@ impl GENtleApp {
             source.linear_sequence_helical_letters_enabled;
         target.linear_sequence_helical_max_view_span_bp =
             source.linear_sequence_helical_max_view_span_bp;
+        target.linear_sequence_letter_layout_mode = source.linear_sequence_letter_layout_mode;
         target.linear_sequence_helical_phase_offset_bp = Self::clamp_linear_helical_phase_offset_bp(
             source.linear_sequence_helical_phase_offset_bp,
         );
@@ -2611,6 +2613,10 @@ Error: `{err}`"
             .hash(&mut hasher);
         display
             .linear_sequence_helical_max_view_span_bp
+            .hash(&mut hasher);
+        display.linear_sequence_letter_layout_mode.hash(&mut hasher);
+        display
+            .linear_sequence_helical_phase_offset_bp
             .hash(&mut hasher);
         display.linear_show_double_strand_bases.hash(&mut hasher);
         display
@@ -11011,6 +11017,11 @@ Error: `{err}`"
         self.configuration_graphics
             .linear_sequence_helical_max_view_span_bp =
             defaults.linear_sequence_helical_max_view_span_bp;
+        self.configuration_graphics
+            .linear_sequence_letter_layout_mode = defaults.linear_sequence_letter_layout_mode;
+        self.configuration_graphics
+            .linear_sequence_helical_phase_offset_bp =
+            defaults.linear_sequence_helical_phase_offset_bp;
         self.configuration_graphics.linear_show_double_strand_bases =
             defaults.linear_show_double_strand_bases;
         self.configuration_graphics
@@ -11488,6 +11499,39 @@ Error: `{err}`"
                 "Enable helical-compressed linear DNA letter rendering",
             )
             .changed();
+        ui.horizontal(|ui| {
+            ui.label("Helical letter layout");
+            let mut selected = self
+                .configuration_graphics
+                .linear_sequence_letter_layout_mode;
+            let mut layout_changed = false;
+            egui::ComboBox::from_id_salt("config_linear_helical_letter_layout_mode")
+                .selected_text(match selected {
+                    LinearSequenceLetterLayoutMode::ContinuousHelical => "Continuous helical",
+                    LinearSequenceLetterLayoutMode::Condensed10Row => "Condensed 10-row",
+                })
+                .show_ui(ui, |ui| {
+                    layout_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            LinearSequenceLetterLayoutMode::ContinuousHelical,
+                            "Continuous helical",
+                        )
+                        .changed();
+                    layout_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            LinearSequenceLetterLayoutMode::Condensed10Row,
+                            "Condensed 10-row",
+                        )
+                        .changed();
+                });
+            if layout_changed {
+                self.configuration_graphics
+                    .linear_sequence_letter_layout_mode = selected;
+                changed = true;
+            }
+        });
         changed |= ui
             .checkbox(
                 &mut self

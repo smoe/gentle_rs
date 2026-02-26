@@ -3,6 +3,7 @@
 use crate::{
     dna_display::{DnaDisplay, Selection, TfbsDisplayCriteria, VcfDisplayCriteria},
     dna_sequence::DNAsequence,
+    engine::LinearSequenceLetterLayoutMode,
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     iupac_code::IupacCode,
@@ -52,6 +53,7 @@ const REGULATORY_LANE_PADDING: f32 = 2.0;
 const HELICAL_MIN_X_COMPRESSION: f32 = 0.2;
 const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
 const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
+const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 0.24;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
 const FEATURE_EXTERNAL_LABEL_FONT_SIZE: f32 = 11.0;
 const FEATURE_EXTERNAL_LABEL_HEIGHT: f32 = 16.0;
@@ -943,11 +945,30 @@ impl RenderDnaLinear {
     }
 
     fn should_draw_backbone(&self, viewport: LinearViewport) -> bool {
-        let hide_when_bases_visible = self
+        let (hide_when_bases_visible, condensed_layout_active) = self
             .display
             .read()
-            .map(|display| display.linear_hide_backbone_when_sequence_bases_visible())
-            .unwrap_or(false);
+            .map(|display| {
+                let standard_max_span = display.linear_sequence_base_text_max_view_span_bp();
+                let helical_enabled = display.linear_sequence_helical_letters_enabled();
+                let helical_max_span = display.linear_sequence_helical_max_view_span_bp();
+                let use_helical_projection = Self::should_use_helical_projection(
+                    viewport,
+                    standard_max_span,
+                    helical_enabled,
+                    helical_max_span,
+                );
+                (
+                    display.linear_hide_backbone_when_sequence_bases_visible(),
+                    use_helical_projection
+                        && display.linear_sequence_letter_layout_mode()
+                            == LinearSequenceLetterLayoutMode::Condensed10Row,
+                )
+            })
+            .unwrap_or((false, false));
+        if condensed_layout_active && self.should_draw_sequence_bases(viewport) {
+            return false;
+        }
         !(hide_when_bases_visible && self.should_draw_sequence_bases(viewport))
     }
 
@@ -1073,7 +1094,13 @@ impl RenderDnaLinear {
                 )
             })
             .unwrap_or((true, true));
-        let (standard_max_span, helical_enabled, helical_max_span) = self
+        let (
+            standard_max_span,
+            helical_enabled,
+            helical_max_span,
+            helical_layout_mode,
+            helical_phase_offset_bp,
+        ) = self
             .display
             .read()
             .map(|display| {
@@ -1081,13 +1108,25 @@ impl RenderDnaLinear {
                     display.linear_sequence_base_text_max_view_span_bp(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_sequence_helical_max_view_span_bp(),
+                    display.linear_sequence_letter_layout_mode(),
+                    display.linear_sequence_helical_phase_offset_bp(),
                 )
             })
-            .unwrap_or((500, false, 2000));
-        let use_helical_projection = helical_enabled
-            && helical_max_span > 0
-            && viewport.span <= helical_max_span
-            && (standard_max_span == 0 || viewport.span > standard_max_span);
+            .unwrap_or((
+                500,
+                false,
+                2000,
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+                0,
+            ));
+        let use_helical_projection = Self::should_use_helical_projection(
+            viewport,
+            standard_max_span,
+            helical_enabled,
+            helical_max_span,
+        );
+        let use_condensed_helical = use_helical_projection
+            && helical_layout_mode == LinearSequenceLetterLayoutMode::Condensed10Row;
         let helical_t =
             Self::helical_projection_progress(viewport.span, standard_max_span, helical_max_span);
         let helical_visual_t =
@@ -1108,7 +1147,11 @@ impl RenderDnaLinear {
         let baseline = self.baseline_y();
         let forward_y = baseline - font_size - 3.0;
         let reverse_y = baseline + 3.0;
-        let helical_compression = Self::helical_projection_x_compression(helical_t);
+        let helical_compression = if use_condensed_helical {
+            HELICAL_MIN_X_COMPRESSION
+        } else {
+            Self::helical_projection_x_compression(helical_t)
+        };
         let helical_phase_scale = Self::helical_projection_y_phase_scale(helical_visual_t);
         let x_centerline = self.area.center().x;
         let project_x = |x: f32| -> f32 {
@@ -1125,8 +1168,16 @@ impl RenderDnaLinear {
             let x1_projected = project_x(x1);
             let x2_projected = project_x(x2);
             let x_center = (x1_projected + x2_projected) * 0.5;
-            let helical_phase = if helical_visual_t > 0.0 {
-                let normalized = ((bp % 10) as f32 / 9.0) - 0.5;
+            let helical_phase = if use_condensed_helical {
+                let row_from_bottom =
+                    Self::helical_phase_row_from_bottom(bp, helical_phase_offset_bp);
+                let row_from_top = 9usize.saturating_sub(row_from_bottom);
+                let centered = row_from_top as f32 - 4.5;
+                centered * font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE
+            } else if helical_visual_t > 0.0 {
+                let row_from_bottom =
+                    Self::helical_phase_row_from_bottom(bp, helical_phase_offset_bp);
+                let normalized = (row_from_bottom as f32 / 9.0) - 0.5;
                 normalized * font_size * helical_phase_scale
             } else {
                 0.0
@@ -1206,6 +1257,22 @@ impl RenderDnaLinear {
     fn helical_projection_x_compression(progress: f32) -> f32 {
         let progress = progress.clamp(0.0, 1.0);
         1.0 - (1.0 - HELICAL_MIN_X_COMPRESSION) * progress
+    }
+
+    fn should_use_helical_projection(
+        viewport: LinearViewport,
+        standard_max_span: usize,
+        helical_enabled: bool,
+        helical_max_span: usize,
+    ) -> bool {
+        helical_enabled
+            && helical_max_span > 0
+            && viewport.span <= helical_max_span
+            && (standard_max_span == 0 || viewport.span > standard_max_span)
+    }
+
+    fn helical_phase_row_from_bottom(bp: usize, offset_bp: usize) -> usize {
+        bp.wrapping_add(offset_bp) % 10
     }
 
     fn helical_projection_y_phase_scale(progress: f32) -> f32 {
@@ -2003,5 +2070,35 @@ mod tests {
         assert!((RenderDnaLinear::helical_projection_x_compression(1.0) - 0.2).abs() < 0.001);
         assert!((RenderDnaLinear::helical_projection_y_phase_scale(0.0) - 0.0).abs() < 0.001);
         assert!((RenderDnaLinear::helical_projection_y_phase_scale(1.0) - 0.8).abs() < 0.001);
+    }
+
+    #[test]
+    fn helical_phase_row_mapping_applies_offset_mod_10() {
+        assert_eq!(RenderDnaLinear::helical_phase_row_from_bottom(10, 0), 0);
+        assert_eq!(RenderDnaLinear::helical_phase_row_from_bottom(10, 3), 3);
+        assert_eq!(RenderDnaLinear::helical_phase_row_from_bottom(10, 9), 9);
+        assert_eq!(RenderDnaLinear::helical_phase_row_from_bottom(12, 9), 1);
+    }
+
+    #[test]
+    fn condensed_helical_layout_replaces_backbone_line_when_bases_are_visible() {
+        let renderer = test_renderer(5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+            display.set_linear_hide_backbone_when_sequence_bases_visible(false);
+        }
+        assert!(renderer.should_draw_sequence_bases(viewport));
+        assert!(!renderer.should_draw_backbone(viewport));
     }
 }

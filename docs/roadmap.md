@@ -142,6 +142,13 @@ Notes:
 7. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
    - dedicated primary map-mode splicing view is still pending
+   - condensed 10-row helix-mimic DNA-letter layout is not yet available as an
+     explicit selectable layout mode for short/medium spans
+   - current helical renderer still derives phase from fixed `bp % 10` and does
+     not yet apply the persisted modulo offset setting
+     (`linear_sequence_helical_phase_offset_bp`) in base-row placement
+   - the condensed-layout span target/threshold policy (default around
+     1500 bp, user-adjustable) is not yet codified as an explicit contract
    - zoom/pan policy is not yet unified across canvases
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
@@ -216,6 +223,52 @@ Status:
      exon/intron footprints.
    - add a dedicated primary map-mode splicing view (beyond expert/detail
      panel embedding) for full-sequence workflows.
+
+### Linear DNA condensed 10-row layout track (new)
+
+Goal: add a second linear DNA-letter layout optimized for sequences up to a
+user-configured span (default target about 1500 bp), with strict base order,
+strong X compression, and readability from stable row separation.
+
+Desired layout contract:
+
+- preserve strict nucleotide order (no reordering/skipping)
+- render letters in 10 discrete rows (bottom row = modulo class `0`)
+- keep X progression monotonic and tightly compressed per bp
+- in condensed mode, DNA letters become the primary backbone representation
+  (replace/suppress the current black DNA baseline line)
+- shift feature annotations/labels outward from the sequence-text band so the
+  condensed DNA letters remain readable
+- expose manual seam shift via `offset_bp` so conserved columns can be aligned
+- row mapping formula: `row = (bp + offset_bp) mod 10`, with `offset_bp` in
+  `0..9` (`0` keeps current anchor convention)
+
+Current baseline:
+
+- helical-compressed linear-letter rendering already exists and is controlled by
+  display settings/UI knobs (including user-adjustable max span)
+- project display setting + UI controls for
+  `linear_sequence_helical_phase_offset_bp` already exist with clamp `0..9`
+- renderer currently still uses fixed `bp % 10` phase and continuous projection
+  behavior; modulo offset is not yet applied to base-row placement
+
+Implementation steps (phased):
+
+1. Renderer mode + mapping:
+   - add explicit layout mode (`continuous-helical` vs `condensed-10-row`)
+   - implement `(bp + offset_bp) % 10` condensed row mapping
+   - suppress/replace black backbone line with DNA letters in condensed mode
+2. Annotation reflow:
+   - push feature annotation lanes/labels outward with deterministic minimum
+     spacing from condensed DNA text rows
+3. Controls + persistence:
+   - expose mode + span threshold controls (default target around 1500 bp) in
+     Sequence window and Configuration -> Graphics
+   - keep live apply/sync + project persistence behavior adapter-equivalent
+4. Tests + docs:
+   - add deterministic tests for offsets `0/3/9`, seam behavior, backbone
+     replacement, and annotation clearance
+   - update help text/tooltips/docs for the new mode semantics
 
 ### XML import integration track (GenBank-first)
 
@@ -505,6 +558,11 @@ Planned upgrades:
 
 ### Phase D: visualization and workflow UX
 
+- Implement the linear DNA condensed 10-row layout track:
+  - explicit mode selector
+  - deterministic modulo-row mapping + seam offset
+  - user-configured span threshold (default target ~1500 bp)
+  - renderer + UI/settings sync + regression tests
 - Continue alternative-splicing follow-ups:
   - dense-fixture regression tests for boundary visibility and label safety
   - coordinate-true geometry invariants

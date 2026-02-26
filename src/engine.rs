@@ -115,6 +115,14 @@ pub enum DisplayTarget {
     MethylationSites,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LinearSequenceLetterLayoutMode {
+    #[default]
+    ContinuousHelical,
+    Condensed10Row,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DisplaySettings {
@@ -159,6 +167,8 @@ pub struct DisplaySettings {
     pub linear_sequence_base_text_max_view_span_bp: usize,
     pub linear_sequence_helical_letters_enabled: bool,
     pub linear_sequence_helical_max_view_span_bp: usize,
+    #[serde(default)]
+    pub linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode,
     pub linear_sequence_helical_phase_offset_bp: usize,
     pub linear_show_double_strand_bases: bool,
     pub linear_hide_backbone_when_sequence_bases_visible: bool,
@@ -216,6 +226,7 @@ impl Default for DisplaySettings {
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: false,
             linear_sequence_helical_max_view_span_bp: 2000,
+            linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
             linear_sequence_helical_phase_offset_bp: 0,
             linear_show_double_strand_bases: true,
             linear_hide_backbone_when_sequence_bases_visible: false,
@@ -16130,6 +16141,35 @@ impl GentleEngine {
                         self.state.display.linear_sequence_helical_max_view_span_bp
                     ));
                 }
+                "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
+                    let raw = value.as_str().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a string value"),
+                    })?;
+                    let normalized = raw.trim().to_ascii_lowercase();
+                    let layout_mode = match normalized.as_str() {
+                        "continuous_helical" | "continuous-helical" | "continuous" => {
+                            LinearSequenceLetterLayoutMode::ContinuousHelical
+                        }
+                        "condensed_10_row" | "condensed-10-row" | "condensed10row"
+                        | "condensed" | "10_row" | "10-row" => {
+                            LinearSequenceLetterLayoutMode::Condensed10Row
+                        }
+                        _ => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Unsupported linear sequence letter layout mode '{raw}' (expected continuous_helical|condensed_10_row)"
+                                ),
+                            });
+                        }
+                    };
+                    self.state.display.linear_sequence_letter_layout_mode = layout_mode;
+                    result.messages.push(format!(
+                        "Set parameter 'linear_sequence_letter_layout_mode' to {:?}",
+                        self.state.display.linear_sequence_letter_layout_mode
+                    ));
+                }
                 "linear_sequence_helical_phase_offset_bp" | "linear_helical_phase_offset_bp" => {
                     let raw = value.as_u64().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
@@ -17283,6 +17323,12 @@ exit 2
             .unwrap();
         engine
             .apply(Operation::SetParameter {
+                name: "linear_sequence_letter_layout_mode".to_string(),
+                value: serde_json::json!("condensed_10_row"),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
                 name: "linear_hide_backbone_when_sequence_bases_visible".to_string(),
                 value: serde_json::json!(true),
             })
@@ -17306,6 +17352,10 @@ exit 2
                 .display
                 .linear_sequence_helical_phase_offset_bp,
             4
+        );
+        assert_eq!(
+            engine.state().display.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::Condensed10Row
         );
         assert!(
             engine
