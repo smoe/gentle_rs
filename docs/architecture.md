@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-26
+Last updated: 2026-02-27
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -133,6 +133,9 @@ Discoverability rule:
   searchable as `Prepared References` in Command Palette.
 - Chromosome inspection currently lives inside `Prepared References...` as an
   embedded `Chromosome inspector` section (one proportional line per contig).
+- Configuration dialogs with staged edits must keep primary commit actions
+  (`Cancel`/`Apply`) persistently visible (not scroll-hidden) and expose an
+  explicit unapplied-changes indicator.
 
 ## 2. Core architecture rule
 
@@ -786,3 +789,6 @@ Interaction and export semantics:
 - Add optional per-window-type visual identity backdrops with persisted app
   settings and subtle tint/watermark rendering:
   accepted and in progress (experimental GUI implementation).
+- Unify configuration editing contract with explicit staged-change signaling and
+  always-visible commit footer controls (`Cancel`/`Apply`) for configuration
+  viewports: accepted and implemented.

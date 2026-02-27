@@ -70,10 +70,12 @@ const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
+const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 const NATIVE_WINDOW_FOCUS_KEY_NONE: u64 = u64::MAX;
 static NATIVE_WINDOWS_FOCUS_KEY_REQUESTED: AtomicU64 = AtomicU64::new(NATIVE_WINDOW_FOCUS_KEY_NONE);
@@ -295,6 +297,12 @@ pub fn request_open_help_from_native_menu() {
 }
 
 pub fn request_open_settings_from_native_menu() {
+    NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(false, Ordering::SeqCst);
+    NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
+}
+
+pub fn request_open_graphics_settings_from_native_menu() {
+    NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.store(true, Ordering::SeqCst);
     NATIVE_SETTINGS_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -417,6 +425,12 @@ pub struct GENtleApp {
     lineage_rows: Vec<LineageRow>,
     lineage_edges: Vec<(String, String, String)>,
     lineage_op_label_by_id: HashMap<String, String>,
+    lineage_node_groups: Vec<PersistedLineageNodeGroup>,
+    lineage_group_form_label: String,
+    lineage_group_form_members: String,
+    lineage_group_form_representative: String,
+    lineage_group_form_editing_id: Option<String>,
+    lineage_group_status: String,
     lineage_containers: Vec<ContainerRow>,
     lineage_arrangements: Vec<ArrangementRow>,
     clean_state_fingerprint: u64,
@@ -804,6 +818,38 @@ struct LineageRow {
     is_full_genome_sequence: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+struct PersistedLineageNodeGroup {
+    group_id: String,
+    label: String,
+    representative_node_id: String,
+    member_node_ids: Vec<String>,
+    collapsed: bool,
+}
+
+impl Default for PersistedLineageNodeGroup {
+    fn default() -> Self {
+        Self {
+            group_id: String::new(),
+            label: String::new(),
+            representative_node_id: String::new(),
+            member_node_ids: vec![],
+            collapsed: false,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct LineageTableEntry {
+    row: LineageRow,
+    indent_level: usize,
+    group_id: Option<String>,
+    group_label: Option<String>,
+    is_group_representative: bool,
+    hidden_group_member_count: usize,
+}
+
 #[derive(Clone, Debug)]
 struct AnchorProvenanceSnapshot {
     catalog_path: Option<String>,
@@ -888,6 +934,7 @@ struct PersistedLineageGraphWorkspace {
     scroll_offset: [f32; 2],
     compact_labels: bool,
     node_offsets: HashMap<String, [f32; 2]>,
+    node_groups: Vec<PersistedLineageNodeGroup>,
 }
 
 impl Default for PersistedLineageGraphWorkspace {
@@ -899,6 +946,7 @@ impl Default for PersistedLineageGraphWorkspace {
             scroll_offset: [0.0, 0.0],
             compact_labels: true,
             node_offsets: HashMap::new(),
+            node_groups: vec![],
         }
     }
 }
@@ -960,6 +1008,12 @@ impl Default for GENtleApp {
             lineage_rows: vec![],
             lineage_edges: vec![],
             lineage_op_label_by_id: HashMap::new(),
+            lineage_node_groups: vec![],
+            lineage_group_form_label: String::new(),
+            lineage_group_form_members: String::new(),
+            lineage_group_form_representative: String::new(),
+            lineage_group_form_editing_id: None,
+            lineage_group_status: String::new(),
             lineage_containers: vec![],
             lineage_arrangements: vec![],
             clean_state_fingerprint: 0,
@@ -1637,7 +1691,13 @@ Error: `{err}`"
 
     fn consume_native_settings_request(&mut self) {
         if NATIVE_SETTINGS_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
-            self.open_configuration_dialog();
+            let graphics_tab_requested =
+                NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED.swap(false, Ordering::SeqCst);
+            if graphics_tab_requested {
+                self.open_configuration_graphics_dialog();
+            } else {
+                self.open_configuration_dialog();
+            }
         }
     }
 
@@ -1872,16 +1932,25 @@ Error: `{err}`"
         }
     }
 
-    fn open_configuration_dialog(&mut self) {
+    fn open_configuration_dialog_for_tab(&mut self, tab: ConfigurationTab) {
         if self.show_configuration_dialog {
+            self.configuration_tab = tab;
             self.queue_focus_viewport(Self::configuration_viewport_id());
             return;
         }
         self.sync_configuration_from_runtime();
-        self.configuration_tab = ConfigurationTab::ExternalApplications;
+        self.configuration_tab = tab;
         self.show_configuration_dialog = true;
         self.configuration_status.clear();
         self.queue_focus_viewport(Self::configuration_viewport_id());
+    }
+
+    fn open_configuration_dialog(&mut self) {
+        self.open_configuration_dialog_for_tab(ConfigurationTab::ExternalApplications);
+    }
+
+    fn open_configuration_graphics_dialog(&mut self) {
+        self.open_configuration_dialog_for_tab(ConfigurationTab::Graphics);
     }
 
     fn viewport_close_requested_or_shortcut(ctx: &egui::Context) -> bool {
@@ -8408,12 +8477,13 @@ Error: `{err}`"
     }
 
     fn load_lineage_graph_workspace_from_state(&mut self) {
-        let (workspace_serialized, legacy_offsets_serialized) = {
+        let (workspace_serialized, legacy_offsets_serialized, legacy_groups_serialized) = {
             let engine = self.engine.read().unwrap();
             let metadata = &engine.state().metadata;
             (
                 metadata.get(LINEAGE_GRAPH_WORKSPACE_METADATA_KEY).cloned(),
                 metadata.get(LINEAGE_NODE_OFFSETS_METADATA_KEY).cloned(),
+                metadata.get(LINEAGE_NODE_GROUPS_METADATA_KEY).cloned(),
             )
         };
 
@@ -8425,6 +8495,7 @@ Error: `{err}`"
         self.lineage_graph_compact_labels = true;
         self.lineage_graph_selected_node_id = None;
         self.lineage_graph_node_offsets.clear();
+        self.lineage_node_groups.clear();
         if let Some(serialized) = workspace_serialized {
             if let Ok(workspace) =
                 serde_json::from_value::<PersistedLineageGraphWorkspace>(serialized)
@@ -8454,6 +8525,7 @@ Error: `{err}`"
                             .insert(node_id, Vec2::new(pair[0], pair[1]));
                     }
                 }
+                self.lineage_node_groups = workspace.node_groups;
             }
         } else if let Some(serialized) = legacy_offsets_serialized {
             if let Ok(raw) = serde_json::from_value::<HashMap<String, [f32; 2]>>(serialized) {
@@ -8465,8 +8537,22 @@ Error: `{err}`"
                 }
             }
         }
+        if self.lineage_node_groups.is_empty() {
+            if let Some(serialized) = legacy_groups_serialized {
+                if let Ok(groups) =
+                    serde_json::from_value::<Vec<PersistedLineageNodeGroup>>(serialized)
+                {
+                    self.lineage_node_groups = groups;
+                }
+            }
+        }
         self.lineage_graph_drag_origin = None;
         self.lineage_graph_offsets_synced_stamp = 0;
+        self.lineage_group_form_editing_id = None;
+        self.lineage_group_form_label.clear();
+        self.lineage_group_form_members.clear();
+        self.lineage_group_form_representative.clear();
+        self.lineage_group_status.clear();
     }
 
     fn persist_lineage_graph_workspace_to_state(&mut self) {
@@ -8487,6 +8573,7 @@ Error: `{err}`"
             ],
             compact_labels: self.lineage_graph_compact_labels,
             node_offsets: raw.clone(),
+            node_groups: self.lineage_node_groups.clone(),
         };
 
         let workspace_is_default = (workspace.zoom - 1.0).abs() <= 0.0001
@@ -8495,7 +8582,8 @@ Error: `{err}`"
             && workspace.scroll_offset[0].abs() <= 0.0001
             && workspace.scroll_offset[1].abs() <= 0.0001
             && workspace.compact_labels
-            && workspace.node_offsets.is_empty();
+            && workspace.node_offsets.is_empty()
+            && workspace.node_groups.is_empty();
 
         let mut engine = self.engine.write().unwrap();
         let state = engine.state_mut();
@@ -8516,6 +8604,15 @@ Error: `{err}`"
                 state
                     .metadata
                     .insert(LINEAGE_NODE_OFFSETS_METADATA_KEY.to_string(), value);
+            }
+        }
+        if self.lineage_node_groups.is_empty() {
+            state.metadata.remove(LINEAGE_NODE_GROUPS_METADATA_KEY);
+        } else if let Ok(value) = serde_json::to_value(&self.lineage_node_groups) {
+            if state.metadata.get(LINEAGE_NODE_GROUPS_METADATA_KEY) != Some(&value) {
+                state
+                    .metadata
+                    .insert(LINEAGE_NODE_GROUPS_METADATA_KEY.to_string(), value);
             }
         }
     }
@@ -9597,6 +9694,311 @@ Error: `{err}`"
         head
     }
 
+    fn parse_lineage_group_node_list(raw: &str) -> Vec<String> {
+        let mut out = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        for token in raw.split(|c: char| c == ',' || c == ';' || c.is_whitespace()) {
+            let trimmed = token.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if seen.insert(trimmed.to_string()) {
+                out.push(trimmed.to_string());
+            }
+        }
+        out
+    }
+
+    fn next_lineage_group_id(groups: &[PersistedLineageNodeGroup]) -> String {
+        let existing: HashSet<String> = groups.iter().map(|group| group.group_id.clone()).collect();
+        let mut next = 1usize;
+        loop {
+            let candidate = format!("grp-{next}");
+            if !existing.contains(&candidate) {
+                return candidate;
+            }
+            next += 1;
+        }
+    }
+
+    fn sanitize_lineage_node_groups(
+        groups: &[PersistedLineageNodeGroup],
+        valid_node_ids: &HashSet<String>,
+    ) -> Vec<PersistedLineageNodeGroup> {
+        let mut out = vec![];
+        let mut used_group_ids: HashSet<String> = HashSet::new();
+        let mut used_node_ids: HashSet<String> = HashSet::new();
+        for (index, group) in groups.iter().enumerate() {
+            let mut group_id = group.group_id.trim().to_string();
+            if group_id.is_empty() {
+                group_id = format!("grp-{}", index + 1);
+            }
+            if used_group_ids.contains(&group_id) {
+                let base = group_id.clone();
+                let mut suffix = 2usize;
+                loop {
+                    let candidate = format!("{base}-{suffix}");
+                    if !used_group_ids.contains(&candidate) {
+                        group_id = candidate;
+                        break;
+                    }
+                    suffix += 1;
+                }
+            }
+            used_group_ids.insert(group_id.clone());
+
+            let mut label = group.label.trim().to_string();
+            if label.is_empty() {
+                label = format!("Group {}", index + 1);
+            }
+
+            let mut seen_members: HashSet<String> = HashSet::new();
+            let mut members: Vec<String> = vec![];
+            for node_id in &group.member_node_ids {
+                let trimmed = node_id.trim();
+                if trimmed.is_empty() || !valid_node_ids.contains(trimmed) {
+                    continue;
+                }
+                if seen_members.insert(trimmed.to_string()) {
+                    members.push(trimmed.to_string());
+                }
+            }
+
+            let mut representative = group.representative_node_id.trim().to_string();
+            if representative.is_empty() || !valid_node_ids.contains(&representative) {
+                representative = members.first().cloned().unwrap_or_default();
+            }
+            if representative.is_empty() {
+                continue;
+            }
+            members.retain(|node_id| node_id != &representative);
+
+            if used_node_ids.contains(&representative) {
+                if let Some(index_unused) = members
+                    .iter()
+                    .position(|node_id| !used_node_ids.contains(node_id))
+                {
+                    representative = members.remove(index_unused);
+                } else {
+                    continue;
+                }
+            }
+
+            members.retain(|node_id| !used_node_ids.contains(node_id));
+            if members.is_empty() {
+                continue;
+            }
+
+            used_node_ids.insert(representative.clone());
+            for node_id in &members {
+                used_node_ids.insert(node_id.clone());
+            }
+
+            out.push(PersistedLineageNodeGroup {
+                group_id,
+                label,
+                representative_node_id: representative,
+                member_node_ids: members,
+                collapsed: group.collapsed,
+            });
+        }
+        out
+    }
+
+    fn lineage_node_group_maps(
+        groups: &[PersistedLineageNodeGroup],
+    ) -> (
+        HashMap<String, PersistedLineageNodeGroup>,
+        HashMap<String, String>,
+    ) {
+        let mut by_group_id: HashMap<String, PersistedLineageNodeGroup> = HashMap::new();
+        let mut node_to_group_id: HashMap<String, String> = HashMap::new();
+        for group in groups {
+            by_group_id.insert(group.group_id.clone(), group.clone());
+            node_to_group_id.insert(group.representative_node_id.clone(), group.group_id.clone());
+            for node_id in &group.member_node_ids {
+                node_to_group_id.insert(node_id.clone(), group.group_id.clone());
+            }
+        }
+        (by_group_id, node_to_group_id)
+    }
+
+    fn project_lineage_graph_by_groups(
+        rows: &[LineageRow],
+        edges: &[(String, String, String)],
+        groups: &[PersistedLineageNodeGroup],
+    ) -> (Vec<LineageRow>, Vec<(String, String, String)>) {
+        let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(groups);
+        let projected_rows: Vec<LineageRow> = rows
+            .iter()
+            .filter_map(|row| {
+                let group = node_to_group_id
+                    .get(&row.node_id)
+                    .and_then(|group_id| group_by_id.get(group_id));
+                if let Some(group) = group {
+                    if group.collapsed && row.node_id != group.representative_node_id {
+                        return None;
+                    }
+                }
+                Some(row.clone())
+            })
+            .collect();
+
+        let project_node_id = |node_id: &str| -> String {
+            let group = node_to_group_id
+                .get(node_id)
+                .and_then(|group_id| group_by_id.get(group_id));
+            if let Some(group) = group {
+                if group.collapsed {
+                    return group.representative_node_id.clone();
+                }
+            }
+            node_id.to_string()
+        };
+
+        let mut projected_edges: Vec<(String, String, String)> = vec![];
+        let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+        for (from_node, to_node, op_id) in edges {
+            let from = project_node_id(from_node);
+            let to = project_node_id(to_node);
+            if from == to {
+                continue;
+            }
+            let key = (from, to, op_id.clone());
+            if seen_edges.insert(key.clone()) {
+                projected_edges.push(key);
+            }
+        }
+        (projected_rows, projected_edges)
+    }
+
+    fn build_lineage_table_entries(
+        rows: &[LineageRow],
+        groups: &[PersistedLineageNodeGroup],
+    ) -> Vec<LineageTableEntry> {
+        let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(groups);
+        let row_by_node: HashMap<String, LineageRow> = rows
+            .iter()
+            .map(|row| (row.node_id.clone(), row.clone()))
+            .collect();
+        let row_order: HashMap<String, usize> = rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| (row.node_id.clone(), index))
+            .collect();
+
+        let mut emitted: HashSet<String> = HashSet::new();
+        let mut entries: Vec<LineageTableEntry> = vec![];
+
+        for row in rows {
+            if emitted.contains(&row.node_id) {
+                continue;
+            }
+
+            let Some(group_id) = node_to_group_id.get(&row.node_id).cloned() else {
+                entries.push(LineageTableEntry {
+                    row: row.clone(),
+                    indent_level: 0,
+                    group_id: None,
+                    group_label: None,
+                    is_group_representative: false,
+                    hidden_group_member_count: 0,
+                });
+                emitted.insert(row.node_id.clone());
+                continue;
+            };
+
+            let Some(group) = group_by_id.get(&group_id) else {
+                entries.push(LineageTableEntry {
+                    row: row.clone(),
+                    indent_level: 0,
+                    group_id: None,
+                    group_label: None,
+                    is_group_representative: false,
+                    hidden_group_member_count: 0,
+                });
+                emitted.insert(row.node_id.clone());
+                continue;
+            };
+
+            if row.node_id != group.representative_node_id {
+                continue;
+            }
+
+            entries.push(LineageTableEntry {
+                row: row.clone(),
+                indent_level: 0,
+                group_id: Some(group.group_id.clone()),
+                group_label: Some(group.label.clone()),
+                is_group_representative: true,
+                hidden_group_member_count: if group.collapsed {
+                    group.member_node_ids.len()
+                } else {
+                    0
+                },
+            });
+            emitted.insert(row.node_id.clone());
+
+            if group.collapsed {
+                for member_id in &group.member_node_ids {
+                    emitted.insert(member_id.clone());
+                }
+            } else {
+                let mut members = group.member_node_ids.clone();
+                members
+                    .sort_by_key(|node_id| row_order.get(node_id).copied().unwrap_or(usize::MAX));
+                for member_id in members {
+                    if emitted.contains(&member_id) {
+                        continue;
+                    }
+                    if let Some(member_row) = row_by_node.get(&member_id) {
+                        entries.push(LineageTableEntry {
+                            row: member_row.clone(),
+                            indent_level: 1,
+                            group_id: Some(group.group_id.clone()),
+                            group_label: Some(group.label.clone()),
+                            is_group_representative: false,
+                            hidden_group_member_count: 0,
+                        });
+                        emitted.insert(member_id);
+                    }
+                }
+            }
+        }
+
+        for row in rows {
+            if emitted.contains(&row.node_id) {
+                continue;
+            }
+            entries.push(LineageTableEntry {
+                row: row.clone(),
+                indent_level: 0,
+                group_id: None,
+                group_label: None,
+                is_group_representative: false,
+                hidden_group_member_count: 0,
+            });
+            emitted.insert(row.node_id.clone());
+        }
+
+        entries
+    }
+
+    fn lineage_group_color(group_id: &str) -> egui::Color32 {
+        let palette = [
+            egui::Color32::from_rgb(115, 146, 186),
+            egui::Color32::from_rgb(173, 132, 84),
+            egui::Color32::from_rgb(120, 156, 106),
+            egui::Color32::from_rgb(163, 118, 143),
+            egui::Color32::from_rgb(119, 155, 160),
+            egui::Color32::from_rgb(174, 148, 88),
+        ];
+        let mut hasher = DefaultHasher::new();
+        group_id.hash(&mut hasher);
+        let index = (hasher.finish() as usize) % palette.len();
+        palette[index]
+    }
+
     fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
@@ -9739,6 +10141,244 @@ Error: `{err}`"
                 .cmp(&b.created_at)
                 .then(a.node_id.cmp(&b.node_id))
         });
+
+        let valid_lineage_node_ids: HashSet<String> =
+            graph_rows.iter().map(|row| row.node_id.clone()).collect();
+        let mut sanitized_groups =
+            Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
+        if sanitized_groups != self.lineage_node_groups {
+            self.lineage_node_groups = sanitized_groups.clone();
+            if self
+                .lineage_group_form_editing_id
+                .as_ref()
+                .is_some_and(|group_id| {
+                    !self
+                        .lineage_node_groups
+                        .iter()
+                        .any(|group| &group.group_id == group_id)
+                })
+            {
+                self.lineage_group_form_editing_id = None;
+            }
+            persist_workspace_after_frame = true;
+        }
+
+        ui.collapsing("Node Groups", |ui| {
+            ui.small(
+                "Group lineage nodes into disjoint sets. Members are shown indented in table view and can collapse to the representative node in graph view.",
+            );
+            if !self.lineage_group_status.trim().is_empty() {
+                ui.small(self.lineage_group_status.clone());
+            }
+            if self.lineage_node_groups.is_empty() {
+                ui.small("No node groups yet.");
+            } else {
+                egui::Grid::new("lineage_node_groups_grid")
+                    .striped(true)
+                    .min_col_width(48.0)
+                    .show(ui, |ui| {
+                        ui.strong("Collapse");
+                        ui.strong("Group");
+                        ui.strong("Representative");
+                        ui.strong("Members");
+                        ui.strong("Actions");
+                        ui.end_row();
+                        let mut edit_group_id: Option<String> = None;
+                        let mut delete_group_id: Option<String> = None;
+                        for group in &mut self.lineage_node_groups {
+                            if ui.checkbox(&mut group.collapsed, "").changed() {
+                                persist_workspace_after_frame = true;
+                            }
+                            ui.label(format!("{} ({})", group.label, group.group_id));
+                            ui.monospace(group.representative_node_id.clone());
+                            ui.monospace(group.member_node_ids.join(", "));
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .small_button("Edit")
+                                    .on_hover_text("Edit this node group")
+                                    .clicked()
+                                {
+                                    edit_group_id = Some(group.group_id.clone());
+                                }
+                                if ui
+                                    .small_button("Delete")
+                                    .on_hover_text("Delete this node group")
+                                    .clicked()
+                                {
+                                    delete_group_id = Some(group.group_id.clone());
+                                }
+                            });
+                            ui.end_row();
+                        }
+                        if let Some(group_id) = edit_group_id {
+                            if let Some(group) = self
+                                .lineage_node_groups
+                                .iter()
+                                .find(|group| group.group_id == group_id)
+                            {
+                                self.lineage_group_form_editing_id = Some(group.group_id.clone());
+                                self.lineage_group_form_label = group.label.clone();
+                                self.lineage_group_form_representative =
+                                    group.representative_node_id.clone();
+                                self.lineage_group_form_members = group.member_node_ids.join(", ");
+                                self.lineage_group_status =
+                                    format!("Editing group '{}'", group.label);
+                            }
+                        }
+                        if let Some(group_id) = delete_group_id {
+                            let before = self.lineage_node_groups.len();
+                            self.lineage_node_groups
+                                .retain(|group| group.group_id != group_id);
+                            if self.lineage_node_groups.len() != before {
+                                if self
+                                    .lineage_group_form_editing_id
+                                    .as_ref()
+                                    .is_some_and(|editing_id| editing_id == &group_id)
+                                {
+                                    self.lineage_group_form_editing_id = None;
+                                }
+                                self.lineage_group_status = format!("Deleted group '{group_id}'");
+                                persist_workspace_after_frame = true;
+                            }
+                        }
+                    });
+            }
+            ui.separator();
+            let editing = self.lineage_group_form_editing_id.is_some();
+            ui.label(if editing {
+                "Edit node group"
+            } else {
+                "Create node group"
+            });
+            ui.horizontal(|ui| {
+                ui.label("Label");
+                ui.text_edit_singleline(&mut self.lineage_group_form_label);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Representative");
+                ui.text_edit_singleline(&mut self.lineage_group_form_representative);
+                if ui
+                    .small_button("Use selected")
+                    .on_hover_text("Use currently selected graph node as representative")
+                    .clicked()
+                {
+                    if let Some(selected_node_id) = &self.lineage_graph_selected_node_id {
+                        self.lineage_group_form_representative = selected_node_id.clone();
+                    }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Members");
+                ui.text_edit_singleline(&mut self.lineage_group_form_members);
+            });
+            ui.small("Members: comma/space/newline separated node ids (representative excluded).");
+            ui.horizontal(|ui| {
+                let save_label = if editing { "Apply Group" } else { "Add Group" };
+                if ui.button(save_label).clicked() {
+                    let representative = self.lineage_group_form_representative.trim().to_string();
+                    if representative.is_empty() {
+                        self.lineage_group_status =
+                            "Representative node id is required".to_string();
+                    } else if !valid_lineage_node_ids.contains(&representative) {
+                        self.lineage_group_status = format!(
+                            "Representative node '{representative}' is not present in current lineage"
+                        );
+                    } else {
+                        let mut label = self.lineage_group_form_label.trim().to_string();
+                        if label.is_empty() {
+                            label = format!("Group {}", representative);
+                        }
+                        let mut members =
+                            Self::parse_lineage_group_node_list(&self.lineage_group_form_members);
+                        members.retain(|node_id| node_id != &representative);
+                        if members.is_empty() {
+                            self.lineage_group_status =
+                                "At least one member node id is required".to_string();
+                        } else {
+                            let mut draft_groups = self.lineage_node_groups.clone();
+                            if let Some(group_id) = self.lineage_group_form_editing_id.clone() {
+                                if let Some(group) = draft_groups
+                                    .iter_mut()
+                                    .find(|group| group.group_id == group_id)
+                                {
+                                    group.label = label.clone();
+                                    group.representative_node_id = representative.clone();
+                                    group.member_node_ids = members.clone();
+                                } else {
+                                    draft_groups.push(PersistedLineageNodeGroup {
+                                        group_id,
+                                        label: label.clone(),
+                                        representative_node_id: representative.clone(),
+                                        member_node_ids: members.clone(),
+                                        collapsed: false,
+                                    });
+                                }
+                            } else {
+                                draft_groups.push(PersistedLineageNodeGroup {
+                                    group_id: Self::next_lineage_group_id(&draft_groups),
+                                    label: label.clone(),
+                                    representative_node_id: representative.clone(),
+                                    member_node_ids: members.clone(),
+                                    collapsed: false,
+                                });
+                            }
+
+                            let sanitized_draft = Self::sanitize_lineage_node_groups(
+                                &draft_groups,
+                                &valid_lineage_node_ids,
+                            );
+                            let adjusted = sanitized_draft != draft_groups;
+                            self.lineage_node_groups = sanitized_draft;
+                            self.lineage_group_form_editing_id = None;
+                            self.lineage_group_form_label.clear();
+                            self.lineage_group_form_members.clear();
+                            self.lineage_group_form_representative.clear();
+                            self.lineage_group_status = if adjusted {
+                                "Group saved with normalization (overlaps/invalid nodes were removed)"
+                                    .to_string()
+                            } else {
+                                format!("Saved group '{label}'")
+                            };
+                            persist_workspace_after_frame = true;
+                        }
+                    }
+                }
+                if ui.button("Clear Form").clicked() {
+                    self.lineage_group_form_editing_id = None;
+                    self.lineage_group_form_label.clear();
+                    self.lineage_group_form_members.clear();
+                    self.lineage_group_form_representative.clear();
+                    self.lineage_group_status.clear();
+                }
+            });
+        });
+        ui.separator();
+
+        sanitized_groups =
+            Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
+        if sanitized_groups != self.lineage_node_groups {
+            self.lineage_node_groups = sanitized_groups.clone();
+            persist_workspace_after_frame = true;
+        }
+        let lineage_groups = self.lineage_node_groups.clone();
+        let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(&lineage_groups);
+        let (projected_graph_rows, projected_graph_edges) =
+            Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &lineage_groups);
+        let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
+        let visible_node_ids: HashSet<String> = projected_graph_rows
+            .iter()
+            .map(|row| row.node_id.clone())
+            .collect();
+        if let Some(selected_node_id) = self.lineage_graph_selected_node_id.clone() {
+            if !visible_node_ids.contains(&selected_node_id) {
+                let remapped = node_to_group_id
+                    .get(&selected_node_id)
+                    .and_then(|group_id| group_by_id.get(group_id))
+                    .map(|group| group.representative_node_id.clone());
+                self.lineage_graph_selected_node_id = remapped;
+            }
+        }
+
         if self.lineage_graph_view {
             if self.lineage_graph_offsets_synced_stamp != self.lineage_cache_stamp {
                 let offset_count_before = self.lineage_graph_node_offsets.len();
@@ -9781,6 +10421,7 @@ Error: `{err}`"
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
                 ui.colored_label(egui::Color32::from_rgb(180, 120, 70), "◆ pool");
                 ui.colored_label(egui::Color32::from_rgb(108, 154, 122), "▭ arrangement");
+                ui.colored_label(egui::Color32::from_rgb(145, 145, 145), "◻ node group");
                 ui.separator();
                 let zoom_out_resp = self.track_hover_status(
                     ui.button("−").on_hover_text("Zoom out"),
@@ -9856,8 +10497,8 @@ Error: `{err}`"
                 }
             });
             ui.separator();
-            let rows = &graph_rows;
-            let lineage_edges = &graph_edges;
+            let rows = &projected_graph_rows;
+            let lineage_edges = &projected_graph_edges;
             let op_label_by_id = &graph_op_label_by_id;
             let graph_resize_max_height = ui.available_height().max(220.0);
             let graph_resize_width = ui.available_width().max(360.0);
@@ -9970,6 +10611,62 @@ Error: `{err}`"
                                     + (120.0 + rank as f32 * 110.0) * graph_zoom
                                     + manual_offset.y;
                                 pos_by_node.insert(row.node_id.clone(), Pos2::new(x, y));
+                            }
+                            for group in &lineage_groups {
+                                let mut group_nodes: Vec<String> =
+                                    Vec::with_capacity(group.member_node_ids.len() + 1);
+                                group_nodes.push(group.representative_node_id.clone());
+                                group_nodes.extend(group.member_node_ids.clone());
+                                let mut bounds: Option<egui::Rect> = None;
+                                let mut visible_nodes = 0usize;
+                                for node_id in group_nodes {
+                                    let Some(pos) = pos_by_node.get(&node_id).copied() else {
+                                        continue;
+                                    };
+                                    visible_nodes += 1;
+                                    let glyph_rect = egui::Rect::from_center_size(
+                                        pos,
+                                        Vec2::new(52.0 * graph_zoom, 42.0 * graph_zoom),
+                                    );
+                                    bounds = Some(if let Some(existing) = bounds {
+                                        existing.union(glyph_rect)
+                                    } else {
+                                        glyph_rect
+                                    });
+                                }
+                                let Some(mut bounds) = bounds else {
+                                    continue;
+                                };
+                                bounds = bounds.expand(24.0 * graph_zoom);
+                                let group_color = Self::lineage_group_color(&group.group_id);
+                                painter.rect_filled(
+                                    bounds,
+                                    10.0 * graph_zoom,
+                                    egui::Color32::from_rgba_premultiplied(
+                                        group_color.r(),
+                                        group_color.g(),
+                                        group_color.b(),
+                                        18,
+                                    ),
+                                );
+                                painter.rect_stroke(
+                                    bounds,
+                                    10.0 * graph_zoom,
+                                    egui::Stroke::new((1.4 * graph_zoom).clamp(1.0, 2.2), group_color),
+                                );
+                                let mut label = group.label.clone();
+                                if group.collapsed {
+                                    label.push_str(&format!(" (collapsed, {} hidden)", group.member_node_ids.len()));
+                                } else {
+                                    label.push_str(&format!(" ({visible_nodes} node(s))"));
+                                }
+                                painter.text(
+                                    Pos2::new(bounds.left() + 8.0 * graph_zoom, bounds.top() - 2.0 * graph_zoom),
+                                    egui::Align2::LEFT_BOTTOM,
+                                    label,
+                                    egui::FontId::proportional((10.0 * graph_zoom).clamp(9.0, 14.0)),
+                                    group_color,
+                                );
                             }
                             let pointer = resp.interact_pointer_pos();
                             let is_node_hit = |row: &LineageRow, pointer: Pos2| -> bool {
@@ -10571,6 +11268,7 @@ Error: `{err}`"
                 });
         } else {
             let table_max_height = ui.available_height().clamp(220.0, 520.0);
+            let mut toggle_group_collapse_id: Option<String> = None;
             egui::ScrollArea::both()
                 .id_salt("lineage_table_scroll")
                 .auto_shrink([false, false])
@@ -10592,39 +11290,93 @@ Error: `{err}`"
                             ui.strong("Genome anchor");
                             ui.strong("Action");
                             ui.end_row();
-                            for row in &self.lineage_rows {
+                            for entry in &table_entries {
+                                let row = &entry.row;
                                 let node_display = Self::compact_lineage_node_label(&row.node_id, 10);
                                 let node_response = ui
                                     .allocate_ui_with_layout(
-                                        egui::vec2(84.0, ui.spacing().interact_size.y),
+                                        egui::vec2(160.0, ui.spacing().interact_size.y),
                                         egui::Layout::left_to_right(egui::Align::Center),
                                         |ui| {
-                                            ui.add(
-                                                egui::Label::new(
-                                                    egui::RichText::new(node_display.clone())
-                                                        .monospace(),
-                                                )
-                                                .truncate(),
-                                            )
+                                            ui.horizontal(|ui| {
+                                                ui.add_space(14.0 * entry.indent_level as f32);
+                                                if entry.is_group_representative {
+                                                    if let Some(group_id) = entry.group_id.as_ref()
+                                                    {
+                                                        let collapsed =
+                                                            entry.hidden_group_member_count > 0;
+                                                        if ui
+                                                            .small_button(if collapsed {
+                                                                "▸"
+                                                            } else {
+                                                                "▾"
+                                                            })
+                                                            .on_hover_text(
+                                                                "Collapse/expand this node group",
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            toggle_group_collapse_id =
+                                                                Some(group_id.clone());
+                                                        }
+                                                    }
+                                                } else if entry.indent_level > 0 {
+                                                    ui.label("↳");
+                                                }
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(node_display.clone())
+                                                            .monospace(),
+                                                    )
+                                                    .truncate(),
+                                                );
+                                            });
                                         },
                                     )
-                                    .inner;
+                                    .response;
                                 if node_display != row.node_id {
                                     node_response.on_hover_text(row.node_id.clone());
                                 }
-                                if ui
-                                    .button(&row.seq_id)
-                                    .on_hover_text("Open this sequence in a dedicated window")
-                                    .clicked()
-                                {
-                                    open_seq = Some(row.seq_id.clone());
+                                match row.kind {
+                                    LineageNodeKind::Arrangement => {
+                                        ui.monospace(
+                                            row.arrangement_id
+                                                .as_deref()
+                                                .unwrap_or(&row.seq_id)
+                                                .to_string(),
+                                        );
+                                    }
+                                    LineageNodeKind::Sequence => {
+                                        if ui
+                                            .button(&row.seq_id)
+                                            .on_hover_text("Open this sequence in a dedicated window")
+                                            .clicked()
+                                        {
+                                            open_seq = Some(row.seq_id.clone());
+                                        }
+                                    }
                                 }
                                 ui.label(if row.parents.is_empty() {
                                     "-".to_string()
                                 } else {
                                     row.parents.join(" + ")
                                 });
-                                ui.label(&row.origin);
+                                if entry.is_group_representative {
+                                    if let Some(group_label) = entry.group_label.as_ref() {
+                                        if entry.hidden_group_member_count > 0 {
+                                            ui.label(format!(
+                                                "{} [{} | {} hidden]",
+                                                row.origin, group_label, entry.hidden_group_member_count
+                                            ));
+                                        } else {
+                                            ui.label(format!("{} [{}]", row.origin, group_label));
+                                        }
+                                    } else {
+                                        ui.label(&row.origin);
+                                    }
+                                } else {
+                                    ui.label(&row.origin);
+                                }
                                 let op_display = Self::compact_lineage_node_label(&row.created_by_op, 11);
                                 let op_response = ui
                                     .allocate_ui_with_layout(
@@ -10644,8 +11396,13 @@ Error: `{err}`"
                                 if op_display != row.created_by_op {
                                     op_response.on_hover_text(row.created_by_op.clone());
                                 }
-                                ui.monospace(format!("{} bp", row.length));
-                                ui.label(if row.circular { "circular" } else { "linear" });
+                                if row.kind == LineageNodeKind::Arrangement {
+                                    ui.label("-");
+                                    ui.label("-");
+                                } else {
+                                    ui.monospace(format!("{} bp", row.length));
+                                    ui.label(if row.circular { "circular" } else { "linear" });
+                                }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
                                         ui.label("-");
@@ -10678,19 +11435,48 @@ Error: `{err}`"
                                         }
                                     }
                                 }
-                                if ui
-                                    .button("Select")
-                                    .on_hover_text(
-                                        "Run candidate selection operation using this sequence as input",
-                                    )
-                                    .clicked()
-                                {
-                                    select_candidate_from = Some(row.seq_id.clone());
+                                match row.kind {
+                                    LineageNodeKind::Arrangement => {
+                                        if !row.lane_container_ids.is_empty()
+                                            && ui
+                                                .button("Open Lanes")
+                                                .on_hover_text(
+                                                    "Open windows for the lane containers in this arrangement",
+                                                )
+                                                .clicked()
+                                        {
+                                            open_lane_containers =
+                                                Some(row.lane_container_ids.clone());
+                                        } else {
+                                            ui.label("-");
+                                        }
+                                    }
+                                    LineageNodeKind::Sequence => {
+                                        if ui
+                                            .button("Select")
+                                            .on_hover_text(
+                                                "Run candidate selection operation using this sequence as input",
+                                            )
+                                            .clicked()
+                                        {
+                                            select_candidate_from = Some(row.seq_id.clone());
+                                        }
+                                    }
                                 }
                                 ui.end_row();
                             }
                         });
                 });
+            if let Some(group_id) = toggle_group_collapse_id {
+                if let Some(group) = self
+                    .lineage_node_groups
+                    .iter_mut()
+                    .find(|group| group.group_id == group_id)
+                {
+                    group.collapsed = !group.collapsed;
+                    persist_workspace_after_frame = true;
+                }
+            }
         }
         ui.separator();
         ui.heading("Containers");
@@ -13453,9 +14239,10 @@ impl eframe::App for GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        BackgroundJobEventPhase, BackgroundJobKind, EngineError, ErrorCode, GENtleApp,
-        GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, MAX_RECENT_PROJECTS,
+        BackgroundJobEventPhase, BackgroundJobKind, ConfigurationTab, EngineError, ErrorCode,
+        GENtleApp, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
+        GenomeTrackImportTaskMessage, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+        PersistedLineageNodeGroup,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -13521,6 +14308,27 @@ mod tests {
         assert!(app.show_configuration_dialog);
         assert!(app.configuration_graphics_dirty);
         assert_eq!(app.configuration_graphics.feature_details_font_size, 19.25);
+        assert_eq!(app.configuration_status, "editing");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::configuration_viewport_id())
+        );
+    }
+
+    #[test]
+    fn open_configuration_graphics_dialog_focuses_existing_window_without_resetting_edits() {
+        let mut app = GENtleApp::default();
+        app.open_configuration_dialog();
+        app.configuration_graphics.feature_details_font_size = 17.75;
+        app.configuration_graphics_dirty = true;
+        app.configuration_status = "editing".to_string();
+
+        app.open_configuration_graphics_dialog();
+
+        assert!(app.show_configuration_dialog);
+        assert!(matches!(app.configuration_tab, ConfigurationTab::Graphics));
+        assert!(app.configuration_graphics_dirty);
+        assert_eq!(app.configuration_graphics.feature_details_font_size, 17.75);
         assert_eq!(app.configuration_status, "editing");
         assert!(
             app.pending_focus_viewports
@@ -13788,5 +14596,121 @@ mod tests {
             "status was: {}",
             app.genome_track_status
         );
+    }
+
+    fn make_lineage_row(node_id: &str, seq_id: &str) -> LineageRow {
+        LineageRow {
+            kind: LineageNodeKind::Sequence,
+            node_id: node_id.to_string(),
+            seq_id: seq_id.to_string(),
+            display_name: seq_id.to_string(),
+            origin: "Test".to_string(),
+            created_by_op: "op_test".to_string(),
+            created_at: 1,
+            parents: vec![],
+            length: 100,
+            circular: false,
+            pool_size: 1,
+            pool_members: vec![seq_id.to_string()],
+            arrangement_id: None,
+            arrangement_mode: None,
+            lane_container_ids: vec![],
+            ladders: vec![],
+            genome_anchor_summary: None,
+            genome_anchor_display: None,
+            is_full_genome_sequence: false,
+        }
+    }
+
+    #[test]
+    fn sanitize_lineage_node_groups_enforces_disjoint_membership() {
+        let valid_node_ids = ["n1", "n2", "n3", "n4"]
+            .iter()
+            .map(|node_id| (*node_id).to_string())
+            .collect();
+        let groups = vec![
+            PersistedLineageNodeGroup {
+                group_id: "grp-a".to_string(),
+                label: "A".to_string(),
+                representative_node_id: "n1".to_string(),
+                member_node_ids: vec!["n2".to_string(), "n5".to_string()],
+                collapsed: false,
+            },
+            PersistedLineageNodeGroup {
+                group_id: "grp-b".to_string(),
+                label: "B".to_string(),
+                representative_node_id: "n2".to_string(),
+                member_node_ids: vec!["n3".to_string(), "n4".to_string()],
+                collapsed: true,
+            },
+        ];
+
+        let sanitized = GENtleApp::sanitize_lineage_node_groups(&groups, &valid_node_ids);
+        assert_eq!(sanitized.len(), 2);
+        assert_eq!(sanitized[0].representative_node_id, "n1");
+        assert_eq!(sanitized[0].member_node_ids, vec!["n2".to_string()]);
+        assert_eq!(sanitized[1].representative_node_id, "n3");
+        assert_eq!(sanitized[1].member_node_ids, vec!["n4".to_string()]);
+    }
+
+    #[test]
+    fn project_lineage_graph_by_groups_collapses_member_edges_to_representative() {
+        let rows = vec![
+            make_lineage_row("n1", "seq1"),
+            make_lineage_row("n2", "seq2"),
+            make_lineage_row("n3", "seq3"),
+        ];
+        let edges = vec![
+            ("n1".to_string(), "n2".to_string(), "op1".to_string()),
+            ("n2".to_string(), "n3".to_string(), "op2".to_string()),
+        ];
+        let groups = vec![PersistedLineageNodeGroup {
+            group_id: "grp-1".to_string(),
+            label: "Collapsed group".to_string(),
+            representative_node_id: "n1".to_string(),
+            member_node_ids: vec!["n2".to_string()],
+            collapsed: true,
+        }];
+
+        let (projected_rows, projected_edges) =
+            GENtleApp::project_lineage_graph_by_groups(&rows, &edges, &groups);
+        assert_eq!(projected_rows.len(), 2);
+        assert!(projected_rows.iter().any(|row| row.node_id == "n1"));
+        assert!(projected_rows.iter().any(|row| row.node_id == "n3"));
+        assert_eq!(
+            projected_edges,
+            vec![("n1".to_string(), "n3".to_string(), "op2".to_string())]
+        );
+    }
+
+    #[test]
+    fn build_lineage_table_entries_indents_group_members() {
+        let rows = vec![
+            make_lineage_row("n1", "seq1"),
+            make_lineage_row("n2", "seq2"),
+            make_lineage_row("n3", "seq3"),
+        ];
+        let expanded_group = vec![PersistedLineageNodeGroup {
+            group_id: "grp-1".to_string(),
+            label: "Expanded".to_string(),
+            representative_node_id: "n1".to_string(),
+            member_node_ids: vec!["n2".to_string()],
+            collapsed: false,
+        }];
+        let expanded_entries = GENtleApp::build_lineage_table_entries(&rows, &expanded_group);
+        assert_eq!(expanded_entries.len(), 3);
+        assert!(expanded_entries[0].is_group_representative);
+        assert_eq!(expanded_entries[1].indent_level, 1);
+        assert_eq!(expanded_entries[1].row.node_id, "n2");
+
+        let collapsed_group = vec![PersistedLineageNodeGroup {
+            collapsed: true,
+            ..expanded_group[0].clone()
+        }];
+        let collapsed_entries = GENtleApp::build_lineage_table_entries(&rows, &collapsed_group);
+        assert_eq!(collapsed_entries.len(), 2);
+        assert_eq!(collapsed_entries[0].row.node_id, "n1");
+        assert_eq!(collapsed_entries[0].hidden_group_member_count, 1);
+        assert_eq!(collapsed_entries[1].row.node_id, "n3");
     }
 }

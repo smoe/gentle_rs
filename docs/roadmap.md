@@ -52,6 +52,11 @@ order. Durable architecture constraints and decisions remain in
 ### GUI baseline in place
 
 - Main lineage page with table/graph/container views.
+- Main lineage node-group baseline:
+  - disjoint node-group model (strict one-group-per-node membership)
+  - table indentation under group representative rows
+  - graph enclosure outlines for grouped nodes
+  - collapsed groups project external edges to representative nodes
 - Graph contract:
   - single-click selects
   - double-click opens sequence/pool context
@@ -96,6 +101,12 @@ order. Durable architecture constraints and decisions remain in
   - configuration UI now includes tint color pickers, image-file pickers,
     and live path validation
   - persisted in app settings and live-applied from Configuration -> Graphics
+- Configuration apply workflow:
+  - staged settings now use one consistent apply model across external tools,
+    graphics, and window styling
+  - explicit `Unapplied changes` indicator is shown in Configuration
+  - bottom `Cancel`/`Apply` actions are persistent and remain visible while tab
+    content scrolls
 
 ### High-level parity snapshot
 
@@ -161,6 +172,8 @@ Notes:
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
+   - optional all-open-window refresh behavior for applied display changes
+     should be finalized consistently across relevant graphics-setting changes
 8. Cross-application clipboard interoperability for sequence + feature transfer
    is not yet implemented (current baseline is deterministic in-app extraction).
 9. Screenshot bridge execution remains disabled by security policy.
@@ -264,6 +277,8 @@ Current baseline:
   letters are visible
 - feature lanes are pushed outward in condensed mode with deterministic
   readability clearance from the sequence-letter band
+- condensed row spacing and baseline band reservation were increased to prevent
+  vertical letter overlap and preserve a dedicated readable letter band
 - dedicated condensed layout span threshold is now persisted and configurable
   (default target 1500 bp) independently of continuous-helical max span
 

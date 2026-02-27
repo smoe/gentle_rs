@@ -53,7 +53,7 @@ const REGULATORY_LANE_PADDING: f32 = 2.0;
 const HELICAL_MIN_X_COMPRESSION: f32 = 0.2;
 const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
 const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
-const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 0.24;
+const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 1.05;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
 const FEATURE_EXTERNAL_LABEL_FONT_SIZE: f32 = 11.0;
 const FEATURE_EXTERNAL_LABEL_HEIGHT: f32 = 16.0;
@@ -867,16 +867,25 @@ impl RenderDnaLinear {
         let bottom_natural_extent =
             Self::side_extent(bottom_lane_count, default_style).max(BASELINE_SIDE_MIN_EXTENT);
         let natural_total = (top_natural_extent + bottom_natural_extent).max(1.0);
-        let available_total =
-            (self.area.height() - BASELINE_TOP_PADDING - BASELINE_BOTTOM_PADDING).max(60.0);
+        let condensed_text_half_extent = self.condensed_helical_text_half_extent(viewport);
+        let condensed_band_total = condensed_text_half_extent.unwrap_or(0.0) * 2.0;
+        let available_total = (self.area.height()
+            - BASELINE_TOP_PADDING
+            - BASELINE_BOTTOM_PADDING
+            - condensed_band_total)
+            .max(40.0);
         let top_target_extent = available_total * (top_natural_extent / natural_total);
         let bottom_target_extent = available_total * (bottom_natural_extent / natural_total);
 
-        let baseline = self.area.top() + BASELINE_TOP_PADDING + top_target_extent;
-        self.baseline_y = baseline.clamp(
-            self.area.top() + BASELINE_TOP_PADDING,
-            self.area.bottom() - BASELINE_BOTTOM_PADDING,
-        );
+        let reserved_half = condensed_text_half_extent.unwrap_or(0.0);
+        let baseline = self.area.top() + BASELINE_TOP_PADDING + reserved_half + top_target_extent;
+        let baseline_min = self.area.top() + BASELINE_TOP_PADDING + reserved_half;
+        let baseline_max = self.area.bottom() - BASELINE_BOTTOM_PADDING - reserved_half;
+        self.baseline_y = if baseline_min <= baseline_max {
+            baseline.clamp(baseline_min, baseline_max)
+        } else {
+            self.area.center().y
+        };
 
         let top_scale = if top_natural_extent > 0.0 {
             (top_target_extent / top_natural_extent).clamp(0.1, 1.0)
@@ -1335,7 +1344,12 @@ impl RenderDnaLinear {
                 0.0
             };
             let forward_y_bp = forward_y + helical_phase;
-            let reverse_y_bp = reverse_y - helical_phase;
+            let reverse_y_bp = if use_condensed_helical {
+                // Keep both strands phase-aligned in condensed mode to avoid row-crossing overlap.
+                reverse_y + helical_phase
+            } else {
+                reverse_y - helical_phase
+            };
             let selection_min_y = forward_y_bp.min(reverse_y_bp) - 1.0;
             let selection_max_y = if show_double_strand {
                 forward_y_bp.max(reverse_y_bp) + font_size + 1.0
@@ -2294,6 +2308,57 @@ mod tests {
         {
             assert_eq!(*shifted_3, (*base + 3) % 10);
             assert_eq!(*shifted_9, (*base + 9) % 10);
+        }
+    }
+
+    #[test]
+    fn condensed_helical_rows_use_non_overlapping_step_size() {
+        let row_step = SEQUENCE_BASE_TEXT_MAX_FONT_SIZE * CONDENSED_HELICAL_ROW_SPACING_SCALE;
+        assert!(row_step >= SEQUENCE_BASE_TEXT_MAX_FONT_SIZE);
+    }
+
+    #[test]
+    fn condensed_layout_reserves_vertical_band_around_baseline() {
+        let mut renderer = test_renderer(5000);
+        renderer.area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 220.0));
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        renderer.layout_features(viewport);
+        let half_extent = renderer
+            .condensed_helical_text_half_extent(viewport)
+            .expect("condensed extent");
+        let baseline = renderer.baseline_y();
+        let baseline_min = renderer.area.top() + BASELINE_TOP_PADDING + half_extent;
+        let baseline_max = renderer.area.bottom() - BASELINE_BOTTOM_PADDING - half_extent;
+        assert!(baseline_min <= baseline_max);
+        assert!(baseline >= baseline_min - 0.5);
+        assert!(baseline <= baseline_max + 0.5);
+    }
+
+    #[test]
+    fn condensed_layout_keeps_reverse_strand_ordered_below_forward_strand() {
+        let font_size = SEQUENCE_BASE_TEXT_MAX_FONT_SIZE;
+        let forward_y = -font_size - 3.0;
+        let reverse_y = 3.0;
+        for row_from_top in 0..10usize {
+            let centered = row_from_top as f32 - 4.5;
+            let phase = centered * font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE;
+            let forward = forward_y + phase;
+            let reverse = reverse_y + phase;
+            assert!(reverse > forward);
+            assert!((reverse - forward - (font_size + 6.0)).abs() < 0.001);
         }
     }
 

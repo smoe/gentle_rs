@@ -1,7 +1,7 @@
 //! DNA sequence-window wrapper and per-window controls.
 
 use crate::{
-    app::request_open_help_from_native_menu,
+    app::{request_open_graphics_settings_from_native_menu, request_open_help_from_native_menu},
     dna_sequence::DNAsequence,
     engine::GentleEngine,
     main_area_dna::MainAreaDna,
@@ -63,6 +63,13 @@ impl WindowDna {
                             egui::ViewportId::ROOT,
                             egui::ViewportCommand::Focus,
                         );
+                    }
+                    if ui
+                        .button("Configuration")
+                        .on_hover_text("Open Configuration window on Graphics settings")
+                        .clicked()
+                    {
+                        request_open_graphics_settings_from_native_menu();
                     }
                 });
             });

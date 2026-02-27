@@ -32,6 +32,7 @@ Access:
 - Main window menu: `File -> Configuration...` or `Settings -> Configuration...`
 - macOS app menu: `GENtle -> GENtle Settings...`
 - Shortcut: `Cmd+,`
+- Sequence window top navigation: `Configuration` (opens Graphics tab)
 - Re-selecting `Configuration...` while already open focuses the existing window
   (single-instance behavior).
 
@@ -190,6 +191,20 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
+
+Node groups in lineage view:
+
+- A `Node Groups` section is available above the lineage table/graph views.
+- Groups are disjoint (a node can belong to only one group).
+- Each group has one representative node and one or more member nodes.
+- Table view:
+  - representative rows are shown at top level
+  - member rows are indented beneath the representative
+  - collapse/expand toggles are available on representative rows
+- Graph view:
+  - grouped nodes are enclosed with a labeled outline
+  - when a group is collapsed, only the representative node is shown
+  - edges from/to hidden members are projected to the representative node
 
 ## Toolbar buttons
 
