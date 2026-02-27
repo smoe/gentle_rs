@@ -58,6 +58,7 @@ Tabs:
     - tint/image opacity controls
   - Applies to sequence windows through the shared engine display state.
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
+  - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
 
 Persistence:
 

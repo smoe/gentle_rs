@@ -2518,6 +2518,101 @@ impl MainAreaDna {
                             );
                         }
                     });
+                    ui.separator();
+                    ui.label(egui::RichText::new("Linear DNA letter status").strong());
+                    let (view_start_bp, view_span_bp, sequence_length_bp) =
+                        self.current_linear_viewport();
+                    let active_helical_max_span_bp = match helical_layout_mode {
+                        LinearSequenceLetterLayoutMode::ContinuousHelical => helical_max_span_bp,
+                        LinearSequenceLetterLayoutMode::Condensed10Row => condensed_max_span_bp,
+                    };
+                    let (active_mode_label, status_color, status_note) = if sequence_length_bp == 0
+                        || view_span_bp == 0
+                    {
+                        (
+                            "OFF".to_string(),
+                            egui::Color32::from_rgb(150, 30, 30),
+                            "inactive: empty viewport".to_string(),
+                        )
+                    } else if max_span_bp > 0 && view_span_bp <= max_span_bp {
+                        let note = if helical_letters_enabled && active_helical_max_span_bp > 0 {
+                            format!(
+                                "{} configured; activates when span > {} bp (and <= {} bp)",
+                                match helical_layout_mode {
+                                    LinearSequenceLetterLayoutMode::ContinuousHelical => {
+                                        "continuous-helical"
+                                    }
+                                    LinearSequenceLetterLayoutMode::Condensed10Row => {
+                                        "condensed-10-row"
+                                    }
+                                },
+                                max_span_bp,
+                                active_helical_max_span_bp
+                            )
+                        } else {
+                            "standard threshold active".to_string()
+                        };
+                        (
+                            "STANDARD".to_string(),
+                            egui::Color32::from_rgb(80, 80, 80),
+                            note,
+                        )
+                    } else if !helical_letters_enabled {
+                        (
+                            "OFF".to_string(),
+                            egui::Color32::from_rgb(150, 30, 30),
+                            format!(
+                                "inactive: span {} bp > standard max {} bp and helical letters are disabled",
+                                view_span_bp, max_span_bp
+                            ),
+                        )
+                    } else if active_helical_max_span_bp == 0 {
+                        (
+                            "OFF".to_string(),
+                            egui::Color32::from_rgb(150, 30, 30),
+                            "inactive: selected layout max span is 0".to_string(),
+                        )
+                    } else if view_span_bp > active_helical_max_span_bp {
+                        (
+                            "OFF".to_string(),
+                            egui::Color32::from_rgb(150, 30, 30),
+                            format!(
+                                "inactive: span {} bp > active layout max {} bp",
+                                view_span_bp, active_helical_max_span_bp
+                            ),
+                        )
+                    } else {
+                        let (label, color) = match helical_layout_mode {
+                            LinearSequenceLetterLayoutMode::ContinuousHelical => {
+                                ("HELICAL", egui::Color32::from_rgb(14, 98, 150))
+                            }
+                            LinearSequenceLetterLayoutMode::Condensed10Row => {
+                                ("CONDENSED-10", egui::Color32::from_rgb(10, 115, 56))
+                            }
+                        };
+                        (
+                            label.to_string(),
+                            color,
+                            "selected layout is active".to_string(),
+                        )
+                    };
+                    let view_end_bp = view_start_bp.saturating_add(view_span_bp);
+                    ui.colored_label(status_color, format!("Active render: {active_mode_label}"));
+                    ui.monospace(format!(
+                        "layout={} | span={} bp ({}..{} of {} bp) | standard_max={} | helical_enabled={} | active_layout_max={}",
+                        match helical_layout_mode {
+                            LinearSequenceLetterLayoutMode::ContinuousHelical => "continuous-helical",
+                            LinearSequenceLetterLayoutMode::Condensed10Row => "condensed-10-row",
+                        },
+                        view_span_bp,
+                        view_start_bp.saturating_add(1),
+                        view_end_bp,
+                        sequence_length_bp,
+                        max_span_bp,
+                        helical_letters_enabled,
+                        active_helical_max_span_bp
+                    ));
+                    ui.small(status_note);
                     if ui
                         .checkbox(
                             &mut auto_hide_sequence_panel,

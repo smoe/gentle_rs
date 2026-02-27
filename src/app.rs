@@ -1836,6 +1836,42 @@ Error: `{err}`"
         self.clear_blast_validation();
     }
 
+    fn external_apps_configuration_dirty(&self) -> bool {
+        let configured_rnapkin = tool_overrides::configured_or_env("GENTLE_RNAPKIN_BIN");
+        let configured_makeblastdb = tool_overrides::configured_or_env(MAKEBLASTDB_ENV_BIN);
+        let configured_blastn = tool_overrides::configured_or_env(BLASTN_ENV_BIN);
+        let configured_bigwig = tool_overrides::configured_or_env(BIGWIG_TO_BEDGRAPH_ENV_BIN);
+        self.configuration_rnapkin_executable.trim() != configured_rnapkin.trim()
+            || self.configuration_makeblastdb_executable.trim() != configured_makeblastdb.trim()
+            || self.configuration_blastn_executable.trim() != configured_blastn.trim()
+            || self.configuration_bigwig_to_bedgraph_executable.trim() != configured_bigwig.trim()
+    }
+
+    fn configuration_has_unapplied_changes(&self) -> bool {
+        self.external_apps_configuration_dirty()
+            || self.configuration_graphics_dirty
+            || self.configuration_window_backdrops_dirty
+    }
+
+    fn apply_pending_configuration_changes(&mut self) {
+        let external_dirty = self.external_apps_configuration_dirty();
+        let graphics_dirty = self.configuration_graphics_dirty;
+        let backdrop_dirty = self.configuration_window_backdrops_dirty;
+        if !external_dirty && !graphics_dirty && !backdrop_dirty {
+            self.configuration_status = "No unapplied configuration changes".to_string();
+            return;
+        }
+        if external_dirty {
+            self.apply_configuration_external_apps();
+        }
+        if graphics_dirty {
+            self.apply_configuration_graphics();
+        }
+        if backdrop_dirty {
+            self.apply_configuration_window_backdrops();
+        }
+    }
+
     fn open_configuration_dialog(&mut self) {
         if self.show_configuration_dialog {
             self.queue_focus_viewport(Self::configuration_viewport_id());
@@ -11491,7 +11527,7 @@ Error: `{err}`"
                 "Render double-strand DNA letters in linear view",
             )
             .changed();
-        changed |= ui
+        let hide_backbone_changed = ui
             .checkbox(
                 &mut self
                     .configuration_graphics
@@ -11499,7 +11535,8 @@ Error: `{err}`"
                 "Hide DNA backbone line when letters are shown",
             )
             .changed();
-        changed |= ui
+        changed |= hide_backbone_changed;
+        let helical_letters_enabled_changed = ui
             .checkbox(
                 &mut self
                     .configuration_graphics
@@ -11507,6 +11544,7 @@ Error: `{err}`"
                 "Enable helical-compressed linear DNA letter rendering",
             )
             .changed();
+        changed |= helical_letters_enabled_changed;
         ui.horizontal(|ui| {
             ui.label("Helical letter layout");
             let mut selected = self
@@ -11934,6 +11972,7 @@ Error: `{err}`"
     }
 
     fn render_configuration_contents(&mut self, ui: &mut Ui) {
+        let has_unapplied_changes = self.configuration_has_unapplied_changes();
         window_backdrop::paint_window_backdrop(
             ui,
             WindowBackdropKind::Configuration,
@@ -11960,29 +11999,61 @@ Error: `{err}`"
                 self.configuration_tab = ConfigurationTab::Graphics;
             }
             ui.separator();
+            if has_unapplied_changes {
+                ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
+            }
             if ui
                 .button("Close")
-                .on_hover_text("Close configuration dialog")
+                .on_hover_text(if has_unapplied_changes {
+                    "Close configuration dialog (unapplied changes will be discarded)"
+                } else {
+                    "Close configuration dialog"
+                })
                 .clicked()
             {
                 self.show_configuration_dialog = false;
             }
         });
         ui.separator();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| match self.configuration_tab {
-                ConfigurationTab::ExternalApplications => {
-                    self.render_configuration_external_tab(ui);
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+            ui.horizontal(|ui| {
+                if has_unapplied_changes {
+                    ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
                 }
-                ConfigurationTab::Graphics => {
-                    self.render_configuration_graphics_tab(ui);
+                if ui
+                    .add_enabled(has_unapplied_changes, egui::Button::new("Cancel"))
+                    .on_hover_text("Discard unapplied configuration changes and close")
+                    .clicked()
+                {
+                    self.sync_configuration_from_runtime();
+                    self.configuration_status =
+                        "Discarded unapplied configuration changes".to_string();
+                    self.show_configuration_dialog = false;
+                }
+                if ui
+                    .add_enabled(has_unapplied_changes, egui::Button::new("Apply"))
+                    .on_hover_text("Apply all unapplied configuration changes")
+                    .clicked()
+                {
+                    self.apply_pending_configuration_changes();
                 }
             });
-        if !self.configuration_status.trim().is_empty() {
+            if !self.configuration_status.trim().is_empty() {
+                ui.separator();
+                ui.monospace(self.configuration_status.clone());
+            }
             ui.separator();
-            ui.monospace(self.configuration_status.clone());
-        }
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| match self.configuration_tab {
+                    ConfigurationTab::ExternalApplications => {
+                        self.render_configuration_external_tab(ui);
+                    }
+                    ConfigurationTab::Graphics => {
+                        self.render_configuration_graphics_tab(ui);
+                    }
+                });
+        });
     }
 
     fn render_configuration_dialog(&mut self, ctx: &egui::Context) {

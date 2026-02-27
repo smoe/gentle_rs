@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-26
+Last updated: 2026-02-27
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -130,6 +130,10 @@ Notes:
      input/output edges
    - protocol-family template packs are still incomplete (restriction-only,
      Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi)
+   - cross-tool benchmarking (Serial Cloner + MacVector + SnapGene synthesis)
+     confirms additional repeated gaps are not yet first-class:
+     primer design/validation workflows, auto-annotation library scans,
+     sequencing-confirmation workflows, and interactive cloning clipboard/model
 2. MCP route now has guarded mutating execution (`op`/`workflow`), but parity
    breadth is still incomplete (for example UI-intent routing and broader
    adapter-equivalence coverage).
@@ -402,6 +406,39 @@ Implementation note:
 - Routine vocabulary crosswalk and graph-node rollout plan are maintained in
   `docs/cloning_routine_catalog_plan.md`.
 
+### Cross-tool parity synthesis (Serial Cloner + MacVector + SnapGene)
+
+Goal: prioritize missing capabilities that recur across multiple external
+cloning tools, instead of chasing one-off parity points.
+
+Reference matrix:
+
+- `docs/cloning_tool_gap_matrix.md`
+
+Repeated multi-tool gaps to prioritize:
+
+1. Primer design and validation workflow:
+   - first-class primer design/test flow (pair interaction checks, practical
+     constraints, saved primer sets)
+   - keep deterministic engine contracts so GUI/CLI/JS/Lua/MCP stay aligned
+2. Auto-annotation library scan:
+   - detect missing/plausible features from curated vector/feature libraries
+   - keep machine-readable confidence/overlap diagnostics for automation
+3. Sequencing confirmation workflow:
+   - import read evidence (Sanger/NGS-aligned scope), map evidence to expected
+     constructs, and emit deterministic pass/fail evidence summaries
+4. Interactive cloning workspace model:
+   - add explicit fragment/clipboard-style assembly workspace with end
+     compatibility feedback, while execution still routes through shared ops
+5. CRISPR workflow closure:
+   - extend existing guide-design baseline to include practical
+     screening/confirmation workflow outputs
+
+Notes:
+
+- If visual comparisons include screenshot/raster baselines, those artifacts
+  remain manual contributions while screenshot execution is policy-disabled.
+
 #### B) Agarose gel simulation improvements (high value)
 
 Current state is strong for ladder-aware pool preview and export, but still
@@ -563,6 +600,10 @@ Planned upgrades:
 - Add protocol macro template packs for the cloning modes listed in Section 2
   (restriction, Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion,
   NEBuilder HiFi).
+- Start repeated cross-tool cloning UX gaps after routine packs land:
+  - primer design/validation workflow contracts
+  - auto-annotation library scan contracts
+  - interactive cloning workspace/clipboard model
 
 ### Phase C: engine/protocol parity hardening
 
@@ -572,6 +613,8 @@ Planned upgrades:
   policy.
 - Define shared frontend-neutral view-model schema for tracks/features/overlays.
 - Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
+- Add sequencing-confirmation evidence contracts (read-aligned construct
+  validation summaries) as a deterministic shared-engine path.
 
 ### Phase D: visualization and workflow UX
 

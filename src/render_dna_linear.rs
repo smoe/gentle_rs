@@ -110,6 +110,86 @@ struct HelicalLayoutParams {
     active_max_span: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SequenceBaseRenderMode {
+    Off,
+    StandardLinear,
+    ContinuousHelical,
+    Condensed10Row,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SequenceBaseRenderStatus {
+    active_mode: SequenceBaseRenderMode,
+    configured_layout: LinearSequenceLetterLayoutMode,
+    standard_max_span: usize,
+    helical_enabled: bool,
+    active_helical_max_span: usize,
+    span: usize,
+}
+
+impl SequenceBaseRenderStatus {
+    fn bases_visible(&self) -> bool {
+        self.active_mode != SequenceBaseRenderMode::Off
+    }
+
+    fn active_mode_label(&self) -> &'static str {
+        match self.active_mode {
+            SequenceBaseRenderMode::Off => "OFF",
+            SequenceBaseRenderMode::StandardLinear => "STANDARD",
+            SequenceBaseRenderMode::ContinuousHelical => "HELICAL",
+            SequenceBaseRenderMode::Condensed10Row => "CONDENSED-10",
+        }
+    }
+
+    fn configured_layout_label(&self) -> &'static str {
+        match self.configured_layout {
+            LinearSequenceLetterLayoutMode::ContinuousHelical => "continuous-helical",
+            LinearSequenceLetterLayoutMode::Condensed10Row => "condensed-10-row",
+        }
+    }
+
+    fn note_text(&self) -> Option<String> {
+        if self.active_mode == SequenceBaseRenderMode::StandardLinear
+            && self.helical_enabled
+            && self.active_helical_max_span > 0
+        {
+            return Some(format!(
+                "{} configured; activates when span > {} bp (and <= {} bp)",
+                self.configured_layout_label(),
+                self.standard_max_span,
+                self.active_helical_max_span
+            ));
+        }
+        None
+    }
+
+    fn off_reason_text(&self) -> String {
+        if self.span == 0 {
+            return "inactive: empty viewport".to_string();
+        }
+        if !self.helical_enabled {
+            if self.standard_max_span == 0 {
+                return "inactive: standard max is 0 and helical letters are disabled".to_string();
+            }
+            return format!(
+                "inactive: span {} bp > standard max {} bp and helical letters are disabled",
+                self.span, self.standard_max_span
+            );
+        }
+        if self.active_helical_max_span == 0 {
+            return "inactive: selected layout max span is 0".to_string();
+        }
+        if self.span > self.active_helical_max_span {
+            return format!(
+                "inactive: span {} bp > active layout max {} bp",
+                self.span, self.active_helical_max_span
+            );
+        }
+        "inactive: suppressed by current thresholds".to_string()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderDnaLinear {
     dna: Arc<RwLock<DNAsequence>>,
@@ -141,6 +221,53 @@ impl RenderDnaLinear {
             enabled: display.linear_sequence_helical_letters_enabled(),
             mode,
             active_max_span,
+        }
+    }
+
+    fn sequence_base_render_status(&self, viewport: LinearViewport) -> SequenceBaseRenderStatus {
+        let (standard_max_span, helical) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_sequence_base_text_max_view_span_bp(),
+                    Self::helical_layout_params(&display),
+                )
+            })
+            .unwrap_or((
+                500,
+                HelicalLayoutParams {
+                    enabled: false,
+                    mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
+                    active_max_span: 1500,
+                },
+            ));
+        let active_mode = if viewport.span == 0 {
+            SequenceBaseRenderMode::Off
+        } else if standard_max_span > 0 && viewport.span <= standard_max_span {
+            SequenceBaseRenderMode::StandardLinear
+        } else if helical.enabled
+            && helical.active_max_span > 0
+            && viewport.span <= helical.active_max_span
+        {
+            match helical.mode {
+                LinearSequenceLetterLayoutMode::ContinuousHelical => {
+                    SequenceBaseRenderMode::ContinuousHelical
+                }
+                LinearSequenceLetterLayoutMode::Condensed10Row => {
+                    SequenceBaseRenderMode::Condensed10Row
+                }
+            }
+        } else {
+            SequenceBaseRenderMode::Off
+        };
+        SequenceBaseRenderStatus {
+            active_mode,
+            configured_layout: helical.mode,
+            standard_max_span,
+            helical_enabled: helical.enabled,
+            active_helical_max_span: helical.active_max_span,
+            span: viewport.span,
         }
     }
 
@@ -428,35 +555,8 @@ impl RenderDnaLinear {
     }
 
     fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
-        if viewport.span == 0 {
-            return None;
-        }
-        let (standard_max_span, helical) = self
-            .display
-            .read()
-            .map(|display| {
-                (
-                    display.linear_sequence_base_text_max_view_span_bp(),
-                    Self::helical_layout_params(&display),
-                )
-            })
-            .unwrap_or((
-                500,
-                HelicalLayoutParams {
-                    enabled: false,
-                    mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
-                    active_max_span: 1500,
-                },
-            ));
-        if helical.mode != LinearSequenceLetterLayoutMode::Condensed10Row
-            || !Self::should_use_helical_projection(
-                viewport,
-                standard_max_span,
-                helical.enabled,
-                helical.active_max_span,
-            )
-            || !self.should_draw_sequence_bases(viewport)
-        {
+        let status = self.sequence_base_render_status(viewport);
+        if status.active_mode != SequenceBaseRenderMode::Condensed10Row {
             return None;
         }
         let px_per_bp = self.area.width().max(1.0) / viewport.span.max(1) as f32;
@@ -1031,29 +1131,16 @@ impl RenderDnaLinear {
     }
 
     fn should_draw_backbone(&self, viewport: LinearViewport) -> bool {
-        let (hide_when_bases_visible, condensed_layout_active) = self
-            .display
-            .read()
-            .map(|display| {
-                let standard_max_span = display.linear_sequence_base_text_max_view_span_bp();
-                let helical = Self::helical_layout_params(&display);
-                let use_helical_projection = Self::should_use_helical_projection(
-                    viewport,
-                    standard_max_span,
-                    helical.enabled,
-                    helical.active_max_span,
-                );
-                (
-                    display.linear_hide_backbone_when_sequence_bases_visible(),
-                    use_helical_projection
-                        && helical.mode == LinearSequenceLetterLayoutMode::Condensed10Row,
-                )
-            })
-            .unwrap_or((false, false));
-        if condensed_layout_active && self.should_draw_sequence_bases(viewport) {
+        let status = self.sequence_base_render_status(viewport);
+        if status.active_mode == SequenceBaseRenderMode::Condensed10Row {
             return false;
         }
-        !(hide_when_bases_visible && self.should_draw_sequence_bases(viewport))
+        let hide_when_bases_visible = self
+            .display
+            .read()
+            .map(|display| display.linear_hide_backbone_when_sequence_bases_visible())
+            .unwrap_or(false);
+        !(hide_when_bases_visible && status.bases_visible())
     }
 
     fn draw_backbone(&self, painter: &egui::Painter, viewport: LinearViewport) {
@@ -1107,25 +1194,7 @@ impl RenderDnaLinear {
     }
 
     fn should_draw_sequence_bases(&self, viewport: LinearViewport) -> bool {
-        let (max_span, helical_enabled, active_helical_max_span) = self
-            .display
-            .read()
-            .map(|display| {
-                let helical = Self::helical_layout_params(&display);
-                (
-                    display.linear_sequence_base_text_max_view_span_bp(),
-                    helical.enabled,
-                    helical.active_max_span,
-                )
-            })
-            .unwrap_or((500, false, 1500));
-        if viewport.span == 0 {
-            return false;
-        }
-        if max_span > 0 && viewport.span <= max_span {
-            return true;
-        }
-        helical_enabled && active_helical_max_span > 0 && viewport.span <= active_helical_max_span
+        self.sequence_base_render_status(viewport).bases_visible()
     }
 
     fn sequence_base_color(base: u8) -> Color32 {
@@ -1156,7 +1225,8 @@ impl RenderDnaLinear {
     }
 
     fn draw_sequence_bases(&self, painter: &egui::Painter, viewport: LinearViewport) {
-        if !self.should_draw_sequence_bases(viewport) {
+        let render_status = self.sequence_base_render_status(viewport);
+        if !render_status.bases_visible() {
             return;
         }
         let Some(seq) = self.dna.read().ok().and_then(|dna| {
@@ -1198,14 +1268,12 @@ impl RenderDnaLinear {
                 },
                 0,
             ));
-        let use_helical_projection = Self::should_use_helical_projection(
-            viewport,
-            standard_max_span,
-            helical.enabled,
-            helical.active_max_span,
+        let use_helical_projection = matches!(
+            render_status.active_mode,
+            SequenceBaseRenderMode::ContinuousHelical | SequenceBaseRenderMode::Condensed10Row
         );
-        let use_condensed_helical = use_helical_projection
-            && helical.mode == LinearSequenceLetterLayoutMode::Condensed10Row;
+        let use_condensed_helical =
+            render_status.active_mode == SequenceBaseRenderMode::Condensed10Row;
         let helical_t = Self::helical_projection_progress(
             viewport.span,
             standard_max_span,
@@ -1343,40 +1411,12 @@ impl RenderDnaLinear {
         1.0 - (1.0 - HELICAL_MIN_X_COMPRESSION) * progress
     }
 
-    fn should_use_helical_projection(
-        viewport: LinearViewport,
-        standard_max_span: usize,
-        helical_enabled: bool,
-        helical_max_span: usize,
-    ) -> bool {
-        helical_enabled
-            && helical_max_span > 0
-            && viewport.span <= helical_max_span
-            && (standard_max_span == 0 || viewport.span > standard_max_span)
-    }
-
     fn helical_phase_row_from_bottom(bp: usize, offset_bp: usize) -> usize {
         bp.wrapping_add(offset_bp) % 10
     }
 
     fn helical_projection_y_phase_scale(progress: f32) -> f32 {
         progress.clamp(0.0, 1.0) * HELICAL_MAX_Y_PHASE_SCALE
-    }
-
-    fn helical_indicator_max_span(&self, viewport: LinearViewport) -> Option<usize> {
-        let (enabled, max_span) = self
-            .display
-            .read()
-            .map(|display| {
-                let helical = Self::helical_layout_params(&display);
-                (helical.enabled, helical.active_max_span)
-            })
-            .unwrap_or((false, 0));
-        if enabled && max_span > 0 && viewport.span > 0 && viewport.span <= max_span {
-            Some(max_span)
-        } else {
-            None
-        }
     }
 
     fn draw_name_and_length(&self, painter: &egui::Painter, viewport: LinearViewport) {
@@ -1416,16 +1456,54 @@ impl RenderDnaLinear {
             },
             Color32::DARK_GRAY,
         );
-        if let Some(max_span) = self.helical_indicator_max_span(viewport) {
+        let status = self.sequence_base_render_status(viewport);
+        let status_color = match status.active_mode {
+            SequenceBaseRenderMode::Condensed10Row => Color32::from_rgb(10, 115, 56),
+            SequenceBaseRenderMode::ContinuousHelical => Color32::from_rgb(14, 98, 150),
+            SequenceBaseRenderMode::StandardLinear => Color32::from_rgb(80, 80, 80),
+            SequenceBaseRenderMode::Off => Color32::from_rgb(150, 30, 30),
+        };
+        painter.text(
+            Pos2::new(self.area.right() - 6.0, self.area.top() + 21.0),
+            Align2::RIGHT_TOP,
+            format!("DNA MODE: {}", status.active_mode_label()),
+            FontId {
+                size: 10.0,
+                family: FontFamily::Monospace,
+            },
+            status_color,
+        );
+        painter.text(
+            Pos2::new(self.area.right() - 6.0, self.area.top() + 34.0),
+            Align2::RIGHT_TOP,
+            format!("layout: {}", status.configured_layout_label()),
+            FontId {
+                size: 9.0,
+                family: FontFamily::Monospace,
+            },
+            Color32::from_gray(95),
+        );
+        if !status.bases_visible() {
             painter.text(
-                Pos2::new(self.area.right() - 6.0, self.area.top() + 21.0),
+                Pos2::new(self.area.right() - 6.0, self.area.top() + 47.0),
                 Align2::RIGHT_TOP,
-                format!("HELIX ON (<= {max_span} bp)"),
+                status.off_reason_text(),
                 FontId {
-                    size: 10.0,
+                    size: 9.0,
                     family: FontFamily::Monospace,
                 },
-                Color32::from_rgb(12, 120, 62),
+                Color32::from_gray(110),
+            );
+        } else if let Some(note) = status.note_text() {
+            painter.text(
+                Pos2::new(self.area.right() - 6.0, self.area.top() + 47.0),
+                Align2::RIGHT_TOP,
+                note,
+                FontId {
+                    size: 9.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::from_gray(110),
             );
         }
     }
