@@ -159,23 +159,133 @@ Adapter utility contracts (current, non-engine operations):
   - `--interface` accepts: `all|cli-direct|cli-shell|gui-shell|js|lua|mcp`
     (`mcp` currently aliases to shared shell command docs)
 
-- `gentle_mcp` (stdio MCP adapter, guarded mutating baseline)
+- `gentle_mcp` (stdio MCP adapter, expanded UI-intent parity baseline)
   - current tools:
     - `capabilities`
     - `state_summary`
     - `op` (apply one `Operation`; requires explicit `confirm=true`)
     - `workflow` (apply one `Workflow`; requires explicit `confirm=true`)
     - `help`
-  - successful mutating calls persist state to the resolved `state_path`
+    - `ui_intents` (shared `ui intents` catalog)
+    - `ui_intent` (shared `ui open|focus ...` resolution path)
+    - `ui_prepared_genomes` (shared `ui prepared-genomes ...` query path)
+    - `ui_latest_prepared` (shared `ui latest-prepared ...` query path)
+  - successful mutating calls (`op`, `workflow`) persist state to the resolved
+    `state_path`
+  - UI-intent tools route through the shared shell parser/executor
+    (`parse_shell_tokens` + `execute_shell_command_with_options`) and are
+    required to remain non-mutating (`state_changed = false`)
   - tool handlers are adapter wrappers over existing deterministic engine/shell
     contracts (no MCP-only biology logic branch)
+
+MCP UI-intent tool contracts (current):
+
+- `ui_intents`
+  - arguments:
+    - `state_path?` (optional; accepted for interface symmetry)
+  - behavior:
+    - executes shared shell command: `ui intents`
+  - result:
+    - structured payload schema: `gentle.ui_intents.v1`
+    - includes stable `targets`, `commands`, and deterministic notes
+
+- `ui_intent`
+  - arguments:
+    - required: `action` (`open|focus`), `target`
+    - optional: `state_path`, `genome_id`, `helpers`, `catalog_path`,
+      `cache_dir`, `filter`, `species`, `latest`
+  - behavior:
+    - executes shared shell command:
+      - `ui open TARGET ...` or `ui focus TARGET ...`
+    - for `target = prepared-references`, optional query flags can resolve
+      `selected_genome_id` deterministically through the same helper path used
+      by shared shell/CLI
+    - parser guardrails are preserved:
+      - query flags (`--helpers`, `--catalog`, `--cache-dir`, `--filter`,
+        `--species`, `--latest`) are rejected for non-`prepared-references`
+        targets
+  - result:
+    - structured payload schema: `gentle.ui_intent.v1`
+    - fields include `ui_intent`, `selected_genome_id`, optional
+      `prepared_query`, `applied=false`, and deterministic `message`
+
+- `ui_prepared_genomes`
+  - arguments:
+    - optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`, `filter`,
+      `species`, `latest`
+  - behavior:
+    - executes shared shell command: `ui prepared-genomes ...`
+  - result:
+    - structured payload schema: `gentle.ui_prepared_genomes.v1`
+    - includes `prepared_count`, sorted `genomes[]`, and `selected_genome_id`
+
+- `ui_latest_prepared`
+  - arguments:
+    - required: `species`
+    - optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`
+  - behavior:
+    - executes shared shell command: `ui latest-prepared SPECIES ...`
+  - result:
+    - structured payload schema: `gentle.ui_latest_prepared.v1`
+    - includes `selected_genome_id` and nested `prepared_query` payload
+
+MCP UI-intent JSON-RPC example (abbreviated):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "ui_intent",
+    "arguments": {
+      "action": "open",
+      "target": "prepared-references",
+      "catalog_path": "assets/genomes.json",
+      "species": "human",
+      "latest": true
+    }
+  }
+}
+```
+
+Result envelope shape:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "isError": false,
+    "structuredContent": {
+      "schema": "gentle.ui_intent.v1",
+      "selected_genome_id": "Human GRCh38 Ensembl 116",
+      "applied": false
+    }
+  }
+}
+```
+
+Adapter-equivalence guarantee for UI-intent tools:
+
+- deterministic parity tests compare MCP UI-intent tool outputs with direct
+  shared shell `ui ...` command outputs for:
+  - intent catalog (`ui_intents`)
+  - prepared query (`ui_prepared_genomes`)
+  - latest helper (`ui_latest_prepared`)
+  - open/focus intent resolution (`ui_intent`)
 
 - `macros run/template-list/template-show/template-put/template-delete/template-import/template-run`
   - shared-shell macro adapter family for full operation/workflow scripting
   - template persistence is backed by engine operations
     `UpsertWorkflowMacroTemplate`/`DeleteWorkflowMacroTemplate`
-  - `template-import` accepts JSON packs with schema
-    `gentle.cloning_patterns.v1` and upserts all templates transactionally
+  - `template-import PATH` accepts:
+    - one pack JSON file (`gentle.cloning_patterns.v1`)
+    - one single-template JSON file (`gentle.cloning_pattern_template.v1`)
+    - one directory tree (recursive `*.json` import; files must use one of the
+      schemas above)
+  - imports are transactional; if one template fails validation, no imported
+    template changes are kept
   - expanded scripts can execute `op ...` and `workflow ...` statements and
     optionally roll back via `--transactional`
 
@@ -475,8 +585,10 @@ Candidate-set semantics:
     (`macros template-*`, including `macros template-import PATH`)
   - expanded scripts run through shared shell execution (`macros run`) and can
     orchestrate full cloning operations via `op ...` or `workflow ...` payloads
-  - shipped starter pack path:
-    `assets/cloning_patterns.json` (schema `gentle.cloning_patterns.v1`)
+  - shipped starter assets:
+    - legacy pack: `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
+    - hierarchical catalog: `assets/cloning_patterns_catalog/**/*.json`
+      (`gentle.cloning_pattern_template.v1`, one template per file)
 - Candidate macro templates are persisted in project metadata:
   - `UpsertCandidateMacroTemplate` stores/replaces named templates
   - `DeleteCandidateMacroTemplate` removes templates

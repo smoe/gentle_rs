@@ -343,7 +343,7 @@ Practical rule:
       feature opt-in (example:
       `cargo test --features snapshot-tests -q render_export::tests::snapshot_`)
 
-### MCP server (implemented guarded mutating baseline)
+### MCP server (implemented parity-expanded baseline)
 
 Current baseline:
 
@@ -354,16 +354,26 @@ Current baseline:
   - `op` (shared engine operation execution; explicit `confirm=true` required)
   - `workflow` (shared engine workflow execution; explicit `confirm=true` required)
   - `help`
+  - `ui_intents`
+  - `ui_intent`
+  - `ui_prepared_genomes`
+  - `ui_latest_prepared`
 - Handlers are thin and map to existing shared contracts
   (`GentleEngine::capabilities`, state summary, `Engine::apply`,
-  `Engine::apply_workflow`, glossary-backed help).
+  `Engine::apply_workflow`, glossary-backed help, and shared shell
+  parser/executor for `ui ...` routes).
 - Mutating MCP tools persist project state to disk after successful execution.
 - Structured JSON-RPC diagnostics are returned for invalid requests/params.
+- UI-intent MCP tools are explicitly non-mutating and reject unexpected
+  `state_changed=true` results from routed shared-shell commands.
+- Adapter-equivalence tests cover MCP-vs-shared-shell parity for:
+  `ui_intents`, `ui_prepared_genomes`, `ui_latest_prepared`, and `ui_intent`.
 
 Remaining expansion scope:
 
-- extend mutating tool breadth and shell/UI-intent routing over shared paths.
-- extend adapter-equivalence tests for MCP vs CLI shell on shared flows.
+- extend mutating tool breadth and additional shell-route coverage over shared
+  paths.
+- extend adapter-equivalence tests for additional MCP vs CLI shell flows.
 - keep zero MCP-only biology logic branches.
 
 Feature expert-view command baseline (implemented):
@@ -754,9 +764,11 @@ Interaction and export semantics:
   prepared-reference selection: accepted and implemented (baseline)
 - Add MCP server adapter that exposes shared deterministic command/operation
   surfaces to external AI tools without duplicating biology logic:
-  accepted and implemented as a guarded mutating baseline (`capabilities`,
-  `state_summary`, `op`, `workflow`, `help`) with explicit confirmation
-  semantics for mutating tools
+  accepted and implemented as a parity-expanded baseline
+  (`capabilities`, `state_summary`, `op`, `workflow`, `help`,
+  `ui_intents`, `ui_intent`, `ui_prepared_genomes`, `ui_latest_prepared`)
+  with explicit confirmation semantics for mutating tools and routed shared
+  parser/executor paths for UI-intent tools
 - Replace runtime process-environment mutation for tool-path overrides with a
   process-local override registry (`tool_overrides`) to keep Rust 2024-safe
   behavior without unsafe env writes: accepted and implemented

@@ -46,6 +46,11 @@ order. Durable architecture constraints and decisions remain in
 - Workflow and candidate macro template catalogs now preserve optional external
   reference URLs (`details_url`) alongside template names/descriptions across
   engine and shared shell adapter surfaces.
+- Workflow macro pattern import now accepts hierarchical file catalogs:
+  - directory-recursive import via `macros template-import PATH`
+  - per-template schema support (`gentle.cloning_pattern_template.v1`)
+  - starter hierarchy at `assets/cloning_patterns_catalog`
+  - GUI `Patterns` menu mirrors folder hierarchy for in-app selection/import
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
 
@@ -57,6 +62,7 @@ order. Durable architecture constraints and decisions remain in
   - table indentation under group representative rows
   - graph enclosure outlines for grouped nodes
   - collapsed groups project external edges to representative nodes
+  - table/graph node context-menu actions for mark/draft/create workflows
 - Graph contract:
   - single-click selects
   - double-click opens sequence/pool context
@@ -134,8 +140,9 @@ Notes:
 ## 2. Active known gaps (priority-ordered)
 
 1. Cloning routine standardization is incomplete:
-   - no first-class cloning-routine catalog exists yet to map protocol
+   - no first-class typed cloning-routine catalog exists yet to map protocol
      vocabulary to selectable macro entries with explicit family/status metadata
+     (current baseline is hierarchical file-based macro catalog import only)
    - workflow macro templates do not yet declare typed input/output contracts
    - lineage graph does not yet render explicit macro-instance box nodes with
      input/output edges
@@ -145,9 +152,12 @@ Notes:
      confirms additional repeated gaps are not yet first-class:
      primer design/validation workflows, auto-annotation library scans,
      sequencing-confirmation workflows, and interactive cloning clipboard/model
-2. MCP route now has guarded mutating execution (`op`/`workflow`), but parity
-   breadth is still incomplete (for example UI-intent routing and broader
-   adapter-equivalence coverage).
+2. MCP route now has guarded mutating execution (`op`/`workflow`) and
+   UI-intent parity baseline (`ui_intents`, `ui_intent`,
+   `ui_prepared_genomes`, `ui_latest_prepared`), but broader parity breadth is
+   still incomplete (additional shared-shell route coverage, richer result
+   contracts for future mutating UI intents, and wider adapter-equivalence
+   coverage).
 3. Mutating-intent safety policy is not yet fully hardened across agent, voice,
    and MCP invocation paths.
 4. Core architecture parity gaps remain:
@@ -179,7 +189,7 @@ Notes:
 9. Screenshot bridge execution remains disabled by security policy.
 10. Auto-updated documentation with embedded graphics remains postponed.
 
-### MCP server communication track
+### MCP server communication track (UI-intent parity baseline implemented)
 
 Goal: add MCP as a first-class AI communication route while keeping one
 deterministic engine contract across all adapters.
@@ -193,36 +203,26 @@ Current baseline:
   - `op` (shared engine operation execution; requires explicit `confirm=true`)
   - `workflow` (shared engine workflow execution; requires explicit `confirm=true`)
   - `help`
+  - `ui_intents`
+  - `ui_intent`
+  - `ui_prepared_genomes`
+  - `ui_latest_prepared`
 - successful mutating calls persist state to the resolved `state_path`.
-- shared shell + operation contracts already exist for deterministic execution.
+- UI-intent MCP tools now route through shared shell parser/executor paths and
+  are enforced as non-mutating.
+- deterministic adapter-equivalence tests now assert MCP-vs-shared-shell parity
+  for all current UI-intent tools.
 
 Planned work:
 
-1. Add safe UI-intent routing through existing `ui ...` contracts.
-2. Add adapter-equivalence tests (CLI shell vs MCP tool invocations) for key
-   cloning flows.
-3. Keep structured schema compatibility clear across JSON-RPC envelopes and
+1. Extend adapter-equivalence tests (CLI shell vs MCP tool invocations) for key
+   cloning flows beyond UI-intent helpers.
+2. Keep structured schema compatibility clear across JSON-RPC envelopes and
    MCP tool result payloads.
-4. Keep zero MCP-only biology logic branches.
-
-UI-intent tool routine (implementation outline):
-
-1. Capability discovery:
-   - add MCP UI-intent discovery surface mirroring `ui intents` output
-   - include action/target schema and argument contracts in structured payload
-2. Deterministic resolution:
-   - add helper routes equivalent to `ui prepared-genomes` /
-     `ui latest-prepared` for target disambiguation before open/focus
-   - return explicit disambiguation payloads when multiple targets match
-3. Guarded execution:
-   - route `open`/`focus` through shared `ui ...` parser/executor path
-   - require explicit confirmation for mutating UI intents when introduced
-4. Result contract:
-   - return machine-readable execution report (`executed`, `resolved_target`,
-     warnings/errors, follow-up choices)
-5. Parity tests:
-   - add deterministic equivalence tests asserting MCP UI-intent calls and CLI
-     shell `ui ...` commands produce matching resolved targets and outcomes
+3. Keep zero MCP-only biology logic branches.
+4. For future mutating UI-intent tools, require explicit confirmation and
+   preserve adapter-equivalent execution reports (`executed`,
+   `resolved_target`, warnings/errors, follow-up choices).
 
 ### Alternative-splicing interpretation track (baseline implemented; follow-ups)
 
@@ -585,6 +585,9 @@ Planned upgrades:
   `resources sync-rebase` and `resources sync-jaspar` using local fixture
   inputs (no network dependency), including a focused assertion that motif
   reload side effects are applied after `resources sync-jaspar`.
+- Done (2026-02-27): MCP UI-intent parity tests now compare MCP tool outputs
+  against direct shared-shell `ui ...` outputs for discovery, prepared-query,
+  latest-selection, and open-intent resolution.
 - Add JS adapter tests for `import_pool(...)` and resource-sync wrapper paths.
 - Add Lua adapter tests for `import_pool(...)` and resource-sync wrapper paths.
 - Add CLI integration tests that confirm `import-pool` / `resources` top-level
@@ -599,9 +602,8 @@ Planned upgrades:
 - Keep handlers thin and adapter-equivalent (no MCP-only biology branches).
 - Harden mutating-intent safety policy uniformly across agent, voice, and MCP
   invocation paths.
-- Implement the UI-intent tool routine in this order:
-  discovery -> deterministic resolution -> guarded execution -> structured
-  result contract -> CLI-shell/MCP parity tests.
+- Keep the implemented UI-intent tool routine stable and extend parity to
+  additional routed command families.
 - Keep `ui ...` intent routing deterministic and continue discoverability paths
   (menu, command palette, shell/agent/MCP intent surfaces).
 

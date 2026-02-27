@@ -11,7 +11,7 @@ GENtle currently provides six binaries:
 - `gentle_js`: interactive JavaScript shell
 - `gentle_lua`: interactive Lua shell
 - `gentle_examples_docs`: generates adapter snippets from canonical protocol examples
-- `gentle_mcp`: MCP stdio server (guarded mutating baseline tools)
+- `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline)
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.
@@ -236,13 +236,24 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 
 `gentle_mcp` starts a Model Context Protocol server over stdio.
 
-Current baseline tools:
+Current tools:
 
 - `capabilities`
 - `state_summary`
 - `op` (apply one operation; requires `confirm=true`)
 - `workflow` (apply one workflow; requires `confirm=true`)
 - `help`
+- `ui_intents` (discover deterministic UI-intent contracts)
+- `ui_intent` (run deterministic `ui open|focus` intent resolution path)
+- `ui_prepared_genomes` (run deterministic prepared-genome query path)
+- `ui_latest_prepared` (resolve latest prepared genome for one species)
+
+Tool-parity rule:
+
+- MCP UI-intent tools execute through the same shared parser/executor route as
+  CLI shell commands (`ui ...`), and return the same structured payload
+  contracts.
+- No MCP-only biology/UI logic branches are allowed.
 
 Run:
 
@@ -250,6 +261,95 @@ Run:
 cargo run --bin gentle_mcp
 cargo run --bin gentle_mcp -- --state path/to/project.gentle.json
 ```
+
+Minimum MCP JSON-RPC flow:
+
+1. Initialize:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
+```
+
+2. List tools:
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+```
+
+3. Call one tool:
+
+```json
+{
+  "jsonrpc":"2.0",
+  "id":3,
+  "method":"tools/call",
+  "params":{
+    "name":"ui_intent",
+    "arguments":{
+      "action":"open",
+      "target":"prepared-references",
+      "catalog_path":"assets/genomes.json",
+      "species":"human",
+      "latest":true
+    }
+  }
+}
+```
+
+`ui_intent` arguments:
+
+- required:
+  - `action`: `open|focus`
+  - `target`: one of:
+    - `prepared-references`
+    - `prepare-reference-genome`
+    - `retrieve-genome-sequence`
+    - `blast-genome-sequence`
+    - `import-genome-track`
+    - `agent-assistant`
+    - `prepare-helper-genome`
+    - `retrieve-helper-sequence`
+    - `blast-helper-sequence`
+- optional:
+  - `state_path`
+  - `genome_id`
+  - `helpers`
+  - `catalog_path`
+  - `cache_dir`
+  - `filter`
+  - `species`
+  - `latest`
+
+`ui_prepared_genomes` arguments:
+
+- optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`, `filter`,
+  `species`, `latest`
+
+`ui_latest_prepared` arguments:
+
+- required: `species`
+- optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`
+
+`ui_intents` arguments:
+
+- optional: `state_path` (accepted for API symmetry)
+
+MCP tool result envelope behavior:
+
+- `result.isError = false`: success; inspect `result.structuredContent`.
+- `result.isError = true`: deterministic tool-level error; inspect
+  `result.content[0].text`.
+- UI-intent structured payloads match shared shell schemas:
+  - `gentle.ui_intents.v1`
+  - `gentle.ui_intent.v1`
+  - `gentle.ui_prepared_genomes.v1`
+  - `gentle.ui_latest_prepared.v1`
+
+Mutating tool safety:
+
+- `op` and `workflow` reject execution unless `confirm=true` is explicitly set.
+- UI-intent tools are currently non-mutating; if a routed command ever reports
+  state mutation unexpectedly, MCP returns an explicit tool error.
 
 ## `gentle_lua` (Lua shell)
 
@@ -452,6 +552,7 @@ cargo run --bin gentle_cli -- guides oligos-export tp73_guides exports/tp73_guid
 cargo run --bin gentle_cli -- guides protocol-export tp73_guides exports/tp73_guides.protocol.txt --oligo-set tp73_lenti
 cargo run --bin gentle_cli -- shell 'macros template-list'
 cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns.json'
+cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog'
 cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_flow.gsh'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
@@ -801,24 +902,26 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
 - `macros template-delete TEMPLATE_NAME`
   - Deletes one persisted workflow template.
 - `macros template-import PATH`
-  - Imports one JSON pattern pack (`gentle.cloning_patterns.v1`) and upserts all
-    templates in one transactional batch.
+  - Imports workflow macro templates from:
+    - one pack JSON file (`gentle.cloning_patterns.v1`)
+    - one single-template JSON file (`gentle.cloning_pattern_template.v1`)
+    - one directory tree (recursive `*.json` import)
   - If one template fails validation, no imported template changes are kept.
 - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
   - Expands a named template with provided bindings/defaults, then executes it as
     a workflow macro script.
 
-Shipped starter pack:
+Shipped starter assets:
 
-- `assets/cloning_patterns.json`
-  - Contains reusable workflow templates, including:
-    - digest/ligation/extract cloning
-    - branch + reverse-complement branching
-    - PCR-with-tail/site-insertion helper flow
-    - guide-RNA candidate scan templates
-    - practical guide filtering + oligo generation
-- Import command:
+- Legacy pack:
+  - `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
+- Hierarchical catalog (one template file per macro):
+  - `assets/cloning_patterns_catalog/**/*.json`
+  - each file schema: `gentle.cloning_pattern_template.v1`
+  - folder hierarchy is used by GUI `Patterns` menu hierarchy
+- Import commands:
   - `gentle_cli shell 'macros template-import assets/cloning_patterns.json'`
+  - `gentle_cli shell 'macros template-import assets/cloning_patterns_catalog'`
 
 Candidate-set commands (`gentle_cli candidates ...` and `gentle_cli shell 'candidates ...'`):
 

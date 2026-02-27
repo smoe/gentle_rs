@@ -6,6 +6,7 @@
 use crate::{
     about,
     engine::{Engine, GentleEngine, Operation, ProjectState, Workflow},
+    engine_shell::{ShellExecutionOptions, execute_shell_command_with_options, parse_shell_tokens},
     shell_docs::{
         shell_help_json, shell_help_markdown, shell_help_text, shell_topic_help_json,
         shell_topic_help_markdown, shell_topic_help_text,
@@ -233,6 +234,137 @@ fn tool_list() -> Value {
                 },
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "ui_intents",
+            "title": "UI Intents Catalog",
+            "description": "Return deterministic UI-intent target/command catalog (shared `ui intents` contract).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "ui_intent",
+            "title": "UI Intent",
+            "description": "Resolve/record one UI intent through shared `ui open|focus` parser/executor path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["open", "focus"]
+                    },
+                    "target": {
+                        "type": "string",
+                        "enum": [
+                            "prepared-references",
+                            "prepare-reference-genome",
+                            "retrieve-genome-sequence",
+                            "blast-genome-sequence",
+                            "import-genome-track",
+                            "agent-assistant",
+                            "prepare-helper-genome",
+                            "retrieve-helper-sequence",
+                            "blast-helper-sequence"
+                        ]
+                    },
+                    "genome_id": {
+                        "type": "string"
+                    },
+                    "helpers": {
+                        "type": "boolean"
+                    },
+                    "catalog_path": {
+                        "type": "string"
+                    },
+                    "cache_dir": {
+                        "type": "string"
+                    },
+                    "filter": {
+                        "type": "string"
+                    },
+                    "species": {
+                        "type": "string"
+                    },
+                    "latest": {
+                        "type": "boolean"
+                    }
+                },
+                "required": ["action", "target"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "ui_prepared_genomes",
+            "title": "UI Prepared Genomes Query",
+            "description": "Return deterministic prepared-genome rows via shared `ui prepared-genomes` contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "helpers": {
+                        "type": "boolean"
+                    },
+                    "catalog_path": {
+                        "type": "string"
+                    },
+                    "cache_dir": {
+                        "type": "string"
+                    },
+                    "filter": {
+                        "type": "string"
+                    },
+                    "species": {
+                        "type": "string"
+                    },
+                    "latest": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "ui_latest_prepared",
+            "title": "UI Latest Prepared",
+            "description": "Resolve latest prepared genome for a species via shared `ui latest-prepared` contract.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "species": {
+                        "type": "string"
+                    },
+                    "helpers": {
+                        "type": "boolean"
+                    },
+                    "catalog_path": {
+                        "type": "string"
+                    },
+                    "cache_dir": {
+                        "type": "string"
+                    }
+                },
+                "required": ["species"],
+                "additionalProperties": false
+            }
         }
     ])
 }
@@ -398,6 +530,224 @@ fn require_confirm_true(args: &Map<String, Value>, tool_name: &str) -> Result<()
     }
 }
 
+fn optional_string_arg(args: &Map<String, Value>, key: &str) -> Result<Option<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => {
+            let value = value.trim();
+            if value.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(value.to_string()))
+            }
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be a string")),
+    }
+}
+
+fn required_string_arg(args: &Map<String, Value>, key: &str) -> Result<String, String> {
+    match optional_string_arg(args, key)? {
+        Some(value) => Ok(value),
+        None => Err(format!(
+            "MCP argument '{key}' is required and must be non-empty"
+        )),
+    }
+}
+
+fn optional_bool_arg(args: &Map<String, Value>, key: &str) -> Result<Option<bool>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(format!("MCP argument '{key}' must be a boolean")),
+    }
+}
+
+fn append_string_flag(tokens: &mut Vec<String>, flag: &str, value: Option<String>) {
+    if let Some(value) = value {
+        tokens.push(flag.to_string());
+        tokens.push(value);
+    }
+}
+
+fn run_non_mutating_shell_tool(
+    default_state_path: &str,
+    args: &Map<String, Value>,
+    tokens: Vec<String>,
+    tool_name: &str,
+) -> Result<Value, String> {
+    let state_path = state_path_from_args(default_state_path, args);
+    let state = load_state(&state_path)
+        .map_err(|err| format!("Could not load state from '{state_path}': {err}"))?;
+    let mut engine = GentleEngine::from_state(state);
+    let command = parse_shell_tokens(&tokens).map_err(|err| {
+        format!("Could not parse shared shell command for MCP tool '{tool_name}': {err}")
+    })?;
+    let run = execute_shell_command_with_options(
+        &mut engine,
+        &command,
+        &ShellExecutionOptions::default(),
+    )
+    .map_err(|err| {
+        format!("Could not execute shared shell command for MCP tool '{tool_name}': {err}")
+    })?;
+    if run.state_changed {
+        return Err(format!(
+            "MCP tool '{tool_name}' expected non-mutating shared shell command but state_changed=true"
+        ));
+    }
+    Ok(run.output)
+}
+
+fn ui_intents_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    match run_non_mutating_shell_tool(
+        default_state_path,
+        &args,
+        vec!["ui".to_string(), "intents".to_string()],
+        "ui_intents",
+    ) {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn ui_prepared_genomes_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let latest = match optional_bool_arg(&args, "latest") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cache_dir = match optional_string_arg(&args, "cache_dir") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let filter = match optional_string_arg(&args, "filter") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let species = match optional_string_arg(&args, "species") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec!["ui".to_string(), "prepared-genomes".to_string()];
+    if helper_mode {
+        tokens.push("--helpers".to_string());
+    }
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--cache-dir", cache_dir);
+    append_string_flag(&mut tokens, "--filter", filter);
+    append_string_flag(&mut tokens, "--species", species);
+    if latest {
+        tokens.push("--latest".to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_prepared_genomes") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn ui_latest_prepared_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let species = match required_string_arg(&args, "species") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cache_dir = match optional_string_arg(&args, "cache_dir") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec!["ui".to_string(), "latest-prepared".to_string(), species];
+    if helper_mode {
+        tokens.push("--helpers".to_string());
+    }
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--cache-dir", cache_dir);
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_latest_prepared") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let action = match required_string_arg(&args, "action") {
+        Ok(value) => value.to_ascii_lowercase(),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    if action != "open" && action != "focus" {
+        return tool_result_text(
+            format!("MCP argument 'action' must be 'open' or 'focus' (got '{action}')"),
+            "text",
+            true,
+        );
+    }
+    let target = match required_string_arg(&args, "target") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let latest = match optional_bool_arg(&args, "latest") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let genome_id = match optional_string_arg(&args, "genome_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cache_dir = match optional_string_arg(&args, "cache_dir") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let filter = match optional_string_arg(&args, "filter") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let species = match optional_string_arg(&args, "species") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+
+    let mut tokens = vec!["ui".to_string(), action, target];
+    append_string_flag(&mut tokens, "--genome-id", genome_id);
+    if helper_mode {
+        tokens.push("--helpers".to_string());
+    }
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--cache-dir", cache_dir);
+    append_string_flag(&mut tokens, "--filter", filter);
+    append_string_flag(&mut tokens, "--species", species);
+    if latest {
+        tokens.push("--latest".to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
 fn op_tool_result(default_state_path: &str, arguments: &Value) -> Value {
     let args = arguments.as_object().cloned().unwrap_or_default();
     if let Err(err) = require_confirm_true(&args, "op") {
@@ -526,6 +876,14 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         "op" => op_tool_result(default_state_path, &params.arguments),
         "workflow" => workflow_tool_result(default_state_path, &params.arguments),
         "help" => help_tool_result(&params.arguments),
+        "ui_intents" => ui_intents_tool_result(default_state_path, &params.arguments),
+        "ui_intent" => ui_intent_tool_result(default_state_path, &params.arguments),
+        "ui_prepared_genomes" => {
+            ui_prepared_genomes_tool_result(default_state_path, &params.arguments)
+        }
+        "ui_latest_prepared" => {
+            ui_latest_prepared_tool_result(default_state_path, &params.arguments)
+        }
         other => tool_result_text(format!("Unknown MCP tool '{other}'"), "text", true),
     }
 }
@@ -649,7 +1007,11 @@ fn handle_message<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use crate::{
+        engine_shell::{execute_shell_command, parse_shell_tokens},
+        genomes::GenomeCatalog,
+    };
+    use std::{fs, io::Cursor, thread, time::Duration};
     use tempfile::tempdir;
 
     fn frame(value: &Value) -> Vec<u8> {
@@ -672,6 +1034,29 @@ mod tests {
         let mut writer = Vec::<u8>::new();
         run_server_loop(default_state_path, &mut reader, &mut writer).expect("server loop");
         read_response_body(&writer)
+    }
+
+    fn run_tool(default_state_path: &str, name: &str, arguments: Value) -> Value {
+        run_single(
+            default_state_path,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 88,
+                "method": "tools/call",
+                "params": {
+                    "name": name,
+                    "arguments": arguments
+                }
+            }),
+        )
+    }
+
+    fn run_shared_ui_command(tokens: Vec<String>) -> Value {
+        let command = parse_shell_tokens(&tokens).expect("parse shared ui command");
+        let mut engine = GentleEngine::new();
+        let run = execute_shell_command(&mut engine, &command).expect("execute shared ui command");
+        assert!(!run.state_changed, "ui commands must be non-mutating");
+        run.output
     }
 
     #[test]
@@ -905,5 +1290,175 @@ mod tests {
         let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
             .expect("load persisted state");
         assert_eq!(persisted.parameters.max_fragments_per_container, 222);
+    }
+
+    #[test]
+    fn mcp_ui_intent_tools_match_shared_shell_outputs() {
+        let td = tempdir().expect("tempdir");
+        let fasta_113 = td.path().join("h113.fa");
+        let ann_113 = td.path().join("h113.gtf");
+        let fasta_116 = td.path().join("h116.fa");
+        let ann_116 = td.path().join("h116.gtf");
+        let cache_dir = td.path().join("cache");
+        fs::write(&fasta_113, ">chr1\nACGT\n").expect("write fasta 113");
+        fs::write(
+            &ann_113,
+            "chr1\tsrc\tgene\t1\t4\t.\t+\t.\tgene_id \"G113\"; gene_name \"G113\";\n",
+        )
+        .expect("write ann 113");
+        fs::write(&fasta_116, ">chr1\nACGTACGT\n").expect("write fasta 116");
+        fs::write(
+            &ann_116,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"G116\"; gene_name \"G116\";\n",
+        )
+        .expect("write ann 116");
+
+        let catalog_path = td.path().join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "Human GRCh38 Ensembl 113": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "Human GRCh38 Ensembl 116": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta_113.display(),
+            ann_113.display(),
+            cache_dir.display(),
+            fasta_116.display(),
+            ann_116.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).expect("write catalog");
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("open catalog");
+        catalog
+            .prepare_genome_once("Human GRCh38 Ensembl 113")
+            .expect("prepare 113");
+        thread::sleep(Duration::from_millis(2));
+        catalog
+            .prepare_genome_once("Human GRCh38 Ensembl 116")
+            .expect("prepare 116");
+
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mcp_intents = run_tool(DEFAULT_MCP_STATE_PATH, "ui_intents", json!({}));
+        assert_eq!(
+            mcp_intents
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_intents = run_shared_ui_command(vec!["ui".to_string(), "intents".to_string()]);
+        assert_eq!(mcp_intents["result"]["structuredContent"], expected_intents);
+
+        let mcp_prepared = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_prepared_genomes",
+            json!({
+                "catalog_path": catalog_path_str,
+                "species": "human"
+            }),
+        );
+        assert_eq!(
+            mcp_prepared
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_prepared = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "prepared-genomes".to_string(),
+            "--catalog".to_string(),
+            catalog_path.to_string_lossy().to_string(),
+            "--species".to_string(),
+            "human".to_string(),
+        ]);
+        assert_eq!(
+            mcp_prepared["result"]["structuredContent"],
+            expected_prepared
+        );
+
+        let mcp_latest = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_latest_prepared",
+            json!({
+                "catalog_path": catalog_path.to_string_lossy().to_string(),
+                "species": "human"
+            }),
+        );
+        assert_eq!(
+            mcp_latest
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_latest = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "latest-prepared".to_string(),
+            "human".to_string(),
+            "--catalog".to_string(),
+            catalog_path.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(mcp_latest["result"]["structuredContent"], expected_latest);
+
+        let mcp_intent = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "open",
+                "target": "prepared-references",
+                "catalog_path": catalog_path.to_string_lossy().to_string(),
+                "species": "human",
+                "latest": true
+            }),
+        );
+        assert_eq!(
+            mcp_intent
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_intent = run_shared_ui_command(vec![
+            "ui".to_string(),
+            "open".to_string(),
+            "prepared-references".to_string(),
+            "--catalog".to_string(),
+            catalog_path.to_string_lossy().to_string(),
+            "--species".to_string(),
+            "human".to_string(),
+            "--latest".to_string(),
+        ]);
+        assert_eq!(mcp_intent["result"]["structuredContent"], expected_intent);
+    }
+
+    #[test]
+    fn mcp_ui_intent_invalid_target_options_return_shared_parse_error() {
+        let response = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "open",
+                "target": "agent-assistant",
+                "latest": true
+            }),
+        );
+        assert_eq!(
+            response.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        let text = response
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(
+            text.contains("only supports --helpers/--catalog/--cache-dir/--filter/--species/--latest when TARGET is prepared-references"),
+            "unexpected error text: {text}"
+        );
     }
 }

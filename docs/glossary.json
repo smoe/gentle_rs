@@ -1096,7 +1096,7 @@
             "cli-direct"
          ],
          "path": "macros template-import",
-         "summary": "Import workflow macro templates from a cloning-pattern JSON file.",
+         "summary": "Import workflow macro templates from a pattern file or directory tree.",
          "usage": "macros template-import PATH"
       },
       {

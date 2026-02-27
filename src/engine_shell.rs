@@ -65,9 +65,11 @@ use std::process::Command;
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
+    path::{Path, PathBuf},
 };
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
+const CLONING_PATTERN_TEMPLATE_FILE_SCHEMA: &str = "gentle.cloning_pattern_template.v1";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -93,6 +95,30 @@ struct CloningPatternTemplate {
     details_url: Option<String>,
     parameters: Vec<WorkflowMacroTemplateParam>,
     script: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+struct CloningPatternTemplateFile {
+    schema: String,
+    name: String,
+    description: Option<String>,
+    details_url: Option<String>,
+    parameters: Vec<WorkflowMacroTemplateParam>,
+    script: String,
+}
+
+impl Default for CloningPatternTemplateFile {
+    fn default() -> Self {
+        Self {
+            schema: CLONING_PATTERN_TEMPLATE_FILE_SCHEMA.to_string(),
+            name: String::new(),
+            description: None,
+            details_url: None,
+            parameters: vec![],
+            script: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -943,6 +969,134 @@ fn load_cloning_pattern_file(path: &str) -> Result<CloningPatternFile, String> {
         }
     }
     Ok(file)
+}
+
+fn load_cloning_pattern_template_file(path: &str) -> Result<CloningPatternTemplateFile, String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("Could not read pattern template file '{path}': {e}"))?;
+    let file: CloningPatternTemplateFile = serde_json::from_str(&raw)
+        .map_err(|e| format!("Could not parse pattern template file '{path}' as JSON: {e}"))?;
+    let schema = file.schema.trim();
+    if !schema.eq_ignore_ascii_case(CLONING_PATTERN_TEMPLATE_FILE_SCHEMA) {
+        return Err(format!(
+            "Unsupported pattern template file schema '{}' in '{}' (expected '{}')",
+            file.schema, path, CLONING_PATTERN_TEMPLATE_FILE_SCHEMA
+        ));
+    }
+    if file.name.trim().is_empty() {
+        return Err(format!(
+            "Pattern template file '{}' contains empty template name",
+            path
+        ));
+    }
+    if file.script.trim().is_empty() {
+        return Err(format!(
+            "Pattern template file '{}' template '{}' has empty script",
+            path, file.name
+        ));
+    }
+    Ok(file)
+}
+
+fn collect_json_files_recursive(path: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut out = vec![];
+    if path.is_file() {
+        if path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            out.push(path.to_path_buf());
+        }
+        return Ok(out);
+    }
+    if !path.is_dir() {
+        return Err(format!(
+            "Pattern import path '{}' is neither a JSON file nor a directory",
+            path.display()
+        ));
+    }
+
+    let mut entries = fs::read_dir(path)
+        .map_err(|e| format!("Could not read pattern directory '{}': {e}", path.display()))?
+        .filter_map(|entry| entry.ok())
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_string());
+    for entry in entries {
+        let child = entry.path();
+        if child.is_dir() {
+            out.extend(collect_json_files_recursive(&child)?);
+            continue;
+        }
+        if child
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        {
+            out.push(child);
+        }
+    }
+    Ok(out)
+}
+
+fn load_cloning_pattern_templates_from_path(
+    path: &str,
+) -> Result<(Vec<CloningPatternTemplate>, Vec<String>), String> {
+    let target_path = Path::new(path);
+    let json_files = collect_json_files_recursive(target_path)?;
+    if json_files.is_empty() {
+        return Err(format!(
+            "Pattern import path '{}' does not contain any JSON files",
+            path
+        ));
+    }
+
+    let mut templates: Vec<CloningPatternTemplate> = vec![];
+    let mut source_files: Vec<String> = vec![];
+    for file_path in json_files {
+        let file_label = file_path.display().to_string();
+        let file_str = file_path.to_string_lossy().to_string();
+        let raw = fs::read_to_string(&file_path)
+            .map_err(|e| format!("Could not read pattern file '{}': {e}", file_label))?;
+        let value: Value = serde_json::from_str(&raw)
+            .map_err(|e| format!("Could not parse pattern file '{}': {e}", file_label))?;
+        let schema = value
+            .get("schema")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if schema.eq_ignore_ascii_case(CLONING_PATTERN_FILE_SCHEMA) {
+            let file = load_cloning_pattern_file(&file_str)?;
+            templates.extend(file.templates);
+            source_files.push(file_label);
+        } else if schema.eq_ignore_ascii_case(CLONING_PATTERN_TEMPLATE_FILE_SCHEMA) {
+            let file = load_cloning_pattern_template_file(&file_str)?;
+            templates.push(CloningPatternTemplate {
+                name: file.name,
+                description: file.description,
+                details_url: file.details_url,
+                parameters: file.parameters,
+                script: file.script,
+            });
+            source_files.push(file_label);
+        } else {
+            return Err(format!(
+                "Unsupported pattern schema '{}' in '{}' (expected '{}' or '{}')",
+                schema,
+                file_label,
+                CLONING_PATTERN_FILE_SCHEMA,
+                CLONING_PATTERN_TEMPLATE_FILE_SCHEMA
+            ));
+        }
+    }
+    if templates.is_empty() {
+        return Err(format!(
+            "Pattern import path '{}' did not yield any templates",
+            path
+        ));
+    }
+    Ok((templates, source_files))
 }
 
 fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAnchor, String> {
@@ -7571,10 +7725,10 @@ pub fn execute_shell_command_with_options(
             }
         }
         ShellCommand::MacrosTemplateImport { path } => {
-            let pattern_file = load_cloning_pattern_file(path)?;
+            let (templates, source_files) = load_cloning_pattern_templates_from_path(path)?;
             let before = engine.state().clone();
             let mut imported_names: Vec<String> = vec![];
-            for template in &pattern_file.templates {
+            for template in &templates {
                 let script = load_workflow_macro_script(&template.script)?;
                 let op = Operation::UpsertWorkflowMacroTemplate {
                     name: template.name.clone(),
@@ -7597,8 +7751,9 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed: !imported_names.is_empty(),
                 output: json!({
-                    "schema": pattern_file.schema,
+                    "schema": CLONING_PATTERN_FILE_SCHEMA,
                     "path": path,
+                    "source_files": source_files,
                     "imported_count": imported_names.len(),
                     "templates": imported_names,
                 }),
@@ -10084,6 +10239,135 @@ filter set1 set2 --metric score --min 10
         .expect("run imported template");
         assert!(run.state_changed);
         assert!(engine.state().sequences.contains_key("seqA_rev"));
+    }
+
+    #[test]
+    fn execute_macros_template_import_single_template_schema_file_and_run() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let tmp = tempdir().expect("tempdir");
+        let pattern_path = tmp.path().join("reverse_one.json");
+        fs::write(
+            &pattern_path,
+            r#"{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "reverse_one",
+  "description": "reverse one sequence",
+  "details_url": "https://example.org/reverse-one",
+  "parameters": [
+    { "name": "seq_id", "default_value": "seqA", "required": false },
+    { "name": "output_id", "default_value": "seqA_rev", "required": false }
+  ],
+  "script": "op {\"Reverse\":{\"input\":\"${seq_id}\",\"output_id\":\"${output_id}\"}}"
+}"#,
+        )
+        .expect("write single-template file");
+
+        let import = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateImport {
+                path: pattern_path.to_string_lossy().to_string(),
+            },
+        )
+        .expect("import single-template file");
+        assert!(import.state_changed);
+        assert_eq!(import.output["imported_count"].as_u64(), Some(1));
+        assert_eq!(
+            import
+                .output
+                .get("source_files")
+                .and_then(|v| v.as_array())
+                .map(|rows| rows.len()),
+            Some(1)
+        );
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "reverse_one".to_string(),
+                bindings: HashMap::new(),
+                transactional: false,
+            },
+        )
+        .expect("run imported single-template");
+        assert!(run.state_changed);
+        assert!(engine.state().sequences.contains_key("seqA_rev"));
+    }
+
+    #[test]
+    fn execute_macros_template_import_directory_recursive() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path().join("catalog");
+        fs::create_dir_all(root.join("a")).expect("mkdir a");
+        fs::create_dir_all(root.join("b").join("nested")).expect("mkdir nested");
+        fs::write(
+            root.join("a").join("reverse_one.json"),
+            r#"{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "reverse_one",
+  "parameters": [
+    { "name": "seq_id", "default_value": "seqA", "required": false },
+    { "name": "output_id", "default_value": "seqA_rev", "required": false }
+  ],
+  "script": "op {\"Reverse\":{\"input\":\"${seq_id}\",\"output_id\":\"${output_id}\"}}"
+}"#,
+        )
+        .expect("write reverse");
+        fs::write(
+            root.join("b").join("nested").join("complement_one.json"),
+            r#"{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "complement_one",
+  "parameters": [
+    { "name": "seq_id", "default_value": "seqA", "required": false },
+    { "name": "output_id", "default_value": "seqA_comp", "required": false }
+  ],
+  "script": "op {\"Complement\":{\"input\":\"${seq_id}\",\"output_id\":\"${output_id}\"}}"
+}"#,
+        )
+        .expect("write complement");
+
+        let import = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateImport {
+                path: root.to_string_lossy().to_string(),
+            },
+        )
+        .expect("import catalog directory");
+        assert!(import.state_changed);
+        assert_eq!(import.output["imported_count"].as_u64(), Some(2));
+        assert_eq!(
+            import
+                .output
+                .get("source_files")
+                .and_then(|v| v.as_array())
+                .map(|rows| rows.len()),
+            Some(2)
+        );
+        let templates = import
+            .output
+            .get("templates")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(templates.iter().any(|v| v.as_str() == Some("reverse_one")));
+        assert!(
+            templates
+                .iter()
+                .any(|v| v.as_str() == Some("complement_one"))
+        );
     }
 
     #[test]

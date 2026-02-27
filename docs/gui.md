@@ -185,6 +185,20 @@ Global productivity controls:
   long-running tasks (prepare/import/BLAST).
 - `Cmd/Ctrl+K` opens the Command Palette.
 
+Patterns menu:
+
+- `Patterns -> Import Pattern File...`
+  - import one workflow-macro pattern JSON file.
+- `Patterns -> Import Pattern Folder...`
+  - import all pattern JSON files recursively from a folder tree.
+- `Patterns -> Import Built-in Legacy Pack`
+  - import `assets/cloning_patterns.json`.
+- `Patterns -> Import Full Catalog`
+  - import the full hierarchical catalog from
+    `assets/cloning_patterns_catalog`.
+- `Patterns` submenu hierarchy mirrors the directory hierarchy under
+  `assets/cloning_patterns_catalog` (one JSON template file per leaf entry).
+
 Node click behavior in lineage `Graph` view:
 
 - Single-click: selects a node (highlight only).
@@ -205,6 +219,10 @@ Node groups in lineage view:
   - grouped nodes are enclosed with a labeled outline
   - when a group is collapsed, only the representative node is shown
   - edges from/to hidden members are projected to the representative node
+- Context menu actions (table and graph):
+  - right-click a node to `Mark for node-group` / `Unmark for node-group`
+  - right-click a node to `Use as draft representative` (uses currently marked nodes)
+  - right-click a node to `Create group now (representative)` for one-step creation
 
 ## Toolbar buttons
 
@@ -509,9 +527,10 @@ Recommended flow in one sequence window:
 10. Optional full-operation workflow macros:
    - Shell equivalents:
      - `macros template-put ...`
-     - `macros template-import assets/cloning_patterns.json`
-     - `macros template-run ...`
-     - `macros run --file cloning_flow.gsh --transactional`
+      - `macros template-import assets/cloning_patterns.json`
+      - `macros template-import assets/cloning_patterns_catalog`
+      - `macros template-run ...`
+      - `macros run --file cloning_flow.gsh --transactional`
    - These scripts can orchestrate non-candidate operations through `op ...` and
      `workflow ...` statements.
 

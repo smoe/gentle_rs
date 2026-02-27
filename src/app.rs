@@ -71,6 +71,8 @@ const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
+const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
+const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -431,6 +433,7 @@ pub struct GENtleApp {
     lineage_group_form_representative: String,
     lineage_group_form_editing_id: Option<String>,
     lineage_group_status: String,
+    lineage_group_marked_nodes: HashSet<String>,
     lineage_containers: Vec<ContainerRow>,
     lineage_arrangements: Vec<ArrangementRow>,
     clean_state_fingerprint: u64,
@@ -886,6 +889,14 @@ struct ArrangementRow {
 }
 
 #[derive(Clone)]
+struct CloningPatternCatalogEntry {
+    label: String,
+    path: String,
+    is_file: bool,
+    children: Vec<CloningPatternCatalogEntry>,
+}
+
+#[derive(Clone)]
 struct OpenWindowEntry {
     native_menu_key: u64,
     viewport_id: ViewportId,
@@ -1014,6 +1025,7 @@ impl Default for GENtleApp {
             lineage_group_form_representative: String::new(),
             lineage_group_form_editing_id: None,
             lineage_group_status: String::new(),
+            lineage_group_marked_nodes: HashSet::new(),
             lineage_containers: vec![],
             lineage_arrangements: vec![],
             clean_state_fingerprint: 0,
@@ -8374,6 +8386,160 @@ Error: `{err}`"
         }
     }
 
+    fn import_workflow_macro_templates_from_path(&mut self, path: &str) {
+        let command = ShellCommand::MacrosTemplateImport {
+            path: path.to_string(),
+        };
+        let options = ShellExecutionOptions::from_env();
+        let run = {
+            let mut engine = self.engine.write().expect("Engine lock poisoned");
+            execute_shell_command_with_options(&mut engine, &command, &options)
+        };
+        match run {
+            Ok(out) => {
+                let imported_count = out
+                    .output
+                    .get("imported_count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let source_file_count = out
+                    .output
+                    .get("source_files")
+                    .and_then(|v| v.as_array())
+                    .map(|rows| rows.len())
+                    .unwrap_or(0);
+                self.app_status = format!(
+                    "Imported {imported_count} workflow macro template(s) from '{path}' ({source_file_count} source file(s))"
+                );
+            }
+            Err(err) => {
+                self.app_status = format!("Macro template import failed for '{path}': {err}");
+            }
+        }
+    }
+
+    fn prompt_import_workflow_macro_templates_file(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .pick_file()
+        {
+            self.import_workflow_macro_templates_from_path(&path.display().to_string());
+        }
+    }
+
+    fn prompt_import_workflow_macro_templates_directory(&mut self) {
+        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+            self.import_workflow_macro_templates_from_path(&path.display().to_string());
+        }
+    }
+
+    fn humanize_catalog_label(raw: &str) -> String {
+        let normalized = raw.replace('_', " ").replace('-', " ");
+        let mut out_words = vec![];
+        for word in normalized.split_whitespace() {
+            let mut chars = word.chars();
+            let Some(first) = chars.next() else {
+                continue;
+            };
+            let mut out = first.to_uppercase().collect::<String>();
+            out.push_str(chars.as_str());
+            out_words.push(out);
+        }
+        if out_words.is_empty() {
+            raw.to_string()
+        } else {
+            out_words.join(" ")
+        }
+    }
+
+    fn collect_cloning_pattern_catalog_entries(
+        root: &Path,
+    ) -> Result<Vec<CloningPatternCatalogEntry>, String> {
+        if !root.exists() {
+            return Err(format!("Catalog path '{}' does not exist", root.display()));
+        }
+        if !root.is_dir() {
+            return Err(format!(
+                "Catalog path '{}' is not a directory",
+                root.display()
+            ));
+        }
+        Self::collect_cloning_pattern_catalog_entries_from_dir(root)
+    }
+
+    fn collect_cloning_pattern_catalog_entries_from_dir(
+        dir: &Path,
+    ) -> Result<Vec<CloningPatternCatalogEntry>, String> {
+        let mut out = vec![];
+        let mut entries = fs::read_dir(dir)
+            .map_err(|e| format!("Could not read catalog directory '{}': {e}", dir.display()))?
+            .filter_map(|entry| entry.ok())
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_string());
+        for entry in entries {
+            let path = entry.path();
+            if path.is_dir() {
+                let children = Self::collect_cloning_pattern_catalog_entries_from_dir(&path)?;
+                if children.is_empty() {
+                    continue;
+                }
+                let label = Self::humanize_catalog_label(&entry.file_name().to_string_lossy());
+                out.push(CloningPatternCatalogEntry {
+                    label,
+                    path: path.display().to_string(),
+                    is_file: false,
+                    children,
+                });
+                continue;
+            }
+            if !path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+            {
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| entry.file_name().to_string_lossy().to_string());
+            out.push(CloningPatternCatalogEntry {
+                label: Self::humanize_catalog_label(&stem),
+                path: path.display().to_string(),
+                is_file: true,
+                children: vec![],
+            });
+        }
+        Ok(out)
+    }
+
+    fn render_cloning_pattern_catalog_menu_entries(
+        ui: &mut Ui,
+        entries: &[CloningPatternCatalogEntry],
+        selected_path: &mut Option<String>,
+    ) {
+        for entry in entries {
+            if entry.is_file {
+                let response = ui
+                    .button(entry.label.clone())
+                    .on_hover_text(format!("Import macro template(s) from {}", entry.path));
+                if response.clicked() {
+                    *selected_path = Some(entry.path.clone());
+                }
+            } else {
+                let label = format!("{}/", entry.label);
+                ui.menu_button(label, |ui| {
+                    Self::render_cloning_pattern_catalog_menu_entries(
+                        ui,
+                        &entry.children,
+                        selected_path,
+                    );
+                });
+            }
+        }
+    }
+
     fn save_current_project(&mut self) -> bool {
         if let Some(path) = self.current_project_path.clone() {
             if self.save_project_to_file(&path).is_ok() {
@@ -8553,6 +8719,7 @@ Error: `{err}`"
         self.lineage_group_form_members.clear();
         self.lineage_group_form_representative.clear();
         self.lineage_group_status.clear();
+        self.lineage_group_marked_nodes.clear();
     }
 
     fn persist_lineage_graph_workspace_to_state(&mut self) {
@@ -9115,6 +9282,76 @@ Error: `{err}`"
                 {
                     self.open_helper_genome_blast_dialog();
                     ui.close_menu();
+                }
+            });
+            ui.menu_button("Patterns", |ui| {
+                if ui
+                    .button("Import Pattern File...")
+                    .on_hover_text("Import workflow macro templates from one JSON pattern file")
+                    .clicked()
+                {
+                    self.prompt_import_workflow_macro_templates_file();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Import Pattern Folder...")
+                    .on_hover_text(
+                        "Import workflow macro templates from all JSON files in one folder tree",
+                    )
+                    .clicked()
+                {
+                    self.prompt_import_workflow_macro_templates_directory();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Import Built-in Legacy Pack")
+                    .on_hover_text("Import templates from assets/cloning_patterns.json")
+                    .clicked()
+                {
+                    self.import_workflow_macro_templates_from_path(
+                        DEFAULT_CLONING_PATTERN_PACK_PATH,
+                    );
+                    ui.close_menu();
+                }
+                ui.separator();
+
+                let catalog_root = Path::new(DEFAULT_CLONING_PATTERN_CATALOG_DIR);
+                match Self::collect_cloning_pattern_catalog_entries(catalog_root) {
+                    Ok(entries) => {
+                        if entries.is_empty() {
+                            ui.add_enabled(false, egui::Button::new("Catalog is empty"));
+                        } else {
+                            if ui
+                                .button("Import Full Catalog")
+                                .on_hover_text(format!(
+                                    "Import all catalog templates from {}",
+                                    catalog_root.display()
+                                ))
+                                .clicked()
+                            {
+                                self.import_workflow_macro_templates_from_path(
+                                    &catalog_root.display().to_string(),
+                                );
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            ui.small("Catalog hierarchy");
+                            let mut selected_path: Option<String> = None;
+                            Self::render_cloning_pattern_catalog_menu_entries(
+                                ui,
+                                &entries,
+                                &mut selected_path,
+                            );
+                            if let Some(path) = selected_path {
+                                self.import_workflow_macro_templates_from_path(&path);
+                                ui.close_menu();
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        ui.add_enabled(false, egui::Button::new("Catalog unavailable"));
+                        ui.small(err);
+                    }
                 }
             });
             ui.menu_button("Windows", |ui| {
@@ -9999,6 +10236,181 @@ Error: `{err}`"
         palette[index]
     }
 
+    fn start_lineage_group_draft_from_marked(
+        &mut self,
+        representative_node_id: &str,
+        valid_node_ids: &HashSet<String>,
+    ) -> Result<usize, String> {
+        let representative = representative_node_id.trim();
+        if representative.is_empty() {
+            return Err("Representative node id is required".to_string());
+        }
+        if !valid_node_ids.contains(representative) {
+            return Err(format!(
+                "Representative node '{representative}' is not present in current lineage"
+            ));
+        }
+        let mut members: Vec<String> = self
+            .lineage_group_marked_nodes
+            .iter()
+            .filter(|node_id| valid_node_ids.contains(*node_id))
+            .cloned()
+            .collect();
+        members.retain(|node_id| node_id != representative);
+        members.sort();
+        members.dedup();
+        if members.is_empty() {
+            return Err(
+                "No marked members available. Mark one or more nodes first via context menu."
+                    .to_string(),
+            );
+        }
+        self.lineage_group_form_editing_id = None;
+        self.lineage_group_form_representative = representative.to_string();
+        self.lineage_group_form_members = members.join(", ");
+        if self.lineage_group_form_label.trim().is_empty() {
+            self.lineage_group_form_label = format!("Group {}", representative);
+        }
+        Ok(members.len())
+    }
+
+    fn apply_lineage_group_form(
+        &mut self,
+        valid_node_ids: &HashSet<String>,
+    ) -> Result<String, String> {
+        let representative = self.lineage_group_form_representative.trim().to_string();
+        if representative.is_empty() {
+            return Err("Representative node id is required".to_string());
+        }
+        if !valid_node_ids.contains(&representative) {
+            return Err(format!(
+                "Representative node '{representative}' is not present in current lineage"
+            ));
+        }
+
+        let mut label = self.lineage_group_form_label.trim().to_string();
+        if label.is_empty() {
+            label = format!("Group {}", representative);
+        }
+
+        let mut members = Self::parse_lineage_group_node_list(&self.lineage_group_form_members);
+        members.retain(|node_id| node_id != &representative);
+        if members.is_empty() {
+            return Err("At least one member node id is required".to_string());
+        }
+
+        let mut draft_groups = self.lineage_node_groups.clone();
+        if let Some(group_id) = self.lineage_group_form_editing_id.clone() {
+            if let Some(group) = draft_groups
+                .iter_mut()
+                .find(|group| group.group_id == group_id)
+            {
+                group.label = label.clone();
+                group.representative_node_id = representative.clone();
+                group.member_node_ids = members.clone();
+            } else {
+                draft_groups.push(PersistedLineageNodeGroup {
+                    group_id,
+                    label: label.clone(),
+                    representative_node_id: representative.clone(),
+                    member_node_ids: members.clone(),
+                    collapsed: false,
+                });
+            }
+        } else {
+            draft_groups.push(PersistedLineageNodeGroup {
+                group_id: Self::next_lineage_group_id(&draft_groups),
+                label: label.clone(),
+                representative_node_id: representative.clone(),
+                member_node_ids: members.clone(),
+                collapsed: false,
+            });
+        }
+
+        let sanitized_draft = Self::sanitize_lineage_node_groups(&draft_groups, valid_node_ids);
+        let adjusted = sanitized_draft != draft_groups;
+        self.lineage_node_groups = sanitized_draft;
+        self.lineage_group_form_editing_id = None;
+        self.lineage_group_form_label.clear();
+        self.lineage_group_form_members.clear();
+        self.lineage_group_form_representative.clear();
+        self.lineage_group_marked_nodes.clear();
+
+        if adjusted {
+            Ok("Group saved with normalization (overlaps/invalid nodes were removed)".to_string())
+        } else {
+            Ok(format!("Saved group '{label}'"))
+        }
+    }
+
+    fn render_lineage_group_context_menu(
+        &mut self,
+        ui: &mut Ui,
+        node_id: &str,
+        valid_node_ids: &HashSet<String>,
+        persist_workspace_after_frame: &mut bool,
+    ) {
+        ui.label(format!("Node: {node_id}"));
+        ui.separator();
+        let marked = self.lineage_group_marked_nodes.contains(node_id);
+        if !marked {
+            if ui
+                .button("Mark for node-group")
+                .on_hover_text("Mark this node as a candidate member for new node groups")
+                .clicked()
+            {
+                self.lineage_group_marked_nodes.insert(node_id.to_string());
+                self.lineage_group_status = format!("Marked node '{node_id}' for grouping");
+                ui.close_menu();
+            }
+        } else if ui
+            .button("Unmark for node-group")
+            .on_hover_text("Remove this node from marked candidate members")
+            .clicked()
+        {
+            self.lineage_group_marked_nodes.remove(node_id);
+            self.lineage_group_status = format!("Unmarked node '{node_id}'");
+            ui.close_menu();
+        }
+
+        if ui
+            .button("Use as draft representative")
+            .on_hover_text("Fill node-group form from currently marked nodes")
+            .clicked()
+        {
+            match self.start_lineage_group_draft_from_marked(node_id, valid_node_ids) {
+                Ok(count) => {
+                    self.lineage_group_status = format!(
+                        "Draft prepared with representative '{node_id}' and {count} member(s)"
+                    );
+                }
+                Err(err) => {
+                    self.lineage_group_status = err;
+                }
+            }
+            ui.close_menu();
+        }
+
+        if ui
+            .button("Create group now (representative)")
+            .on_hover_text("Create a new group immediately from marked nodes")
+            .clicked()
+        {
+            let status = match self.start_lineage_group_draft_from_marked(node_id, valid_node_ids) {
+                Ok(_) => match self.apply_lineage_group_form(valid_node_ids) {
+                    Ok(status) => {
+                        *persist_workspace_after_frame = true;
+                        status
+                    }
+                    Err(err) => err,
+                },
+                Err(err) => err,
+            };
+            self.lineage_group_status = status;
+            ui.close_menu();
+        }
+    }
+
     fn render_main_lineage(&mut self, ui: &mut Ui) {
         self.refresh_lineage_cache_if_needed();
 
@@ -10144,6 +10556,8 @@ Error: `{err}`"
 
         let valid_lineage_node_ids: HashSet<String> =
             graph_rows.iter().map(|row| row.node_id.clone()).collect();
+        self.lineage_group_marked_nodes
+            .retain(|node_id| valid_lineage_node_ids.contains(node_id));
         let mut sanitized_groups =
             Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
         if sanitized_groups != self.lineage_node_groups {
@@ -10167,6 +10581,28 @@ Error: `{err}`"
             ui.small(
                 "Group lineage nodes into disjoint sets. Members are shown indented in table view and can collapse to the representative node in graph view.",
             );
+            if self.lineage_group_marked_nodes.is_empty() {
+                ui.small("Marked nodes: none");
+            } else {
+                let mut marked = self
+                    .lineage_group_marked_nodes
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>();
+                marked.sort();
+                ui.horizontal_wrapped(|ui| {
+                    ui.small(format!("Marked nodes ({})", marked.len()));
+                    ui.monospace(marked.join(", "));
+                    if ui
+                        .small_button("Clear marked")
+                        .on_hover_text("Clear marked candidate nodes for grouping")
+                        .clicked()
+                    {
+                        self.lineage_group_marked_nodes.clear();
+                        self.lineage_group_status = "Cleared marked nodes".to_string();
+                    }
+                });
+            }
             if !self.lineage_group_status.trim().is_empty() {
                 ui.small(self.lineage_group_status.clone());
             }
@@ -10275,71 +10711,13 @@ Error: `{err}`"
             ui.horizontal(|ui| {
                 let save_label = if editing { "Apply Group" } else { "Add Group" };
                 if ui.button(save_label).clicked() {
-                    let representative = self.lineage_group_form_representative.trim().to_string();
-                    if representative.is_empty() {
-                        self.lineage_group_status =
-                            "Representative node id is required".to_string();
-                    } else if !valid_lineage_node_ids.contains(&representative) {
-                        self.lineage_group_status = format!(
-                            "Representative node '{representative}' is not present in current lineage"
-                        );
-                    } else {
-                        let mut label = self.lineage_group_form_label.trim().to_string();
-                        if label.is_empty() {
-                            label = format!("Group {}", representative);
-                        }
-                        let mut members =
-                            Self::parse_lineage_group_node_list(&self.lineage_group_form_members);
-                        members.retain(|node_id| node_id != &representative);
-                        if members.is_empty() {
-                            self.lineage_group_status =
-                                "At least one member node id is required".to_string();
-                        } else {
-                            let mut draft_groups = self.lineage_node_groups.clone();
-                            if let Some(group_id) = self.lineage_group_form_editing_id.clone() {
-                                if let Some(group) = draft_groups
-                                    .iter_mut()
-                                    .find(|group| group.group_id == group_id)
-                                {
-                                    group.label = label.clone();
-                                    group.representative_node_id = representative.clone();
-                                    group.member_node_ids = members.clone();
-                                } else {
-                                    draft_groups.push(PersistedLineageNodeGroup {
-                                        group_id,
-                                        label: label.clone(),
-                                        representative_node_id: representative.clone(),
-                                        member_node_ids: members.clone(),
-                                        collapsed: false,
-                                    });
-                                }
-                            } else {
-                                draft_groups.push(PersistedLineageNodeGroup {
-                                    group_id: Self::next_lineage_group_id(&draft_groups),
-                                    label: label.clone(),
-                                    representative_node_id: representative.clone(),
-                                    member_node_ids: members.clone(),
-                                    collapsed: false,
-                                });
-                            }
-
-                            let sanitized_draft = Self::sanitize_lineage_node_groups(
-                                &draft_groups,
-                                &valid_lineage_node_ids,
-                            );
-                            let adjusted = sanitized_draft != draft_groups;
-                            self.lineage_node_groups = sanitized_draft;
-                            self.lineage_group_form_editing_id = None;
-                            self.lineage_group_form_label.clear();
-                            self.lineage_group_form_members.clear();
-                            self.lineage_group_form_representative.clear();
-                            self.lineage_group_status = if adjusted {
-                                "Group saved with normalization (overlaps/invalid nodes were removed)"
-                                    .to_string()
-                            } else {
-                                format!("Saved group '{label}'")
-                            };
+                    match self.apply_lineage_group_form(&valid_lineage_node_ids) {
+                        Ok(status) => {
+                            self.lineage_group_status = status;
                             persist_workspace_after_frame = true;
+                        }
+                        Err(err) => {
+                            self.lineage_group_status = err;
                         }
                     }
                 }
@@ -10349,6 +10727,7 @@ Error: `{err}`"
                     self.lineage_group_form_members.clear();
                     self.lineage_group_form_representative.clear();
                     self.lineage_group_status.clear();
+                    self.lineage_group_marked_nodes.clear();
                 }
             });
         });
@@ -11154,6 +11533,19 @@ Error: `{err}`"
                                     }
                                 });
                             }
+                            let context_node_id = hit_row.map(|row| row.node_id.clone());
+                            resp.clone().context_menu(|ui| {
+                                if let Some(node_id) = context_node_id.as_ref() {
+                                    self.render_lineage_group_context_menu(
+                                        ui,
+                                        node_id,
+                                        &valid_lineage_node_ids,
+                                        &mut persist_workspace_after_frame,
+                                    );
+                                } else {
+                                    ui.label("No node under cursor");
+                                }
+                            });
                             let space_pan_requested = ui.input(|i| i.key_down(Key::Space));
                             if resp.drag_started() {
                                 if space_pan_requested && hit_row.is_none() {
@@ -11293,7 +11685,7 @@ Error: `{err}`"
                             for entry in &table_entries {
                                 let row = &entry.row;
                                 let node_display = Self::compact_lineage_node_label(&row.node_id, 10);
-                                let node_response = ui
+                                let mut node_response = ui
                                     .allocate_ui_with_layout(
                                         egui::vec2(160.0, ui.spacing().interact_size.y),
                                         egui::Layout::left_to_right(egui::Align::Center),
@@ -11335,8 +11727,16 @@ Error: `{err}`"
                                     )
                                     .response;
                                 if node_display != row.node_id {
-                                    node_response.on_hover_text(row.node_id.clone());
+                                    node_response = node_response.on_hover_text(row.node_id.clone());
                                 }
+                                node_response.context_menu(|ui| {
+                                    self.render_lineage_group_context_menu(
+                                        ui,
+                                        &row.node_id,
+                                        &valid_lineage_node_ids,
+                                        &mut persist_workspace_after_frame,
+                                    );
+                                });
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
                                         ui.monospace(
@@ -14251,6 +14651,7 @@ mod tests {
     };
     use eframe::egui;
     use std::{
+        collections::HashSet,
         fs,
         sync::{
             Arc, RwLock,
@@ -14712,5 +15113,46 @@ mod tests {
         assert_eq!(collapsed_entries[0].row.node_id, "n1");
         assert_eq!(collapsed_entries[0].hidden_group_member_count, 1);
         assert_eq!(collapsed_entries[1].row.node_id, "n3");
+    }
+
+    #[test]
+    fn start_lineage_group_draft_from_marked_populates_form() {
+        let mut app = GENtleApp::default();
+        app.lineage_group_marked_nodes.insert("n2".to_string());
+        app.lineage_group_marked_nodes.insert("n3".to_string());
+        let valid_node_ids: HashSet<String> = ["n1", "n2", "n3"]
+            .iter()
+            .map(|node_id| (*node_id).to_string())
+            .collect();
+
+        let count = app
+            .start_lineage_group_draft_from_marked("n1", &valid_node_ids)
+            .expect("draft from marked");
+
+        assert_eq!(count, 2);
+        assert_eq!(app.lineage_group_form_representative, "n1");
+        assert_eq!(app.lineage_group_form_members, "n2, n3");
+    }
+
+    #[test]
+    fn apply_lineage_group_form_clears_marked_nodes_on_success() {
+        let mut app = GENtleApp::default();
+        app.lineage_group_form_label = "My Group".to_string();
+        app.lineage_group_form_representative = "n1".to_string();
+        app.lineage_group_form_members = "n2, n3".to_string();
+        app.lineage_group_marked_nodes.insert("n2".to_string());
+        app.lineage_group_marked_nodes.insert("n3".to_string());
+        let valid_node_ids: HashSet<String> = ["n1", "n2", "n3"]
+            .iter()
+            .map(|node_id| (*node_id).to_string())
+            .collect();
+
+        let status = app
+            .apply_lineage_group_form(&valid_node_ids)
+            .expect("apply group form");
+
+        assert!(status.contains("Saved group"));
+        assert_eq!(app.lineage_node_groups.len(), 1);
+        assert!(app.lineage_group_marked_nodes.is_empty());
     }
 }
