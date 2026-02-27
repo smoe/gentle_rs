@@ -1,0 +1,58 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "digest_ligate_extract_sticky",
+  "description": "Digest one sequence with two enzymes, ligate two selected fragments (sticky protocol), and extract one region from the first ligation product.",
+  "details_url": "https://www.addgene.org/protocols/restriction-digest/",
+  "parameters": [
+    {
+      "name": "seq_id",
+      "required": true
+    },
+    {
+      "name": "enzyme_a",
+      "default_value": "BamHI",
+      "required": false
+    },
+    {
+      "name": "enzyme_b",
+      "default_value": "EcoRI",
+      "required": false
+    },
+    {
+      "name": "digest_prefix",
+      "default_value": "digest",
+      "required": false
+    },
+    {
+      "name": "left_fragment",
+      "default_value": "1",
+      "required": false
+    },
+    {
+      "name": "right_fragment",
+      "default_value": "2",
+      "required": false
+    },
+    {
+      "name": "ligation_prefix",
+      "default_value": "ligation",
+      "required": false
+    },
+    {
+      "name": "extract_from",
+      "default_value": "0",
+      "required": false
+    },
+    {
+      "name": "extract_to",
+      "default_value": "300",
+      "required": false
+    },
+    {
+      "name": "output_id",
+      "default_value": "ligated_extract",
+      "required": false
+    }
+  ],
+  "script": "op {\"Digest\":{\"input\":\"${seq_id}\",\"enzymes\":[\"${enzyme_a}\",\"${enzyme_b}\"],\"output_prefix\":\"${digest_prefix}\"}}\nop {\"Ligation\":{\"inputs\":[\"${digest_prefix}_${left_fragment}\",\"${digest_prefix}_${right_fragment}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${ligation_prefix}\",\"unique\":false}}\nop {\"ExtractRegion\":{\"input\":\"${ligation_prefix}_1\",\"from\":${extract_from},\"to\":${extract_to},\"output_id\":\"${output_id}\"}}"
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "grna_anchor_window_scan",
+  "description": "Guide-RNA candidate preselection constrained to a region between two local anchor positions.",
+  "details_url": "https://www.addgene.org/guides/crispr/",
+  "parameters": [
+    {
+      "name": "seq_id",
+      "required": true
+    },
+    {
+      "name": "set_name",
+      "default_value": "grna_anchor_seed",
+      "required": false
+    },
+    {
+      "name": "anchor_a_pos",
+      "required": true
+    },
+    {
+      "name": "anchor_b_pos",
+      "required": true
+    },
+    {
+      "name": "length_bp",
+      "default_value": "20",
+      "required": false
+    },
+    {
+      "name": "step_bp",
+      "default_value": "1",
+      "required": false
+    },
+    {
+      "name": "limit",
+      "default_value": "20000",
+      "required": false
+    }
+  ],
+  "script": "candidates generate-between-anchors ${set_name} ${seq_id} --length ${length_bp} --anchor-a-pos ${anchor_a_pos} --anchor-b-pos ${anchor_b_pos} --step ${step_bp} --limit ${limit}\ncandidates metrics ${set_name}\ncandidates show ${set_name} --limit 25 --offset 0"
+}

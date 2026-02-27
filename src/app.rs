@@ -66,6 +66,7 @@ use serde::{Deserialize, Serialize};
 
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
+const AGENT_INTERFACE_MD: &str = include_str!("../docs/agent_interface.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
@@ -387,6 +388,7 @@ pub struct GENtleApp {
     help_markdown_cache: CommonMarkCache,
     help_gui_markdown: String,
     help_cli_markdown: String,
+    help_agent_interface_markdown: String,
     help_shell_markdown: String,
     help_shell_interface: ShellHelpInterface,
     help_search_query: String,
@@ -555,6 +557,7 @@ enum ProjectAction {
 enum HelpDoc {
     Gui,
     Cli,
+    AgentInterface,
     Shell,
 }
 
@@ -919,6 +922,7 @@ enum CommandPaletteAction {
     OpenPreparedInspector,
     OpenGuiManual,
     OpenCliManual,
+    OpenAgentInterfaceManual,
     OpenShellManual,
     ExportLineageSvg,
     ToggleJobsPanel,
@@ -978,6 +982,7 @@ impl Default for GENtleApp {
             help_markdown_cache: CommonMarkCache::default(),
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
+            help_agent_interface_markdown: AGENT_INTERFACE_MD.to_string(),
             help_shell_markdown: Self::generate_shell_help_markdown(),
             help_shell_interface: ShellHelpInterface::GuiShell,
             help_search_query: String::new(),
@@ -1691,6 +1696,8 @@ Error: `{err}`"
     fn refresh_help_docs(&mut self) {
         self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
         self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
+        self.help_agent_interface_markdown =
+            Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
         self.help_shell_markdown =
             Self::generate_shell_help_markdown_for(self.help_shell_interface);
     }
@@ -2281,6 +2288,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenCliManual,
             },
             CommandPaletteEntry {
+                title: "Agent Interface".to_string(),
+                detail: "Open in-app agent integration guide".to_string(),
+                keywords: "help agent interface mcp cli assistant prompt docs".to_string(),
+                action: CommandPaletteAction::OpenAgentInterfaceManual,
+            },
+            CommandPaletteEntry {
                 title: "Shell Commands".to_string(),
                 detail: "Open in-app shell command reference".to_string(),
                 keywords: "help shell commands glossary docs".to_string(),
@@ -2341,6 +2354,9 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenGuiManual => self.open_help_doc(HelpDoc::Gui),
             CommandPaletteAction::OpenCliManual => self.open_help_doc(HelpDoc::Cli),
+            CommandPaletteAction::OpenAgentInterfaceManual => {
+                self.open_help_doc(HelpDoc::AgentInterface)
+            }
             CommandPaletteAction::OpenShellManual => self.open_help_doc(HelpDoc::Shell),
             CommandPaletteAction::ExportLineageSvg => self.prompt_export_lineage_svg(),
             CommandPaletteAction::ToggleJobsPanel => {
@@ -2369,6 +2385,7 @@ Error: `{err}`"
         match self.help_doc {
             HelpDoc::Gui => "GUI Manual",
             HelpDoc::Cli => "CLI Manual",
+            HelpDoc::AgentInterface => "Agent Interface",
             HelpDoc::Shell => "Shell Commands",
         }
     }
@@ -2377,6 +2394,7 @@ Error: `{err}`"
         match self.help_doc {
             HelpDoc::Gui => &self.help_gui_markdown,
             HelpDoc::Cli => &self.help_cli_markdown,
+            HelpDoc::AgentInterface => &self.help_agent_interface_markdown,
             HelpDoc::Shell => &self.help_shell_markdown,
         }
     }
@@ -9416,6 +9434,14 @@ Error: `{err}`"
                     ui.close_menu();
                 }
                 if ui
+                    .button("Agent Interface")
+                    .on_hover_text("Open the agent interface guide (CLI, MCP, and Agent Assistant)")
+                    .clicked()
+                {
+                    self.open_help_doc(HelpDoc::AgentInterface);
+                    ui.close_menu();
+                }
+                if ui
                     .button("Shell Commands")
                     .on_hover_text("Open shell command reference generated from the glossary")
                     .clicked()
@@ -13814,6 +13840,13 @@ Error: `{err}`"
                 .clicked()
             {
                 self.help_doc = HelpDoc::Cli;
+                active_doc_changed = true;
+            }
+            if ui
+                .selectable_label(self.help_doc == HelpDoc::AgentInterface, "Agent Interface")
+                .clicked()
+            {
+                self.help_doc = HelpDoc::AgentInterface;
                 active_doc_changed = true;
             }
             if ui

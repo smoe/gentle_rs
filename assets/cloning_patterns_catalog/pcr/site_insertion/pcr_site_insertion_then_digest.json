@@ -1,0 +1,71 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "pcr_site_insertion_then_digest",
+  "description": "Run PCR with explicit primer constraints (supports tail additions/site insertion) and digest the amplicon with one enzyme.",
+  "details_url": "https://www.neb.com/en-us/applications/cloning-and-synthetic-biology/pcr-cloning-and-mutagenesis",
+  "parameters": [
+    {
+      "name": "template_seq_id",
+      "required": true
+    },
+    {
+      "name": "forward_primer",
+      "required": true
+    },
+    {
+      "name": "reverse_primer",
+      "required": true
+    },
+    {
+      "name": "forward_anneal_len",
+      "default_value": "20",
+      "required": false
+    },
+    {
+      "name": "reverse_anneal_len",
+      "default_value": "20",
+      "required": false
+    },
+    {
+      "name": "forward_max_mismatches",
+      "default_value": "1",
+      "required": false
+    },
+    {
+      "name": "reverse_max_mismatches",
+      "default_value": "1",
+      "required": false
+    },
+    {
+      "name": "forward_require_3p_exact",
+      "default_value": "4",
+      "required": false
+    },
+    {
+      "name": "reverse_require_3p_exact",
+      "default_value": "4",
+      "required": false
+    },
+    {
+      "name": "amplicon_id",
+      "default_value": "amplicon",
+      "required": false
+    },
+    {
+      "name": "unique",
+      "default_value": "true",
+      "required": false
+    },
+    {
+      "name": "digest_enzyme",
+      "default_value": "BamHI",
+      "required": false
+    },
+    {
+      "name": "digest_prefix",
+      "default_value": "amplicon_digest",
+      "required": false
+    }
+  ],
+  "script": "op {\"PcrAdvanced\":{\"template\":\"${template_seq_id}\",\"forward_primer\":{\"sequence\":\"${forward_primer}\",\"anneal_len\":${forward_anneal_len},\"max_mismatches\":${forward_max_mismatches},\"require_3prime_exact_bases\":${forward_require_3p_exact}},\"reverse_primer\":{\"sequence\":\"${reverse_primer}\",\"anneal_len\":${reverse_anneal_len},\"max_mismatches\":${reverse_max_mismatches},\"require_3prime_exact_bases\":${reverse_require_3p_exact}},\"output_id\":\"${amplicon_id}\",\"unique\":${unique}}}\nop {\"Digest\":{\"input\":\"${amplicon_id}\",\"enzymes\":[\"${digest_enzyme}\"],\"output_prefix\":\"${digest_prefix}\"}}"
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "branch_reverse_complement",
+  "description": "Create one branch copy and reverse-complement that branch.",
+  "details_url": "https://www.bioinformatics.org/sms/rev_comp.html",
+  "parameters": [
+    {
+      "name": "seq_id",
+      "required": true
+    },
+    {
+      "name": "branch_copy_id",
+      "default_value": "seq_branch",
+      "required": false
+    },
+    {
+      "name": "reverse_complement_id",
+      "default_value": "seq_branch_rc",
+      "required": false
+    }
+  ],
+  "script": "op {\"Branch\":{\"input\":\"${seq_id}\",\"output_id\":\"${branch_copy_id}\"}}\nop {\"ReverseComplement\":{\"input\":\"${branch_copy_id}\",\"output_id\":\"${reverse_complement_id}\"}}"
+}

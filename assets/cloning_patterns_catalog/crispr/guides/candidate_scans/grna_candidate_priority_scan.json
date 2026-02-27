@@ -1,0 +1,78 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "grna_candidate_priority_scan",
+  "description": "Guide-RNA candidate preselection by sequence windows, GC/distance scoring, quantile+range filtering, and top-k extraction.",
+  "details_url": "https://www.addgene.org/guides/crispr/",
+  "parameters": [
+    {
+      "name": "seq_id",
+      "required": true
+    },
+    {
+      "name": "set_name",
+      "default_value": "grna_seed",
+      "required": false
+    },
+    {
+      "name": "length_bp",
+      "default_value": "20",
+      "required": false
+    },
+    {
+      "name": "step_bp",
+      "default_value": "1",
+      "required": false
+    },
+    {
+      "name": "limit",
+      "default_value": "20000",
+      "required": false
+    },
+    {
+      "name": "distance_feature_kind",
+      "default_value": "gene",
+      "required": false
+    },
+    {
+      "name": "weight_gc",
+      "default_value": "0.6",
+      "required": false
+    },
+    {
+      "name": "weight_distance",
+      "default_value": "0.4",
+      "required": false
+    },
+    {
+      "name": "gc_min",
+      "default_value": "0.35",
+      "required": false
+    },
+    {
+      "name": "gc_max",
+      "default_value": "0.75",
+      "required": false
+    },
+    {
+      "name": "priority_min_quantile",
+      "default_value": "0.8",
+      "required": false
+    },
+    {
+      "name": "top_k",
+      "default_value": "50",
+      "required": false
+    },
+    {
+      "name": "filtered_set",
+      "default_value": "grna_filtered",
+      "required": false
+    },
+    {
+      "name": "output_set",
+      "default_value": "grna_top",
+      "required": false
+    }
+  ],
+  "script": "candidates generate ${set_name} ${seq_id} --length ${length_bp} --step ${step_bp} --limit ${limit}\ncandidates score ${set_name} gc_balance '100 * (gc_fraction - at_fraction)'\ncandidates score-distance ${set_name} dist_feature --feature-kind ${distance_feature_kind} --feature-geometry feature_boundaries --feature-boundary start --strand-relation same\ncandidates score-weighted ${set_name} priority --term gc_fraction:${weight_gc}:max --term dist_feature:${weight_distance}:min --normalize\ncandidates filter ${set_name} ${filtered_set} --metric gc_fraction --min ${gc_min} --max ${gc_max}\ncandidates filter ${filtered_set} ${output_set} --metric priority --min-quantile ${priority_min_quantile}\ncandidates top-k ${output_set} ${output_set} --metric priority --k ${top_k} --direction max"
+}

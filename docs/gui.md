@@ -586,6 +586,7 @@ The `Help` menu now includes:
 
 - `GUI Manual`: opens `docs/gui.md` in an in-app markdown viewer
 - `CLI Manual`: opens `docs/cli.md` in an in-app markdown viewer
+- `Agent Interface`: opens `docs/agent_interface.md` in an in-app markdown viewer
 - `Shell Commands`: generated command reference from `docs/glossary.json`
   (usage + task summary per command)
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
@@ -600,7 +601,8 @@ The `Help` menu now includes:
 
 Help content loading behavior:
 
-- if `docs/gui.md` / `docs/cli.md` exists at runtime, GUI loads those files
+- if `docs/gui.md` / `docs/cli.md` / `docs/agent_interface.md` exists at
+  runtime, GUI loads those files
 - otherwise GUI falls back to embedded copies compiled into the app binary
 - shell-command help content is generated from the structured glossary source
   `docs/glossary.json`
