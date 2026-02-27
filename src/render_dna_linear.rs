@@ -103,6 +103,13 @@ struct SideLaneStyle {
     height: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct HelicalLayoutParams {
+    enabled: bool,
+    mode: LinearSequenceLetterLayoutMode,
+    active_max_span: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderDnaLinear {
     dna: Arc<RwLock<DNAsequence>>,
@@ -120,6 +127,23 @@ pub struct RenderDnaLinear {
 }
 
 impl RenderDnaLinear {
+    fn helical_layout_params(display: &DnaDisplay) -> HelicalLayoutParams {
+        let mode = display.linear_sequence_letter_layout_mode();
+        let active_max_span = match mode {
+            LinearSequenceLetterLayoutMode::ContinuousHelical => {
+                display.linear_sequence_helical_max_view_span_bp()
+            }
+            LinearSequenceLetterLayoutMode::Condensed10Row => {
+                display.linear_sequence_condensed_max_view_span_bp()
+            }
+        };
+        HelicalLayoutParams {
+            enabled: display.linear_sequence_helical_letters_enabled(),
+            mode,
+            active_max_span,
+        }
+    }
+
     pub fn new(dna: Arc<RwLock<DNAsequence>>, display: Arc<RwLock<DnaDisplay>>) -> Self {
         let sequence_length = dna.read().map(|d| d.len()).unwrap_or(0);
         Self {
@@ -401,6 +425,47 @@ impl RenderDnaLinear {
             gap: (default.gap * scale).max(min_gap),
             height: (default.height * scale).max(min_height),
         }
+    }
+
+    fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
+        if viewport.span == 0 {
+            return None;
+        }
+        let (standard_max_span, helical) = self
+            .display
+            .read()
+            .map(|display| {
+                (
+                    display.linear_sequence_base_text_max_view_span_bp(),
+                    Self::helical_layout_params(&display),
+                )
+            })
+            .unwrap_or((
+                500,
+                HelicalLayoutParams {
+                    enabled: false,
+                    mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
+                    active_max_span: 1500,
+                },
+            ));
+        if helical.mode != LinearSequenceLetterLayoutMode::Condensed10Row
+            || !Self::should_use_helical_projection(
+                viewport,
+                standard_max_span,
+                helical.enabled,
+                helical.active_max_span,
+            )
+            || !self.should_draw_sequence_bases(viewport)
+        {
+            return None;
+        }
+        let px_per_bp = self.area.width().max(1.0) / viewport.span.max(1) as f32;
+        let font_size = (px_per_bp * 0.85).clamp(
+            SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
+            SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
+        );
+        let row_offset_max = font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE * 4.5;
+        Some(font_size + 3.0 + row_offset_max)
     }
 
     fn layout_features(&mut self, viewport: LinearViewport) {
@@ -730,9 +795,9 @@ impl RenderDnaLinear {
         };
         let regulatory_group_gap = regulatory_group_gap_natural * top_scale;
 
-        let top_style = Self::fit_side_style(top_lane_count, top_target_regular_extent);
-        let bottom_style = Self::fit_side_style(bottom_lane_count, bottom_target_extent);
-        let regulatory_top_style = Self::fit_lane_style(
+        let mut top_style = Self::fit_side_style(top_lane_count, top_target_regular_extent);
+        let mut bottom_style = Self::fit_side_style(bottom_lane_count, bottom_target_extent);
+        let mut regulatory_top_style = Self::fit_lane_style(
             regulatory_top_lane_count,
             top_target_regulatory_extent,
             regulatory_top_default_style,
@@ -740,6 +805,23 @@ impl RenderDnaLinear {
             MIN_REGULATORY_FEATURE_GAP,
             MIN_REGULATORY_FEATURE_HEIGHT,
         );
+        let condensed_feature_clearance = self
+            .condensed_helical_text_half_extent(viewport)
+            .map(|half_extent| half_extent + 4.0);
+        if let Some(min_clearance) = condensed_feature_clearance {
+            top_style.margin = top_style.margin.max(min_clearance + top_style.height * 0.5);
+            bottom_style.margin = bottom_style
+                .margin
+                .max(min_clearance + bottom_style.height * 0.5);
+            regulatory_top_style.margin = regulatory_top_style
+                .margin
+                .max(min_clearance + regulatory_top_style.height * 0.5);
+        }
+        let regulatory_near_baseline_margin = condensed_feature_clearance
+            .map(|min_clearance| {
+                (min_clearance + REGULATORY_FEATURE_HEIGHT * 0.5).max(REGULATORY_BASELINE_MARGIN)
+            })
+            .unwrap_or(REGULATORY_BASELINE_MARGIN);
         let top_regular_extent = Self::side_extent(top_lane_count, top_style);
 
         lane_seed.sort_by(|a, b| {
@@ -757,14 +839,14 @@ impl RenderDnaLinear {
                 LaneSide::Bottom => bottom_style,
                 LaneSide::RegulatoryTop => regulatory_top_style,
                 LaneSide::RegulatoryNearBaseline => SideLaneStyle {
-                    margin: REGULATORY_BASELINE_MARGIN,
+                    margin: regulatory_near_baseline_margin,
                     gap: 0.0,
                     height: REGULATORY_FEATURE_HEIGHT,
                 },
             };
             let center_y = match item.lane_side {
                 LaneSide::Top => {
-                    let required_clearance =
+                    let mut required_clearance =
                         if regulatory_tracks_near_baseline && has_regulatory_features {
                             let regulatory_outer =
                                 REGULATORY_BASELINE_MARGIN + REGULATORY_FEATURE_HEIGHT * 0.5;
@@ -772,6 +854,10 @@ impl RenderDnaLinear {
                         } else {
                             0.0
                         };
+                    if let Some(min_clearance) = condensed_feature_clearance {
+                        required_clearance =
+                            required_clearance.max(min_clearance + side_style.height * 0.5);
+                    }
                     self.baseline_y()
                         - side_style.margin.max(required_clearance)
                         - side_style.gap * feature_lane as f32
@@ -950,19 +1036,17 @@ impl RenderDnaLinear {
             .read()
             .map(|display| {
                 let standard_max_span = display.linear_sequence_base_text_max_view_span_bp();
-                let helical_enabled = display.linear_sequence_helical_letters_enabled();
-                let helical_max_span = display.linear_sequence_helical_max_view_span_bp();
+                let helical = Self::helical_layout_params(&display);
                 let use_helical_projection = Self::should_use_helical_projection(
                     viewport,
                     standard_max_span,
-                    helical_enabled,
-                    helical_max_span,
+                    helical.enabled,
+                    helical.active_max_span,
                 );
                 (
                     display.linear_hide_backbone_when_sequence_bases_visible(),
                     use_helical_projection
-                        && display.linear_sequence_letter_layout_mode()
-                            == LinearSequenceLetterLayoutMode::Condensed10Row,
+                        && helical.mode == LinearSequenceLetterLayoutMode::Condensed10Row,
                 )
             })
             .unwrap_or((false, false));
@@ -1023,24 +1107,25 @@ impl RenderDnaLinear {
     }
 
     fn should_draw_sequence_bases(&self, viewport: LinearViewport) -> bool {
-        let (max_span, helical_enabled, helical_max_span) = self
+        let (max_span, helical_enabled, active_helical_max_span) = self
             .display
             .read()
             .map(|display| {
+                let helical = Self::helical_layout_params(&display);
                 (
                     display.linear_sequence_base_text_max_view_span_bp(),
-                    display.linear_sequence_helical_letters_enabled(),
-                    display.linear_sequence_helical_max_view_span_bp(),
+                    helical.enabled,
+                    helical.active_max_span,
                 )
             })
-            .unwrap_or((500, false, 2000));
+            .unwrap_or((500, false, 1500));
         if viewport.span == 0 {
             return false;
         }
         if max_span > 0 && viewport.span <= max_span {
             return true;
         }
-        helical_enabled && helical_max_span > 0 && viewport.span <= helical_max_span
+        helical_enabled && active_helical_max_span > 0 && viewport.span <= active_helical_max_span
     }
 
     fn sequence_base_color(base: u8) -> Color32 {
@@ -1094,47 +1179,46 @@ impl RenderDnaLinear {
                 )
             })
             .unwrap_or((true, true));
-        let (
-            standard_max_span,
-            helical_enabled,
-            helical_max_span,
-            helical_layout_mode,
-            helical_phase_offset_bp,
-        ) = self
+        let (standard_max_span, helical, helical_phase_offset_bp) = self
             .display
             .read()
             .map(|display| {
                 (
                     display.linear_sequence_base_text_max_view_span_bp(),
-                    display.linear_sequence_helical_letters_enabled(),
-                    display.linear_sequence_helical_max_view_span_bp(),
-                    display.linear_sequence_letter_layout_mode(),
+                    Self::helical_layout_params(&display),
                     display.linear_sequence_helical_phase_offset_bp(),
                 )
             })
             .unwrap_or((
                 500,
-                false,
-                2000,
-                LinearSequenceLetterLayoutMode::ContinuousHelical,
+                HelicalLayoutParams {
+                    enabled: false,
+                    mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
+                    active_max_span: 1500,
+                },
                 0,
             ));
         let use_helical_projection = Self::should_use_helical_projection(
             viewport,
             standard_max_span,
-            helical_enabled,
-            helical_max_span,
+            helical.enabled,
+            helical.active_max_span,
         );
         let use_condensed_helical = use_helical_projection
-            && helical_layout_mode == LinearSequenceLetterLayoutMode::Condensed10Row;
-        let helical_t =
-            Self::helical_projection_progress(viewport.span, standard_max_span, helical_max_span);
-        let helical_visual_t =
-            if helical_enabled && helical_max_span > 0 && viewport.span <= helical_max_span {
-                helical_t.max(HELICAL_MIN_VISUAL_PROGRESS)
-            } else {
-                0.0
-            };
+            && helical.mode == LinearSequenceLetterLayoutMode::Condensed10Row;
+        let helical_t = Self::helical_projection_progress(
+            viewport.span,
+            standard_max_span,
+            helical.active_max_span,
+        );
+        let helical_visual_t = if helical.enabled
+            && helical.active_max_span > 0
+            && viewport.span <= helical.active_max_span
+        {
+            helical_t.max(HELICAL_MIN_VISUAL_PROGRESS)
+        } else {
+            0.0
+        };
         let px_per_bp = self.area.width().max(1.0) / viewport.span.max(1) as f32;
         let font_size = (px_per_bp * 0.85).clamp(
             SEQUENCE_BASE_TEXT_MIN_FONT_SIZE,
@@ -1284,10 +1368,8 @@ impl RenderDnaLinear {
             .display
             .read()
             .map(|display| {
-                (
-                    display.linear_sequence_helical_letters_enabled(),
-                    display.linear_sequence_helical_max_view_span_bp(),
-                )
+                let helical = Self::helical_layout_params(&display);
+                (helical.enabled, helical.active_max_span)
             })
             .unwrap_or((false, 0));
         if enabled && max_span > 0 && viewport.span > 0 && viewport.span <= max_span {
@@ -1889,8 +1971,12 @@ mod tests {
     use gb_io::seq::{FeatureKind, Location};
 
     fn make_test_feature(location: Location) -> Feature {
+        make_test_feature_with_kind("mRNA", location)
+    }
+
+    fn make_test_feature_with_kind(kind: &str, location: Location) -> Feature {
         Feature {
-            kind: FeatureKind::from("mRNA"),
+            kind: FeatureKind::from(kind),
             location,
             qualifiers: vec![("label".into(), Some("tp73 transcript".to_string()))],
         }
@@ -2028,6 +2114,31 @@ mod tests {
     }
 
     #[test]
+    fn sequence_base_track_condensed_mode_uses_condensed_span_limit() {
+        let renderer = test_renderer(5000);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2500);
+            display.set_linear_sequence_condensed_max_view_span_bp(1200);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        assert!(renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 1200,
+            span: 1200,
+        }));
+        assert!(!renderer.should_draw_sequence_bases(LinearViewport {
+            start: 0,
+            end: 1300,
+            span: 1300,
+        }));
+    }
+
+    #[test]
     fn backbone_can_be_hidden_when_sequence_letters_are_visible() {
         let renderer = test_renderer(5000);
         let viewport = LinearViewport {
@@ -2081,6 +2192,34 @@ mod tests {
     }
 
     #[test]
+    fn helical_phase_offset_shifts_seam_without_reordering_rows() {
+        let rows_offset_0: Vec<usize> = (0..20)
+            .map(|bp| RenderDnaLinear::helical_phase_row_from_bottom(bp, 0))
+            .collect();
+        let rows_offset_3: Vec<usize> = (0..20)
+            .map(|bp| RenderDnaLinear::helical_phase_row_from_bottom(bp, 3))
+            .collect();
+        let rows_offset_9: Vec<usize> = (0..20)
+            .map(|bp| RenderDnaLinear::helical_phase_row_from_bottom(bp, 9))
+            .collect();
+
+        assert_eq!(
+            rows_offset_0,
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        );
+        assert_eq!(rows_offset_3[7], 0);
+        assert_eq!(rows_offset_9[1], 0);
+        for ((base, shifted_3), shifted_9) in rows_offset_0
+            .iter()
+            .zip(rows_offset_3.iter())
+            .zip(rows_offset_9.iter())
+        {
+            assert_eq!(*shifted_3, (*base + 3) % 10);
+            assert_eq!(*shifted_9, (*base + 9) % 10);
+        }
+    }
+
+    #[test]
     fn condensed_helical_layout_replaces_backbone_line_when_bases_are_visible() {
         let renderer = test_renderer(5000);
         let viewport = LinearViewport {
@@ -2100,5 +2239,125 @@ mod tests {
         }
         assert!(renderer.should_draw_sequence_bases(viewport));
         assert!(!renderer.should_draw_backbone(viewport));
+    }
+
+    #[test]
+    fn condensed_layout_pushes_feature_lanes_outward() {
+        let feature = make_test_feature(Location::simple_range(120, 260));
+        let mut renderer = test_renderer_with_feature(feature, 5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+            );
+        }
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        let continuous_baseline = renderer.baseline_y();
+        let continuous_clearance = continuous_baseline - renderer.features[0].rect.bottom();
+
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        let condensed_baseline = renderer.baseline_y();
+        let condensed_clearance = condensed_baseline - renderer.features[0].rect.bottom();
+
+        assert!(condensed_clearance > continuous_clearance);
+        assert!(condensed_clearance >= 20.0);
+    }
+
+    #[test]
+    fn condensed_layout_pushes_reverse_feature_lanes_outward() {
+        let feature = make_test_feature(Location::Complement(Box::new(Location::simple_range(
+            120, 260,
+        ))));
+        let mut renderer = test_renderer_with_feature(feature, 5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+            );
+        }
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        assert!(renderer.features[0].is_reverse);
+        let continuous_baseline = renderer.baseline_y();
+        let continuous_clearance = renderer.features[0].rect.top() - continuous_baseline;
+
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        let condensed_baseline = renderer.baseline_y();
+        let condensed_clearance = renderer.features[0].rect.top() - condensed_baseline;
+
+        assert!(condensed_clearance > continuous_clearance);
+        assert!(condensed_clearance >= 20.0);
+    }
+
+    #[test]
+    fn condensed_layout_pushes_regulatory_near_baseline_lane_outward() {
+        let feature =
+            make_test_feature_with_kind("regulatory_region", Location::simple_range(120, 260));
+        let mut renderer = test_renderer_with_feature(feature, 5000);
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1500,
+            span: 1500,
+        };
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_regulatory_tracks_near_baseline(true);
+            display.set_linear_sequence_base_text_max_view_span_bp(500);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_helical_max_view_span_bp(2000);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+            );
+        }
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        assert!(renderer.features[0].is_regulatory);
+        let continuous_baseline = renderer.baseline_y();
+        let continuous_clearance = continuous_baseline - renderer.features[0].rect.bottom();
+
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::Condensed10Row,
+            );
+        }
+        renderer.layout_features(viewport);
+        assert_eq!(renderer.features.len(), 1);
+        let condensed_baseline = renderer.baseline_y();
+        let condensed_clearance = condensed_baseline - renderer.features[0].rect.bottom();
+
+        assert!(condensed_clearance > continuous_clearance);
+        assert!(condensed_clearance >= 12.0);
     }
 }

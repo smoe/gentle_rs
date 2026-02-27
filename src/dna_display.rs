@@ -200,6 +200,7 @@ pub struct DnaDisplay {
     linear_sequence_base_text_max_view_span_bp: usize,
     linear_sequence_helical_letters_enabled: bool,
     linear_sequence_helical_max_view_span_bp: usize,
+    linear_sequence_condensed_max_view_span_bp: usize,
     linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode,
     linear_sequence_helical_phase_offset_bp: usize,
     linear_show_double_strand_bases: bool,
@@ -232,6 +233,10 @@ impl DnaDisplay {
     }
 
     fn clamp_linear_sequence_helical_max_view_span_bp(value: usize) -> usize {
+        value.min(5_000_000)
+    }
+
+    fn clamp_linear_sequence_condensed_max_view_span_bp(value: usize) -> usize {
         value.min(5_000_000)
     }
 
@@ -633,6 +638,20 @@ impl DnaDisplay {
         }
     }
 
+    pub fn linear_sequence_condensed_max_view_span_bp(&self) -> usize {
+        Self::clamp_linear_sequence_condensed_max_view_span_bp(
+            self.linear_sequence_condensed_max_view_span_bp,
+        )
+    }
+
+    pub fn set_linear_sequence_condensed_max_view_span_bp(&mut self, value: usize) {
+        let value = Self::clamp_linear_sequence_condensed_max_view_span_bp(value);
+        if self.linear_sequence_condensed_max_view_span_bp != value {
+            self.linear_sequence_condensed_max_view_span_bp = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn linear_sequence_letter_layout_mode(&self) -> LinearSequenceLetterLayoutMode {
         self.linear_sequence_letter_layout_mode
     }
@@ -768,6 +787,7 @@ impl Default for DnaDisplay {
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: false,
             linear_sequence_helical_max_view_span_bp: 2000,
+            linear_sequence_condensed_max_view_span_bp: 1500,
             linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
             linear_sequence_helical_phase_offset_bp: 0,
             linear_show_double_strand_bases: true,

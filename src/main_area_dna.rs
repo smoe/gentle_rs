@@ -2250,6 +2250,7 @@ impl MainAreaDna {
                         mut max_span_bp,
                         mut helical_letters_enabled,
                         mut helical_max_span_bp,
+                        mut condensed_max_span_bp,
                         mut helical_layout_mode,
                         mut helical_phase_offset_bp,
                         mut auto_hide_sequence_panel,
@@ -2267,6 +2268,7 @@ impl MainAreaDna {
                                 display.linear_sequence_base_text_max_view_span_bp(),
                                 display.linear_sequence_helical_letters_enabled(),
                                 display.linear_sequence_helical_max_view_span_bp(),
+                                display.linear_sequence_condensed_max_view_span_bp(),
                                 display.linear_sequence_letter_layout_mode(),
                                 display.linear_sequence_helical_phase_offset_bp(),
                                 display.auto_hide_sequence_panel_when_linear_bases_visible(),
@@ -2282,6 +2284,7 @@ impl MainAreaDna {
                             500,
                             false,
                             2000,
+                            1500,
                             LinearSequenceLetterLayoutMode::ContinuousHelical,
                             0,
                             false,
@@ -2377,6 +2380,7 @@ impl MainAreaDna {
                         self.sync_linear_helical_settings_to_engine(
                             helical_letters_enabled,
                             helical_max_span_bp,
+                            condensed_max_span_bp,
                             helical_layout_mode,
                             helical_phase_offset_bp,
                         );
@@ -2408,7 +2412,11 @@ impl MainAreaDna {
                                         "Condensed 10-row",
                                     )
                                     .changed();
-                            });
+                            })
+                            .response
+                            .on_hover_text(
+                                "Continuous mode keeps the wave-like strand phase. Condensed 10-row mode uses fixed modulo-10 rows, replaces the black backbone line with DNA letters, and pushes feature lanes outward.",
+                            );
                         if changed {
                             self.dna_display
                                 .write()
@@ -2417,6 +2425,7 @@ impl MainAreaDna {
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
                                 helical_max_span_bp,
+                                condensed_max_span_bp,
                                 helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
@@ -2445,13 +2454,43 @@ impl MainAreaDna {
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
                                 helical_max_span_bp,
+                                condensed_max_span_bp,
                                 helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Helical phase offset (mod 10)");
+                        ui.label("Condensed letters max span");
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut condensed_max_span_bp)
+                                    .range(0..=5_000_000)
+                                    .speed(25.0)
+                                    .suffix(" bp"),
+                            )
+                            .on_hover_text(
+                                "In condensed 10-row layout mode, DNA letters are shown while span <= this threshold",
+                            )
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_sequence_condensed_max_view_span_bp(
+                                    condensed_max_span_bp,
+                                );
+                            self.sync_linear_helical_settings_to_engine(
+                                helical_letters_enabled,
+                                helical_max_span_bp,
+                                condensed_max_span_bp,
+                                helical_layout_mode,
+                                helical_phase_offset_bp,
+                            );
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Helical phase offset (mod 10 seam shift)");
                         if ui
                             .add(
                                 egui::DragValue::new(&mut helical_phase_offset_bp)
@@ -2460,7 +2499,7 @@ impl MainAreaDna {
                                     .suffix(" bp"),
                             )
                             .on_hover_text(
-                                "Manual modulo-10 row offset for helical letters; use this to align motif columns",
+                                "Row formula is row=(bp+offset)%10. Increasing offset shifts the top-to-bottom seam without changing DNA base order.",
                             )
                             .changed()
                         {
@@ -2473,6 +2512,7 @@ impl MainAreaDna {
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
                                 helical_max_span_bp,
+                                condensed_max_span_bp,
                                 helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
@@ -4493,6 +4533,7 @@ impl MainAreaDna {
         &self,
         enabled: bool,
         max_span: usize,
+        condensed_max_span: usize,
         layout_mode: LinearSequenceLetterLayoutMode,
         phase_offset_bp: usize,
     ) {
@@ -4503,6 +4544,7 @@ impl MainAreaDna {
         let display = &mut guard.state_mut().display;
         display.linear_sequence_helical_letters_enabled = enabled;
         display.linear_sequence_helical_max_view_span_bp = max_span;
+        display.linear_sequence_condensed_max_view_span_bp = condensed_max_span;
         display.linear_sequence_letter_layout_mode = layout_mode;
         display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
     }
@@ -4599,6 +4641,9 @@ impl MainAreaDna {
         display.set_linear_sequence_helical_max_view_span_bp(
             settings.linear_sequence_helical_max_view_span_bp,
         );
+        display.set_linear_sequence_condensed_max_view_span_bp(
+            settings.linear_sequence_condensed_max_view_span_bp,
+        );
         display.set_linear_sequence_letter_layout_mode(settings.linear_sequence_letter_layout_mode);
         display.set_linear_sequence_helical_phase_offset_bp(
             settings.linear_sequence_helical_phase_offset_bp,
@@ -4648,7 +4693,7 @@ impl MainAreaDna {
         if self.is_circular() {
             return false;
         }
-        let (max_span, helical_enabled, helical_max_span) = self
+        let (max_span, helical_enabled, helical_max_span, condensed_max_span, layout_mode) = self
             .dna_display
             .read()
             .map(|display| {
@@ -4656,10 +4701,22 @@ impl MainAreaDna {
                     display.linear_sequence_base_text_max_view_span_bp(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_sequence_helical_max_view_span_bp(),
+                    display.linear_sequence_condensed_max_view_span_bp(),
+                    display.linear_sequence_letter_layout_mode(),
                 )
             })
-            .unwrap_or((500, false, 2000));
-        if max_span == 0 && (!helical_enabled || helical_max_span == 0) {
+            .unwrap_or((
+                500,
+                false,
+                2000,
+                1500,
+                LinearSequenceLetterLayoutMode::ContinuousHelical,
+            ));
+        let active_helical_max_span = match layout_mode {
+            LinearSequenceLetterLayoutMode::ContinuousHelical => helical_max_span,
+            LinearSequenceLetterLayoutMode::Condensed10Row => condensed_max_span,
+        };
+        if max_span == 0 && (!helical_enabled || active_helical_max_span == 0) {
             return false;
         }
         let (_, span, sequence_length) = self.current_linear_viewport();
@@ -4669,7 +4726,7 @@ impl MainAreaDna {
         if max_span > 0 && span <= max_span {
             return true;
         }
-        helical_enabled && helical_max_span > 0 && span <= helical_max_span
+        helical_enabled && active_helical_max_span > 0 && span <= active_helical_max_span
     }
 
     fn should_auto_hide_sequence_panel(&self) -> bool {

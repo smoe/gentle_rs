@@ -1351,6 +1351,8 @@ impl GENtleApp {
             source.linear_sequence_helical_letters_enabled;
         target.linear_sequence_helical_max_view_span_bp =
             source.linear_sequence_helical_max_view_span_bp;
+        target.linear_sequence_condensed_max_view_span_bp =
+            source.linear_sequence_condensed_max_view_span_bp;
         target.linear_sequence_letter_layout_mode = source.linear_sequence_letter_layout_mode;
         target.linear_sequence_helical_phase_offset_bp = Self::clamp_linear_helical_phase_offset_bp(
             source.linear_sequence_helical_phase_offset_bp,
@@ -2613,6 +2615,9 @@ Error: `{err}`"
             .hash(&mut hasher);
         display
             .linear_sequence_helical_max_view_span_bp
+            .hash(&mut hasher);
+        display
+            .linear_sequence_condensed_max_view_span_bp
             .hash(&mut hasher);
         display.linear_sequence_letter_layout_mode.hash(&mut hasher);
         display
@@ -11018,6 +11023,9 @@ Error: `{err}`"
             .linear_sequence_helical_max_view_span_bp =
             defaults.linear_sequence_helical_max_view_span_bp;
         self.configuration_graphics
+            .linear_sequence_condensed_max_view_span_bp =
+            defaults.linear_sequence_condensed_max_view_span_bp;
+        self.configuration_graphics
             .linear_sequence_letter_layout_mode = defaults.linear_sequence_letter_layout_mode;
         self.configuration_graphics
             .linear_sequence_helical_phase_offset_bp =
@@ -11525,7 +11533,11 @@ Error: `{err}`"
                             "Condensed 10-row",
                         )
                         .changed();
-                });
+                })
+                .response
+                .on_hover_text(
+                    "Continuous mode keeps the wave-like strand phase. Condensed 10-row mode uses fixed modulo-10 rows, replaces the black backbone line with DNA letters, and pushes feature lanes outward.",
+                );
             if layout_changed {
                 self.configuration_graphics
                     .linear_sequence_letter_layout_mode = selected;
@@ -11583,7 +11595,28 @@ Error: `{err}`"
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Helical phase offset");
+            ui.label("Condensed letters max view span");
+            if ui
+                .add(
+                    egui::DragValue::new(
+                        &mut self
+                            .configuration_graphics
+                            .linear_sequence_condensed_max_view_span_bp,
+                    )
+                    .range(0..=5_000_000)
+                    .speed(25.0)
+                    .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "In condensed 10-row layout mode, DNA letters are shown while span <= this threshold",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Helical phase offset (mod 10 seam shift)");
             if ui
                 .add(
                     egui::DragValue::new(
@@ -11596,7 +11629,7 @@ Error: `{err}`"
                     .suffix(" bp"),
                 )
                 .on_hover_text(
-                    "Manual modulo-10 row offset for helical DNA letters; use this to align motif columns",
+                    "Row formula is row=(bp+offset)%10. Increasing offset shifts the top-to-bottom seam without changing DNA base order.",
                 )
                 .changed()
             {

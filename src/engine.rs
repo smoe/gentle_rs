@@ -167,6 +167,8 @@ pub struct DisplaySettings {
     pub linear_sequence_base_text_max_view_span_bp: usize,
     pub linear_sequence_helical_letters_enabled: bool,
     pub linear_sequence_helical_max_view_span_bp: usize,
+    #[serde(default = "DisplaySettings::default_linear_sequence_condensed_max_view_span_bp")]
+    pub linear_sequence_condensed_max_view_span_bp: usize,
     #[serde(default)]
     pub linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode,
     pub linear_sequence_helical_phase_offset_bp: usize,
@@ -181,6 +183,10 @@ pub struct DisplaySettings {
 impl DisplaySettings {
     pub const fn default_gc_content_bin_size_bp() -> usize {
         100
+    }
+
+    pub const fn default_linear_sequence_condensed_max_view_span_bp() -> usize {
+        1500
     }
 }
 
@@ -226,6 +232,8 @@ impl Default for DisplaySettings {
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: false,
             linear_sequence_helical_max_view_span_bp: 2000,
+            linear_sequence_condensed_max_view_span_bp:
+                Self::default_linear_sequence_condensed_max_view_span_bp(),
             linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
             linear_sequence_helical_phase_offset_bp: 0,
             linear_show_double_strand_bases: true,
@@ -16141,6 +16149,22 @@ impl GentleEngine {
                         self.state.display.linear_sequence_helical_max_view_span_bp
                     ));
                 }
+                "linear_sequence_condensed_max_view_span_bp"
+                | "linear_condensed_max_view_span_bp" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a non-negative integer"),
+                    })?;
+                    self.state
+                        .display
+                        .linear_sequence_condensed_max_view_span_bp = raw as usize;
+                    result.messages.push(format!(
+                        "Set parameter 'linear_sequence_condensed_max_view_span_bp' to {}",
+                        self.state
+                            .display
+                            .linear_sequence_condensed_max_view_span_bp
+                    ));
+                }
                 "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
                     let raw = value.as_str().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
@@ -17317,6 +17341,12 @@ exit 2
             .unwrap();
         engine
             .apply(Operation::SetParameter {
+                name: "linear_sequence_condensed_max_view_span_bp".to_string(),
+                value: serde_json::json!(1500),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
                 name: "linear_sequence_helical_phase_offset_bp".to_string(),
                 value: serde_json::json!(4),
             })
@@ -17345,6 +17375,13 @@ exit 2
                 .display
                 .linear_sequence_helical_max_view_span_bp,
             2500
+        );
+        assert_eq!(
+            engine
+                .state()
+                .display
+                .linear_sequence_condensed_max_view_span_bp,
+            1500
         );
         assert_eq!(
             engine

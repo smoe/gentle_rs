@@ -693,13 +693,25 @@ Current linear map conventions are:
 - Restriction enzyme labels are lane-packed to reduce overlap
 - Optional helical-compressed letter mode (linear map):
   - active only when `Enable helical-compressed DNA letters` is on
-  - applies when current span is at/below `Helical letters max span`
+  - layout mode is explicit (`Continuous helical` or `Condensed 10-row`)
+  - active span limit depends on the selected mode:
+    - `Continuous helical` uses `Helical letters max span`
+    - `Condensed 10-row` uses `Condensed letters max span` (default target:
+      `1500 bp`)
+  - row mapping uses `row = (bp + offset_bp) mod 10` where `offset_bp` is
+    `Helical phase offset` (`0..9`)
+  - increasing phase offset shifts the top-to-bottom seam position without
+    changing base order
   - transition is continuous:
     - below the standard threshold, letters keep near-linear spacing while
       showing strand-phase offsets
     - above the standard threshold, horizontal compaction ramps up
     - at the helical max span, horizontal projection reaches strong compaction
       (`10 bp` occupies approximately the width of `2` letter cells)
+  - in `Condensed 10-row` mode, DNA letters replace/suppress the black
+    backbone line when visible
+  - feature lanes are pushed outward in condensed mode to preserve readability
+    around the DNA text band
   - forward/reverse strand letter placement remains symmetric around the DNA
     baseline (with optional 180° reverse-letter rotation)
   - when active, the map header shows `HELIX ON (<= N bp)` in green

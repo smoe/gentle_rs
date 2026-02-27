@@ -61,7 +61,12 @@ order. Durable architecture constraints and decisions remain in
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:
   - configurable standard letter span threshold
-  - optional helical-compressed letter mode up to higher spans (default 2000 bp)
+  - optional helical-compressed letter mode with explicit layout selector
+    (`continuous-helical` / `condensed-10-row`)
+  - dedicated max-span thresholds for continuous-helical and condensed layouts
+    (default condensed target: 1500 bp)
+  - modulo-10 seam offset control for row alignment (`(bp + offset) % 10`)
+  - condensed layout backbone replacement and outward feature-lane clearance
   - configurable double-strand display with optional 180° reverse-letter rotation
   - optional sequence-panel auto-hide when map letters are visible
 - Linear-map drag selection can now be extracted directly to a new sequence via
@@ -142,13 +147,12 @@ Notes:
 7. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
    - dedicated primary map-mode splicing view is still pending
-   - condensed 10-row helix-mimic DNA-letter layout is not yet available as an
-     explicit selectable layout mode for short/medium spans
-   - current helical renderer still derives phase from fixed `bp % 10` and does
-     not yet apply the persisted modulo offset setting
-     (`linear_sequence_helical_phase_offset_bp`) in base-row placement
-   - the condensed-layout span target/threshold policy (default around
-     1500 bp, user-adjustable) is not yet codified as an explicit contract
+   - condensed 10-row helix-mimic DNA-letter layout baseline is implemented,
+     including dedicated span threshold controls, seam-offset behavior,
+     backbone replacement, and deterministic annotation-clearance tests;
+     dense snapshot/readability benchmarking remains pending
+   - any screenshot-based readability baseline artifacts require manual human
+     contribution while agent screenshot execution remains policy-disabled
    - zoom/pan policy is not yet unified across canvases
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
@@ -249,8 +253,15 @@ Current baseline:
   display settings/UI knobs (including user-adjustable max span)
 - project display setting + UI controls for
   `linear_sequence_helical_phase_offset_bp` already exist with clamp `0..9`
-- renderer currently still uses fixed `bp % 10` phase and continuous projection
-  behavior; modulo offset is not yet applied to base-row placement
+- explicit layout mode selection (`continuous-helical` / `condensed-10-row`)
+  is now available and persisted through project display settings
+- condensed mode now applies modulo-offset row mapping
+  (`(bp + offset_bp) % 10`) and suppresses the black backbone line while DNA
+  letters are visible
+- feature lanes are pushed outward in condensed mode with deterministic
+  readability clearance from the sequence-letter band
+- dedicated condensed layout span threshold is now persisted and configurable
+  (default target 1500 bp) independently of continuous-helical max span
 
 Implementation steps (phased):
 
@@ -258,17 +269,21 @@ Implementation steps (phased):
    - add explicit layout mode (`continuous-helical` vs `condensed-10-row`)
    - implement `(bp + offset_bp) % 10` condensed row mapping
    - suppress/replace black backbone line with DNA letters in condensed mode
+   - status: implemented baseline
 2. Annotation reflow:
    - push feature annotation lanes/labels outward with deterministic minimum
      spacing from condensed DNA text rows
+   - status: implemented baseline
 3. Controls + persistence:
    - expose mode + span threshold controls (default target around 1500 bp) in
      Sequence window and Configuration -> Graphics
    - keep live apply/sync + project persistence behavior adapter-equivalent
+   - status: implemented baseline
 4. Tests + docs:
    - add deterministic tests for offsets `0/3/9`, seam behavior, backbone
      replacement, and annotation clearance
    - update help text/tooltips/docs for the new mode semantics
+   - status: implemented baseline
 
 ### XML import integration track (GenBank-first)
 
@@ -429,6 +444,8 @@ Planned upgrades:
 
 - Build visual benchmark fixtures (sparse, dense annotations, dense RE sites,
   promoter/regulatory-heavy loci).
+- If benchmark packs include screenshot/raster artifacts, capture and curation
+  are manual contributions (agent screenshot route remains disabled by policy).
 - Add explicit label-placement modes where useful (for example,
   "inside-preferred" vs "outside-preferred" behavior by feature class).
 - Keep linear/circular/SVG parity for:
@@ -558,11 +575,11 @@ Planned upgrades:
 
 ### Phase D: visualization and workflow UX
 
-- Implement the linear DNA condensed 10-row layout track:
-  - explicit mode selector
-  - deterministic modulo-row mapping + seam offset
-  - user-configured span threshold (default target ~1500 bp)
-  - renderer + UI/settings sync + regression tests
+- Continue dense-case hardening for the linear DNA condensed 10-row layout:
+  - visual benchmark fixtures and regression gates for crowded labels/features
+  - snapshot-style stress coverage for condensed readability constraints
+  - manual screenshot contribution for curated visual baselines where required
+    (agent screenshot capture remains policy-disabled)
 - Continue alternative-splicing follow-ups:
   - dense-fixture regression tests for boundary visibility and label safety
   - coordinate-true geometry invariants
@@ -572,7 +589,8 @@ Planned upgrades:
   - `plate` arrangement mode as first-class engine + adapter entity
   - one-run/one-setup semantics per serial arrangement
   - realism upgrades (topology, intensity, co-migration, lane tables)
-- Add visual benchmark fixtures and readability regression gates for map export.
+- Add visual benchmark fixtures and readability regression gates for map
+  export; treat screenshot/raster baseline assets as manual contributions.
 - Unify zoom/pan policy and close remaining feature-tree UI snapshot gaps.
 
 ### Phase E: integration polish and deferred policy items
