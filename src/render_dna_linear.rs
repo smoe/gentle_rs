@@ -56,7 +56,6 @@ const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
 const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 1.05;
 const CONDENSED_HELICAL_ROW_COUNT: usize = 10;
 const CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP: f32 = 12.0;
-const CONDENSED_HELICAL_ROW_PAIR_PADDING: f32 = 4.0;
 const CONDENSED_HELICAL_STRAND_GAP: f32 = 6.0;
 const CONDENSED_FEATURE_CLEARANCE_PADDING: f32 = 8.0;
 const FEATURE_INLINE_LABEL_FONT_SIZE: f32 = 10.0;
@@ -559,15 +558,8 @@ impl RenderDnaLinear {
         }
     }
 
-    fn condensed_row_step(font_size: f32, show_double_strand: bool) -> f32 {
-        let single = (font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE)
-            .max(CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP);
-        if !show_double_strand {
-            return single;
-        }
-        single.max(
-            font_size * 2.0 + CONDENSED_HELICAL_STRAND_GAP + CONDENSED_HELICAL_ROW_PAIR_PADDING,
-        )
+    fn condensed_row_step(font_size: f32, _show_double_strand: bool) -> f32 {
+        (font_size * CONDENSED_HELICAL_ROW_SPACING_SCALE).max(CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP)
     }
 
     fn condensed_helical_text_half_extent(&self, viewport: LinearViewport) -> Option<f32> {
@@ -586,8 +578,7 @@ impl RenderDnaLinear {
             SEQUENCE_BASE_TEXT_MAX_FONT_SIZE,
         );
         let row_step = Self::condensed_row_step(font_size, show_double_strand);
-        let row_offset_max =
-            row_step * (CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32 * 0.5);
+        let row_offset_max = row_step * CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32;
         let strand_half_gap = if show_double_strand {
             CONDENSED_HELICAL_STRAND_GAP * 0.5
         } else {
@@ -1334,12 +1325,15 @@ impl RenderDnaLinear {
             family: FontFamily::Monospace,
         };
         let baseline = self.baseline_y();
-        let strand_half_gap = CONDENSED_HELICAL_STRAND_GAP * 0.5;
+        let strand_half_gap = if show_double_strand {
+            CONDENSED_HELICAL_STRAND_GAP * 0.5
+        } else {
+            0.0
+        };
         let forward_y = baseline - font_size - strand_half_gap;
         let reverse_y = baseline + strand_half_gap;
         let condensed_row_step = Self::condensed_row_step(font_size, show_double_strand);
         let condensed_row_top_index = CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1);
-        let condensed_row_center = condensed_row_top_index as f32 * 0.5;
         let helical_phase_row_divisor = condensed_row_top_index.max(1) as f32;
         let helical_compression =
             Self::sequence_x_compression(render_status.active_mode, helical_t);
@@ -1359,26 +1353,20 @@ impl RenderDnaLinear {
             let x1_projected = project_x(x1);
             let x2_projected = project_x(x2);
             let x_center = (x1_projected + x2_projected) * 0.5;
-            let helical_phase = if use_condensed_helical {
+            let (forward_y_bp, reverse_y_bp) = if use_condensed_helical {
                 let row_from_bottom =
                     Self::helical_phase_row_from_bottom(bp, helical_phase_offset_bp);
                 let row_from_top = condensed_row_top_index.saturating_sub(row_from_bottom);
-                let centered = row_from_top as f32 - condensed_row_center;
-                centered * condensed_row_step
+                let row_offset = row_from_top as f32 * condensed_row_step;
+                (forward_y - row_offset, reverse_y + row_offset)
             } else if helical_visual_t > 0.0 {
                 let row_from_bottom =
                     Self::helical_phase_row_from_bottom(bp, helical_phase_offset_bp);
                 let normalized = (row_from_bottom as f32 / helical_phase_row_divisor) - 0.5;
-                normalized * font_size * helical_phase_scale
+                let helical_phase = normalized * font_size * helical_phase_scale;
+                (forward_y + helical_phase, reverse_y - helical_phase)
             } else {
-                0.0
-            };
-            let forward_y_bp = forward_y + helical_phase;
-            let reverse_y_bp = if use_condensed_helical {
-                // Keep both strands phase-aligned in condensed mode to avoid row-crossing overlap.
-                reverse_y + helical_phase
-            } else {
-                reverse_y - helical_phase
+                (forward_y, reverse_y)
             };
             let selection_min_y = forward_y_bp.min(reverse_y_bp) - 1.0;
             let selection_max_y = if show_double_strand {
@@ -2376,14 +2364,9 @@ mod tests {
     }
 
     #[test]
-    fn condensed_helical_rows_use_non_overlapping_step_size() {
+    fn condensed_helical_rows_scale_step_with_font_size() {
         let row_step = RenderDnaLinear::condensed_row_step(SEQUENCE_BASE_TEXT_MAX_FONT_SIZE, true);
-        assert!(
-            row_step
-                >= SEQUENCE_BASE_TEXT_MAX_FONT_SIZE * 2.0
-                    + CONDENSED_HELICAL_STRAND_GAP
-                    + CONDENSED_HELICAL_ROW_PAIR_PADDING
-        );
+        assert!(row_step >= SEQUENCE_BASE_TEXT_MAX_FONT_SIZE * CONDENSED_HELICAL_ROW_SPACING_SCALE);
     }
 
     #[test]
@@ -2432,15 +2415,26 @@ mod tests {
         let forward_y = -font_size - strand_half_gap;
         let reverse_y = strand_half_gap;
         let row_step = RenderDnaLinear::condensed_row_step(font_size, true);
-        let row_top_index = CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1);
-        let row_center = row_top_index as f32 * 0.5;
+        let mut previous_forward: Option<f32> = None;
+        let mut previous_reverse: Option<f32> = None;
         for row_from_top in 0..CONDENSED_HELICAL_ROW_COUNT {
-            let centered = row_from_top as f32 - row_center;
-            let phase = centered * row_step;
-            let forward = forward_y + phase;
-            let reverse = reverse_y + phase;
+            let row_offset = row_from_top as f32 * row_step;
+            let forward = forward_y - row_offset;
+            let reverse = reverse_y + row_offset;
             assert!(reverse > forward);
-            assert!((reverse - forward - (font_size + CONDENSED_HELICAL_STRAND_GAP)).abs() < 0.001);
+            if row_from_top == 0 {
+                assert!(
+                    (reverse - forward - (font_size + CONDENSED_HELICAL_STRAND_GAP)).abs() < 0.001
+                );
+            }
+            if let Some(prev_forward) = previous_forward {
+                assert!((prev_forward - forward - row_step).abs() < 0.001);
+            }
+            if let Some(prev_reverse) = previous_reverse {
+                assert!((reverse - prev_reverse - row_step).abs() < 0.001);
+            }
+            previous_forward = Some(forward);
+            previous_reverse = Some(reverse);
         }
     }
 
@@ -2468,8 +2462,9 @@ mod tests {
         let half_extent = renderer
             .condensed_helical_text_half_extent(viewport)
             .expect("condensed extent");
-        let minimum_half_extent =
-            CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP * CONDENSED_HELICAL_ROW_COUNT as f32 * 0.5;
+        let minimum_half_extent = (CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1) as f32
+            * CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP)
+            + SEQUENCE_BASE_TEXT_MIN_FONT_SIZE;
         assert!(half_extent >= minimum_half_extent - 0.5);
         assert_eq!(renderer.features.len(), 1);
         let clearance = renderer.baseline_y() - renderer.features[0].rect.bottom();

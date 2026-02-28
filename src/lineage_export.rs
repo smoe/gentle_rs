@@ -142,6 +142,7 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
         template_name: Option<String>,
         routine_id: Option<String>,
         status: String,
+        status_message: Option<String>,
         input_bindings: Vec<crate::engine::LineageMacroPortBinding>,
         output_bindings: Vec<crate::engine::LineageMacroPortBinding>,
         expanded_op_ids: Vec<String>,
@@ -164,6 +165,7 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
             template_name: instance.template_name.clone(),
             routine_id: instance.routine_id.clone(),
             status: format!("{:?}", instance.status).to_ascii_lowercase(),
+            status_message: instance.status_message.clone(),
             input_bindings: instance.bound_inputs.clone(),
             output_bindings: instance.bound_outputs.clone(),
             expanded_op_ids: instance.expanded_op_ids.clone(),
@@ -591,6 +593,23 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
                 .set("font-size", 10)
                 .set("fill", "#30303a"),
             );
+        if let Some(status_message) = macro_row.status_message.as_deref() {
+            let compact = if status_message.chars().count() > 72 {
+                let mut truncated = status_message.chars().take(72).collect::<String>();
+                truncated.push_str("...");
+                truncated
+            } else {
+                status_message.to_string()
+            };
+            doc = doc.add(
+                Text::new(format!("note={compact}"))
+                    .set("x", x + 46.0)
+                    .set("y", y + 24.0)
+                    .set("font-family", "Helvetica, Arial, sans-serif")
+                    .set("font-size", 9)
+                    .set("fill", "#7a1c1c"),
+            );
+        }
     }
 
     doc.to_string()

@@ -77,8 +77,15 @@ order. Durable architecture constraints and decisions remain in
   - preflight now validates both input and output ports and reports
     `contract_source` (`template_ports` or `routine_catalog`) in
     `gentle.macro_template_preflight.v1`
-  - successful `macros run` and `macros template-run` now append deterministic
-    lineage macro-instance records (typed bound inputs/outputs + emitted op ids)
+  - preflight now also enforces baseline cross-port semantics:
+    - output alias/collision diagnostics
+    - sequence/container compatibility diagnostics
+    - sequence-anchor semantic checks when one sequence context is bound
+  - mutating `macros run` and `macros template-run` now append deterministic
+    lineage macro-instance records for success and failure/cancel pathways
+    (typed bound inputs/outputs + emitted op ids + status/status_message)
+  - macro-instance introspection commands are available:
+    `macros instance-list`, `macros instance-show`
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
 
@@ -181,11 +188,14 @@ Notes:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
      depth is still incomplete
-   - output-port validation is now present, but richer cross-port semantic
-     constraints are not yet enforced (for example compatibility/alias rules)
-   - macro-instance lineage recording + graph/SVG box rendering is now in
-     place, but richer drill-down UX and failure/cancel record pathways are
-     still pending
+   - richer preflight semantics are now baseline, but protocol-specific
+     constraints remain incomplete (for example routine-family-specific
+     compatibility constraints beyond generic alias/container/anchor checks)
+   - macro-instance lineage recording now covers success and failure/cancel and
+     supports shell introspection, but replay-oriented helpers are still pending
+     (for example per-instance re-run from recorded bindings)
+   - macro-node drill-down now has a persistent detail panel in GUI lineage
+     view, but dense-view controls are still pending (edge-density/aggregation)
    - protocol-family template packs are still incomplete (restriction-only,
      Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi)
    - cross-tool benchmarking (Serial Cloner + MacVector + SnapGene synthesis)
@@ -323,6 +333,8 @@ Current baseline:
   readability clearance from the sequence-letter band
 - condensed row spacing and baseline band reservation were increased to prevent
   vertical letter overlap and preserve a dedicated readable letter band
+- condensed row stacks now anchor outward from the baseline with a deterministic
+  minimum per-row step so dense tracks retain full 10-row readability
 - dedicated condensed layout span threshold is now persisted and configurable
   (default target 1500 bp) independently of continuous-helical max span
 
@@ -404,23 +416,74 @@ Current baseline:
     `contract_source` (`template_ports` or `routine_catalog`)
 - workflow macro templates now accept optional typed `input_ports` and
   `output_ports` contracts in template metadata.
-- successful `macros run` and `macros template-run` now persist lineage
-  macro-instance records (bound inputs/outputs + emitted op ids).
+- preflight now enforces baseline cross-port semantics (alias/collision,
+  container/sequence compatibility, anchor checks with bound sequence context).
+- mutating `macros run` and `macros template-run` now persist lineage
+  macro-instance records for success/failure/cancel
+  (bound inputs/outputs + emitted op ids + status/status_message).
+- shared-shell introspection for recorded macro instances is now available via
+  `macros instance-list` and `macros instance-show`.
 - lineage graph and lineage SVG export now include explicit macro box nodes and
   input/output edge rendering.
+- GUI lineage now includes a persistent selected-macro detail pane with
+  inputs/outputs and emitted operation drill-down.
 - routine-family coverage and deeper semantic validation are still incomplete.
 
 Planned work:
 
-1. Extend preflight from baseline typed checks to richer semantic constraints:
-   cross-port compatibility rules, alias relationships, and higher-fidelity
-   diagnostics for ambiguous routine/template bindings.
-2. Add explicit failed/cancelled macro-instance recording paths and
-   first-class replay/introspection helpers.
-3. Expand macro-node UX details (detail panes, operation drill-down,
-   edge-density controls) for dense projects.
-4. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
+1. Extend semantic preflight from baseline generic checks to
+   routine-family-specific rules (protocol-aware compatibility models).
+2. Expand macro-node dense-view controls (edge-density filtering/aggregation,
+   compact operation summaries for large projects).
+3. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
    Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
+4. Postponed: add replay helpers for recorded macro instances only after
+   routine-family preflight models and protocol-family packs are stabilized.
+
+Postponed item detail (deferred): macro-instance replay helpers
+
+1. Deferral reason
+Replay semantics are currently too volatile while routine-family constraints and
+template packs are still moving. Implementing replay now would lock in
+incomplete behavior and create churn in replay contracts.
+
+2. Target command surface (when resumed)
+`macros instance-replay MACRO_INSTANCE_ID [--transactional] [--validate-only] [--allow-template-drift] [--output-prefix PREFIX]`
+`macros instance-diff MACRO_INSTANCE_ID [--against LAST|INSTANCE_ID]`
+
+3. Required replay metadata additions
+Store `template_schema`, `template_name`, and resolved binding payload hash.
+Store rendered macro script hash and optional rendered script snapshot.
+Store operation-journal span boundaries and run fingerprint for deterministic
+comparison.
+
+4. Replay execution contract
+Load macro instance by ID and resolve replay source.
+If template-based and template changed, fail closed unless
+`--allow-template-drift` is set.
+Re-run preflight with recorded bindings.
+Apply optional output-id prefix remapping to avoid collisions in current state.
+Execute using the same shared shell parser/executor path as normal macros.
+Return a deterministic replay report containing old/new op-id mapping.
+
+5. Diff contract
+Compare original and replayed runs by operation family sequence and
+created/changed sequence IDs.
+Report `equivalent` when semantic outputs match after optional ID remapping.
+Report structured mismatch rows when operation families or outputs diverge.
+
+6. Failure/cancel behavior
+Replay failure/cancel must append a new macro-instance lineage row with
+`status=failed|cancelled` and a status message.
+Replay should never mutate state when `--validate-only` is used.
+
+7. Acceptance tests (resume criteria)
+Deterministic replay of a template-backed successful macro with
+`equivalent=true`.
+Deterministic replay with output-prefix remap avoids ID collisions.
+Template drift is rejected by default and accepted only with
+`--allow-template-drift`.
+Replay failure path records failed macro-instance lineage with status message.
 
 Detailed plan and support crosswalk:
 

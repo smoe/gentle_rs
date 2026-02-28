@@ -1,5 +1,5 @@
 {
-   "command_count": 164,
+   "command_count": 166,
    "commands": [
       {
          "aliases": [
@@ -1032,6 +1032,30 @@
          "path": "macros run",
          "summary": "Execute multi-statement workflow script.",
          "usage": "macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros instance-list",
+         "summary": "List recorded macro-instance lineage rows.",
+         "usage": "macros instance-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "macros instance-show",
+         "summary": "Show one recorded macro-instance lineage row.",
+         "usage": "macros instance-show MACRO_INSTANCE_ID"
       },
       {
          "aliases": [],

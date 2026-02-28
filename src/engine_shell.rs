@@ -556,6 +556,10 @@ pub enum ShellCommand {
         script: String,
         transactional: bool,
     },
+    MacrosInstanceList,
+    MacrosInstanceShow {
+        macro_instance_id: String,
+    },
     MacrosTemplateList,
     MacrosTemplateShow {
         name: String,
@@ -1561,6 +1565,21 @@ fn validate_port_values(
             }
             Ok(())
         }
+        "guide_oligo_set" => {
+            if direction == RoutinePortDirection::Input {
+                let names = engine
+                    .list_guide_oligo_sets(None)
+                    .into_iter()
+                    .map(|set| set.oligo_set_id)
+                    .collect::<HashSet<_>>();
+                for value in values {
+                    if !names.contains(value) {
+                        return Err(format!("Guide oligo set '{}' was not found", value));
+                    }
+                }
+            }
+            Ok(())
+        }
         "string" | "path" => Ok(()),
         "number" => {
             for value in values {
@@ -1588,6 +1607,327 @@ fn validate_port_values(
             Ok(())
         }
         other => Err(format!("Unsupported routine port kind '{}'", other)),
+    }
+}
+
+fn normalize_port_kind(kind: &str) -> String {
+    kind.trim().to_ascii_lowercase()
+}
+
+fn is_entity_port_kind(kind: &str) -> bool {
+    matches!(
+        normalize_port_kind(kind).as_str(),
+        "sequence" | "container" | "candidate_set" | "guide_set" | "guide_oligo_set"
+    )
+}
+
+fn existing_values_for_port_kind(engine: &GentleEngine, kind: &str) -> HashSet<String> {
+    match normalize_port_kind(kind).as_str() {
+        "sequence" => engine.state().sequences.keys().cloned().collect::<HashSet<_>>(),
+        "container" => engine
+            .state()
+            .container_state
+            .containers
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>(),
+        "candidate_set" => engine
+            .list_candidate_sets()
+            .into_iter()
+            .map(|set| set.name)
+            .collect::<HashSet<_>>(),
+        "guide_set" => engine
+            .list_guide_sets()
+            .into_iter()
+            .map(|set| set.guide_set_id)
+            .collect::<HashSet<_>>(),
+        "guide_oligo_set" => engine
+            .list_guide_oligo_sets(None)
+            .into_iter()
+            .map(|set| set.oligo_set_id)
+            .collect::<HashSet<_>>(),
+        _ => HashSet::new(),
+    }
+}
+
+fn sequence_anchor_matches_filter(
+    anchor_kind: Option<&String>,
+    anchor_label: Option<&String>,
+    feature: &gb_io::seq::Feature,
+) -> bool {
+    if feature.kind.to_string().eq_ignore_ascii_case("SOURCE") {
+        return false;
+    }
+    if let Some(expected_kind) = anchor_kind {
+        if !feature.kind.to_string().eq_ignore_ascii_case(expected_kind) {
+            return false;
+        }
+    }
+    if let Some(expected_label) = anchor_label {
+        let expected = expected_label.to_ascii_uppercase();
+        let mut found = false;
+        for key in [
+            "label",
+            "gene",
+            "locus_tag",
+            "product",
+            "standard_name",
+            "note",
+        ] {
+            for value in feature.qualifier_values(key.into()) {
+                let upper = value.to_ascii_uppercase();
+                if upper == expected || upper.contains(&expected) {
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+        if !found {
+            return false;
+        }
+    }
+    true
+}
+
+fn validate_sequence_anchor_against_sequence(
+    dna: &DNAsequence,
+    anchor: &SequenceAnchor,
+    anchor_port_id: &str,
+) -> Result<(), String> {
+    match anchor {
+        SequenceAnchor::Position { zero_based } => {
+            if *zero_based > dna.len() {
+                return Err(format!(
+                    "position {} is out of bounds for sequence length {}",
+                    zero_based,
+                    dna.len()
+                ));
+            }
+            Ok(())
+        }
+        SequenceAnchor::FeatureBoundary {
+            feature_kind,
+            feature_label,
+            occurrence,
+            ..
+        } => {
+            let mut match_count = 0usize;
+            for feature in dna.features() {
+                if !sequence_anchor_matches_filter(feature_kind.as_ref(), feature_label.as_ref(), feature)
+                {
+                    continue;
+                }
+                let Ok((from, to)) = feature.location.find_bounds() else {
+                    continue;
+                };
+                if from < 0 || to < 0 {
+                    continue;
+                }
+                let from = from as usize;
+                let to = to as usize;
+                if from > dna.len() || to > dna.len() {
+                    continue;
+                }
+                match_count += 1;
+            }
+            if match_count == 0 {
+                return Err(format!(
+                    "anchor '{}' did not match any feature on this sequence",
+                    anchor_port_id
+                ));
+            }
+            let idx = occurrence.unwrap_or(0);
+            if idx >= match_count {
+                return Err(format!(
+                    "anchor '{}' requested occurrence {} but only {} match(es) exist",
+                    anchor_port_id, idx, match_count
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn apply_cross_port_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+) {
+    let checked_rows = report
+        .checked_ports
+        .iter()
+        .filter(|row| matches!(row.status, RoutinePortValidationStatus::Ok))
+        .collect::<Vec<_>>();
+    if checked_rows.is_empty() {
+        return;
+    }
+
+    let input_rows = checked_rows
+        .iter()
+        .copied()
+        .filter(|row| row.direction == RoutinePortDirection::Input)
+        .collect::<Vec<_>>();
+    let output_rows = checked_rows
+        .iter()
+        .copied()
+        .filter(|row| row.direction == RoutinePortDirection::Output)
+        .collect::<Vec<_>>();
+
+    // 1) Output entity alias collisions (same concrete identifier used by multiple output ports).
+    let mut output_aliases: HashMap<(String, String), Vec<String>> = HashMap::new();
+    for row in &output_rows {
+        if !is_entity_port_kind(&row.kind) {
+            continue;
+        }
+        let kind = normalize_port_kind(&row.kind);
+        for value in &row.values {
+            output_aliases
+                .entry((kind.clone(), value.clone()))
+                .or_default()
+                .push(row.port_id.clone());
+        }
+    }
+    for ((kind, value), ports) in output_aliases {
+        if ports.len() <= 1 {
+            continue;
+        }
+        report.errors.push(format!(
+            "Output alias conflict: {} value '{}' is bound by multiple output ports ({})",
+            kind,
+            value,
+            ports.join(", ")
+        ));
+    }
+
+    // 2) Input/output alias relationship diagnostics (same entity id reused across directions).
+    let mut input_values_by_kind: HashMap<String, HashSet<String>> = HashMap::new();
+    for row in &input_rows {
+        if !is_entity_port_kind(&row.kind) {
+            continue;
+        }
+        let kind = normalize_port_kind(&row.kind);
+        for value in &row.values {
+            input_values_by_kind
+                .entry(kind.clone())
+                .or_default()
+                .insert(value.clone());
+        }
+    }
+    for row in &output_rows {
+        if !is_entity_port_kind(&row.kind) {
+            continue;
+        }
+        let kind = normalize_port_kind(&row.kind);
+        let Some(input_values) = input_values_by_kind.get(&kind) else {
+            continue;
+        };
+        for value in &row.values {
+            if input_values.contains(value) {
+                report.warnings.push(format!(
+                    "Output alias: output port '{}' reuses existing {} id '{}'",
+                    row.port_id, kind, value
+                ));
+            }
+        }
+    }
+
+    // 3) Output collision diagnostics against current state.
+    let mut existing_cache: HashMap<String, HashSet<String>> = HashMap::new();
+    for row in &output_rows {
+        if !is_entity_port_kind(&row.kind) {
+            continue;
+        }
+        let kind = normalize_port_kind(&row.kind);
+        let existing = existing_cache
+            .entry(kind.clone())
+            .or_insert_with(|| existing_values_for_port_kind(engine, &kind));
+        for value in &row.values {
+            if existing.contains(value) {
+                report.warnings.push(format!(
+                    "Output {} id '{}' already exists in current state",
+                    kind, value
+                ));
+            }
+        }
+    }
+
+    // 4) Sequence/container cross-port compatibility checks.
+    let input_sequences: HashSet<String> = input_rows
+        .iter()
+        .filter(|row| normalize_port_kind(&row.kind) == "sequence")
+        .flat_map(|row| row.values.iter().cloned())
+        .collect();
+    let input_containers: HashSet<String> = input_rows
+        .iter()
+        .filter(|row| normalize_port_kind(&row.kind) == "container")
+        .flat_map(|row| row.values.iter().cloned())
+        .collect();
+    if !input_sequences.is_empty() && !input_containers.is_empty() {
+        let mut members: HashSet<String> = HashSet::new();
+        for container_id in &input_containers {
+            if let Some(container) = engine.state().container_state.containers.get(container_id) {
+                members.extend(container.members.iter().cloned());
+            }
+        }
+        for seq_id in &input_sequences {
+            if !members.contains(seq_id) {
+                report.warnings.push(format!(
+                    "Cross-port mismatch: input sequence '{}' is not present in any bound input container",
+                    seq_id
+                ));
+            }
+        }
+    }
+
+    // 5) Sequence-anchor semantic validation when one concrete sequence input is bound.
+    let anchor_rows = input_rows
+        .iter()
+        .filter(|row| normalize_port_kind(&row.kind) == "sequence_anchor")
+        .copied()
+        .collect::<Vec<_>>();
+    if !anchor_rows.is_empty() {
+        let bound_sequences = input_sequences.into_iter().collect::<Vec<_>>();
+        if bound_sequences.len() == 1 {
+            let seq_id = &bound_sequences[0];
+            if let Some(dna) = engine.state().sequences.get(seq_id) {
+                for row in anchor_rows {
+                    for raw in &row.values {
+                        match validate_sequence_anchor_binding(raw) {
+                            Ok(anchor) => {
+                                if let Err(err) = validate_sequence_anchor_against_sequence(
+                                    dna,
+                                    &anchor,
+                                    &row.port_id,
+                                ) {
+                                    report.errors.push(format!(
+                                        "Port '{}' anchor check failed for sequence '{}': {}",
+                                        row.port_id, seq_id, err
+                                    ));
+                                }
+                            }
+                            Err(err) => {
+                                report.errors.push(format!(
+                                    "Port '{}' anchor parsing failed during semantic check: {}",
+                                    row.port_id, err
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        } else if bound_sequences.is_empty() {
+            report.warnings.push(
+                "Anchor semantic checks skipped: no input sequence binding was available"
+                    .to_string(),
+            );
+        } else {
+            report.warnings.push(format!(
+                "Anchor semantic checks skipped: {} input sequences were bound (expected one)",
+                bound_sequences.len()
+            ));
+        }
     }
 }
 
@@ -1660,10 +2000,22 @@ fn preflight_workflow_macro_template_run(
                 ));
             } else {
                 if matching.len() > 1 {
+                    let candidate_labels = matching
+                        .iter()
+                        .map(|routine| format!("{} ({})", routine.routine_id, routine.family))
+                        .collect::<Vec<_>>();
                     report.warnings.push(format!(
-                        "Multiple routine catalog entries reference template '{}'; using first match '{}'",
-                        template.name, matching[0].routine_id
+                        "Multiple routine catalog entries reference template '{}': {}",
+                        template.name,
+                        candidate_labels.join(", ")
                     ));
+                    if template.input_ports.is_empty() && template.output_ports.is_empty() {
+                        report.errors.push(format!(
+                            "Ambiguous routine binding for template '{}' ({} matches) without explicit template port contract",
+                            template.name,
+                            matching.len()
+                        ));
+                    }
                 }
                 let routine = matching[0].clone();
                 report.routine_id = Some(routine.routine_id.clone());
@@ -1889,6 +2241,8 @@ fn preflight_workflow_macro_template_run(
             }
         }
     }
+
+    apply_cross_port_semantics(engine, &mut report);
 
     Ok(report)
 }
@@ -2526,6 +2880,10 @@ impl ShellCommand {
                     "best-effort"
                 };
                 format!("run {mode} workflow macro '{preview}'")
+            }
+            Self::MacrosInstanceList => "list recorded workflow macro instances".to_string(),
+            Self::MacrosInstanceShow { macro_instance_id } => {
+                format!("show recorded workflow macro instance '{}'", macro_instance_id)
             }
             Self::MacrosTemplateList => "list workflow macro templates".to_string(),
             Self::MacrosTemplateShow { name } => {
@@ -5226,7 +5584,7 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "macros requires a subcommand: run, template-list, template-show, template-put, template-delete, template-import, template-run"
+            "macros requires a subcommand: run, instance-list, instance-show, template-list, template-show, template-put, template-delete, template-import, template-run"
                 .to_string(),
         );
     }
@@ -5279,6 +5637,20 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::MacrosRun {
                 script,
                 transactional,
+            })
+        }
+        "instance-list" => {
+            if tokens.len() != 2 {
+                return Err("macros instance-list takes no options".to_string());
+            }
+            Ok(ShellCommand::MacrosInstanceList)
+        }
+        "instance-show" => {
+            if tokens.len() != 3 {
+                return Err("macros instance-show requires MACRO_INSTANCE_ID".to_string());
+            }
+            Ok(ShellCommand::MacrosInstanceShow {
+                macro_instance_id: tokens[2].clone(),
             })
         }
         "template-list" => {
@@ -5459,7 +5831,7 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown macros subcommand '{other}' (expected run, template-list, template-show, template-put, template-delete, template-import, template-run)"
+            "Unknown macros subcommand '{other}' (expected run, instance-list, instance-show, template-list, template-show, template-put, template-delete, template-import, template-run)"
         )),
     }
 }
@@ -7241,6 +7613,7 @@ fn record_macro_lineage_instance(
     bound_inputs: Vec<LineageMacroPortBinding>,
     bound_outputs: Vec<LineageMacroPortBinding>,
     status: MacroInstanceStatus,
+    status_message: Option<String>,
 ) -> String {
     let operation_records = engine
         .operation_log()
@@ -7264,8 +7637,22 @@ fn record_macro_lineage_instance(
         bound_outputs,
         expanded_op_ids,
         status,
+        status_message,
     };
     engine.record_lineage_macro_instance(instance)
+}
+
+fn macro_status_from_error(err: &str) -> MacroInstanceStatus {
+    let lower = err.to_ascii_lowercase();
+    if lower.contains("cancelled")
+        || lower.contains("canceled")
+        || lower.contains("timeout")
+        || lower.contains("interrupted")
+    {
+        MacroInstanceStatus::Cancelled
+    } else {
+        MacroInstanceStatus::Failed
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -8738,23 +9125,71 @@ pub fn execute_shell_command_with_options(
             transactional,
         } => {
             let start_operation_index = engine.operation_log().len();
-            let mut run = run_workflow_macro(engine, script, *transactional, options)?;
-            let macro_instance_id = record_macro_lineage_instance(
-                engine,
-                start_operation_index,
-                None,
-                None,
-                None,
-                vec![],
-                vec![],
-                MacroInstanceStatus::Ok,
-            );
-            if let Some(map) = run.output.as_object_mut() {
-                map.insert("macro_instance_id".to_string(), json!(macro_instance_id));
-                map.insert("macro_recorded".to_string(), json!(true));
+            match run_workflow_macro(engine, script, *transactional, options) {
+                Ok(mut run) => {
+                    let macro_instance_id = record_macro_lineage_instance(
+                        engine,
+                        start_operation_index,
+                        None,
+                        None,
+                        None,
+                        vec![],
+                        vec![],
+                        MacroInstanceStatus::Ok,
+                        None,
+                    );
+                    if let Some(map) = run.output.as_object_mut() {
+                        map.insert("macro_instance_id".to_string(), json!(macro_instance_id));
+                        map.insert("macro_recorded".to_string(), json!(true));
+                    }
+                    run.state_changed = true;
+                    run
+                }
+                Err(err) => {
+                    let status = macro_status_from_error(&err);
+                    let macro_instance_id = record_macro_lineage_instance(
+                        engine,
+                        start_operation_index,
+                        None,
+                        None,
+                        None,
+                        vec![],
+                        vec![],
+                        status,
+                        Some(err.clone()),
+                    );
+                    return Err(format!(
+                        "{} [macro_instance_id={}]",
+                        err, macro_instance_id
+                    ));
+                }
             }
-            run.state_changed = true;
-            run
+        }
+        ShellCommand::MacrosInstanceList => {
+            let instances = engine.lineage_macro_instances().to_vec();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.lineage_macro_instances.v1",
+                    "count": instances.len(),
+                    "instances": instances
+                }),
+            }
+        }
+        ShellCommand::MacrosInstanceShow { macro_instance_id } => {
+            let instance = engine
+                .lineage_macro_instances()
+                .iter()
+                .find(|instance| instance.macro_instance_id == *macro_instance_id)
+                .cloned()
+                .ok_or_else(|| format!("Macro instance '{}' was not found", macro_instance_id))?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.lineage_macro_instance.v1",
+                    "instance": instance
+                }),
+            }
         }
         ShellCommand::MacrosTemplateList => {
             let templates = engine.list_workflow_macro_templates();
@@ -8902,37 +9337,80 @@ pub fn execute_shell_command_with_options(
                 }
             } else {
                 if !preflight.can_execute() {
+                    let macro_instance_id = record_macro_lineage_instance(
+                        engine,
+                        engine.operation_log().len(),
+                        Some(name.clone()),
+                        preflight.routine_id.clone(),
+                        preflight.routine_title.clone(),
+                        macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+                        macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
+                        MacroInstanceStatus::Failed,
+                        Some(format!(
+                            "preflight failed: {}",
+                            preflight.errors.join("; ")
+                        )),
+                    );
                     return Err(format!(
-                        "Workflow macro template '{}' preflight failed: {}",
+                        "Workflow macro template '{}' preflight failed: {} [macro_instance_id={}]",
                         name,
-                        preflight.errors.join("; ")
+                        preflight.errors.join("; "),
+                        macro_instance_id
                     ));
                 }
                 let script = engine
                     .render_workflow_macro_template_script(name, bindings)
                     .map_err(|e| e.to_string())?;
                 let start_operation_index = engine.operation_log().len();
-                let mut run = run_workflow_macro(engine, &script, *transactional, options)?;
-                let macro_instance_id = record_macro_lineage_instance(
-                    engine,
-                    start_operation_index,
-                    Some(name.clone()),
-                    preflight.routine_id.clone(),
-                    preflight.routine_title.clone(),
-                    macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
-                    macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
-                    MacroInstanceStatus::Ok,
-                );
-                run.state_changed = true;
-                run.output = json!({
-                    "template_name": name,
-                    "bindings": bindings,
-                    "expanded_script": script,
-                    "macro_instance_id": macro_instance_id,
-                    "preflight": preflight,
-                    "run": run.output
-                });
-                run
+                match run_workflow_macro(engine, &script, *transactional, options) {
+                    Ok(mut run) => {
+                        let macro_instance_id = record_macro_lineage_instance(
+                            engine,
+                            start_operation_index,
+                            Some(name.clone()),
+                            preflight.routine_id.clone(),
+                            preflight.routine_title.clone(),
+                            macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+                            macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
+                            MacroInstanceStatus::Ok,
+                            None,
+                        );
+                        run.state_changed = true;
+                        run.output = json!({
+                            "template_name": name,
+                            "bindings": bindings,
+                            "expanded_script": script,
+                            "macro_instance_id": macro_instance_id,
+                            "preflight": preflight,
+                            "run": run.output
+                        });
+                        run
+                    }
+                    Err(err) => {
+                        let status = macro_status_from_error(&err);
+                        let macro_instance_id = record_macro_lineage_instance(
+                            engine,
+                            start_operation_index,
+                            Some(name.clone()),
+                            preflight.routine_id.clone(),
+                            preflight.routine_title.clone(),
+                            macro_bindings_from_preflight(
+                                &preflight,
+                                RoutinePortDirection::Input,
+                            ),
+                            macro_bindings_from_preflight(
+                                &preflight,
+                                RoutinePortDirection::Output,
+                            ),
+                            status,
+                            Some(err.clone()),
+                        );
+                        return Err(format!(
+                            "{} [macro_instance_id={}]",
+                            err, macro_instance_id
+                        ));
+                    }
+                }
             }
         }
         ShellCommand::CandidatesList => {
@@ -10792,6 +11270,22 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+
+        let instance_list =
+            parse_shell_line("macros instance-list").expect("parse macros instance-list");
+        match instance_list {
+            ShellCommand::MacrosInstanceList => {}
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let instance_show = parse_shell_line("macros instance-show macro-1")
+            .expect("parse macros instance-show");
+        match instance_show {
+            ShellCommand::MacrosInstanceShow { macro_instance_id } => {
+                assert_eq!(macro_instance_id, "macro-1");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 
     #[test]
@@ -11856,6 +12350,214 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_macros_template_run_preflight_failure_records_macro_instance() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let path = format!(
+            "{}/assets/cloning_patterns_catalog/sequence/transform/branch_reverse_complement.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+            .expect("import branch template");
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "branch_reverse_complement".to_string(),
+                bindings: HashMap::new(),
+                transactional: false,
+                validate_only: false,
+            },
+        )
+        .expect_err("preflight should fail");
+        assert!(err.contains("macro_instance_id="));
+        assert_eq!(engine.state().lineage.macro_instances.len(), 1);
+        let instance = &engine.state().lineage.macro_instances[0];
+        assert_eq!(instance.status, MacroInstanceStatus::Failed);
+        assert_eq!(instance.template_name.as_deref(), Some("branch_reverse_complement"));
+        assert!(instance.status_message.is_some());
+    }
+
+    #[test]
+    fn execute_macros_template_validate_only_checks_anchor_semantics() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateUpsert {
+                name: "anchor_semantics".to_string(),
+                description: Some("anchor semantics test".to_string()),
+                details_url: None,
+                parameters: vec![
+                    WorkflowMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    WorkflowMacroTemplateParam {
+                        name: "anchor_a".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                ],
+                input_ports: vec![
+                    WorkflowMacroTemplatePort {
+                        port_id: "seq_id".to_string(),
+                        kind: "sequence".to_string(),
+                        required: true,
+                        cardinality: "one".to_string(),
+                        description: Some("sequence input".to_string()),
+                    },
+                    WorkflowMacroTemplatePort {
+                        port_id: "anchor_a".to_string(),
+                        kind: "sequence_anchor".to_string(),
+                        required: true,
+                        cardinality: "one".to_string(),
+                        description: Some("anchor input".to_string()),
+                    },
+                ],
+                output_ports: vec![],
+                script: r#"op {"Reverse":{"input":"${seq_id}"}}"#.to_string(),
+            },
+        )
+        .expect("upsert template");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "anchor_semantics".to_string(),
+                bindings: HashMap::from([
+                    ("seq_id".to_string(), "seqA".to_string()),
+                    ("anchor_a".to_string(), "999".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("validate-only");
+        assert!(!run.state_changed);
+        assert_eq!(run.output["can_execute"].as_bool(), Some(false));
+        let preflight_errors = run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            preflight_errors
+                .iter()
+                .any(|message| message.contains("anchor check failed")),
+            "expected semantic anchor validation error, got: {:?}",
+            preflight_errors
+        );
+    }
+
+    #[test]
+    fn execute_macros_template_validate_only_rejects_output_alias_collisions() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateUpsert {
+                name: "alias_collision".to_string(),
+                description: Some("output alias collision".to_string()),
+                details_url: None,
+                parameters: vec![
+                    WorkflowMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    WorkflowMacroTemplateParam {
+                        name: "out_a".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    WorkflowMacroTemplateParam {
+                        name: "out_b".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                ],
+                input_ports: vec![WorkflowMacroTemplatePort {
+                    port_id: "seq_id".to_string(),
+                    kind: "sequence".to_string(),
+                    required: true,
+                    cardinality: "one".to_string(),
+                    description: None,
+                }],
+                output_ports: vec![
+                    WorkflowMacroTemplatePort {
+                        port_id: "out_a".to_string(),
+                        kind: "sequence".to_string(),
+                        required: true,
+                        cardinality: "one".to_string(),
+                        description: None,
+                    },
+                    WorkflowMacroTemplatePort {
+                        port_id: "out_b".to_string(),
+                        kind: "sequence".to_string(),
+                        required: true,
+                        cardinality: "one".to_string(),
+                        description: None,
+                    },
+                ],
+                script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_a}"}}"#.to_string(),
+            },
+        )
+        .expect("upsert template");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "alias_collision".to_string(),
+                bindings: HashMap::from([
+                    ("seq_id".to_string(), "seqA".to_string()),
+                    ("out_a".to_string(), "same_out".to_string()),
+                    ("out_b".to_string(), "same_out".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("validate-only");
+        assert_eq!(run.output["can_execute"].as_bool(), Some(false));
+        let preflight_errors = run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            preflight_errors
+                .iter()
+                .any(|message| message.contains("Output alias conflict")),
+            "expected output alias conflict error, got: {:?}",
+            preflight_errors
+        );
+    }
+
+    #[test]
     fn execute_candidates_macro_runs_multiple_statements() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -12086,6 +12788,88 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         let instance = &engine.state().lineage.macro_instances[0];
         assert!(instance.template_name.is_none());
         assert!(!instance.expanded_op_ids.is_empty());
+    }
+
+    #[test]
+    fn execute_macros_run_failed_records_macro_instance() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosRun {
+                script: r#"op {"Reverse":{"input":"missing","output_id":"bad"}}"#.to_string(),
+                transactional: false,
+            },
+        )
+        .expect_err("macro should fail");
+        assert!(err.contains("macro_instance_id="));
+        assert_eq!(engine.state().lineage.macro_instances.len(), 1);
+        let instance = &engine.state().lineage.macro_instances[0];
+        assert_eq!(instance.status, MacroInstanceStatus::Failed);
+        assert!(instance.status_message.is_some());
+        assert!(instance.expanded_op_ids.is_empty());
+    }
+
+    #[test]
+    fn execute_macros_instance_list_and_show() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosRun {
+                script: r#"op {"Reverse":{"input":"seqA","output_id":"seqA_rev"}}"#.to_string(),
+                transactional: false,
+            },
+        )
+        .expect("run macro");
+
+        let listed = execute_shell_command(&mut engine, &ShellCommand::MacrosInstanceList)
+            .expect("list macro instances");
+        assert!(!listed.state_changed);
+        assert_eq!(
+            listed.output["schema"].as_str(),
+            Some("gentle.lineage_macro_instances.v1")
+        );
+        let instance_id = listed
+            .output
+            .get("instances")
+            .and_then(|rows| rows.as_array())
+            .and_then(|rows| rows.first())
+            .and_then(|row| row.get("macro_instance_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!instance_id.is_empty());
+
+        let shown = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosInstanceShow {
+                macro_instance_id: instance_id,
+            },
+        )
+        .expect("show macro instance");
+        assert!(!shown.state_changed);
+        assert_eq!(
+            shown.output["schema"].as_str(),
+            Some("gentle.lineage_macro_instance.v1")
+        );
+        assert!(
+            shown
+                .output
+                .get("instance")
+                .and_then(|row| row.get("expanded_op_ids"))
+                .and_then(|v| v.as_array())
+                .map(|rows| !rows.is_empty())
+                .unwrap_or(false)
+        );
     }
 
     #[test]

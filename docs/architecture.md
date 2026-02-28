@@ -591,8 +591,12 @@ Command surface:
 - GUI `Patterns` menu now also exposes routine catalog discovery grouped by
   family/status and routine-linked template import actions.
 - Multiple template runs in one project are supported today via normal
-  operation execution and persistence; explicit typed routine metadata and
-  macro-instance graph nodes remain planned follow-up items.
+  operation execution and persistence.
+- Macro-instance lineage nodes are now first-class in graph/SVG rendering and
+  record success/failure/cancel status with optional status message.
+- Shared-shell macro introspection contracts are available via:
+  - `macros instance-list`
+  - `macros instance-show MACRO_INSTANCE_ID`
 
 This enables reusable query composition:
 

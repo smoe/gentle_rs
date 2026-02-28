@@ -275,7 +275,7 @@ Adapter-equivalence guarantee for UI-intent tools:
   - latest helper (`ui_latest_prepared`)
   - open/focus intent resolution (`ui_intent`)
 
-- `macros run/template-list/template-show/template-put/template-delete/template-import/template-run`
+- `macros run/instance-list/instance-show/template-list/template-show/template-put/template-delete/template-import/template-run`
   - shared-shell macro adapter family for full operation/workflow scripting
   - template persistence is backed by engine operations
     `UpsertWorkflowMacroTemplate`/`DeleteWorkflowMacroTemplate`
@@ -296,8 +296,15 @@ Adapter-equivalence guarantee for UI-intent tools:
     (`gentle.macro_template_preflight.v1`) with warnings/errors and typed
     input/output port validation rows (`contract_source` indicates whether
     checks came from template metadata or routine catalog)
-  - successful `macros run` and `macros template-run` responses include
-    `macro_instance_id` and persist one lineage macro-instance record
+  - preflight includes cross-port semantic checks (alias/collision checks,
+    input sequence/container consistency, and sequence-anchor semantics when
+    sequence context is unambiguous)
+  - mutating `macros run` / `macros template-run` executions always persist one
+    lineage macro-instance record (`ok`/`failed`/`cancelled`)
+  - successful runs return `macro_instance_id`; failed runs include
+    `macro_instance_id=...` in error messages
+  - `macros instance-list` and `macros instance-show` expose persisted lineage
+    macro-instance records as first-class introspection contracts
 
 - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
   - shared-shell/CLI routine catalog discovery surface
@@ -617,11 +624,12 @@ Candidate-set semantics:
   - adapter discovery surface:
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
 - Macro-instance lineage baseline:
-  - successful `macros run` / `macros template-run` append one
-    `LineageMacroInstance` record in project lineage state
+  - mutating `macros run` / `macros template-run` append one
+    `LineageMacroInstance` record in project lineage state for success and
+    failure pathways
   - records include deterministic `macro_instance_id`, optional
     `routine_id/template_name`, typed bound inputs/outputs, emitted `op_id`s,
-    and status
+    status, and optional `status_message`
   - lineage graph + lineage SVG consume these records as macro box nodes with
     explicit input/output edges where sequence/container references resolve
 - Candidate macro templates are persisted in project metadata:

@@ -828,6 +828,7 @@ struct LineageRow {
     macro_routine_id: Option<String>,
     macro_template_name: Option<String>,
     macro_status: Option<String>,
+    macro_status_message: Option<String>,
     macro_op_ids: Vec<String>,
     macro_inputs: Vec<LineageMacroPortBinding>,
     macro_outputs: Vec<LineageMacroPortBinding>,
@@ -9856,6 +9857,7 @@ Error: `{err}`"
                         macro_routine_id: None,
                         macro_template_name: None,
                         macro_status: None,
+                        macro_status_message: None,
                         macro_op_ids: vec![],
                         macro_inputs: vec![],
                         macro_outputs: vec![],
@@ -10000,6 +10002,7 @@ Error: `{err}`"
                     macro_routine_id: instance.routine_id.clone(),
                     macro_template_name: instance.template_name.clone(),
                     macro_status: Some(status_label.to_string()),
+                    macro_status_message: instance.status_message.clone(),
                     macro_op_ids: instance.expanded_op_ids.clone(),
                     macro_inputs: instance.bound_inputs.clone(),
                     macro_outputs: instance.bound_outputs.clone(),
@@ -11197,6 +11200,7 @@ Error: `{err}`"
                 macro_routine_id: None,
                 macro_template_name: None,
                 macro_status: None,
+                macro_status_message: None,
                 macro_op_ids: vec![],
                 macro_inputs: vec![],
                 macro_outputs: vec![],
@@ -12304,6 +12308,9 @@ Error: `{err}`"
                                             if let Some(routine_id) = &row.macro_routine_id {
                                                 ui.small(format!("routine_id={routine_id}"));
                                             }
+                                            if let Some(status_message) = &row.macro_status_message {
+                                                ui.small(format!("status_message={status_message}"));
+                                            }
                                         }
                                         LineageNodeKind::Sequence => {
                                             ui.monospace(format!(
@@ -12642,6 +12649,9 @@ Error: `{err}`"
                                         &mut persist_workspace_after_frame,
                                     );
                                 });
+                                if node_response.clicked() {
+                                    self.lineage_graph_selected_node_id = Some(row.node_id.clone());
+                                }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
                                         ui.monospace(
@@ -12723,7 +12733,16 @@ Error: `{err}`"
                                         ui.label("-");
                                     }
                                     LineageNodeKind::Macro => {
-                                        ui.label("-");
+                                        if ui
+                                            .button("Inspect")
+                                            .on_hover_text(
+                                                "Show persistent details for this macro node below",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.lineage_graph_selected_node_id =
+                                                Some(row.node_id.clone());
+                                        }
                                     }
                                     LineageNodeKind::Sequence => {
                                         let mut anchor_text = row
@@ -12796,6 +12815,128 @@ Error: `{err}`"
                 {
                     group.collapsed = !group.collapsed;
                     persist_workspace_after_frame = true;
+                }
+            }
+        }
+        if let Some(selected_node_id) = self.lineage_graph_selected_node_id.as_ref() {
+            if let Some(selected_row) = graph_rows
+                .iter()
+                .find(|row| row.node_id == *selected_node_id)
+                .cloned()
+            {
+                if selected_row.kind == LineageNodeKind::Macro {
+                    ui.separator();
+                    ui.heading("Selected Macro Node");
+                    ui.small(format!(
+                        "{} ({})",
+                        selected_row
+                            .macro_instance_id
+                            .as_deref()
+                            .unwrap_or(&selected_row.node_id),
+                        selected_row.display_name
+                    ));
+                    ui.small(format!(
+                        "status={} | template={} | routine={} | ops={}",
+                        selected_row.macro_status.as_deref().unwrap_or("ok"),
+                        selected_row
+                            .macro_template_name
+                            .as_deref()
+                            .unwrap_or("-"),
+                        selected_row
+                            .macro_routine_id
+                            .as_deref()
+                            .unwrap_or("-"),
+                        selected_row.macro_op_ids.len()
+                    ));
+                    if let Some(status_message) = &selected_row.macro_status_message {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(150, 20, 20),
+                            format!("status message: {status_message}"),
+                        );
+                    }
+                    let render_bindings = |ui: &mut Ui,
+                                           title: &str,
+                                           bindings: &[LineageMacroPortBinding]| {
+                        ui.label(title);
+                        if bindings.is_empty() {
+                            ui.small("- none -");
+                            return;
+                        }
+                        egui::Grid::new(format!(
+                            "lineage_macro_bindings_{}_{}",
+                            selected_row.node_id, title
+                        ))
+                        .striped(true)
+                        .min_col_width(64.0)
+                        .show(ui, |ui| {
+                            ui.strong("Port");
+                            ui.strong("Kind");
+                            ui.strong("Values");
+                            ui.end_row();
+                            for binding in bindings {
+                                ui.monospace(&binding.port_id);
+                                ui.label(binding.kind.clone());
+                                let values = if binding.values.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    binding.values.join(", ")
+                                };
+                                ui.monospace(values);
+                                ui.end_row();
+                            }
+                        });
+                    };
+                    render_bindings(ui, "Inputs", &selected_row.macro_inputs);
+                    render_bindings(ui, "Outputs", &selected_row.macro_outputs);
+
+                    ui.label("Emitted operations");
+                    if selected_row.macro_op_ids.is_empty() {
+                        ui.small("- none -");
+                    } else {
+                        egui::Grid::new(format!("lineage_macro_ops_{}", selected_row.node_id))
+                            .striped(true)
+                            .min_col_width(64.0)
+                            .show(ui, |ui| {
+                                ui.strong("Op ID");
+                                ui.strong("Summary");
+                                ui.end_row();
+                                for op_id in &selected_row.macro_op_ids {
+                                    ui.monospace(op_id);
+                                    ui.label(
+                                        graph_op_label_by_id
+                                            .get(op_id)
+                                            .cloned()
+                                            .unwrap_or_else(|| "-".to_string()),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    }
+
+                    let mut output_sequences = selected_row
+                        .macro_outputs
+                        .iter()
+                        .filter(|binding| binding.kind.eq_ignore_ascii_case("sequence"))
+                        .flat_map(|binding| binding.values.iter().cloned())
+                        .collect::<Vec<_>>();
+                    output_sequences.sort();
+                    output_sequences.dedup();
+                    if !output_sequences.is_empty() {
+                        ui.label("Open output sequence");
+                        ui.horizontal_wrapped(|ui| {
+                            for seq_id in output_sequences {
+                                if ui
+                                    .small_button(seq_id.clone())
+                                    .on_hover_text(
+                                        "Open this sequence output in a dedicated sequence window",
+                                    )
+                                    .clicked()
+                                {
+                                    open_seq = Some(seq_id);
+                                }
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -15954,6 +16095,7 @@ mod tests {
             macro_routine_id: None,
             macro_template_name: None,
             macro_status: None,
+            macro_status_message: None,
             macro_op_ids: vec![],
             macro_inputs: vec![],
             macro_outputs: vec![],

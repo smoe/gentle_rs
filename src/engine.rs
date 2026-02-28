@@ -307,6 +307,7 @@ pub struct LineageMacroInstance {
     pub bound_outputs: Vec<LineageMacroPortBinding>,
     pub expanded_op_ids: Vec<String>,
     pub status: MacroInstanceStatus,
+    pub status_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -19036,6 +19037,7 @@ ORIGIN
             }],
             expanded_op_ids: vec![reverse.op_id],
             status: MacroInstanceStatus::Ok,
+            status_message: None,
         });
         assert!(!macro_instance_id.trim().is_empty());
 

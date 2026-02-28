@@ -488,6 +488,8 @@ fn usage() {
   gentle_cli ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]\n  \
   gentle_cli ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
+  gentle_cli [--state PATH|--project PATH] macros instance-list\n  \
+  gentle_cli [--state PATH|--project PATH] macros instance-show MACRO_INSTANCE_ID\n  \
   gentle_cli [--state PATH|--project PATH] macros template-list\n  \
   gentle_cli [--state PATH|--project PATH] macros template-show TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]\n  \

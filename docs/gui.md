@@ -211,8 +211,14 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
-- Macro-instance nodes are rendered as dedicated box nodes and include hover
-  details for bound ports/op IDs; they are informational (no double-click open).
+- Macro-instance nodes are rendered as dedicated box nodes.
+  - Double-click behavior remains no-op (informational node type).
+  - Click or use table `Inspect` to open a persistent macro detail panel below
+    the lineage graph/table:
+    - status/template/routine summary
+    - typed input/output bindings
+    - emitted operation IDs with operation-label summaries
+    - quick-open buttons for sequence outputs
 
 Node groups in lineage view:
 
@@ -539,6 +545,8 @@ Recommended flow in one sequence window:
       - `macros template-import assets/cloning_patterns_catalog`
       - `macros template-run ...`
       - `macros run --file cloning_flow.gsh --transactional`
+      - `macros instance-list`
+      - `macros instance-show MACRO_INSTANCE_ID`
    - These scripts can orchestrate non-candidate operations through `op ...` and
      `workflow ...` statements.
 
@@ -768,6 +776,8 @@ Current linear map conventions are:
       (`10 bp` occupies approximately the width of `2` letter cells)
   - in `Condensed 10-row` mode, DNA letters replace/suppress the black
     backbone line when visible
+  - condensed rows stack outward from the baseline with a deterministic minimum
+    row step, so the full 10-row band remains readable in dense views
   - feature lanes are pushed outward in condensed mode to preserve readability
     around the DNA text band
   - forward/reverse strand letter placement remains symmetric around the DNA

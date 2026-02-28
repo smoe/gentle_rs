@@ -629,6 +629,8 @@ Shared shell command:
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
+    - `macros instance-list`
+    - `macros instance-show MACRO_INSTANCE_ID`
     - `macros template-list`
     - `macros template-show TEMPLATE_NAME`
     - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]`
@@ -891,8 +893,17 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Supports transactional rollback (`--transactional`) when any statement fails.
   - Designed for full cloning workflows through `op ...` and `workflow ...`
     statements (Digest/Ligation/PCR/ExtractRegion/container ops, etc.).
-  - Successful runs return `macro_instance_id` and persist one macro-instance
-    lineage record for graph/SVG visualization.
+  - All runs persist a lineage macro-instance record:
+    - success: status `ok`
+    - failure: status `failed` (or `cancelled` when cancellation-like error text is detected)
+  - Successful runs return `macro_instance_id`; failed runs include
+    `macro_instance_id=...` in the error message.
+- `macros instance-list`
+  - Lists recorded macro-instance lineage rows.
+  - Response schema: `gentle.lineage_macro_instances.v1`.
+- `macros instance-show MACRO_INSTANCE_ID`
+  - Shows one recorded macro-instance lineage row.
+  - Response schema: `gentle.lineage_macro_instance.v1`.
 - `macros template-list`
   - Lists persisted workflow macro templates.
 - `macros template-show TEMPLATE_NAME`
@@ -917,9 +928,16 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
     a workflow macro script.
   - Executes typed preflight checks before mutation using template port
     contracts when present, otherwise routine catalog mapping.
+  - Preflight now includes richer semantics:
+    - cross-port alias/collision checks,
+    - input sequence vs input container consistency checks,
+    - sequence-anchor semantic checks against the bound input sequence when unambiguous.
   - `--validate-only` runs preflight only and never mutates state.
-  - Successful mutating runs now return `macro_instance_id` and persist one
-    macro-instance lineage record.
+  - Mutating runs now always record a macro-instance lineage row:
+    - success: `ok`
+    - preflight/execute failure: `failed`/`cancelled`
+  - Successful runs return `macro_instance_id`; failed runs include
+    `macro_instance_id=...` in the error message.
 
 Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'routines ...'`):
 
