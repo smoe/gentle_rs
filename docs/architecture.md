@@ -177,6 +177,8 @@ are now maintained in `docs/roadmap.md`.
   - `nodes` (sequence lineage nodes with origin + creation op)
   - `seq_to_node` (current sequence id -> latest lineage node)
   - `edges` (parent -> child derivation edges, including multi-parent ligation)
+  - `macro_instances` (shared-shell macro execution records with typed bound
+    ports, emitted op ids, and status)
 - `container_state: ContainerState`
   - `containers` (explicit singleton/pool/selection containers)
   - `seq_to_latest_container` (latest container membership index)
@@ -719,6 +721,23 @@ Interaction and export semantics:
   - render splicing view SVG from the same payload
     (`render-feature-expert-svg ... splicing ...`).
 
+### Amino-acid translation row contract (deferred)
+
+The sequence-panel amino-acid row path is intentionally deferred and must remain
+non-operative until translation semantics are engine-defined.
+
+Deferred-scope rules:
+
+- Frontend renderers must not infer amino-acid rows from raw DNA/exon context.
+- Translation-table resolution must be explicit and deterministic (for example
+  codon table identifiers, including contexts where table choice differs by
+  species/organelle).
+- Deterministic amino-acid output must be transcript/CDS-context aware (frame
+  and phase semantics are required); exon-only translation requests are
+  therefore not implicitly rendered.
+- Until the contract is implemented in engine/view-model form, dormant AA-row
+  renderer paths must no-op safely (never panic).
+
 ## 9. Decision log (concise)
 
 - Adopt single shared engine for all frontends: accepted
@@ -758,6 +777,9 @@ Interaction and export semantics:
 - Add BigWig genome-signal import operation (`ImportGenomeBigWigTrack`) with
   `bigWigToBedGraph` conversion and shared shell/adapter exposure:
   accepted and implemented
+- Defer sequence-panel amino-acid row rendering until transcript/CDS-aware
+  translation contracts (explicit table + phase/frame context) are engine-owned:
+  accepted and deferred
 - Add cancellable background genome-track import in GUI using shared engine
   progress callbacks: accepted and implemented
 - Add shared shell `set-param` and JS/Lua helpers (`set_parameter`,

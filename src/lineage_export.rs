@@ -134,6 +134,56 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
         pos_by_node.insert(arrangement.node_id.clone(), (x, y));
     }
 
+    struct MacroRenderRow {
+        node_id: String,
+        macro_instance_id: String,
+        display_name: String,
+        created_at: usize,
+        template_name: Option<String>,
+        routine_id: Option<String>,
+        status: String,
+        input_bindings: Vec<crate::engine::LineageMacroPortBinding>,
+        output_bindings: Vec<crate::engine::LineageMacroPortBinding>,
+        expanded_op_ids: Vec<String>,
+    }
+
+    let mut macro_rows: Vec<MacroRenderRow> = state
+        .lineage
+        .macro_instances
+        .iter()
+        .map(|instance| MacroRenderRow {
+            node_id: format!("macro:{}", instance.macro_instance_id),
+            macro_instance_id: instance.macro_instance_id.clone(),
+            display_name: instance
+                .routine_title
+                .clone()
+                .or_else(|| instance.routine_id.clone())
+                .or_else(|| instance.template_name.clone())
+                .unwrap_or_else(|| "Macro".to_string()),
+            created_at: instance.created_at_unix_ms as usize,
+            template_name: instance.template_name.clone(),
+            routine_id: instance.routine_id.clone(),
+            status: format!("{:?}", instance.status).to_ascii_lowercase(),
+            input_bindings: instance.bound_inputs.clone(),
+            output_bindings: instance.bound_outputs.clone(),
+            expanded_op_ids: instance.expanded_op_ids.clone(),
+        })
+        .collect();
+    macro_rows.sort_by(|a, b| {
+        a.created_at
+            .cmp(&b.created_at)
+            .then(a.macro_instance_id.cmp(&b.macro_instance_id))
+    });
+    for (idx, macro_row) in macro_rows.iter().enumerate() {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        use std::hash::{Hash, Hasher};
+        macro_row.node_id.hash(&mut h);
+        let lane = (h.finish() % 5) as f32;
+        let x = 140.0 + idx as f32 * 170.0;
+        let y = 160.0 + lane * 130.0;
+        pos_by_node.insert(macro_row.node_id.clone(), (x, y));
+    }
+
     let mut doc = Document::new()
         .set("viewBox", (0, 0, W, H))
         .set("width", W)
@@ -243,6 +293,128 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
                         .set("font-size", 9)
                         .set("fill", "#1f2b25"),
                 );
+        }
+    }
+
+    let sequence_nodes_for_binding =
+        |binding: &crate::engine::LineageMacroPortBinding| -> Vec<String> {
+            let mut node_ids: Vec<String> = vec![];
+            let mut seen: HashSet<String> = HashSet::new();
+            match binding.kind.trim().to_ascii_lowercase().as_str() {
+                "sequence" => {
+                    for seq_id in &binding.values {
+                        if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
+                            if seen.insert(node_id.clone()) {
+                                node_ids.push(node_id.clone());
+                            }
+                        }
+                    }
+                }
+                "container" => {
+                    for container_id in &binding.values {
+                        let Some(container) = state.container_state.containers.get(container_id)
+                        else {
+                            continue;
+                        };
+                        for seq_id in &container.members {
+                            if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
+                                if seen.insert(node_id.clone()) {
+                                    node_ids.push(node_id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            node_ids
+        };
+
+    for macro_row in &macro_rows {
+        let Some((mx, my)) = pos_by_node.get(&macro_row.node_id).copied() else {
+            continue;
+        };
+        for binding in &macro_row.input_bindings {
+            let source_nodes = sequence_nodes_for_binding(binding);
+            for source_node_id in source_nodes {
+                let Some((sx, sy)) = pos_by_node.get(&source_node_id).copied() else {
+                    continue;
+                };
+                doc = doc.add(
+                    Line::new()
+                        .set("x1", sx)
+                        .set("y1", sy)
+                        .set("x2", mx)
+                        .set("y2", my)
+                        .set("stroke", "#6f6f7b")
+                        .set("stroke-width", 1.0)
+                        .set("stroke-dasharray", "5 3"),
+                );
+                let lx = (sx + mx) * 0.5;
+                let ly = (sy + my) * 0.5 - 6.0;
+                doc = doc
+                    .add(
+                        Rectangle::new()
+                            .set("x", lx - 44.0)
+                            .set("y", ly - 10.0)
+                            .set("width", 88)
+                            .set("height", 14)
+                            .set("fill", "#f3f3f7")
+                            .set("stroke", "#e2e2ea")
+                            .set("rx", 2),
+                    )
+                    .add(
+                        Text::new(format!("in:{}", binding.port_id))
+                            .set("x", lx)
+                            .set("y", ly)
+                            .set("text-anchor", "middle")
+                            .set("dominant-baseline", "middle")
+                            .set("font-family", "Helvetica, Arial, sans-serif")
+                            .set("font-size", 8.5)
+                            .set("fill", "#30303a"),
+                    );
+            }
+        }
+        for binding in &macro_row.output_bindings {
+            let target_nodes = sequence_nodes_for_binding(binding);
+            for target_node_id in target_nodes {
+                let Some((tx, ty)) = pos_by_node.get(&target_node_id).copied() else {
+                    continue;
+                };
+                doc = doc.add(
+                    Line::new()
+                        .set("x1", mx)
+                        .set("y1", my)
+                        .set("x2", tx)
+                        .set("y2", ty)
+                        .set("stroke", "#6f6f7b")
+                        .set("stroke-width", 1.0)
+                        .set("stroke-dasharray", "5 3"),
+                );
+                let lx = (tx + mx) * 0.5;
+                let ly = (ty + my) * 0.5 - 6.0;
+                doc = doc
+                    .add(
+                        Rectangle::new()
+                            .set("x", lx - 44.0)
+                            .set("y", ly - 10.0)
+                            .set("width", 88)
+                            .set("height", 14)
+                            .set("fill", "#f3f3f7")
+                            .set("stroke", "#e2e2ea")
+                            .set("rx", 2),
+                    )
+                    .add(
+                        Text::new(format!("out:{}", binding.port_id))
+                            .set("x", lx)
+                            .set("y", ly)
+                            .set("text-anchor", "middle")
+                            .set("dominant-baseline", "middle")
+                            .set("font-family", "Helvetica, Arial, sans-serif")
+                            .set("font-size", 8.5)
+                            .set("fill", "#30303a"),
+                    );
+            }
         }
     }
 
@@ -367,6 +539,57 @@ pub fn export_lineage_svg(state: &ProjectState) -> String {
                 .set("font-family", "Helvetica, Arial, sans-serif")
                 .set("font-size", 10)
                 .set("fill", "#1f2b25"),
+            );
+    }
+
+    for macro_row in &macro_rows {
+        let Some((x, y)) = pos_by_node.get(&macro_row.node_id).copied() else {
+            continue;
+        };
+        let op_count = macro_row.expanded_op_ids.len();
+        doc = doc
+            .add(
+                Rectangle::new()
+                    .set("x", x - 40.0)
+                    .set("y", y - 15.0)
+                    .set("width", 80)
+                    .set("height", 30)
+                    .set("rx", 4)
+                    .set("fill", "#62626c")
+                    .set("stroke", "#4f4f58")
+                    .set("stroke-width", 1),
+            )
+            .add(
+                Text::new(macro_row.macro_instance_id.clone())
+                    .set("x", x)
+                    .set("y", y)
+                    .set("text-anchor", "middle")
+                    .set("dominant-baseline", "middle")
+                    .set("font-family", "Helvetica, Arial, sans-serif")
+                    .set("font-size", 10)
+                    .set("fill", "#ffffff"),
+            )
+            .add(
+                Text::new(macro_row.display_name.clone())
+                    .set("x", x + 46.0)
+                    .set("y", y - 2.0)
+                    .set("font-family", "Helvetica, Arial, sans-serif")
+                    .set("font-size", 12)
+                    .set("fill", "#101010"),
+            )
+            .add(
+                Text::new(format!(
+                    "status={} | template={} | routine={} | ops={}",
+                    macro_row.status,
+                    macro_row.template_name.as_deref().unwrap_or("-"),
+                    macro_row.routine_id.as_deref().unwrap_or("-"),
+                    op_count
+                ))
+                .set("x", x + 46.0)
+                .set("y", y + 12.0)
+                .set("font-family", "Helvetica, Arial, sans-serif")
+                .set("font-size", 10)
+                .set("fill", "#30303a"),
             );
     }
 

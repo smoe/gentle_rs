@@ -274,13 +274,50 @@ pub struct LineageEdge {
     pub run_id: RunId,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MacroInstanceStatus {
+    #[default]
+    Ok,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LineageMacroPortBinding {
+    pub port_id: String,
+    pub kind: String,
+    pub required: bool,
+    pub cardinality: String,
+    pub values: Vec<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct LineageMacroInstance {
+    pub macro_instance_id: String,
+    pub routine_id: Option<String>,
+    pub routine_title: Option<String>,
+    pub template_name: Option<String>,
+    pub run_id: String,
+    pub created_at_unix_ms: u128,
+    pub bound_inputs: Vec<LineageMacroPortBinding>,
+    pub bound_outputs: Vec<LineageMacroPortBinding>,
+    pub expanded_op_ids: Vec<String>,
+    pub status: MacroInstanceStatus,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct LineageGraph {
     pub nodes: HashMap<NodeId, LineageNode>,
     pub seq_to_node: HashMap<SeqId, NodeId>,
     pub edges: Vec<LineageEdge>,
+    pub macro_instances: Vec<LineageMacroInstance>,
     pub next_node_counter: u64,
+    pub next_macro_instance_counter: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1657,6 +1694,10 @@ pub struct WorkflowMacroTemplate {
     pub description: Option<String>,
     pub details_url: Option<String>,
     pub parameters: Vec<WorkflowMacroTemplateParam>,
+    #[serde(default)]
+    pub input_ports: Vec<WorkflowMacroTemplatePort>,
+    #[serde(default)]
+    pub output_ports: Vec<WorkflowMacroTemplatePort>,
     #[serde(default = "default_cloning_macro_template_schema")]
     pub template_schema: String,
     pub script: String,
@@ -1674,6 +1715,16 @@ pub struct WorkflowMacroTemplateParam {
     pub name: String,
     pub default_value: Option<String>,
     pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct WorkflowMacroTemplatePort {
+    pub port_id: String,
+    pub kind: String,
+    pub required: bool,
+    pub cardinality: String,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2124,6 +2175,10 @@ pub enum Operation {
         details_url: Option<String>,
         #[serde(default)]
         parameters: Vec<WorkflowMacroTemplateParam>,
+        #[serde(default)]
+        input_ports: Vec<WorkflowMacroTemplatePort>,
+        #[serde(default)]
+        output_ports: Vec<WorkflowMacroTemplatePort>,
         script: String,
     },
     DeleteWorkflowMacroTemplate {
@@ -9039,6 +9094,8 @@ impl GentleEngine {
         description: Option<String>,
         details_url: Option<String>,
         parameters: Vec<WorkflowMacroTemplateParam>,
+        input_ports: Vec<WorkflowMacroTemplatePort>,
+        output_ports: Vec<WorkflowMacroTemplatePort>,
         script: String,
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
@@ -9104,6 +9161,77 @@ impl GentleEngine {
             }
         }
 
+        let normalize_port = |port: WorkflowMacroTemplatePort,
+                              direction_label: &str|
+         -> Result<WorkflowMacroTemplatePort, EngineError> {
+            let port_id = Self::normalize_workflow_macro_param_name(&port.port_id)?;
+            let kind = port.kind.trim().to_ascii_lowercase();
+            if kind.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' has {} port '{}' with empty kind",
+                        name, direction_label, port_id
+                    ),
+                });
+            }
+            let cardinality = match port.cardinality.trim().to_ascii_lowercase().as_str() {
+                "" | "one" => "one".to_string(),
+                "many" => "many".to_string(),
+                other => {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Workflow macro template '{}' has {} port '{}' with unsupported cardinality '{}' (expected one|many)",
+                            name, direction_label, port_id, other
+                        ),
+                    });
+                }
+            };
+            Ok(WorkflowMacroTemplatePort {
+                port_id,
+                kind,
+                required: port.required,
+                cardinality,
+                description: port
+                    .description
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+            })
+        };
+
+        let mut normalized_input_ports: Vec<WorkflowMacroTemplatePort> = vec![];
+        let mut seen_input_ports: HashSet<String> = HashSet::new();
+        for port in input_ports {
+            let port = normalize_port(port, "input")?;
+            if !seen_input_ports.insert(port.port_id.clone()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' contains duplicate input port '{}'",
+                        name, port.port_id
+                    ),
+                });
+            }
+            normalized_input_ports.push(port);
+        }
+
+        let mut normalized_output_ports: Vec<WorkflowMacroTemplatePort> = vec![];
+        let mut seen_output_ports: HashSet<String> = HashSet::new();
+        for port in output_ports {
+            let port = normalize_port(port, "output")?;
+            if !seen_output_ports.insert(port.port_id.clone()) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow macro template '{}' contains duplicate output port '{}'",
+                        name, port.port_id
+                    ),
+                });
+            }
+            normalized_output_ports.push(port);
+        }
+
         let now = Self::now_unix_ms();
         let mut store = self.read_workflow_macro_template_store();
         let created_at_unix_ms = store
@@ -9122,6 +9250,8 @@ impl GentleEngine {
                         .filter(|text| !text.is_empty()),
                     details_url,
                     parameters: normalized_parameters,
+                    input_ports: normalized_input_ports,
+                    output_ports: normalized_output_ports,
                     template_schema: CLONING_MACRO_TEMPLATE_SCHEMA.to_string(),
                     script: script.to_string(),
                     created_at_unix_ms,
@@ -10954,6 +11084,49 @@ impl GentleEngine {
             return node_id.clone();
         }
         self.add_lineage_node(seq_id, SequenceOrigin::ImportedUnknown, None)
+    }
+
+    fn next_macro_instance_id(&mut self) -> String {
+        loop {
+            self.state.lineage.next_macro_instance_counter += 1;
+            let candidate = format!("macro-{}", self.state.lineage.next_macro_instance_counter);
+            if !self
+                .state
+                .lineage
+                .macro_instances
+                .iter()
+                .any(|instance| instance.macro_instance_id == candidate)
+            {
+                return candidate;
+            }
+        }
+    }
+
+    pub fn record_lineage_macro_instance(&mut self, mut instance: LineageMacroInstance) -> String {
+        if instance.macro_instance_id.trim().is_empty() {
+            instance.macro_instance_id = self.next_macro_instance_id();
+        } else if self
+            .state
+            .lineage
+            .macro_instances
+            .iter()
+            .any(|existing| existing.macro_instance_id == instance.macro_instance_id)
+        {
+            instance.macro_instance_id = self.next_macro_instance_id();
+        }
+        if instance.created_at_unix_ms == 0 {
+            instance.created_at_unix_ms = Self::now_unix_ms();
+        }
+        instance.run_id = instance.run_id.trim().to_string();
+        if instance.run_id.is_empty() {
+            instance.run_id = "macro".to_string();
+        }
+        self.state.lineage.macro_instances.push(instance.clone());
+        instance.macro_instance_id
+    }
+
+    pub fn lineage_macro_instances(&self) -> &[LineageMacroInstance] {
+        &self.state.lineage.macro_instances
     }
 
     fn reconcile_lineage_nodes(&mut self) {
@@ -15551,6 +15724,8 @@ impl GentleEngine {
                 description,
                 details_url,
                 parameters,
+                input_ports,
+                output_ports,
                 script,
             } => {
                 self.op_upsert_workflow_macro_template(
@@ -15558,6 +15733,8 @@ impl GentleEngine {
                     description,
                     details_url,
                     parameters,
+                    input_ports,
+                    output_ports,
                     script,
                     &mut result,
                 )?;
@@ -18822,6 +18999,61 @@ ORIGIN
     }
 
     #[test]
+    fn test_render_lineage_svg_includes_macro_instance_nodes() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("a".to_string(), seq(&"ATGC".repeat(40)));
+        let mut engine = GentleEngine::from_state(state);
+        let reverse = engine
+            .apply(Operation::Reverse {
+                input: "a".to_string(),
+                output_id: Some("a_rev".to_string()),
+            })
+            .expect("reverse");
+        let macro_instance_id = engine.record_lineage_macro_instance(LineageMacroInstance {
+            macro_instance_id: String::new(),
+            routine_id: Some("sequence.reverse".to_string()),
+            routine_title: Some("Reverse helper".to_string()),
+            template_name: Some("reverse_helper".to_string()),
+            run_id: "macro".to_string(),
+            created_at_unix_ms: 0,
+            bound_inputs: vec![LineageMacroPortBinding {
+                port_id: "seq_id".to_string(),
+                kind: "sequence".to_string(),
+                required: true,
+                cardinality: "one".to_string(),
+                values: vec!["a".to_string()],
+                description: Some("Input sequence".to_string()),
+            }],
+            bound_outputs: vec![LineageMacroPortBinding {
+                port_id: "out_id".to_string(),
+                kind: "sequence".to_string(),
+                required: false,
+                cardinality: "one".to_string(),
+                values: vec!["a_rev".to_string()],
+                description: Some("Output sequence".to_string()),
+            }],
+            expanded_op_ids: vec![reverse.op_id],
+            status: MacroInstanceStatus::Ok,
+        });
+        assert!(!macro_instance_id.trim().is_empty());
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path = tmp.path().with_extension("lineage.macro.svg");
+        let path_text = path.display().to_string();
+        engine
+            .apply(Operation::RenderLineageSvg {
+                path: path_text.clone(),
+            })
+            .unwrap();
+        let text = std::fs::read_to_string(path_text).unwrap();
+        assert!(text.contains("Reverse helper"));
+        assert!(text.contains("in:seq_id"));
+        assert!(text.contains("out:out_id"));
+    }
+
+    #[test]
     fn test_render_pool_gel_svg_operation() {
         let mut state = ProjectState::default();
         state
@@ -22073,6 +22305,8 @@ ORIGIN
                         required: false,
                     },
                 ],
+                input_ports: vec![],
+                output_ports: vec![],
                 script: "op {\"Reverse\":{\"input\":\"${seq_id}\",\"output_id\":\"${out_id}\"}}"
                     .to_string(),
             })
@@ -22122,6 +22356,8 @@ ORIGIN
                     default_value: None,
                     required: true,
                 }],
+                input_ports: vec![],
+                output_ports: vec![],
                 script: "op {\"Reverse\":{\"input\":\"${seq_id}\"}}".to_string(),
             })
             .expect_err("expected invalid details_url error");

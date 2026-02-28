@@ -1071,7 +1071,7 @@
          ],
          "path": "macros template-put",
          "summary": "Create or update a persisted workflow macro template.",
-         "usage": "macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
+         "usage": "macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]"
       },
       {
          "aliases": [],
@@ -1108,8 +1108,8 @@
             "cli-direct"
          ],
          "path": "macros template-run",
-         "summary": "Run one persisted workflow macro template with bindings.",
-         "usage": "macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+         "summary": "Run or validate one persisted workflow macro template with typed preflight and macro-instance lineage recording.",
+         "usage": "macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]"
       },
       {
          "aliases": [],

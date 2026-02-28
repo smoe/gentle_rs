@@ -19,5 +19,30 @@
       "required": false
     }
   ],
+  "input_ports": [
+    {
+      "port_id": "seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Input sequence to branch."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "branch_copy_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Branched sequence output ID."
+    },
+    {
+      "port_id": "reverse_complement_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Reverse-complement output ID."
+    }
+  ],
   "script": "op {\"Branch\":{\"input\":\"${seq_id}\",\"output_id\":\"${branch_copy_id}\"}}\nop {\"ReverseComplement\":{\"input\":\"${branch_copy_id}\",\"output_id\":\"${reverse_complement_id}\"}}"
 }

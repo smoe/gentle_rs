@@ -32,9 +32,10 @@ use crate::{
         CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
         CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget, GUIDE_DESIGN_METADATA_KEY,
         GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig, Operation,
+        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
+        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
         ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
-        Workflow, WorkflowMacroTemplateParam,
+        Workflow, WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
@@ -63,7 +64,7 @@ use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -97,6 +98,8 @@ struct CloningPatternTemplate {
     description: Option<String>,
     details_url: Option<String>,
     parameters: Vec<WorkflowMacroTemplateParam>,
+    input_ports: Vec<WorkflowMacroTemplatePort>,
+    output_ports: Vec<WorkflowMacroTemplatePort>,
     script: String,
 }
 
@@ -108,6 +111,8 @@ struct CloningPatternTemplateFile {
     description: Option<String>,
     details_url: Option<String>,
     parameters: Vec<WorkflowMacroTemplateParam>,
+    input_ports: Vec<WorkflowMacroTemplatePort>,
+    output_ports: Vec<WorkflowMacroTemplatePort>,
     script: String,
 }
 
@@ -119,6 +124,8 @@ impl Default for CloningPatternTemplateFile {
             description: None,
             details_url: None,
             parameters: vec![],
+            input_ports: vec![],
+            output_ports: vec![],
             script: String::new(),
         }
     }
@@ -164,6 +171,56 @@ struct CloningRoutineDefinition {
     template_path: Option<String>,
     input_ports: Vec<CloningRoutinePort>,
     output_ports: Vec<CloningRoutinePort>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum RoutinePortValidationStatus {
+    Ok,
+    Missing,
+    Invalid,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum RoutinePortDirection {
+    Input,
+    Output,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct RoutinePortValidationRow {
+    direction: RoutinePortDirection,
+    source: String,
+    port_id: String,
+    kind: String,
+    required: bool,
+    cardinality: String,
+    values: Vec<String>,
+    status: RoutinePortValidationStatus,
+    message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct MacroTemplatePreflightReport {
+    schema: String,
+    template_name: String,
+    routine_id: Option<String>,
+    routine_title: Option<String>,
+    routine_family: Option<String>,
+    routine_status: Option<String>,
+    catalog_path: Option<String>,
+    contract_source: String,
+    checked_ports: Vec<RoutinePortValidationRow>,
+    warnings: Vec<String>,
+    errors: Vec<String>,
+}
+
+impl MacroTemplatePreflightReport {
+    fn can_execute(&self) -> bool {
+        self.errors.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -508,6 +565,8 @@ pub enum ShellCommand {
         description: Option<String>,
         details_url: Option<String>,
         parameters: Vec<WorkflowMacroTemplateParam>,
+        input_ports: Vec<WorkflowMacroTemplatePort>,
+        output_ports: Vec<WorkflowMacroTemplatePort>,
         script: String,
     },
     MacrosTemplateDelete {
@@ -520,6 +579,7 @@ pub enum ShellCommand {
         name: String,
         bindings: HashMap<String, String>,
         transactional: bool,
+        validate_only: bool,
     },
     CandidatesList,
     CandidatesDelete {
@@ -973,6 +1033,66 @@ fn parse_workflow_template_param_spec(raw: &str) -> Result<WorkflowMacroTemplate
     })
 }
 
+fn parse_workflow_template_port_spec(raw: &str) -> Result<WorkflowMacroTemplatePort, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Invalid template port: value is empty".to_string());
+    }
+    let parts = trimmed.split(':').map(str::trim).collect::<Vec<_>>();
+    if parts.len() < 2 {
+        return Err(format!(
+            "Invalid template port '{}': expected PORT_ID:KIND[:one|many][:required|optional][:description]",
+            raw
+        ));
+    }
+    let port_id = parts[0];
+    if port_id.is_empty() {
+        return Err(format!("Invalid template port '{}': missing PORT_ID", raw));
+    }
+    let kind = parts[1].to_ascii_lowercase();
+    if kind.is_empty() {
+        return Err(format!("Invalid template port '{}': missing KIND", raw));
+    }
+    let mut cardinality = "one".to_string();
+    let mut required = true;
+    let mut description_parts: Vec<String> = vec![];
+    for token in parts.into_iter().skip(2) {
+        if token.is_empty() {
+            continue;
+        }
+        let lower = token.to_ascii_lowercase();
+        if lower == "one" || lower == "many" {
+            cardinality = lower;
+            continue;
+        }
+        if lower == "required" || lower == "req" {
+            required = true;
+            continue;
+        }
+        if lower == "optional" || lower == "opt" {
+            required = false;
+            continue;
+        }
+        if let Some(parsed) = parse_bool_binding(&lower) {
+            required = parsed;
+            continue;
+        }
+        description_parts.push(token.to_string());
+    }
+    let description = if description_parts.is_empty() {
+        None
+    } else {
+        Some(description_parts.join(":"))
+    };
+    Ok(WorkflowMacroTemplatePort {
+        port_id: port_id.to_string(),
+        kind,
+        required,
+        cardinality,
+        description,
+    })
+}
+
 fn parse_template_binding(raw: &str) -> Result<(String, String), String> {
     let trimmed = raw.trim();
     let (key, value) = trimmed
@@ -1129,6 +1249,8 @@ fn load_cloning_pattern_templates_from_path(
                 description: file.description,
                 details_url: file.details_url,
                 parameters: file.parameters,
+                input_ports: file.input_ports,
+                output_ports: file.output_ports,
                 script: file.script,
             });
             source_files.push(file_label);
@@ -1291,6 +1413,484 @@ fn routine_matches_filter(
         }
     }
     true
+}
+
+fn resolve_workflow_template_bindings_for_preflight(
+    template: &WorkflowMacroTemplate,
+    bindings: &HashMap<String, String>,
+) -> Result<HashMap<String, String>, String> {
+    let declared = template
+        .parameters
+        .iter()
+        .map(|p| p.name.clone())
+        .collect::<HashSet<_>>();
+    for key in bindings.keys() {
+        if !declared.contains(key) {
+            return Err(format!(
+                "Workflow macro template '{}' does not define parameter '{}'",
+                template.name, key
+            ));
+        }
+    }
+    let mut resolved: HashMap<String, String> = HashMap::new();
+    for param in &template.parameters {
+        if let Some(value) = bindings.get(&param.name) {
+            resolved.insert(param.name.clone(), value.clone());
+        } else if let Some(default_value) = &param.default_value {
+            resolved.insert(param.name.clone(), default_value.clone());
+        } else if param.required {
+            return Err(format!(
+                "Workflow macro template '{}' is missing required parameter '{}'",
+                template.name, param.name
+            ));
+        }
+    }
+    Ok(resolved)
+}
+
+fn parse_bool_binding(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "y" => Some(true),
+        "false" | "0" | "no" | "n" => Some(false),
+        _ => None,
+    }
+}
+
+fn validate_sequence_anchor_binding(raw: &str) -> Result<SequenceAnchor, String> {
+    if let Ok(anchor) = serde_json::from_str::<SequenceAnchor>(raw) {
+        return Ok(anchor);
+    }
+    if let Ok(zero_based) = raw.trim().parse::<usize>() {
+        return Ok(SequenceAnchor::Position { zero_based });
+    }
+    Err(format!(
+        "Invalid sequence_anchor value '{}': expected SequenceAnchor JSON or zero-based integer",
+        raw
+    ))
+}
+
+fn split_port_values_for_validation(raw: &str, cardinality: &str) -> Result<Vec<String>, String> {
+    let normalized = cardinality.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "one" | "" => {
+            let value = raw.trim();
+            if value.is_empty() {
+                return Ok(vec![]);
+            }
+            if value.contains(',') {
+                return Err(format!(
+                    "Cardinality 'one' requires exactly one value, got comma-separated '{}'",
+                    raw
+                ));
+            }
+            Ok(vec![value.to_string()])
+        }
+        "many" => Ok(raw
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()),
+        other => Err(format!(
+            "Unsupported port cardinality '{}' (expected one|many)",
+            other
+        )),
+    }
+}
+
+fn validate_port_values(
+    engine: &GentleEngine,
+    kind: &str,
+    values: &[String],
+    direction: RoutinePortDirection,
+) -> Result<(), String> {
+    let normalized = kind.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "sequence" => {
+            if direction == RoutinePortDirection::Input {
+                for value in values {
+                    if !engine.state().sequences.contains_key(value) {
+                        return Err(format!("Sequence '{}' was not found", value));
+                    }
+                }
+            }
+            Ok(())
+        }
+        "container" => {
+            if direction == RoutinePortDirection::Input {
+                for value in values {
+                    if !engine
+                        .state()
+                        .container_state
+                        .containers
+                        .contains_key(value)
+                    {
+                        return Err(format!("Container '{}' was not found", value));
+                    }
+                }
+            }
+            Ok(())
+        }
+        "candidate_set" => {
+            if direction == RoutinePortDirection::Input {
+                let names = engine
+                    .list_candidate_sets()
+                    .into_iter()
+                    .map(|set| set.name)
+                    .collect::<HashSet<_>>();
+                for value in values {
+                    if !names.contains(value) {
+                        return Err(format!("Candidate set '{}' was not found", value));
+                    }
+                }
+            }
+            Ok(())
+        }
+        "guide_set" => {
+            if direction == RoutinePortDirection::Input {
+                let names = engine
+                    .list_guide_sets()
+                    .into_iter()
+                    .map(|set| set.guide_set_id)
+                    .collect::<HashSet<_>>();
+                for value in values {
+                    if !names.contains(value) {
+                        return Err(format!("Guide set '{}' was not found", value));
+                    }
+                }
+            }
+            Ok(())
+        }
+        "string" | "path" => Ok(()),
+        "number" => {
+            for value in values {
+                value
+                    .parse::<f64>()
+                    .map_err(|e| format!("Number value '{}' is invalid: {}", value, e))?;
+            }
+            Ok(())
+        }
+        "bool" | "boolean" => {
+            for value in values {
+                if parse_bool_binding(value).is_none() {
+                    return Err(format!(
+                        "Boolean value '{}' is invalid (expected true|false|1|0|yes|no)",
+                        value
+                    ));
+                }
+            }
+            Ok(())
+        }
+        "sequence_anchor" => {
+            for value in values {
+                let _ = validate_sequence_anchor_binding(value)?;
+            }
+            Ok(())
+        }
+        other => Err(format!("Unsupported routine port kind '{}'", other)),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PreflightPortContract {
+    direction: RoutinePortDirection,
+    source: String,
+    port: WorkflowMacroTemplatePort,
+}
+
+fn routine_port_to_template_port(port: &CloningRoutinePort) -> WorkflowMacroTemplatePort {
+    WorkflowMacroTemplatePort {
+        port_id: port.port_id.clone(),
+        kind: port.kind.clone(),
+        required: port.required,
+        cardinality: if port.cardinality.trim().is_empty() {
+            "one".to_string()
+        } else {
+            port.cardinality.clone()
+        },
+        description: port.description.clone(),
+    }
+}
+
+fn preflight_workflow_macro_template_run(
+    engine: &GentleEngine,
+    template_name: &str,
+    bindings: &HashMap<String, String>,
+) -> Result<MacroTemplatePreflightReport, String> {
+    let template = engine
+        .get_workflow_macro_template(template_name)
+        .map_err(|e| e.to_string())?;
+    let mut report = MacroTemplatePreflightReport {
+        schema: "gentle.macro_template_preflight.v1".to_string(),
+        template_name: template.name.clone(),
+        routine_id: None,
+        routine_title: None,
+        routine_family: None,
+        routine_status: None,
+        catalog_path: None,
+        contract_source: "none".to_string(),
+        checked_ports: vec![],
+        warnings: vec![],
+        errors: vec![],
+    };
+
+    let resolved_bindings =
+        match resolve_workflow_template_bindings_for_preflight(&template, bindings) {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                report.errors.push(err);
+                return Ok(report);
+            }
+        };
+
+    let catalog_path = DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string();
+    report.catalog_path = Some(catalog_path.clone());
+    let mut matched_routine: Option<CloningRoutineDefinition> = None;
+    match load_cloning_routine_catalog(&catalog_path) {
+        Ok(catalog) => {
+            let matching = catalog
+                .routines
+                .into_iter()
+                .filter(|routine| routine.template_name == template.name)
+                .collect::<Vec<_>>();
+            if matching.is_empty() {
+                report.warnings.push(format!(
+                    "No routine catalog entry references template '{}'",
+                    template.name
+                ));
+            } else {
+                if matching.len() > 1 {
+                    report.warnings.push(format!(
+                        "Multiple routine catalog entries reference template '{}'; using first match '{}'",
+                        template.name, matching[0].routine_id
+                    ));
+                }
+                let routine = matching[0].clone();
+                report.routine_id = Some(routine.routine_id.clone());
+                report.routine_title = Some(routine.title.clone());
+                report.routine_family = Some(routine.family.clone());
+                report.routine_status = Some(routine.status.clone());
+                matched_routine = Some(routine);
+            }
+        }
+        Err(err) => {
+            report.warnings.push(format!(
+                "Routine catalog '{}' unavailable: {}",
+                catalog_path, err
+            ));
+        }
+    }
+
+    let mut contracts: Vec<PreflightPortContract> = vec![];
+    if !template.input_ports.is_empty() || !template.output_ports.is_empty() {
+        report.contract_source = "template_ports".to_string();
+        contracts.extend(
+            template
+                .input_ports
+                .iter()
+                .cloned()
+                .map(|port| PreflightPortContract {
+                    direction: RoutinePortDirection::Input,
+                    source: "template".to_string(),
+                    port,
+                }),
+        );
+        contracts.extend(
+            template
+                .output_ports
+                .iter()
+                .cloned()
+                .map(|port| PreflightPortContract {
+                    direction: RoutinePortDirection::Output,
+                    source: "template".to_string(),
+                    port,
+                }),
+        );
+
+        if let Some(routine) = matched_routine.as_ref() {
+            let routine_port_ids = routine
+                .input_ports
+                .iter()
+                .map(|p| format!("input:{}", p.port_id))
+                .chain(
+                    routine
+                        .output_ports
+                        .iter()
+                        .map(|p| format!("output:{}", p.port_id)),
+                )
+                .collect::<HashSet<_>>();
+            let template_port_ids = template
+                .input_ports
+                .iter()
+                .map(|p| format!("input:{}", p.port_id))
+                .chain(
+                    template
+                        .output_ports
+                        .iter()
+                        .map(|p| format!("output:{}", p.port_id)),
+                )
+                .collect::<HashSet<_>>();
+            for missing in routine_port_ids.difference(&template_port_ids) {
+                report.warnings.push(format!(
+                    "Template contract is missing routine-declared port '{}'",
+                    missing
+                ));
+            }
+            for extra in template_port_ids.difference(&routine_port_ids) {
+                report.warnings.push(format!(
+                    "Template contract contains extra port '{}' not present in routine catalog",
+                    extra
+                ));
+            }
+        }
+    } else if let Some(routine) = matched_routine {
+        report.contract_source = "routine_catalog".to_string();
+        contracts.extend(
+            routine
+                .input_ports
+                .into_iter()
+                .map(|port| PreflightPortContract {
+                    direction: RoutinePortDirection::Input,
+                    source: "routine_catalog".to_string(),
+                    port: routine_port_to_template_port(&port),
+                }),
+        );
+        contracts.extend(
+            routine
+                .output_ports
+                .into_iter()
+                .map(|port| PreflightPortContract {
+                    direction: RoutinePortDirection::Output,
+                    source: "routine_catalog".to_string(),
+                    port: routine_port_to_template_port(&port),
+                }),
+        );
+    } else {
+        report.contract_source = "none".to_string();
+        report.warnings.push(
+            "No typed contract available (template has no ports and no matching routine catalog entry)"
+                .to_string(),
+        );
+    }
+
+    for contract in contracts {
+        let port = contract.port;
+        let value = resolved_bindings
+            .get(&port.port_id)
+            .or_else(|| bindings.get(&port.port_id))
+            .cloned();
+        match value {
+            None => {
+                if port.required {
+                    let direction_label = match contract.direction {
+                        RoutinePortDirection::Input => "input",
+                        RoutinePortDirection::Output => "output",
+                    };
+                    let message = format!(
+                        "Missing required {} port '{}' (kind={}, cardinality={})",
+                        direction_label, port.port_id, port.kind, port.cardinality
+                    );
+                    report.errors.push(message.clone());
+                    report.checked_ports.push(RoutinePortValidationRow {
+                        direction: contract.direction,
+                        source: contract.source,
+                        port_id: port.port_id.clone(),
+                        kind: port.kind.clone(),
+                        required: port.required,
+                        cardinality: port.cardinality.clone(),
+                        values: vec![],
+                        status: RoutinePortValidationStatus::Missing,
+                        message: Some(message),
+                    });
+                } else {
+                    report.checked_ports.push(RoutinePortValidationRow {
+                        direction: contract.direction,
+                        source: contract.source,
+                        port_id: port.port_id.clone(),
+                        kind: port.kind.clone(),
+                        required: port.required,
+                        cardinality: port.cardinality.clone(),
+                        values: vec![],
+                        status: RoutinePortValidationStatus::Skipped,
+                        message: Some("Optional port not bound".to_string()),
+                    });
+                }
+            }
+            Some(raw_value) => {
+                let values = match split_port_values_for_validation(&raw_value, &port.cardinality) {
+                    Ok(values) => values,
+                    Err(err) => {
+                        let message = format!(
+                            "Port '{}' cardinality validation failed: {}",
+                            port.port_id, err
+                        );
+                        report.errors.push(message.clone());
+                        report.checked_ports.push(RoutinePortValidationRow {
+                            direction: contract.direction,
+                            source: contract.source,
+                            port_id: port.port_id.clone(),
+                            kind: port.kind.clone(),
+                            required: port.required,
+                            cardinality: port.cardinality.clone(),
+                            values: vec![],
+                            status: RoutinePortValidationStatus::Invalid,
+                            message: Some(message),
+                        });
+                        continue;
+                    }
+                };
+                if values.is_empty() && port.required {
+                    let message =
+                        format!("Port '{}' is required and must not be empty", port.port_id);
+                    report.errors.push(message.clone());
+                    report.checked_ports.push(RoutinePortValidationRow {
+                        direction: contract.direction,
+                        source: contract.source,
+                        port_id: port.port_id.clone(),
+                        kind: port.kind.clone(),
+                        required: port.required,
+                        cardinality: port.cardinality.clone(),
+                        values: vec![],
+                        status: RoutinePortValidationStatus::Missing,
+                        message: Some(message),
+                    });
+                    continue;
+                }
+                match validate_port_values(engine, &port.kind, &values, contract.direction) {
+                    Ok(_) => {
+                        report.checked_ports.push(RoutinePortValidationRow {
+                            direction: contract.direction,
+                            source: contract.source,
+                            port_id: port.port_id.clone(),
+                            kind: port.kind.clone(),
+                            required: port.required,
+                            cardinality: port.cardinality.clone(),
+                            values,
+                            status: RoutinePortValidationStatus::Ok,
+                            message: None,
+                        });
+                    }
+                    Err(err) => {
+                        let message = format!("Port '{}' validation failed: {}", port.port_id, err);
+                        report.errors.push(message.clone());
+                        report.checked_ports.push(RoutinePortValidationRow {
+                            direction: contract.direction,
+                            source: contract.source,
+                            port_id: port.port_id.clone(),
+                            kind: port.kind.clone(),
+                            required: port.required,
+                            cardinality: port.cardinality.clone(),
+                            values,
+                            status: RoutinePortValidationStatus::Invalid,
+                            message: Some(message),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(report)
 }
 
 fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAnchor, String> {
@@ -1936,9 +2536,11 @@ impl ShellCommand {
                 description,
                 details_url,
                 parameters,
+                input_ports,
+                output_ports,
                 script,
             } => format!(
-                "upsert workflow macro template '{}' (description='{}', details_url='{}', params={}, script_len={})",
+                "upsert workflow macro template '{}' (description='{}', details_url='{}', params={}, input_ports={}, output_ports={}, script_len={})",
                 name,
                 description
                     .as_deref()
@@ -1959,6 +2561,8 @@ impl ShellCommand {
                     })
                     .collect::<Vec<_>>()
                     .join(","),
+                input_ports.len(),
+                output_ports.len(),
                 script.len()
             ),
             Self::MacrosTemplateDelete { name } => {
@@ -1971,15 +2575,17 @@ impl ShellCommand {
                 name,
                 bindings,
                 transactional,
+                validate_only,
             } => format!(
-                "run workflow macro template '{}' (bindings={}, transactional={})",
+                "run workflow macro template '{}' (bindings={}, transactional={}, validate_only={})",
                 name,
                 bindings
                     .iter()
                     .map(|(key, value)| format!("{key}={value}"))
                     .collect::<Vec<_>>()
                     .join(","),
-                transactional
+                transactional,
+                validate_only
             ),
             Self::CandidatesList => "list persisted candidate sets".to_string(),
             Self::CandidatesDelete { set_name } => {
@@ -2353,6 +2959,11 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        if let Self::MacrosTemplateRun { validate_only, .. } = self {
+            if *validate_only {
+                return false;
+            }
+        }
         matches!(
             self,
             Self::LoadProject { .. }
@@ -4687,7 +5298,7 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "template-put" | "template-upsert" => {
             if tokens.len() < 4 {
                 return Err(
-                    "macros template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]"
+                    "macros template-put requires TEMPLATE_NAME (--script SCRIPT_OR_@FILE | --file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port ...]"
                         .to_string(),
                 );
             }
@@ -4695,6 +5306,8 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut description: Option<String> = None;
             let mut details_url: Option<String> = None;
             let mut parameters: Vec<WorkflowMacroTemplateParam> = vec![];
+            let mut input_ports: Vec<WorkflowMacroTemplatePort> = vec![];
+            let mut output_ports: Vec<WorkflowMacroTemplatePort> = vec![];
             let mut script: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -4724,6 +5337,24 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--param", "macros template-put")?;
                         parameters.push(parse_workflow_template_param_spec(&raw)?);
+                    }
+                    "--input-port" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--input-port",
+                            "macros template-put",
+                        )?;
+                        input_ports.push(parse_workflow_template_port_spec(&raw)?);
+                    }
+                    "--output-port" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--output-port",
+                            "macros template-put",
+                        )?;
+                        output_ports.push(parse_workflow_template_port_spec(&raw)?);
                     }
                     "--script" => {
                         if script.is_some() {
@@ -4761,6 +5392,8 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 description,
                 details_url,
                 parameters,
+                input_ports,
+                output_ports,
                 script,
             })
         }
@@ -4783,13 +5416,14 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "template-run" => {
             if tokens.len() < 3 {
                 return Err(
-                    "macros template-run requires TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+                    "macros template-run requires TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]"
                         .to_string(),
                 );
             }
             let name = tokens[2].clone();
             let mut bindings: HashMap<String, String> = HashMap::new();
             let mut transactional = false;
+            let mut validate_only = false;
             let mut idx = 3usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -4808,6 +5442,10 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         transactional = true;
                         idx += 1;
                     }
+                    "--validate-only" | "--dry-run" => {
+                        validate_only = true;
+                        idx += 1;
+                    }
                     other => {
                         return Err(format!("Unknown option '{other}' for macros template-run"));
                     }
@@ -4817,6 +5455,7 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 name,
                 bindings,
                 transactional,
+                validate_only,
             })
         }
         other => Err(format!(
@@ -6557,6 +7196,78 @@ fn run_workflow_macro(
     })
 }
 
+fn macro_bindings_from_preflight(
+    preflight: &MacroTemplatePreflightReport,
+    direction: RoutinePortDirection,
+) -> Vec<LineageMacroPortBinding> {
+    preflight
+        .checked_ports
+        .iter()
+        .filter(|row| row.direction == direction)
+        .filter(|row| matches!(row.status, RoutinePortValidationStatus::Ok))
+        .map(|row| LineageMacroPortBinding {
+            port_id: row.port_id.clone(),
+            kind: row.kind.clone(),
+            required: row.required,
+            cardinality: row.cardinality.clone(),
+            values: row.values.clone(),
+            description: None,
+        })
+        .collect::<Vec<_>>()
+}
+
+fn macro_run_id_from_operation_records(records: &[crate::engine::OperationRecord]) -> String {
+    let mut run_ids = records
+        .iter()
+        .map(|record| record.run_id.clone())
+        .collect::<Vec<_>>();
+    run_ids.sort();
+    run_ids.dedup();
+    if run_ids.is_empty() {
+        "macro".to_string()
+    } else if run_ids.len() == 1 {
+        run_ids[0].clone()
+    } else {
+        format!("mixed:{}", run_ids.join("+"))
+    }
+}
+
+fn record_macro_lineage_instance(
+    engine: &mut GentleEngine,
+    start_operation_index: usize,
+    template_name: Option<String>,
+    routine_id: Option<String>,
+    routine_title: Option<String>,
+    bound_inputs: Vec<LineageMacroPortBinding>,
+    bound_outputs: Vec<LineageMacroPortBinding>,
+    status: MacroInstanceStatus,
+) -> String {
+    let operation_records = engine
+        .operation_log()
+        .iter()
+        .skip(start_operation_index)
+        .cloned()
+        .collect::<Vec<_>>();
+    let expanded_op_ids = operation_records
+        .iter()
+        .map(|record| record.result.op_id.clone())
+        .collect::<Vec<_>>();
+    let run_id = macro_run_id_from_operation_records(&operation_records);
+    let instance = LineageMacroInstance {
+        macro_instance_id: String::new(),
+        routine_id,
+        routine_title,
+        template_name,
+        run_id,
+        created_at_unix_ms: 0,
+        bound_inputs,
+        bound_outputs,
+        expanded_op_ids,
+        status,
+    };
+    engine.record_lineage_macro_instance(instance)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AgentSuggestedExecutionReport {
     index: usize,
@@ -8025,7 +8736,26 @@ pub fn execute_shell_command_with_options(
         ShellCommand::MacrosRun {
             script,
             transactional,
-        } => run_workflow_macro(engine, script, *transactional, options)?,
+        } => {
+            let start_operation_index = engine.operation_log().len();
+            let mut run = run_workflow_macro(engine, script, *transactional, options)?;
+            let macro_instance_id = record_macro_lineage_instance(
+                engine,
+                start_operation_index,
+                None,
+                None,
+                None,
+                vec![],
+                vec![],
+                MacroInstanceStatus::Ok,
+            );
+            if let Some(map) = run.output.as_object_mut() {
+                map.insert("macro_instance_id".to_string(), json!(macro_instance_id));
+                map.insert("macro_recorded".to_string(), json!(true));
+            }
+            run.state_changed = true;
+            run
+        }
         ShellCommand::MacrosTemplateList => {
             let templates = engine.list_workflow_macro_templates();
             ShellRunResult {
@@ -8053,6 +8783,8 @@ pub fn execute_shell_command_with_options(
             description,
             details_url,
             parameters,
+            input_ports,
+            output_ports,
             script,
         } => {
             let before = engine
@@ -8067,6 +8799,8 @@ pub fn execute_shell_command_with_options(
                     description: description.clone(),
                     details_url: details_url.clone(),
                     parameters: parameters.clone(),
+                    input_ports: input_ports.clone(),
+                    output_ports: output_ports.clone(),
                     script: loaded_script.clone(),
                 })
                 .map_err(|e| e.to_string())?;
@@ -8082,6 +8816,8 @@ pub fn execute_shell_command_with_options(
                     "description": description,
                     "details_url": details_url,
                     "parameter_count": parameters.len(),
+                    "input_port_count": input_ports.len(),
+                    "output_port_count": output_ports.len(),
                     "script_length": loaded_script.len(),
                     "result": op_result
                 }),
@@ -8120,6 +8856,8 @@ pub fn execute_shell_command_with_options(
                     description: template.description.clone(),
                     details_url: template.details_url.clone(),
                     parameters: template.parameters.clone(),
+                    input_ports: template.input_ports.clone(),
+                    output_ports: template.output_ports.clone(),
                     script,
                 };
                 if let Err(err) = engine.apply(op) {
@@ -8148,18 +8886,54 @@ pub fn execute_shell_command_with_options(
             name,
             bindings,
             transactional,
+            validate_only,
         } => {
-            let script = engine
-                .render_workflow_macro_template_script(name, bindings)
-                .map_err(|e| e.to_string())?;
-            let mut run = run_workflow_macro(engine, &script, *transactional, options)?;
-            run.output = json!({
-                "template_name": name,
-                "bindings": bindings,
-                "expanded_script": script,
-                "run": run.output
-            });
-            run
+            let preflight = preflight_workflow_macro_template_run(engine, name, bindings)?;
+            if *validate_only {
+                ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "template_name": name,
+                        "bindings": bindings,
+                        "validate_only": true,
+                        "can_execute": preflight.can_execute(),
+                        "preflight": preflight,
+                    }),
+                }
+            } else {
+                if !preflight.can_execute() {
+                    return Err(format!(
+                        "Workflow macro template '{}' preflight failed: {}",
+                        name,
+                        preflight.errors.join("; ")
+                    ));
+                }
+                let script = engine
+                    .render_workflow_macro_template_script(name, bindings)
+                    .map_err(|e| e.to_string())?;
+                let start_operation_index = engine.operation_log().len();
+                let mut run = run_workflow_macro(engine, &script, *transactional, options)?;
+                let macro_instance_id = record_macro_lineage_instance(
+                    engine,
+                    start_operation_index,
+                    Some(name.clone()),
+                    preflight.routine_id.clone(),
+                    preflight.routine_title.clone(),
+                    macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+                    macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
+                    MacroInstanceStatus::Ok,
+                );
+                run.state_changed = true;
+                run.output = json!({
+                    "template_name": name,
+                    "bindings": bindings,
+                    "expanded_script": script,
+                    "macro_instance_id": macro_instance_id,
+                    "preflight": preflight,
+                    "run": run.output
+                });
+                run
+            }
         }
         ShellCommand::CandidatesList => {
             let sets = engine.list_candidate_sets();
@@ -9999,11 +10773,13 @@ mod tests {
                 name,
                 bindings,
                 transactional,
+                validate_only,
             } => {
                 assert_eq!(name, "clone");
                 assert_eq!(bindings.get("seq_id"), Some(&"seqB".to_string()));
                 assert_eq!(bindings.get("out_id"), Some(&"seqB_rev".to_string()));
                 assert!(transactional);
+                assert!(!validate_only);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -10027,6 +10803,53 @@ mod tests {
         match put {
             ShellCommand::MacrosTemplateUpsert { details_url, .. } => {
                 assert_eq!(details_url.as_deref(), Some("https://example.org/clone"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_macros_template_put_accepts_port_contracts() {
+        let put = parse_shell_line(
+            r#"macros template-put clone --script 'op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}' --param seq_id --param out_id=seqA_rev --input-port seq_id:sequence:one:required:Template --output-port out_id:sequence:one:optional:Derived"#,
+        )
+        .expect("parse macros template-put with ports");
+        match put {
+            ShellCommand::MacrosTemplateUpsert {
+                input_ports,
+                output_ports,
+                ..
+            } => {
+                assert_eq!(input_ports.len(), 1);
+                assert_eq!(input_ports[0].port_id, "seq_id");
+                assert_eq!(input_ports[0].kind, "sequence");
+                assert_eq!(input_ports[0].cardinality, "one");
+                assert!(input_ports[0].required);
+                assert_eq!(output_ports.len(), 1);
+                assert_eq!(output_ports[0].port_id, "out_id");
+                assert_eq!(output_ports[0].kind, "sequence");
+                assert_eq!(output_ports[0].cardinality, "one");
+                assert!(!output_ports[0].required);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_macros_template_run_validate_only_flag() {
+        let cmd = parse_shell_line("macros template-run clone --validate-only --bind seq_id=seqA")
+            .expect("parse macros template-run validate-only");
+        match cmd {
+            ShellCommand::MacrosTemplateRun {
+                name,
+                bindings,
+                transactional,
+                validate_only,
+            } => {
+                assert_eq!(name, "clone");
+                assert_eq!(bindings.get("seq_id").map(String::as_str), Some("seqA"));
+                assert!(!transactional);
+                assert!(validate_only);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -10601,6 +11424,8 @@ filter set1 set2 --metric score --min 10
                         required: false,
                     },
                 ],
+                input_ports: vec![],
+                output_ports: vec![],
                 script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}"#
                     .to_string(),
             },
@@ -10625,12 +11450,85 @@ filter set1 set2 --metric score --min 10
                 name: "clone".to_string(),
                 bindings: HashMap::from([("seq_id".to_string(), "seqA".to_string())]),
                 transactional: false,
+                validate_only: false,
             },
         )
         .expect("run macros template");
         assert!(run.state_changed);
         assert_eq!(run.output["template_name"].as_str(), Some("clone"));
         assert!(engine.state().sequences.contains_key("seqA_rev"));
+    }
+
+    #[test]
+    fn execute_macros_template_run_records_macro_instance() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateUpsert {
+                name: "clone".to_string(),
+                description: Some("reverse helper".to_string()),
+                details_url: Some("https://example.org/macros/clone".to_string()),
+                parameters: vec![
+                    WorkflowMacroTemplateParam {
+                        name: "seq_id".to_string(),
+                        default_value: None,
+                        required: true,
+                    },
+                    WorkflowMacroTemplateParam {
+                        name: "out_id".to_string(),
+                        default_value: Some("seqA_rev".to_string()),
+                        required: false,
+                    },
+                ],
+                input_ports: vec![WorkflowMacroTemplatePort {
+                    port_id: "seq_id".to_string(),
+                    kind: "sequence".to_string(),
+                    required: true,
+                    cardinality: "one".to_string(),
+                    description: Some("Template input".to_string()),
+                }],
+                output_ports: vec![WorkflowMacroTemplatePort {
+                    port_id: "out_id".to_string(),
+                    kind: "sequence".to_string(),
+                    required: false,
+                    cardinality: "one".to_string(),
+                    description: Some("Derived sequence id".to_string()),
+                }],
+                script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_id}"}}"#
+                    .to_string(),
+            },
+        )
+        .expect("upsert template");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "clone".to_string(),
+                bindings: HashMap::from([
+                    ("seq_id".to_string(), "seqA".to_string()),
+                    ("out_id".to_string(), "seqA_rev".to_string()),
+                ]),
+                transactional: false,
+                validate_only: false,
+            },
+        )
+        .expect("run template");
+        assert!(run.state_changed);
+        assert!(run.output["macro_instance_id"].as_str().is_some());
+        assert_eq!(engine.state().lineage.macro_instances.len(), 1);
+        let instance = &engine.state().lineage.macro_instances[0];
+        assert_eq!(instance.template_name.as_deref(), Some("clone"));
+        assert!(!instance.expanded_op_ids.is_empty());
+        assert_eq!(instance.bound_inputs.len(), 1);
+        assert_eq!(instance.bound_inputs[0].port_id, "seq_id");
+        assert_eq!(instance.bound_outputs.len(), 1);
+        assert_eq!(instance.bound_outputs[0].port_id, "out_id");
     }
 
     #[test]
@@ -10719,6 +11617,7 @@ filter set1 set2 --metric score --min 10
                 name: "reverse_default".to_string(),
                 bindings: HashMap::new(),
                 transactional: false,
+                validate_only: false,
             },
         )
         .expect("run imported template");
@@ -10777,6 +11676,7 @@ filter set1 set2 --metric score --min 10
                 name: "reverse_one".to_string(),
                 bindings: HashMap::new(),
                 transactional: false,
+                validate_only: false,
             },
         )
         .expect("run imported single-template");
@@ -10905,12 +11805,54 @@ filter set1 set2 --metric score --min 10
                 name: "branch_reverse_complement".to_string(),
                 bindings,
                 transactional: false,
+                validate_only: false,
             },
         )
         .expect("run imported branch template");
         assert!(run.state_changed);
         assert!(engine.state().sequences.contains_key("seqA_branch"));
         assert!(engine.state().sequences.contains_key("seqA_branch_rc"));
+    }
+
+    #[test]
+    fn execute_macros_template_run_validate_only_reports_preflight_without_mutation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let path = format!(
+            "{}/assets/cloning_patterns_catalog/sequence/transform/branch_reverse_complement.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+            .expect("import branch template");
+        assert!(!engine.state().sequences.contains_key("seqA_branch"));
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "branch_reverse_complement".to_string(),
+                bindings: HashMap::new(),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("validate-only run");
+        assert!(!run.state_changed);
+        assert_eq!(run.output["validate_only"].as_bool(), Some(true));
+        assert_eq!(run.output["can_execute"].as_bool(), Some(false));
+        assert!(
+            run.output
+                .get("preflight")
+                .and_then(|v| v.get("errors"))
+                .and_then(|v| v.as_array())
+                .map(|rows| !rows.is_empty())
+                .unwrap_or(false)
+        );
+        assert!(!engine.state().sequences.contains_key("seqA_branch"));
     }
 
     #[test]
@@ -11120,6 +12062,30 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         .unwrap_err();
         assert!(err.contains("rolled back"));
         assert!(!engine.state().sequences.contains_key("tmp_rev"));
+    }
+
+    #[test]
+    fn execute_macros_run_records_inline_macro_instance() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosRun {
+                script: r#"op {"Reverse":{"input":"seqA","output_id":"seqA_rev"}}"#.to_string(),
+                transactional: false,
+            },
+        )
+        .expect("run inline macro");
+        assert!(run.state_changed);
+        assert!(run.output["macro_instance_id"].as_str().is_some());
+        assert_eq!(engine.state().lineage.macro_instances.len(), 1);
+        let instance = &engine.state().lineage.macro_instances[0];
+        assert!(instance.template_name.is_none());
+        assert!(!instance.expanded_op_ids.is_empty());
     }
 
     #[test]

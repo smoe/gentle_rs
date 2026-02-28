@@ -61,12 +61,32 @@ order. Durable architecture constraints and decisions remain in
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
   - GUI `Patterns` menu now exposes routine browsing grouped by family/status
     and routine-level template import actions
+  - workflow template preflight baseline is now wired into
+    `macros template-run`:
+    - typed routine input-port checks for supported kinds
+      (`sequence`, `container`, `candidate_set`, `guide_set`, `string`,
+      `number`, `bool`, `path`, `sequence_anchor`)
+    - non-mutating inspection mode:
+      `macros template-run ... --validate-only`
+    - preflight payload is included in template-run output
+  - workflow macro templates now support optional typed
+    `input_ports`/`output_ports` metadata:
+    - persisted in engine template state
+    - import-compatible via `gentle.cloning_pattern_template.v1` files
+    - shell authoring path via `macros template-put --input-port ... --output-port ...`
+  - preflight now validates both input and output ports and reports
+    `contract_source` (`template_ports` or `routine_catalog`) in
+    `gentle.macro_template_preflight.v1`
+  - successful `macros run` and `macros template-run` now append deterministic
+    lineage macro-instance records (typed bound inputs/outputs + emitted op ids)
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
 
 ### GUI baseline in place
 
 - Main lineage page with table/graph/container views.
+- Main lineage page content is vertically scrollable so graph height does not
+  hide container/arrangement sections.
 - Main lineage node-group baseline:
   - disjoint node-group model (strict one-group-per-node membership)
   - table indentation under group representative rows
@@ -84,6 +104,8 @@ order. Durable architecture constraints and decisions remain in
   - collapsed group representatives display hidden-internals badges (total
     hidden operation count + top hidden operation-family chips)
   - serial arrangements are rendered as dedicated graph nodes linked from lane-source sequences
+  - macro instances are rendered as dedicated box nodes with explicit
+    input/output edges (sequence/container-resolved where applicable)
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:
@@ -156,12 +178,14 @@ Notes:
 ## 2. Active known gaps (priority-ordered)
 
 1. Cloning routine standardization is incomplete:
-   - first typed cloning-routine catalog baseline exists (manifest + list/filter
-     discovery), but the contract is not yet fully integrated into macro
-     validation and lineage visualization
-   - workflow macro templates do not yet declare typed input/output contracts
-   - lineage graph does not yet render explicit macro-instance box nodes with
-     input/output edges
+   - typed cloning-routine catalog + template-port preflight baseline is now
+     integrated into macro validation and lineage visualization, but semantic
+     depth is still incomplete
+   - output-port validation is now present, but richer cross-port semantic
+     constraints are not yet enforced (for example compatibility/alias rules)
+   - macro-instance lineage recording + graph/SVG box rendering is now in
+     place, but richer drill-down UX and failure/cancel record pathways are
+     still pending
    - protocol-family template packs are still incomplete (restriction-only,
      Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi)
    - cross-tool benchmarking (Serial Cloner + MacVector + SnapGene synthesis)
@@ -200,6 +224,10 @@ Notes:
      incomplete
    - optional all-open-window refresh behavior for applied display changes
      should be finalized consistently across relevant graphics-setting changes
+   - sequence-panel amino-acid row rendering is intentionally deferred until
+     engine-owned transcript/CDS-aware translation contracts are implemented
+     (explicit codon-table resolution plus frame/phase context); current dormant
+     AA-row path is maintained as safe no-op
 8. Cross-application clipboard interoperability for sequence + feature transfer
    is not yet implemented (current baseline is deterministic in-app extraction).
 9. Screenshot bridge execution remains disabled by security policy.
@@ -367,15 +395,30 @@ Current baseline:
   `routines list ...`.
 - GUI routine discovery baseline is now exposed under `Patterns` with grouped
   family/status browsing.
-- routine-family coverage and graph visualization are still incomplete.
+- workflow template preflight baseline is implemented in shared shell:
+  - `macros template-run ... --validate-only` reports typed preflight without
+    mutating state
+  - normal `macros template-run` now carries preflight output and blocks
+    execution on preflight errors
+  - preflight now validates both input and output ports and reports
+    `contract_source` (`template_ports` or `routine_catalog`)
+- workflow macro templates now accept optional typed `input_ports` and
+  `output_ports` contracts in template metadata.
+- successful `macros run` and `macros template-run` now persist lineage
+  macro-instance records (bound inputs/outputs + emitted op ids).
+- lineage graph and lineage SVG export now include explicit macro box nodes and
+  input/output edge rendering.
+- routine-family coverage and deeper semantic validation are still incomplete.
 
 Planned work:
 
-1. Extend macro templates with optional typed input/output port contracts.
-2. Persist macro-run instance records (resolved bindings + emitted op ids).
-3. Render macro instances as box nodes in lineage/workflow graph with explicit
-   input/output edges; support multiple instances of the same routine per
-   project.
+1. Extend preflight from baseline typed checks to richer semantic constraints:
+   cross-port compatibility rules, alias relationships, and higher-fidelity
+   diagnostics for ambiguous routine/template bindings.
+2. Add explicit failed/cancelled macro-instance recording paths and
+   first-class replay/introspection helpers.
+3. Expand macro-node UX details (detail panes, operation drill-down,
+   edge-density controls) for dense projects.
 4. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
    Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
 

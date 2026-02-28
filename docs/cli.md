@@ -631,10 +631,10 @@ Shared shell command:
     - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
     - `macros template-list`
     - `macros template-show TEMPLATE_NAME`
-    - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]`
+    - `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]`
     - `macros template-delete TEMPLATE_NAME`
     - `macros template-import PATH`
-    - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
+    - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]`
     - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
     - `candidates list`
     - `candidates delete SET_NAME`
@@ -891,15 +891,19 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Supports transactional rollback (`--transactional`) when any statement fails.
   - Designed for full cloning workflows through `op ...` and `workflow ...`
     statements (Digest/Ligation/PCR/ExtractRegion/container ops, etc.).
+  - Successful runs return `macro_instance_id` and persist one macro-instance
+    lineage record for graph/SVG visualization.
 - `macros template-list`
   - Lists persisted workflow macro templates.
 - `macros template-show TEMPLATE_NAME`
   - Shows one persisted workflow template definition.
-- `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]`
+- `macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]`
   - Creates/updates a named workflow macro template in project metadata.
   - Placeholders in script use `${param_name}` and must be declared via `--param`.
   - Optional `--details-url URL` records external protocol/reference details for
     catalog display.
+  - Optional typed port contracts (`--input-port` / `--output-port`) are stored
+    in template metadata and used as first-class preflight contract source.
 - `macros template-delete TEMPLATE_NAME`
   - Deletes one persisted workflow template.
 - `macros template-import PATH`
@@ -908,9 +912,14 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
     - one single-template JSON file (`gentle.cloning_pattern_template.v1`)
     - one directory tree (recursive `*.json` import)
   - If one template fails validation, no imported template changes are kept.
-- `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
+- `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]`
   - Expands a named template with provided bindings/defaults, then executes it as
     a workflow macro script.
+  - Executes typed preflight checks before mutation using template port
+    contracts when present, otherwise routine catalog mapping.
+  - `--validate-only` runs preflight only and never mutates state.
+  - Successful mutating runs now return `macro_instance_id` and persist one
+    macro-instance lineage record.
 
 Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'routines ...'`):
 

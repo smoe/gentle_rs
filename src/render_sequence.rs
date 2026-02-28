@@ -51,7 +51,10 @@ impl RenderSequence {
             ));
         }
         if aa_frame != AminoAcidFrame::None {
-            rows.push(SequenceRow::AminoAcids);
+            // Deferred by architecture contract:
+            // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
+            // Keep sequence-row pipeline deterministic and panic-free until
+            // transcript/CDS-aware translation contracts are implemented in engine.
         }
         rows.push(SequenceRow::Separator(RowBlank::new()));
         Self {

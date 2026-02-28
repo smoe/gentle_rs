@@ -29,9 +29,11 @@ impl SequenceRow {
             Self::RestrictionEnzymes(row) => {
                 row.compute_line_height(size);
             }
-            _ => {
-                todo!();
+            Self::AminoAcids => {
+                // Deferred by architecture contract:
+                // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
             }
+            Self::Features | Self::Proteases => {}
         }
     }
 
@@ -73,9 +75,11 @@ impl SequenceRow {
             Self::RestrictionEnzymes(row) => {
                 row.layout(block_offset, block_height, area);
             }
-            _ => {
-                todo!();
+            Self::AminoAcids => {
+                // Deferred by architecture contract:
+                // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
             }
+            Self::Features | Self::Proteases => {}
         }
     }
 
@@ -90,9 +94,37 @@ impl SequenceRow {
             Self::RestrictionEnzymes(row) => {
                 row.render(row_num, block_num, painter, rect);
             }
-            _ => {
-                todo!();
+            Self::AminoAcids => {
+                // Deferred by architecture contract:
+                // docs/architecture.md -> "Amino-acid translation row contract (deferred)".
             }
+            Self::Features | Self::Proteases => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SequenceRow;
+    use crate::dna_display::DnaDisplay;
+    use eframe::egui::{Pos2, Rect, Vec2};
+    use std::sync::{Arc, RwLock};
+
+    #[test]
+    fn amino_acid_row_path_is_deferred_noop() {
+        let mut row = SequenceRow::AminoAcids;
+        row.compute_line_height(&Vec2::new(8.0, 12.0));
+        assert_eq!(row.line_height(), 0.0);
+        assert_eq!(row.blocks(), 0);
+        let display = Arc::new(RwLock::new(DnaDisplay::default()));
+        row.layout(
+            &display,
+            0,
+            24.0,
+            0.0,
+            &Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(240.0, 80.0)),
+        );
+        assert_eq!(row.line_height(), 0.0);
+        assert_eq!(row.blocks(), 0);
     }
 }

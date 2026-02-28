@@ -32,8 +32,8 @@ use crate::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
         DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GenomeTrackImportProgress,
         GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, ProjectState,
-        SequenceGenomeAnchorSummary,
+        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, OpResult, Operation,
+        OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -800,6 +800,7 @@ struct BlastPoolOption {
 enum LineageNodeKind {
     Sequence,
     Arrangement,
+    Macro,
 }
 
 #[derive(Clone)]
@@ -823,6 +824,13 @@ struct LineageRow {
     genome_anchor_summary: Option<SequenceGenomeAnchorSummary>,
     genome_anchor_display: Option<String>,
     is_full_genome_sequence: bool,
+    macro_instance_id: Option<String>,
+    macro_routine_id: Option<String>,
+    macro_template_name: Option<String>,
+    macro_status: Option<String>,
+    macro_op_ids: Vec<String>,
+    macro_inputs: Vec<LineageMacroPortBinding>,
+    macro_outputs: Vec<LineageMacroPortBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2809,6 +2817,7 @@ Error: `{err}`"
         state.sequences.len().hash(&mut hasher);
         state.lineage.nodes.len().hash(&mut hasher);
         state.lineage.edges.len().hash(&mut hasher);
+        state.lineage.macro_instances.len().hash(&mut hasher);
         state.container_state.containers.len().hash(&mut hasher);
         state.container_state.arrangements.len().hash(&mut hasher);
         hasher.finish()
@@ -9843,15 +9852,18 @@ Error: `{err}`"
                         genome_anchor_summary,
                         genome_anchor_display,
                         is_full_genome_sequence,
+                        macro_instance_id: None,
+                        macro_routine_id: None,
+                        macro_template_name: None,
+                        macro_status: None,
+                        macro_op_ids: vec![],
+                        macro_inputs: vec![],
+                        macro_outputs: vec![],
                     }
                 })
                 .collect();
-            out.sort_by(|a, b| {
-                a.created_at
-                    .cmp(&b.created_at)
-                    .then(a.node_id.cmp(&b.node_id))
-            });
-            let lineage_edges: Vec<(String, String, String)> = state
+
+            let mut lineage_edges: Vec<(String, String, String)> = state
                 .lineage
                 .edges
                 .iter()
@@ -9861,6 +9873,144 @@ Error: `{err}`"
                     Some((from, to, e.op_id.clone()))
                 })
                 .collect();
+
+            for instance in &state.lineage.macro_instances {
+                let macro_node_id = format!("macro:{}", instance.macro_instance_id);
+                let mut parent_labels: Vec<String> = vec![];
+                let summarize_binding = |binding: &LineageMacroPortBinding| -> Option<String> {
+                    if binding.values.is_empty() {
+                        return None;
+                    }
+                    Some(format!("{}={}", binding.port_id, binding.values.join(",")))
+                };
+                let sequence_nodes_for_binding =
+                    |binding: &LineageMacroPortBinding| -> Vec<String> {
+                        let mut node_ids: Vec<String> = vec![];
+                        let mut seen: HashSet<String> = HashSet::new();
+                        match binding.kind.trim().to_ascii_lowercase().as_str() {
+                            "sequence" => {
+                                for seq_id in &binding.values {
+                                    if let Some(node_id) = state.lineage.seq_to_node.get(seq_id) {
+                                        if seen.insert(node_id.clone()) {
+                                            node_ids.push(node_id.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            "container" => {
+                                for container_id in &binding.values {
+                                    let Some(container) =
+                                        state.container_state.containers.get(container_id)
+                                    else {
+                                        continue;
+                                    };
+                                    for seq_id in &container.members {
+                                        if let Some(node_id) = state.lineage.seq_to_node.get(seq_id)
+                                        {
+                                            if seen.insert(node_id.clone()) {
+                                                node_ids.push(node_id.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        node_ids
+                    };
+
+                for binding in &instance.bound_inputs {
+                    if let Some(label) = summarize_binding(binding) {
+                        parent_labels.push(label);
+                    }
+                    let from_nodes = sequence_nodes_for_binding(binding);
+                    let edge_label_id = format!(
+                        "macro:{}:in:{}",
+                        instance.macro_instance_id, binding.port_id
+                    );
+                    op_label_by_id
+                        .entry(edge_label_id.clone())
+                        .or_insert_with(|| format!("Macro input {}", binding.port_id));
+                    for from_node_id in from_nodes {
+                        lineage_edges.push((
+                            from_node_id,
+                            macro_node_id.clone(),
+                            edge_label_id.clone(),
+                        ));
+                    }
+                }
+                for binding in &instance.bound_outputs {
+                    let to_nodes = sequence_nodes_for_binding(binding);
+                    let edge_label_id = format!(
+                        "macro:{}:out:{}",
+                        instance.macro_instance_id, binding.port_id
+                    );
+                    op_label_by_id
+                        .entry(edge_label_id.clone())
+                        .or_insert_with(|| format!("Macro output {}", binding.port_id));
+                    for to_node_id in to_nodes {
+                        lineage_edges.push((
+                            macro_node_id.clone(),
+                            to_node_id,
+                            edge_label_id.clone(),
+                        ));
+                    }
+                }
+
+                if parent_labels.is_empty() {
+                    parent_labels.push("-".to_string());
+                }
+
+                let status_label = match instance.status {
+                    crate::engine::MacroInstanceStatus::Ok => "ok",
+                    crate::engine::MacroInstanceStatus::Failed => "failed",
+                    crate::engine::MacroInstanceStatus::Cancelled => "cancelled",
+                };
+                let display_name = instance
+                    .routine_title
+                    .clone()
+                    .or_else(|| instance.routine_id.clone())
+                    .or_else(|| instance.template_name.clone())
+                    .unwrap_or_else(|| "Macro".to_string());
+                out.push(LineageRow {
+                    kind: LineageNodeKind::Macro,
+                    node_id: macro_node_id,
+                    seq_id: instance.macro_instance_id.clone(),
+                    display_name,
+                    origin: format!("Macro ({status_label})"),
+                    created_by_op: instance
+                        .expanded_op_ids
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "-".to_string()),
+                    created_at: instance.created_at_unix_ms,
+                    parents: parent_labels,
+                    length: 0,
+                    circular: false,
+                    pool_size: 0,
+                    pool_members: vec![],
+                    arrangement_id: None,
+                    arrangement_mode: None,
+                    lane_container_ids: vec![],
+                    ladders: vec![],
+                    genome_anchor_summary: None,
+                    genome_anchor_display: None,
+                    is_full_genome_sequence: false,
+                    macro_instance_id: Some(instance.macro_instance_id.clone()),
+                    macro_routine_id: instance.routine_id.clone(),
+                    macro_template_name: instance.template_name.clone(),
+                    macro_status: Some(status_label.to_string()),
+                    macro_op_ids: instance.expanded_op_ids.clone(),
+                    macro_inputs: instance.bound_inputs.clone(),
+                    macro_outputs: instance.bound_outputs.clone(),
+                });
+            }
+
+            out.sort_by(|a, b| {
+                a.created_at
+                    .cmp(&b.created_at)
+                    .then(a.node_id.cmp(&b.node_id))
+            });
             let mut containers: Vec<ContainerRow> = state
                 .container_state
                 .containers
@@ -11043,6 +11193,13 @@ Error: `{err}`"
                 genome_anchor_summary: None,
                 genome_anchor_display: None,
                 is_full_genome_sequence: false,
+                macro_instance_id: None,
+                macro_routine_id: None,
+                macro_template_name: None,
+                macro_status: None,
+                macro_op_ids: vec![],
+                macro_inputs: vec![],
+                macro_outputs: vec![],
             });
         }
         graph_rows.sort_by(|a, b| {
@@ -11074,193 +11231,204 @@ Error: `{err}`"
             persist_workspace_after_frame = true;
         }
 
-        ui.collapsing("Node Groups", |ui| {
-            ui.small(
-                "Group lineage nodes into disjoint sets. Members are shown indented in table view and can collapse to the representative node in graph view.",
-            );
-            if self.lineage_group_marked_nodes.is_empty() {
-                ui.small("Marked nodes: none");
-            } else {
-                let mut marked = self
-                    .lineage_group_marked_nodes
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>();
-                marked.sort();
-                ui.horizontal_wrapped(|ui| {
-                    ui.small(format!("Marked nodes ({})", marked.len()));
-                    ui.monospace(marked.join(", "));
-                    if ui
-                        .small_button("Clear marked")
-                        .on_hover_text("Clear marked candidate nodes for grouping")
-                        .clicked()
-                    {
-                        self.lineage_group_marked_nodes.clear();
-                        self.lineage_group_status = "Cleared marked nodes".to_string();
-                    }
-                });
-            }
-            if !self.lineage_group_status.trim().is_empty() {
-                ui.small(self.lineage_group_status.clone());
-            }
-            if self.lineage_node_groups.is_empty() {
-                ui.small("No node groups yet.");
-            } else {
-                egui::Grid::new("lineage_node_groups_grid")
-                    .striped(true)
-                    .min_col_width(48.0)
-                    .show(ui, |ui| {
-                        ui.strong("Collapse");
-                        ui.strong("Group");
-                        ui.strong("Representative");
-                        ui.strong("Members");
-                        ui.strong("Actions");
-                        ui.end_row();
-                        let mut edit_group_id: Option<String> = None;
-                        let mut delete_group_id: Option<String> = None;
-                        for group in &mut self.lineage_node_groups {
-                            if ui.checkbox(&mut group.collapsed, "").changed() {
-                                persist_workspace_after_frame = true;
+        egui::ScrollArea::vertical()
+            .id_salt("lineage_main_scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.collapsing("Node Groups", |ui| {
+                    ui.small(
+                        "Group lineage nodes into disjoint sets. Members are shown indented in table view and can collapse to the representative node in graph view.",
+                    );
+                    if self.lineage_group_marked_nodes.is_empty() {
+                        ui.small("Marked nodes: none");
+                    } else {
+                        let mut marked = self
+                            .lineage_group_marked_nodes
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>();
+                        marked.sort();
+                        ui.horizontal_wrapped(|ui| {
+                            ui.small(format!("Marked nodes ({})", marked.len()));
+                            ui.monospace(marked.join(", "));
+                            if ui
+                                .small_button("Clear marked")
+                                .on_hover_text("Clear marked candidate nodes for grouping")
+                                .clicked()
+                            {
+                                self.lineage_group_marked_nodes.clear();
+                                self.lineage_group_status = "Cleared marked nodes".to_string();
                             }
-                            ui.label(format!("{} ({})", group.label, group.group_id));
-                            ui.monospace(group.representative_node_id.clone());
-                            ui.monospace(group.member_node_ids.join(", "));
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .small_button("Edit")
-                                    .on_hover_text("Edit this node group")
-                                    .clicked()
-                                {
-                                    edit_group_id = Some(group.group_id.clone());
+                        });
+                    }
+                    if !self.lineage_group_status.trim().is_empty() {
+                        ui.small(self.lineage_group_status.clone());
+                    }
+                    if self.lineage_node_groups.is_empty() {
+                        ui.small("No node groups yet.");
+                    } else {
+                        egui::Grid::new("lineage_node_groups_grid")
+                            .striped(true)
+                            .min_col_width(48.0)
+                            .show(ui, |ui| {
+                                ui.strong("Collapse");
+                                ui.strong("Group");
+                                ui.strong("Representative");
+                                ui.strong("Members");
+                                ui.strong("Actions");
+                                ui.end_row();
+                                let mut edit_group_id: Option<String> = None;
+                                let mut delete_group_id: Option<String> = None;
+                                for group in &mut self.lineage_node_groups {
+                                    if ui.checkbox(&mut group.collapsed, "").changed() {
+                                        persist_workspace_after_frame = true;
+                                    }
+                                    ui.label(format!("{} ({})", group.label, group.group_id));
+                                    ui.monospace(group.representative_node_id.clone());
+                                    ui.monospace(group.member_node_ids.join(", "));
+                                    ui.horizontal(|ui| {
+                                        if ui
+                                            .small_button("Edit")
+                                            .on_hover_text("Edit this node group")
+                                            .clicked()
+                                        {
+                                            edit_group_id = Some(group.group_id.clone());
+                                        }
+                                        if ui
+                                            .small_button("Delete")
+                                            .on_hover_text("Delete this node group")
+                                            .clicked()
+                                        {
+                                            delete_group_id = Some(group.group_id.clone());
+                                        }
+                                    });
+                                    ui.end_row();
                                 }
-                                if ui
-                                    .small_button("Delete")
-                                    .on_hover_text("Delete this node group")
-                                    .clicked()
-                                {
-                                    delete_group_id = Some(group.group_id.clone());
+                                if let Some(group_id) = edit_group_id {
+                                    if let Some(group) = self
+                                        .lineage_node_groups
+                                        .iter()
+                                        .find(|group| group.group_id == group_id)
+                                    {
+                                        self.lineage_group_form_editing_id =
+                                            Some(group.group_id.clone());
+                                        self.lineage_group_form_label = group.label.clone();
+                                        self.lineage_group_form_representative =
+                                            group.representative_node_id.clone();
+                                        self.lineage_group_form_members =
+                                            group.member_node_ids.join(", ");
+                                        self.lineage_group_status =
+                                            format!("Editing group '{}'", group.label);
+                                    }
+                                }
+                                if let Some(group_id) = delete_group_id {
+                                    let before = self.lineage_node_groups.len();
+                                    self.lineage_node_groups
+                                        .retain(|group| group.group_id != group_id);
+                                    if self.lineage_node_groups.len() != before {
+                                        if self
+                                            .lineage_group_form_editing_id
+                                            .as_ref()
+                                            .is_some_and(|editing_id| editing_id == &group_id)
+                                        {
+                                            self.lineage_group_form_editing_id = None;
+                                        }
+                                        self.lineage_group_status =
+                                            format!("Deleted group '{group_id}'");
+                                        persist_workspace_after_frame = true;
+                                    }
                                 }
                             });
-                            ui.end_row();
-                        }
-                        if let Some(group_id) = edit_group_id {
-                            if let Some(group) = self
-                                .lineage_node_groups
-                                .iter()
-                                .find(|group| group.group_id == group_id)
-                            {
-                                self.lineage_group_form_editing_id = Some(group.group_id.clone());
-                                self.lineage_group_form_label = group.label.clone();
-                                self.lineage_group_form_representative =
-                                    group.representative_node_id.clone();
-                                self.lineage_group_form_members = group.member_node_ids.join(", ");
-                                self.lineage_group_status =
-                                    format!("Editing group '{}'", group.label);
-                            }
-                        }
-                        if let Some(group_id) = delete_group_id {
-                            let before = self.lineage_node_groups.len();
-                            self.lineage_node_groups
-                                .retain(|group| group.group_id != group_id);
-                            if self.lineage_node_groups.len() != before {
-                                if self
-                                    .lineage_group_form_editing_id
-                                    .as_ref()
-                                    .is_some_and(|editing_id| editing_id == &group_id)
-                                {
-                                    self.lineage_group_form_editing_id = None;
-                                }
-                                self.lineage_group_status = format!("Deleted group '{group_id}'");
-                                persist_workspace_after_frame = true;
+                    }
+                    ui.separator();
+                    let editing = self.lineage_group_form_editing_id.is_some();
+                    ui.label(if editing {
+                        "Edit node group"
+                    } else {
+                        "Create node group"
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Label");
+                        ui.text_edit_singleline(&mut self.lineage_group_form_label);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Representative");
+                        ui.text_edit_singleline(&mut self.lineage_group_form_representative);
+                        if ui
+                            .small_button("Use selected")
+                            .on_hover_text("Use currently selected graph node as representative")
+                            .clicked()
+                        {
+                            if let Some(selected_node_id) = &self.lineage_graph_selected_node_id {
+                                self.lineage_group_form_representative = selected_node_id.clone();
                             }
                         }
                     });
-            }
-            ui.separator();
-            let editing = self.lineage_group_form_editing_id.is_some();
-            ui.label(if editing {
-                "Edit node group"
-            } else {
-                "Create node group"
-            });
-            ui.horizontal(|ui| {
-                ui.label("Label");
-                ui.text_edit_singleline(&mut self.lineage_group_form_label);
-            });
-            ui.horizontal(|ui| {
-                ui.label("Representative");
-                ui.text_edit_singleline(&mut self.lineage_group_form_representative);
-                if ui
-                    .small_button("Use selected")
-                    .on_hover_text("Use currently selected graph node as representative")
-                    .clicked()
-                {
-                    if let Some(selected_node_id) = &self.lineage_graph_selected_node_id {
-                        self.lineage_group_form_representative = selected_node_id.clone();
+                    ui.horizontal(|ui| {
+                        ui.label("Members");
+                        ui.text_edit_singleline(&mut self.lineage_group_form_members);
+                    });
+                    ui.small(
+                        "Members: comma/space/newline separated node ids (representative excluded).",
+                    );
+                    ui.horizontal(|ui| {
+                        let save_label = if editing { "Apply Group" } else { "Add Group" };
+                        if ui.button(save_label).clicked() {
+                            match self.apply_lineage_group_form(&valid_lineage_node_ids) {
+                                Ok(status) => {
+                                    self.lineage_group_status = status;
+                                    persist_workspace_after_frame = true;
+                                }
+                                Err(err) => {
+                                    self.lineage_group_status = err;
+                                }
+                            }
+                        }
+                        if ui.button("Clear Form").clicked() {
+                            self.lineage_group_form_editing_id = None;
+                            self.lineage_group_form_label.clear();
+                            self.lineage_group_form_members.clear();
+                            self.lineage_group_form_representative.clear();
+                            self.lineage_group_status.clear();
+                            self.lineage_group_marked_nodes.clear();
+                        }
+                    });
+                });
+                ui.separator();
+
+                sanitized_groups = Self::sanitize_lineage_node_groups(
+                    &self.lineage_node_groups,
+                    &valid_lineage_node_ids,
+                );
+                if sanitized_groups != self.lineage_node_groups {
+                    self.lineage_node_groups = sanitized_groups.clone();
+                    persist_workspace_after_frame = true;
+                }
+                let lineage_groups = self.lineage_node_groups.clone();
+                let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(&lineage_groups);
+                let (projected_graph_rows, projected_graph_edges) =
+                    Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &lineage_groups);
+                let collapsed_group_badges = Self::lineage_collapsed_group_hidden_op_badges(
+                    &graph_edges,
+                    &lineage_groups,
+                    &graph_op_label_by_id,
+                );
+                let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
+                let visible_node_ids: HashSet<String> = projected_graph_rows
+                    .iter()
+                    .map(|row| row.node_id.clone())
+                    .collect();
+                if let Some(selected_node_id) = self.lineage_graph_selected_node_id.clone() {
+                    if !visible_node_ids.contains(&selected_node_id) {
+                        let remapped = node_to_group_id
+                            .get(&selected_node_id)
+                            .and_then(|group_id| group_by_id.get(group_id))
+                            .map(|group| group.representative_node_id.clone());
+                        self.lineage_graph_selected_node_id = remapped;
                     }
                 }
-            });
-            ui.horizontal(|ui| {
-                ui.label("Members");
-                ui.text_edit_singleline(&mut self.lineage_group_form_members);
-            });
-            ui.small("Members: comma/space/newline separated node ids (representative excluded).");
-            ui.horizontal(|ui| {
-                let save_label = if editing { "Apply Group" } else { "Add Group" };
-                if ui.button(save_label).clicked() {
-                    match self.apply_lineage_group_form(&valid_lineage_node_ids) {
-                        Ok(status) => {
-                            self.lineage_group_status = status;
-                            persist_workspace_after_frame = true;
-                        }
-                        Err(err) => {
-                            self.lineage_group_status = err;
-                        }
-                    }
-                }
-                if ui.button("Clear Form").clicked() {
-                    self.lineage_group_form_editing_id = None;
-                    self.lineage_group_form_label.clear();
-                    self.lineage_group_form_members.clear();
-                    self.lineage_group_form_representative.clear();
-                    self.lineage_group_status.clear();
-                    self.lineage_group_marked_nodes.clear();
-                }
-            });
-        });
-        ui.separator();
 
-        sanitized_groups =
-            Self::sanitize_lineage_node_groups(&self.lineage_node_groups, &valid_lineage_node_ids);
-        if sanitized_groups != self.lineage_node_groups {
-            self.lineage_node_groups = sanitized_groups.clone();
-            persist_workspace_after_frame = true;
-        }
-        let lineage_groups = self.lineage_node_groups.clone();
-        let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(&lineage_groups);
-        let (projected_graph_rows, projected_graph_edges) =
-            Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &lineage_groups);
-        let collapsed_group_badges = Self::lineage_collapsed_group_hidden_op_badges(
-            &graph_edges,
-            &lineage_groups,
-            &graph_op_label_by_id,
-        );
-        let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
-        let visible_node_ids: HashSet<String> = projected_graph_rows
-            .iter()
-            .map(|row| row.node_id.clone())
-            .collect();
-        if let Some(selected_node_id) = self.lineage_graph_selected_node_id.clone() {
-            if !visible_node_ids.contains(&selected_node_id) {
-                let remapped = node_to_group_id
-                    .get(&selected_node_id)
-                    .and_then(|group_id| group_by_id.get(group_id))
-                    .map(|group| group.representative_node_id.clone());
-                self.lineage_graph_selected_node_id = remapped;
-            }
-        }
-
-        if self.lineage_graph_view {
+                if self.lineage_graph_view {
             if self.lineage_graph_offsets_synced_stamp != self.lineage_cache_stamp {
                 let offset_count_before = self.lineage_graph_node_offsets.len();
                 let active_node_ids = graph_rows
@@ -11301,6 +11469,7 @@ Error: `{err}`"
                 ui.label("Legend:");
                 ui.colored_label(egui::Color32::from_rgb(90, 140, 210), "● single sequence");
                 ui.colored_label(egui::Color32::from_rgb(180, 120, 70), "◆ pool");
+                ui.colored_label(egui::Color32::from_rgb(98, 98, 108), "▭ macro run");
                 ui.colored_label(egui::Color32::from_rgb(108, 154, 122), "▭ arrangement");
                 ui.colored_label(egui::Color32::from_rgb(145, 145, 145), "◻ node group");
                 ui.separator();
@@ -11560,6 +11729,11 @@ Error: `{err}`"
                                         Vec2::new(56.0 * graph_zoom, 28.0 * graph_zoom),
                                     )
                                     .contains(pointer),
+                                    LineageNodeKind::Macro => egui::Rect::from_center_size(
+                                        pos,
+                                        Vec2::new(64.0 * graph_zoom, 30.0 * graph_zoom),
+                                    )
+                                    .contains(pointer),
                                     LineageNodeKind::Sequence if row.pool_size > 1 => {
                                         egui::Rect::from_center_size(
                                             pos,
@@ -11609,6 +11783,14 @@ Error: `{err}`"
                                                 ladders
                                             )
                                         }
+                                        LineageNodeKind::Macro => format!(
+                                            "ops={} | template={} | status={}",
+                                            row.macro_op_ids.len(),
+                                            row.macro_template_name
+                                                .as_deref()
+                                                .unwrap_or("-"),
+                                            row.macro_status.as_deref().unwrap_or("ok")
+                                        ),
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
                                             format!(
                                                 "{} ({} bp) | pool={}",
@@ -11828,6 +12010,26 @@ Error: `{err}`"
                                             highlight_stroke,
                                         );
                                     }
+                                    LineageNodeKind::Macro => {
+                                        let rect = egui::Rect::from_center_size(
+                                            pos,
+                                            Vec2::new(64.0 * graph_zoom, 30.0 * graph_zoom),
+                                        );
+                                        painter.rect_filled(
+                                            rect,
+                                            4.0 * graph_zoom,
+                                            if is_selected {
+                                                egui::Color32::from_rgb(118, 118, 128)
+                                            } else {
+                                                egui::Color32::from_rgb(98, 98, 108)
+                                            },
+                                        );
+                                        painter.rect_stroke(
+                                            rect,
+                                            4.0 * graph_zoom,
+                                            highlight_stroke,
+                                        );
+                                    }
                                     LineageNodeKind::Sequence if row.pool_size > 1 => {
                                         let points = vec![
                                             pos + Vec2::new(0.0, -16.0 * graph_zoom),
@@ -11861,6 +12063,13 @@ Error: `{err}`"
                                 let node_id_label = match row.kind {
                                     LineageNodeKind::Arrangement => row
                                         .arrangement_id
+                                        .as_ref()
+                                        .map(|id| Self::compact_lineage_node_label(id, 12))
+                                        .unwrap_or_else(|| {
+                                            Self::compact_lineage_node_label(&row.node_id, 12)
+                                        }),
+                                    LineageNodeKind::Macro => row
+                                        .macro_instance_id
                                         .as_ref()
                                         .map(|id| Self::compact_lineage_node_label(id, 12))
                                         .unwrap_or_else(|| {
@@ -11977,6 +12186,14 @@ Error: `{err}`"
                                                 ladders
                                             )
                                         }
+                                        LineageNodeKind::Macro => format!(
+                                            "ops={} | template={} | status={}",
+                                            row.macro_op_ids.len(),
+                                            row.macro_template_name
+                                                .as_deref()
+                                                .unwrap_or("-"),
+                                            row.macro_status.as_deref().unwrap_or("ok")
+                                        ),
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
                                             format!(
                                                 "{} ({} bp) | pool={}",
@@ -12072,6 +12289,22 @@ Error: `{err}`"
                                                 ladders
                                             ));
                                         }
+                                        LineageNodeKind::Macro => {
+                                            ui.monospace(format!(
+                                                "{} | template={} | status={} | ops={}",
+                                                row.macro_instance_id
+                                                    .as_deref()
+                                                    .unwrap_or(&row.seq_id),
+                                                row.macro_template_name
+                                                    .as_deref()
+                                                    .unwrap_or("-"),
+                                                row.macro_status.as_deref().unwrap_or("ok"),
+                                                row.macro_op_ids.len()
+                                            ));
+                                            if let Some(routine_id) = &row.macro_routine_id {
+                                                ui.small(format!("routine_id={routine_id}"));
+                                            }
+                                        }
                                         LineageNodeKind::Sequence => {
                                             ui.monospace(format!(
                                                 "{} | {} bp | {}",
@@ -12128,6 +12361,57 @@ Error: `{err}`"
                                                         row.lane_container_ids.len() - 6
                                                     ));
                                                 }
+                                            }
+                                        }
+                                        LineageNodeKind::Macro => {
+                                            if !row.macro_inputs.is_empty() || !row.macro_outputs.is_empty() {
+                                                ui.separator();
+                                                if !row.macro_inputs.is_empty() {
+                                                    let preview = row
+                                                        .macro_inputs
+                                                        .iter()
+                                                        .map(|binding| {
+                                                            format!(
+                                                                "{}={}",
+                                                                binding.port_id,
+                                                                binding.values.join(",")
+                                                            )
+                                                        })
+                                                        .take(4)
+                                                        .collect::<Vec<_>>()
+                                                        .join(" | ");
+                                                    if !preview.is_empty() {
+                                                        ui.small(format!("inputs: {preview}"));
+                                                    }
+                                                }
+                                                if !row.macro_outputs.is_empty() {
+                                                    let preview = row
+                                                        .macro_outputs
+                                                        .iter()
+                                                        .map(|binding| {
+                                                            format!(
+                                                                "{}={}",
+                                                                binding.port_id,
+                                                                binding.values.join(",")
+                                                            )
+                                                        })
+                                                        .take(4)
+                                                        .collect::<Vec<_>>()
+                                                        .join(" | ");
+                                                    if !preview.is_empty() {
+                                                        ui.small(format!("outputs: {preview}"));
+                                                    }
+                                                }
+                                            }
+                                            if !row.macro_op_ids.is_empty() {
+                                                let preview = row
+                                                    .macro_op_ids
+                                                    .iter()
+                                                    .take(6)
+                                                    .cloned()
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ");
+                                                ui.small(format!("op_ids: {preview}"));
                                             }
                                         }
                                         LineageNodeKind::Sequence if row.pool_size > 1 => {
@@ -12236,6 +12520,7 @@ Error: `{err}`"
                                                         Some(row.lane_container_ids.clone());
                                                 }
                                             }
+                                            LineageNodeKind::Macro => {}
                                             LineageNodeKind::Sequence if row.pool_size > 1 => {
                                                 open_pool = Some((
                                                     row.seq_id.clone(),
@@ -12366,6 +12651,14 @@ Error: `{err}`"
                                                 .to_string(),
                                         );
                                     }
+                                    LineageNodeKind::Macro => {
+                                        ui.monospace(
+                                            row.macro_instance_id
+                                                .as_deref()
+                                                .unwrap_or(&row.seq_id)
+                                                .to_string(),
+                                        );
+                                    }
                                     LineageNodeKind::Sequence => {
                                         if ui
                                             .button(&row.seq_id)
@@ -12416,7 +12709,9 @@ Error: `{err}`"
                                 if op_display != row.created_by_op {
                                     op_response.on_hover_text(row.created_by_op.clone());
                                 }
-                                if row.kind == LineageNodeKind::Arrangement {
+                                if row.kind == LineageNodeKind::Arrangement
+                                    || row.kind == LineageNodeKind::Macro
+                                {
                                     ui.label("-");
                                     ui.label("-");
                                 } else {
@@ -12425,6 +12720,9 @@ Error: `{err}`"
                                 }
                                 match row.kind {
                                     LineageNodeKind::Arrangement => {
+                                        ui.label("-");
+                                    }
+                                    LineageNodeKind::Macro => {
                                         ui.label("-");
                                     }
                                     LineageNodeKind::Sequence => {
@@ -12470,6 +12768,9 @@ Error: `{err}`"
                                         } else {
                                             ui.label("-");
                                         }
+                                    }
+                                    LineageNodeKind::Macro => {
+                                        ui.label("-");
                                     }
                                     LineageNodeKind::Sequence => {
                                         if ui
@@ -12660,6 +12961,8 @@ Error: `{err}`"
                                 });
                         }
                     });
+            });
+
             });
 
         if let Some((stem, container_ids)) = export_container_gel.take() {
@@ -15647,6 +15950,13 @@ mod tests {
             genome_anchor_summary: None,
             genome_anchor_display: None,
             is_full_genome_sequence: false,
+            macro_instance_id: None,
+            macro_routine_id: None,
+            macro_template_name: None,
+            macro_status: None,
+            macro_op_ids: vec![],
+            macro_inputs: vec![],
+            macro_outputs: vec![],
         }
     }
 

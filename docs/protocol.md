@@ -279,6 +279,9 @@ Adapter-equivalence guarantee for UI-intent tools:
   - shared-shell macro adapter family for full operation/workflow scripting
   - template persistence is backed by engine operations
     `UpsertWorkflowMacroTemplate`/`DeleteWorkflowMacroTemplate`
+  - `template-put` supports optional typed port contracts:
+    - `--input-port PORT_ID:KIND[:one|many][:required|optional][:description]`
+    - `--output-port PORT_ID:KIND[:one|many][:required|optional][:description]`
   - `template-import PATH` accepts:
     - one pack JSON file (`gentle.cloning_patterns.v1`)
     - one single-template JSON file (`gentle.cloning_pattern_template.v1`)
@@ -288,6 +291,13 @@ Adapter-equivalence guarantee for UI-intent tools:
     template changes are kept
   - expanded scripts can execute `op ...` and `workflow ...` statements and
     optionally roll back via `--transactional`
+  - `template-run` supports non-mutating preflight mode via `--validate-only`
+  - template-run responses now include a preflight payload
+    (`gentle.macro_template_preflight.v1`) with warnings/errors and typed
+    input/output port validation rows (`contract_source` indicates whether
+    checks came from template metadata or routine catalog)
+  - successful `macros run` and `macros template-run` responses include
+    `macro_instance_id` and persist one lineage macro-instance record
 
 - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
   - shared-shell/CLI routine catalog discovery surface
@@ -589,6 +599,8 @@ Candidate-set semantics:
     (`gentle.cloning_macro_template.v1`) so cloning-operation macro intent is
     explicit at engine level
   - optional `details_url` can link to external protocol/reference material
+  - optional typed `input_ports`/`output_ports` can be persisted directly in
+    template metadata (same port shape as routine catalog ports)
   - template expansion/binding is exposed through adapter command surfaces
     (`macros template-*`, including `macros template-import PATH`)
   - expanded scripts run through shared shell execution (`macros run`) and can
@@ -604,6 +616,14 @@ Candidate-set semantics:
     template name/path, and typed input/output port declarations
   - adapter discovery surface:
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+- Macro-instance lineage baseline:
+  - successful `macros run` / `macros template-run` append one
+    `LineageMacroInstance` record in project lineage state
+  - records include deterministic `macro_instance_id`, optional
+    `routine_id/template_name`, typed bound inputs/outputs, emitted `op_id`s,
+    and status
+  - lineage graph + lineage SVG consume these records as macro box nodes with
+    explicit input/output edges where sequence/container references resolve
 - Candidate macro templates are persisted in project metadata:
   - `UpsertCandidateMacroTemplate` stores/replaces named templates
   - `DeleteCandidateMacroTemplate` removes templates

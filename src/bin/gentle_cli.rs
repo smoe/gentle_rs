@@ -490,10 +490,10 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] macros run SCRIPT_OR_@FILE [--transactional]\n  \
   gentle_cli [--state PATH|--project PATH] macros template-list\n  \
   gentle_cli [--state PATH|--project PATH] macros template-show TEMPLATE_NAME\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...]\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-put TEMPLATE_NAME (--script SCRIPT_OR_@FILE|--file PATH) [--description TEXT] [--details-url URL] [--param NAME|NAME=DEFAULT ...] [--input-port PORT_ID:KIND[:one|many][:required|optional][:description]] [--output-port PORT_ID:KIND[:one|many][:required|optional][:description]]\n  \
   gentle_cli [--state PATH|--project PATH] macros template-delete TEMPLATE_NAME\n  \
   gentle_cli [--state PATH|--project PATH] macros template-import PATH\n  \
-  gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]\n\n  \
+  gentle_cli [--state PATH|--project PATH] macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]\n\n  \
   gentle_cli [--state PATH|--project PATH] candidates list\n  \
   gentle_cli [--state PATH|--project PATH] candidates delete SET_NAME\n  \
   gentle_cli [--state PATH|--project PATH] candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]\n  \
@@ -2360,10 +2360,30 @@ T [ 0 0 0 10 ]
                 name,
                 bindings,
                 transactional,
+                validate_only,
             }) => {
                 assert_eq!(name, "clone");
                 assert_eq!(bindings.get("seq_id").map(String::as_str), Some("seqA"));
                 assert!(transactional);
+                assert!(!validate_only);
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_macros_template_run_validate_only() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "macros".to_string(),
+            "template-run".to_string(),
+            "clone".to_string(),
+            "--validate-only".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::MacrosTemplateRun { validate_only, .. }) => {
+                assert!(validate_only);
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

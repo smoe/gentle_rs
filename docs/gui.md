@@ -211,6 +211,8 @@ Node click behavior in lineage `Graph` view:
 - Double-click on a single-sequence node: opens that sequence window.
 - Double-click on a pool node: opens a pool-context window (Engine Ops visible,
   pool member distribution available).
+- Macro-instance nodes are rendered as dedicated box nodes and include hover
+  details for bound ports/op IDs; they are informational (no double-click open).
 
 Node groups in lineage view:
 
@@ -701,6 +703,8 @@ In `Main window -> Graph` view:
 - Workspace persistence:
   - graph node positions, zoom, compact-label toggle, graph scroll/pan offset,
     and preferred graph/container panel heights are stored in project metadata
+  - the lineage page itself is vertically scrollable; oversized graph areas no
+    longer hide the containers/arrangements section
   - panel heights can be adjusted with `Graph h` and `Container h`
 
 Why zoom controls differ between views:
