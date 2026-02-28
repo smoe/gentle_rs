@@ -119,7 +119,15 @@ pub enum DisplayTarget {
 #[serde(rename_all = "snake_case")]
 pub enum LinearSequenceLetterLayoutMode {
     #[default]
+    AutoAdaptive,
+    StandardLinear,
+    #[serde(alias = "continuous")]
     ContinuousHelical,
+    #[serde(
+        alias = "condensed_10_row",
+        alias = "condensed10row",
+        alias = "condensed"
+    )]
     Condensed10Row,
 }
 
@@ -230,11 +238,11 @@ impl Default for DisplaySettings {
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
             linear_sequence_base_text_max_view_span_bp: 500,
-            linear_sequence_helical_letters_enabled: false,
+            linear_sequence_helical_letters_enabled: true,
             linear_sequence_helical_max_view_span_bp: 2000,
             linear_sequence_condensed_max_view_span_bp:
                 Self::default_linear_sequence_condensed_max_view_span_bp(),
-            linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::ContinuousHelical,
+            linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::AutoAdaptive,
             linear_sequence_helical_phase_offset_bp: 0,
             linear_show_double_strand_bases: true,
             linear_hide_backbone_when_sequence_bases_visible: false,
@@ -1789,6 +1797,22 @@ pub struct BlastHitFeatureInput {
     pub query_coverage_percent: Option<f64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct BlastInvocationProvenance {
+    pub genome_id: String,
+    pub query_label: String,
+    pub query_length: usize,
+    pub max_hits: usize,
+    pub task: String,
+    pub blastn_executable: String,
+    pub blast_db_prefix: String,
+    pub command: Vec<String>,
+    pub command_line: String,
+    pub catalog_path: Option<String>,
+    pub cache_dir: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum GenomeAnchorSide {
@@ -1926,6 +1950,8 @@ pub enum Operation {
         hits: Vec<BlastHitFeatureInput>,
         track_name: Option<String>,
         clear_existing: Option<bool>,
+        #[serde(default)]
+        blast_provenance: Option<BlastInvocationProvenance>,
     },
     DigestContainer {
         container_id: ContainerId,
@@ -13935,6 +13961,7 @@ impl GentleEngine {
                 hits,
                 track_name,
                 clear_existing,
+                blast_provenance,
             } => {
                 if hits.is_empty() {
                     return Err(EngineError {
@@ -14055,6 +14082,30 @@ impl GentleEngine {
                     skipped_count,
                     removed_count
                 ));
+                if let Some(provenance) = blast_provenance {
+                    let command_line = if provenance.command_line.trim().is_empty() {
+                        if provenance.command.is_empty() {
+                            provenance.blastn_executable.clone()
+                        } else {
+                            format!(
+                                "{} {}",
+                                provenance.blastn_executable,
+                                provenance.command.join(" ")
+                            )
+                        }
+                    } else {
+                        provenance.command_line.clone()
+                    };
+                    result.messages.push(format!(
+                        "BLAST provenance: genome='{}', query='{}' ({} bp), task='{}', max_hits={}, command={}",
+                        provenance.genome_id,
+                        provenance.query_label,
+                        provenance.query_length,
+                        provenance.task,
+                        provenance.max_hits,
+                        command_line
+                    ));
+                }
             }
             Operation::Digest {
                 input,
@@ -16285,18 +16336,16 @@ impl GentleEngine {
                 "linear_sequence_base_text_max_view_span_bp"
                 | "linear_base_text_max_view_span_bp"
                 | "sequence_base_text_max_view_span_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                    // See docs/architecture.md (single shared rendering contract):
+                    // fixed bp thresholds are compatibility-only while adaptive
+                    // viewport-density routing is authoritative.
+                    let _raw = value.as_u64().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("SetParameter {name} requires a non-negative integer"),
                     })?;
-                    self.state
-                        .display
-                        .linear_sequence_base_text_max_view_span_bp = raw as usize;
                     result.messages.push(format!(
-                        "Set parameter 'linear_sequence_base_text_max_view_span_bp' to {}",
-                        self.state
-                            .display
-                            .linear_sequence_base_text_max_view_span_bp
+                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
+                        name
                     ));
                 }
                 "gc_content_bin_size_bp" | "gc_bin_size_bp" => {
@@ -16317,30 +16366,24 @@ impl GentleEngine {
                     ));
                 }
                 "linear_sequence_helical_max_view_span_bp" | "linear_helical_max_view_span_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                    let _raw = value.as_u64().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("SetParameter {name} requires a non-negative integer"),
                     })?;
-                    self.state.display.linear_sequence_helical_max_view_span_bp = raw as usize;
                     result.messages.push(format!(
-                        "Set parameter 'linear_sequence_helical_max_view_span_bp' to {}",
-                        self.state.display.linear_sequence_helical_max_view_span_bp
+                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
+                        name
                     ));
                 }
                 "linear_sequence_condensed_max_view_span_bp"
                 | "linear_condensed_max_view_span_bp" => {
-                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                    let _raw = value.as_u64().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
                         message: format!("SetParameter {name} requires a non-negative integer"),
                     })?;
-                    self.state
-                        .display
-                        .linear_sequence_condensed_max_view_span_bp = raw as usize;
                     result.messages.push(format!(
-                        "Set parameter 'linear_sequence_condensed_max_view_span_bp' to {}",
-                        self.state
-                            .display
-                            .linear_sequence_condensed_max_view_span_bp
+                        "Set parameter '{}' accepted as deprecated no-op under adaptive linear DNA letter routing",
+                        name
                     ));
                 }
                 "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
@@ -16350,7 +16393,13 @@ impl GentleEngine {
                     })?;
                     let normalized = raw.trim().to_ascii_lowercase();
                     let layout_mode = match normalized.as_str() {
-                        "continuous_helical" | "continuous-helical" | "continuous" => {
+                        "auto_adaptive" | "auto-adaptive" | "auto" | "adaptive" => {
+                            LinearSequenceLetterLayoutMode::AutoAdaptive
+                        }
+                        "standard_linear" | "standard-linear" | "standard" => {
+                            LinearSequenceLetterLayoutMode::StandardLinear
+                        }
+                        "helical" | "continuous_helical" | "continuous-helical" | "continuous" => {
                             LinearSequenceLetterLayoutMode::ContinuousHelical
                         }
                         "condensed_10_row" | "condensed-10-row" | "condensed10row"
@@ -16361,7 +16410,7 @@ impl GentleEngine {
                             return Err(EngineError {
                                 code: ErrorCode::InvalidInput,
                                 message: format!(
-                                    "Unsupported linear sequence letter layout mode '{raw}' (expected continuous_helical|condensed_10_row)"
+                                    "Unsupported linear sequence letter layout mode '{raw}' (expected auto|adaptive|standard|helical|condensed_10_row; legacy aliases accepted)"
                                 ),
                             });
                         }
@@ -17488,17 +17537,13 @@ exit 2
                 value: serde_json::json!(1200),
             })
             .unwrap();
-        assert!(
-            res.messages
-                .iter()
-                .any(|m| m.contains("linear_sequence_base_text_max_view_span_bp"))
-        );
+        assert!(res.messages.iter().any(|m| m.contains("deprecated no-op")));
         assert_eq!(
             engine
                 .state()
                 .display
                 .linear_sequence_base_text_max_view_span_bp,
-            1200
+            500
         );
     }
 
@@ -17520,7 +17565,7 @@ exit 2
         engine
             .apply(Operation::SetParameter {
                 name: "linear_sequence_condensed_max_view_span_bp".to_string(),
-                value: serde_json::json!(1500),
+                value: serde_json::json!(1600),
             })
             .unwrap();
         engine
@@ -17552,7 +17597,7 @@ exit 2
                 .state()
                 .display
                 .linear_sequence_helical_max_view_span_bp,
-            2500
+            2000
         );
         assert_eq!(
             engine
@@ -17577,6 +17622,41 @@ exit 2
                 .state()
                 .display
                 .linear_hide_backbone_when_sequence_bases_visible
+        );
+    }
+
+    #[test]
+    fn test_set_parameter_linear_layout_mode_accepts_new_aliases() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_sequence_letter_layout_mode".to_string(),
+                value: serde_json::json!("auto"),
+            })
+            .unwrap();
+        assert_eq!(
+            engine.state().display.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::AutoAdaptive
+        );
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_sequence_letter_layout_mode".to_string(),
+                value: serde_json::json!("standard"),
+            })
+            .unwrap();
+        assert_eq!(
+            engine.state().display.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::StandardLinear
+        );
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_sequence_letter_layout_mode".to_string(),
+                value: serde_json::json!("helical"),
+            })
+            .unwrap();
+        assert_eq!(
+            engine.state().display.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::ContinuousHelical
         );
     }
 
@@ -21295,10 +21375,34 @@ ORIGIN
                 ],
                 track_name: Some("blast_hits_demo".to_string()),
                 clear_existing: Some(true),
+                blast_provenance: Some(BlastInvocationProvenance {
+                    genome_id: "grch38".to_string(),
+                    query_label: "query".to_string(),
+                    query_length: 28,
+                    max_hits: 20,
+                    task: "blastn-short".to_string(),
+                    blastn_executable: "blastn".to_string(),
+                    blast_db_prefix: "/tmp/blastdb/genome".to_string(),
+                    command: vec![
+                        "-db".to_string(),
+                        "/tmp/blastdb/genome".to_string(),
+                        "-query".to_string(),
+                        "/tmp/query.fa".to_string(),
+                    ],
+                    command_line: "blastn -db /tmp/blastdb/genome -query /tmp/query.fa".to_string(),
+                    catalog_path: Some("assets/genomes.json".to_string()),
+                    cache_dir: Some("data/genomes".to_string()),
+                }),
             })
             .unwrap();
         assert!(first.changed_seq_ids.contains(&"query".to_string()));
         assert!(first.warnings.iter().any(|w| w.contains("was clamped")));
+        assert!(
+            first
+                .messages
+                .iter()
+                .any(|m| m.contains("BLAST provenance") && m.contains("blastn -db"))
+        );
 
         let dna = engine.state().sequences.get("query").unwrap();
         let blast_features: Vec<_> = dna
@@ -21332,6 +21436,7 @@ ORIGIN
                 }],
                 track_name: Some("blast_hits_demo".to_string()),
                 clear_existing: Some(true),
+                blast_provenance: None,
             })
             .unwrap();
         assert!(second.changed_seq_ids.contains(&"query".to_string()));

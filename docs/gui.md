@@ -105,9 +105,12 @@ Sequence window screenshot:
 
 Linear map zoom detail:
 
-- In linear mode, when the current viewport spans `500 bp` or less, GENtle
-  overlays per-base DNA letters on the backbone so sequence context becomes
-  directly readable while inspecting nearby features.
+- In linear mode, GENtle uses adaptive letter routing based on viewport width
+  and estimated glyph width:
+  - low density: standard one-row base letters
+  - medium density: helical-compressed letters (when compressed mode is enabled)
+  - high density: condensed 10-row letters (when compressed mode is enabled)
+  - over-capacity density: letters are hidden (`OFF`) to preserve readability
 
 Feature tree grouping:
 
@@ -757,23 +760,23 @@ Current linear map conventions are:
 - Coordinate fallback labels are suppressed for unlabeled regulatory features
   to avoid clutter in dense tracks
 - Restriction enzyme labels are lane-packed to reduce overlap
-- Optional helical-compressed letter mode (linear map):
-  - active only when `Enable helical-compressed DNA letters` is on
-  - layout mode is explicit (`Continuous helical` or `Condensed 10-row`)
-  - active span limit depends on the selected mode:
-    - `Continuous helical` uses `Helical letters max span`
-    - `Condensed 10-row` uses `Condensed letters max span` (default target:
-      `1500 bp`)
+- Adaptive DNA-letter mode routing (linear map):
+  - default mode is `Auto adaptive`
+  - explicit override modes are available:
+    - `Force standard`
+    - `Force helical`
+    - `Force condensed 10-row`
+  - in `Auto adaptive`, density tiers are deterministic:
+    - `density <= 1.0`: standard letters
+    - `density <= 2.0`: helical letters (if compressed letters enabled)
+    - `density <= 10.0`: condensed 10-row letters (if compressed letters enabled)
+    - `density > 10.0`: letters hidden (`OFF`)
+  - `Enable compressed DNA letters` applies only to `Auto adaptive` mode:
+    disabling it forces `Auto adaptive` to use standard-only behavior.
   - row mapping uses `row = (bp + offset_bp) mod 10` where `offset_bp` is
     `Helical phase offset` (`0..9`)
   - increasing phase offset shifts the top-to-bottom seam position without
     changing base order
-  - transition is continuous:
-    - below the standard threshold, letters keep near-linear spacing while
-      showing strand-phase offsets
-    - above the standard threshold, horizontal compaction ramps up
-    - at the helical max span, horizontal projection reaches strong compaction
-      (`10 bp` occupies approximately the width of `2` letter cells)
   - in `Condensed 10-row` mode, DNA letters replace/suppress the black
     backbone line when visible
   - condensed rows stack outward from the baseline with a deterministic minimum
@@ -782,7 +785,10 @@ Current linear map conventions are:
     around the DNA text band
   - forward/reverse strand letter placement remains symmetric around the DNA
     baseline (with optional 180° reverse-letter rotation)
-  - when active, the map header shows `HELIX ON (<= N bp)` in green
+  - the top-right map diagnostics show active mode, route policy, density,
+    estimated columns fit, glyph width, and a deterministic reason string
+  - Sequence-window edits are runtime-local; restart persistence still follows
+    `Configuration -> Graphics -> Apply`
 
 ## Circular map conventions
 
@@ -1025,6 +1031,14 @@ Recommended flow:
    - set `max_hits` and `task` (`blastn-short` or `blastn`)
    - click `Run BLAST`
    - BLAST runs in background and keeps the UI responsive; pool mode returns one result set per member
+   - BLAST itself does not expose a native `% complete` CLI flag; GENtle therefore shows:
+     - query-level progress (`done / total`)
+     - live heartbeat status (`running`, elapsed seconds)
+     - invocation template while running
+     - resolved invocation line after each query completes
+   - result details show executable, database prefix, and full invocation.
+   - when `Import Hits To Sequence` is used, GENtle stores BLAST invocation provenance
+     in the corresponding `ImportBlastHitsTrack` operation (history/lineage context).
 4. Inspect prepared installations when needed:
    - open `Prepared References...`
    - review per-genome install size, readiness flags, source types, and short

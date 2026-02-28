@@ -93,6 +93,11 @@ Current draft operations:
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
+- `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
+  - optional `blast_provenance` payload preserves invocation context
+    (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,
+    `blastn_executable`, `blast_db_prefix`, raw `command[]`, `command_line`,
+    `catalog_path?`, `cache_dir?`) for sequence-history/audit views.
 - `SelectCandidate { input, criterion, output_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
@@ -502,6 +507,27 @@ Current parameter support:
 - `gc_content_bin_size_bp` (default `100`, range `>= 1`)
   - controls GC-content aggregation bin size for linear/circular rendering and
     SVG export
+- Linear DNA-letter routing parameters:
+  - `linear_sequence_letter_layout_mode` (default `AutoAdaptive`)
+    - supported canonical modes:
+      - `auto|adaptive|auto_adaptive`
+      - `standard|standard_linear`
+      - `helical|continuous_helical`
+      - `condensed_10_row|condensed`
+    - auto mode uses deterministic viewport-density tiers:
+      - `<= 1x`: standard
+      - `<= 2x`: helical (if compressed letters enabled)
+      - `<= 10x`: condensed-10 (if compressed letters enabled)
+      - `> 10x`: `OFF`
+  - `linear_sequence_helical_letters_enabled` (default `true`)
+    - applies to auto mode only (allows/disallows compressed auto tiers)
+  - `linear_sequence_helical_phase_offset_bp` (range `0..9`)
+    - seam offset used by helical/condensed row mapping
+- Legacy linear-letter threshold knobs are compatibility-only and return
+  deterministic deprecated no-op messages (no routing effect):
+  - `linear_sequence_base_text_max_view_span_bp`
+  - `linear_sequence_helical_max_view_span_bp`
+  - `linear_sequence_condensed_max_view_span_bp`
 - VCF display filter parameters (shared GUI/SVG state):
   - `vcf_display_show_snp`
   - `vcf_display_show_ins`

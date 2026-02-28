@@ -21,6 +21,10 @@ use crate::{
     feature_location::collect_location_ranges_usize,
     gc_contents::GcContents,
     icons::*,
+    linear_base_routing::{
+        LinearBaseRenderMode, LinearBaseRoutingDecision, LinearBaseRoutingInput,
+        decide_linear_base_routing, mode_setting_label,
+    },
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
     render_dna::{RenderDna, RestrictionEnzymePosition},
@@ -339,7 +343,8 @@ mod tests {
     use super::MainAreaDna;
     use crate::{
         dna_sequence::DNAsequence,
-        engine::{GentleEngine, ProjectState},
+        engine::{GentleEngine, LinearSequenceLetterLayoutMode, ProjectState},
+        linear_base_routing::LinearBaseRenderMode,
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
     use std::{
@@ -782,6 +787,55 @@ mod tests {
     }
 
     #[test]
+    fn linear_base_status_and_auto_hide_follow_shared_adaptive_routing() {
+        let dna = DNAsequence::from_sequence("A".repeat(5000).as_str()).expect("sequence");
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.last_linear_map_width_px = 1000.0;
+        area.show_map = true;
+        area.show_sequence = true;
+        {
+            let mut display = area.dna_display.write().expect("display lock");
+            display.set_linear_viewport(0, 300);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::AutoAdaptive,
+            );
+            display.set_auto_hide_sequence_panel_when_linear_bases_visible(true);
+        }
+
+        let decision = area.linear_base_routing_decision();
+        assert_eq!(
+            decision.active_mode,
+            LinearBaseRenderMode::ContinuousHelical
+        );
+        assert!(area.linear_map_sequence_bases_visible());
+        assert!(area.should_auto_hide_sequence_panel());
+    }
+
+    #[test]
+    fn linear_base_auto_hide_uses_width_cache_fallback() {
+        let dna = DNAsequence::from_sequence("A".repeat(5000).as_str()).expect("sequence");
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.last_linear_map_width_px = 0.0;
+        area.show_map = true;
+        area.show_sequence = true;
+        {
+            let mut display = area.dna_display.write().expect("display lock");
+            display.set_linear_viewport(0, 3000);
+            display.set_linear_sequence_helical_letters_enabled(true);
+            display.set_linear_sequence_letter_layout_mode(
+                LinearSequenceLetterLayoutMode::AutoAdaptive,
+            );
+            display.set_auto_hide_sequence_panel_when_linear_bases_visible(true);
+        }
+
+        let decision = area.linear_base_routing_decision();
+        assert_eq!(decision.active_mode, LinearBaseRenderMode::Off);
+        assert!(!area.linear_map_sequence_bases_visible());
+        assert!(!area.should_auto_hide_sequence_panel());
+    }
+
+    #[test]
     fn splicing_expert_viewport_id_is_stable_and_feature_scoped() {
         let baseline = MainAreaDna::splicing_expert_viewport_id("seq1", 7);
         assert_eq!(
@@ -1132,6 +1186,7 @@ pub struct MainAreaDna {
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<SplicingExpertView>,
     linear_drag_selection_anchor_bp: Option<usize>,
+    last_linear_map_width_px: f32,
 }
 
 impl MainAreaDna {
@@ -1361,6 +1416,7 @@ impl MainAreaDna {
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
             linear_drag_selection_anchor_bp: None,
+            last_linear_map_width_px: 0.0,
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
@@ -2247,10 +2303,7 @@ impl MainAreaDna {
                         mut show_double_strand,
                         mut hide_backbone_when_letters_visible,
                         mut reverse_upside_down,
-                        mut max_span_bp,
                         mut helical_letters_enabled,
-                        mut helical_max_span_bp,
-                        mut condensed_max_span_bp,
                         mut helical_layout_mode,
                         mut helical_phase_offset_bp,
                         mut auto_hide_sequence_panel,
@@ -2265,10 +2318,7 @@ impl MainAreaDna {
                                 display.linear_show_double_strand_bases(),
                                 display.linear_hide_backbone_when_sequence_bases_visible(),
                                 display.linear_reverse_strand_use_upside_down_letters(),
-                                display.linear_sequence_base_text_max_view_span_bp(),
                                 display.linear_sequence_helical_letters_enabled(),
-                                display.linear_sequence_helical_max_view_span_bp(),
-                                display.linear_sequence_condensed_max_view_span_bp(),
                                 display.linear_sequence_letter_layout_mode(),
                                 display.linear_sequence_helical_phase_offset_bp(),
                                 display.auto_hide_sequence_panel_when_linear_bases_visible(),
@@ -2281,11 +2331,8 @@ impl MainAreaDna {
                             true,
                             false,
                             true,
-                            500,
-                            false,
-                            2000,
-                            1500,
-                            LinearSequenceLetterLayoutMode::ContinuousHelical,
+                            true,
+                            LinearSequenceLetterLayoutMode::AutoAdaptive,
                             0,
                             false,
                             8.25,
@@ -2343,31 +2390,13 @@ impl MainAreaDna {
                             reverse_upside_down,
                         );
                     }
-                    ui.horizontal(|ui| {
-                        ui.label("DNA letters max span");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut max_span_bp)
-                                    .range(0..=5_000_000)
-                                    .speed(25.0)
-                                    .suffix(" bp"),
-                            )
-                            .on_hover_text(
-                                "Show linear-map DNA letters when span <= threshold (0 disables)",
-                            )
-                            .changed()
-                        {
-                            self.dna_display
-                                .write()
-                                .expect("DNA display lock poisoned")
-                                .set_linear_sequence_base_text_max_view_span_bp(max_span_bp);
-                            self.sync_linear_sequence_base_text_max_view_span_to_engine(max_span_bp);
-                        }
-                    });
                     if ui
                         .checkbox(
                             &mut helical_letters_enabled,
-                            "Enable helical-compressed DNA letters (up to higher spans)",
+                            "Enable compressed DNA letters in Auto routing mode",
+                        )
+                        .on_hover_text(
+                            "In Auto mode: disabled means dense views switch letters OFF instead of helical/condensed. Forced modes ignore this toggle.",
                         )
                         .changed()
                     {
@@ -2379,43 +2408,61 @@ impl MainAreaDna {
                             );
                         self.sync_linear_helical_settings_to_engine(
                             helical_letters_enabled,
-                            helical_max_span_bp,
-                            condensed_max_span_bp,
                             helical_layout_mode,
                             helical_phase_offset_bp,
                         );
                     }
                     ui.horizontal(|ui| {
-                        ui.label("Helical letter layout");
+                        ui.label("DNA letter routing mode");
                         let mut changed = false;
                         egui::ComboBox::from_id_salt("linear_helical_letter_layout_mode")
                             .selected_text(match helical_layout_mode {
+                                LinearSequenceLetterLayoutMode::AutoAdaptive => {
+                                    "Auto adaptive"
+                                }
+                                LinearSequenceLetterLayoutMode::StandardLinear => {
+                                    "Force standard"
+                                }
                                 LinearSequenceLetterLayoutMode::ContinuousHelical => {
-                                    "Continuous helical"
+                                    "Force helical"
                                 }
                                 LinearSequenceLetterLayoutMode::Condensed10Row => {
-                                    "Condensed 10-row"
+                                    "Force condensed 10-row"
                                 }
                             })
                             .show_ui(ui, |ui| {
                                 changed |= ui
                                     .selectable_value(
                                         &mut helical_layout_mode,
+                                        LinearSequenceLetterLayoutMode::AutoAdaptive,
+                                        "Auto adaptive",
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut helical_layout_mode,
+                                        LinearSequenceLetterLayoutMode::StandardLinear,
+                                        "Force standard",
+                                    )
+                                    .changed();
+                                changed |= ui
+                                    .selectable_value(
+                                        &mut helical_layout_mode,
                                         LinearSequenceLetterLayoutMode::ContinuousHelical,
-                                        "Continuous helical",
+                                        "Force helical",
                                     )
                                     .changed();
                                 changed |= ui
                                     .selectable_value(
                                         &mut helical_layout_mode,
                                         LinearSequenceLetterLayoutMode::Condensed10Row,
-                                        "Condensed 10-row",
+                                        "Force condensed 10-row",
                                     )
                                     .changed();
                             })
                             .response
                             .on_hover_text(
-                                "Continuous mode keeps the wave-like strand phase. Condensed 10-row mode uses fixed modulo-10 rows, replaces the black backbone line with DNA letters, and pushes feature lanes outward.",
+                                "Auto mode picks STANDARD/HELICAL/CONDENSED from viewport density. Force modes pin one route regardless of density.",
                             );
                         if changed {
                             self.dna_display
@@ -2424,66 +2471,6 @@ impl MainAreaDna {
                                 .set_linear_sequence_letter_layout_mode(helical_layout_mode);
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
-                                helical_max_span_bp,
-                                condensed_max_span_bp,
-                                helical_layout_mode,
-                                helical_phase_offset_bp,
-                            );
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Helical letters max span");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut helical_max_span_bp)
-                                    .range(0..=5_000_000)
-                                    .speed(25.0)
-                                    .suffix(" bp"),
-                            )
-                            .on_hover_text(
-                                "Helical-compressed DNA letters are shown when span exceeds standard DNA-letter max span and remains <= this threshold",
-                            )
-                            .changed()
-                        {
-                            self.dna_display
-                                .write()
-                                .expect("DNA display lock poisoned")
-                                .set_linear_sequence_helical_max_view_span_bp(
-                                    helical_max_span_bp,
-                                );
-                            self.sync_linear_helical_settings_to_engine(
-                                helical_letters_enabled,
-                                helical_max_span_bp,
-                                condensed_max_span_bp,
-                                helical_layout_mode,
-                                helical_phase_offset_bp,
-                            );
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Condensed letters max span");
-                        if ui
-                            .add(
-                                egui::DragValue::new(&mut condensed_max_span_bp)
-                                    .range(0..=5_000_000)
-                                    .speed(25.0)
-                                    .suffix(" bp"),
-                            )
-                            .on_hover_text(
-                                "In condensed 10-row layout mode, DNA letters are shown while span <= this threshold",
-                            )
-                            .changed()
-                        {
-                            self.dna_display
-                                .write()
-                                .expect("DNA display lock poisoned")
-                                .set_linear_sequence_condensed_max_view_span_bp(
-                                    condensed_max_span_bp,
-                                );
-                            self.sync_linear_helical_settings_to_engine(
-                                helical_letters_enabled,
-                                helical_max_span_bp,
-                                condensed_max_span_bp,
                                 helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
@@ -2511,8 +2498,6 @@ impl MainAreaDna {
                                 );
                             self.sync_linear_helical_settings_to_engine(
                                 helical_letters_enabled,
-                                helical_max_span_bp,
-                                condensed_max_span_bp,
                                 helical_layout_mode,
                                 helical_phase_offset_bp,
                             );
@@ -2522,97 +2507,34 @@ impl MainAreaDna {
                     ui.label(egui::RichText::new("Linear DNA letter status").strong());
                     let (view_start_bp, view_span_bp, sequence_length_bp) =
                         self.current_linear_viewport();
-                    let active_helical_max_span_bp = match helical_layout_mode {
-                        LinearSequenceLetterLayoutMode::ContinuousHelical => helical_max_span_bp,
-                        LinearSequenceLetterLayoutMode::Condensed10Row => condensed_max_span_bp,
-                    };
-                    let (active_mode_label, status_color, status_note) = if sequence_length_bp == 0
-                        || view_span_bp == 0
-                    {
-                        (
-                            "OFF".to_string(),
-                            egui::Color32::from_rgb(150, 30, 30),
-                            "inactive: empty viewport".to_string(),
-                        )
-                    } else if max_span_bp > 0 && view_span_bp <= max_span_bp {
-                        let note = if helical_letters_enabled && active_helical_max_span_bp > 0 {
-                            format!(
-                                "{} configured; activates when span > {} bp (and <= {} bp)",
-                                match helical_layout_mode {
-                                    LinearSequenceLetterLayoutMode::ContinuousHelical => {
-                                        "continuous-helical"
-                                    }
-                                    LinearSequenceLetterLayoutMode::Condensed10Row => {
-                                        "condensed-10-row"
-                                    }
-                                },
-                                max_span_bp,
-                                active_helical_max_span_bp
-                            )
-                        } else {
-                            "standard threshold active".to_string()
-                        };
-                        (
-                            "STANDARD".to_string(),
-                            egui::Color32::from_rgb(80, 80, 80),
-                            note,
-                        )
-                    } else if !helical_letters_enabled {
-                        (
-                            "OFF".to_string(),
-                            egui::Color32::from_rgb(150, 30, 30),
-                            format!(
-                                "inactive: span {} bp > standard max {} bp and helical letters are disabled",
-                                view_span_bp, max_span_bp
-                            ),
-                        )
-                    } else if active_helical_max_span_bp == 0 {
-                        (
-                            "OFF".to_string(),
-                            egui::Color32::from_rgb(150, 30, 30),
-                            "inactive: selected layout max span is 0".to_string(),
-                        )
-                    } else if view_span_bp > active_helical_max_span_bp {
-                        (
-                            "OFF".to_string(),
-                            egui::Color32::from_rgb(150, 30, 30),
-                            format!(
-                                "inactive: span {} bp > active layout max {} bp",
-                                view_span_bp, active_helical_max_span_bp
-                            ),
-                        )
-                    } else {
-                        let (label, color) = match helical_layout_mode {
-                            LinearSequenceLetterLayoutMode::ContinuousHelical => {
-                                ("HELICAL", egui::Color32::from_rgb(14, 98, 150))
-                            }
-                            LinearSequenceLetterLayoutMode::Condensed10Row => {
-                                ("CONDENSED-10", egui::Color32::from_rgb(10, 115, 56))
-                            }
-                        };
-                        (
-                            label.to_string(),
-                            color,
-                            "selected layout is active".to_string(),
-                        )
+                    let routing = self.linear_base_routing_decision();
+                    let active_mode_label = routing.active_mode.label();
+                    let status_color = match routing.active_mode {
+                        LinearBaseRenderMode::Condensed10Row => egui::Color32::from_rgb(10, 115, 56),
+                        LinearBaseRenderMode::ContinuousHelical => {
+                            egui::Color32::from_rgb(14, 98, 150)
+                        }
+                        LinearBaseRenderMode::StandardLinear => egui::Color32::from_rgb(80, 80, 80),
+                        LinearBaseRenderMode::Off => egui::Color32::from_rgb(150, 30, 30),
                     };
                     let view_end_bp = view_start_bp.saturating_add(view_span_bp);
                     ui.colored_label(status_color, format!("Active render: {active_mode_label}"));
                     ui.monospace(format!(
-                        "layout={} | span={} bp ({}..{} of {} bp) | standard_max={} | helical_enabled={} | active_layout_max={}",
-                        match helical_layout_mode {
-                            LinearSequenceLetterLayoutMode::ContinuousHelical => "continuous-helical",
-                            LinearSequenceLetterLayoutMode::Condensed10Row => "condensed-10-row",
-                        },
+                        "route={} | setting={} | compressed={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
+                        routing.route_policy.label(),
+                        mode_setting_label(helical_layout_mode),
+                        helical_letters_enabled,
                         view_span_bp,
                         view_start_bp.saturating_add(1),
                         view_end_bp,
                         sequence_length_bp,
-                        max_span_bp,
-                        helical_letters_enabled,
-                        active_helical_max_span_bp
+                        self.last_linear_map_width_px.max(1.0),
+                        routing.density_ratio,
+                        routing.columns_fit,
+                        routing.glyph_width_px
                     ));
-                    ui.small(status_note);
+                    ui.small(routing.decision_reason.clone());
+                    ui.small("Persists on restart after Configuration -> Graphics -> Apply.");
                     if ui
                         .checkbox(
                             &mut auto_hide_sequence_panel,
@@ -4591,17 +4513,6 @@ impl MainAreaDna {
             .linear_external_feature_label_background_opacity = value.clamp(0.0, 1.0);
     }
 
-    fn sync_linear_sequence_base_text_max_view_span_to_engine(&self, value: usize) {
-        let Some(engine) = &self.engine else {
-            return;
-        };
-        let mut guard = engine.write().expect("Engine lock poisoned");
-        guard
-            .state_mut()
-            .display
-            .linear_sequence_base_text_max_view_span_bp = value;
-    }
-
     fn sync_gc_content_bin_size_to_engine(&self, value: usize) {
         let Some(engine) = &self.engine else {
             return;
@@ -4627,8 +4538,6 @@ impl MainAreaDna {
     fn sync_linear_helical_settings_to_engine(
         &self,
         enabled: bool,
-        max_span: usize,
-        condensed_max_span: usize,
         layout_mode: LinearSequenceLetterLayoutMode,
         phase_offset_bp: usize,
     ) {
@@ -4638,8 +4547,6 @@ impl MainAreaDna {
         let mut guard = engine.write().expect("Engine lock poisoned");
         let display = &mut guard.state_mut().display;
         display.linear_sequence_helical_letters_enabled = enabled;
-        display.linear_sequence_helical_max_view_span_bp = max_span;
-        display.linear_sequence_condensed_max_view_span_bp = condensed_max_span;
         display.linear_sequence_letter_layout_mode = layout_mode;
         display.linear_sequence_helical_phase_offset_bp = phase_offset_bp % 10;
     }
@@ -4784,44 +4691,40 @@ impl MainAreaDna {
         (start, span, sequence_length)
     }
 
-    fn linear_map_sequence_bases_visible(&self) -> bool {
-        if self.is_circular() {
-            return false;
-        }
-        let (max_span, helical_enabled, helical_max_span, condensed_max_span, layout_mode) = self
+    fn linear_base_routing_decision(&self) -> LinearBaseRoutingDecision {
+        let (_, span, sequence_length) = self.current_linear_viewport();
+        let (compression_enabled, mode_setting) = self
             .dna_display
             .read()
             .map(|display| {
                 (
-                    display.linear_sequence_base_text_max_view_span_bp(),
                     display.linear_sequence_helical_letters_enabled(),
-                    display.linear_sequence_helical_max_view_span_bp(),
-                    display.linear_sequence_condensed_max_view_span_bp(),
                     display.linear_sequence_letter_layout_mode(),
                 )
             })
-            .unwrap_or((
-                500,
-                false,
-                2000,
-                1500,
-                LinearSequenceLetterLayoutMode::ContinuousHelical,
-            ));
-        let active_helical_max_span = match layout_mode {
-            LinearSequenceLetterLayoutMode::ContinuousHelical => helical_max_span,
-            LinearSequenceLetterLayoutMode::Condensed10Row => condensed_max_span,
-        };
-        if max_span == 0 && (!helical_enabled || active_helical_max_span == 0) {
+            .unwrap_or((true, LinearSequenceLetterLayoutMode::AutoAdaptive));
+        let viewport_width_px =
+            if self.last_linear_map_width_px.is_finite() && self.last_linear_map_width_px > 0.0 {
+                self.last_linear_map_width_px
+            } else {
+                1200.0
+            };
+        decide_linear_base_routing(LinearBaseRoutingInput {
+            span_bp: if sequence_length == 0 { 0 } else { span },
+            viewport_width_px,
+            compression_enabled,
+            mode_setting,
+            font_scale: 0.85,
+            min_font_size_px: 8.0,
+            max_font_size_px: 14.0,
+        })
+    }
+
+    fn linear_map_sequence_bases_visible(&self) -> bool {
+        if self.is_circular() {
             return false;
         }
-        let (_, span, sequence_length) = self.current_linear_viewport();
-        if sequence_length == 0 || span == 0 {
-            return false;
-        }
-        if max_span > 0 && span <= max_span {
-            return true;
-        }
-        helical_enabled && active_helical_max_span > 0 && span <= active_helical_max_span
+        self.linear_base_routing_decision().bases_visible()
     }
 
     fn should_auto_hide_sequence_panel(&self) -> bool {
@@ -9732,6 +9635,9 @@ impl MainAreaDna {
             ui.separator();
 
             let response = ui.add(self.map_dna.to_owned());
+            if response.rect.width().is_finite() && response.rect.width() > 0.0 {
+                self.last_linear_map_width_px = response.rect.width();
+            }
 
             if response.hovered() {
                 let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());

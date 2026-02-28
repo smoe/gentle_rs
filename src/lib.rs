@@ -45,6 +45,8 @@ pub mod iupac_code;
 pub mod js_interface;
 /// Lineage graph export and serialization utilities.
 pub mod lineage_export;
+/// Adaptive routing decisions for linear DNA base-letter rendering.
+pub mod linear_base_routing;
 /// Lua adapter wrappers over shared engine contracts.
 pub mod lua_interface;
 /// Main sequence-window GUI controller and interaction orchestration.

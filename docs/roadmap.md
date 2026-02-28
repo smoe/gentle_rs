@@ -116,21 +116,30 @@ order. Durable architecture constraints and decisions remain in
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
 - Linear DNA-letter rendering controls now include:
-  - configurable standard letter span threshold
-  - optional helical-compressed letter mode with explicit layout selector
-    (`continuous-helical` / `condensed-10-row`)
-  - dedicated max-span thresholds for continuous-helical and condensed layouts
-    (default condensed target: 1500 bp)
+  - adaptive viewport-density routing (default-on) with explicit mode selector:
+    `auto-adaptive`, `force-standard`, `force-helical`, `force-condensed-10`
+  - compressed-letter toggle semantics scoped to auto mode
+    (`linear_sequence_helical_letters_enabled`)
+  - deterministic tier routing in auto mode (`1x / 2x / 10x` capacity tiers)
+    with explicit `OFF` when condensed capacity is exceeded
   - modulo-10 seam offset control for row alignment (`(bp + offset) % 10`)
   - condensed layout backbone replacement and outward feature-lane clearance
   - configurable double-strand display with optional 180° reverse-letter rotation
   - optional sequence-panel auto-hide when map letters are visible
+  - one shared routing helper used by renderer diagnostics and Sequence-window
+    status/auto-hide decisions (UI-status parity)
 - Linear-map drag selection can now be extracted directly to a new sequence via
   `ExtractRegion`, preserving overlapping features in the derived fragment.
 - Scrollable/resizable Engine Ops area and shared-shell panel.
 - Context-sensitive hover descriptions on actionable controls.
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
+- BLAST UX/provenance hardening baseline:
+  - BLAST dialog now emits live query heartbeat status (elapsed runtime while
+    `blastn` is running) in addition to query-count progress.
+  - status/result views show explicit invocation template and resolved command line.
+  - BLAST-hit import operations now persist invocation metadata in
+    `ImportBlastHitsTrack.blast_provenance` for operation history/lineage context.
 - Native macOS menu mirrors of open windows are available under:
   - `Window -> GENtle Open Windows…`
   - `GENtle -> GENtle Windows…`
@@ -222,10 +231,10 @@ Notes:
 7. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
    - dedicated primary map-mode splicing view is still pending
-   - condensed 10-row helix-mimic DNA-letter layout baseline is implemented,
-     including dedicated span threshold controls, seam-offset behavior,
-     backbone replacement, and deterministic annotation-clearance tests;
-     dense snapshot/readability benchmarking remains pending
+   - adaptive linear DNA-letter routing baseline is implemented (shared
+     renderer/UI decision path, seam-offset behavior, condensed backbone
+     replacement, deterministic annotation-clearance tests); dense
+     snapshot/readability benchmarking remains pending
    - any screenshot-based readability baseline artifacts require manual human
      contribution while agent screenshot execution remains policy-disabled
    - zoom/pan policy is not yet unified across canvases
@@ -299,66 +308,46 @@ Status:
    - add a dedicated primary map-mode splicing view (beyond expert/detail
      panel embedding) for full-sequence workflows.
 
-### Linear DNA condensed 10-row layout track (new)
+### Adaptive linear DNA letter routing track
 
-Goal: add a second linear DNA-letter layout optimized for sequences up to a
-user-configured span (default target about 1500 bp), with strict base order,
-strong X compression, and readability from stable row separation.
-
-Desired layout contract:
-
-- preserve strict nucleotide order (no reordering/skipping)
-- render letters in 10 discrete rows (bottom row = modulo class `0`)
-- keep X progression monotonic and tightly compressed per bp
-- in condensed mode, DNA letters become the primary backbone representation
-  (replace/suppress the current black DNA baseline line)
-- shift feature annotations/labels outward from the sequence-text band so the
-  condensed DNA letters remain readable
-- expose manual seam shift via `offset_bp` so conserved columns can be aligned
-- row mapping formula: `row = (bp + offset_bp) mod 10`, with `offset_bp` in
-  `0..9` (`0` keeps current anchor convention)
+Goal: route linear DNA-letter rendering by viewport capacity (not fixed bp
+thresholds), while preserving strict base order, deterministic compressed
+layouts, and renderer/UI parity.
 
 Current baseline:
 
-- helical-compressed linear-letter rendering already exists and is controlled by
-  display settings/UI knobs (including user-adjustable max span)
-- project display setting + UI controls for
-  `linear_sequence_helical_phase_offset_bp` already exist with clamp `0..9`
-- explicit layout mode selection (`continuous-helical` / `condensed-10-row`)
-  is now available and persisted through project display settings
-- condensed mode now applies modulo-offset row mapping
-  (`(bp + offset_bp) % 10`) and suppresses the black backbone line while DNA
-  letters are visible
-- feature lanes are pushed outward in condensed mode with deterministic
-  readability clearance from the sequence-letter band
-- condensed row spacing and baseline band reservation were increased to prevent
-  vertical letter overlap and preserve a dedicated readable letter band
-- condensed row stacks now anchor outward from the baseline with a deterministic
-  minimum per-row step so dense tracks retain full 10-row readability
-- dedicated condensed layout span threshold is now persisted and configurable
-  (default target 1500 bp) independently of continuous-helical max span
+- shared routing helper (`linear_base_routing`) is now authoritative for both
+  renderer mode selection and Sequence-window status/auto-hide decisions
+- deterministic auto tiers use density capacity limits:
+  - `<= 1x`: standard
+  - `<= 2x`: helical (when compressed mode enabled)
+  - `<= 10x`: condensed-10 (when compressed mode enabled)
+  - `> 10x`: `OFF`
+- explicit mode override is available:
+  - `AutoAdaptive` (default)
+  - `StandardLinear`
+  - `ContinuousHelical`
+  - `Condensed10Row`
+- compressed-letter toggle now applies to auto mode only:
+  when disabled, auto mode can use standard or `OFF` only
+- legacy fixed-threshold `SetParameter` knobs are compatibility-accepted as
+  deterministic deprecated no-op messages (no runtime routing effect)
+- phase-offset mapping remains available (`(bp + offset_bp) % 10`, clamp `0..9`)
+- condensed layout keeps backbone replacement/suppression and deterministic
+  outward annotation-lane clearance
+- upper-right renderer diagnostics now report adaptive state and metrics
+  (active mode, route policy, density, cols-fit, glyph width, reason)
+- persisted configuration migration baseline:
+  - schema-versioned config
+  - legacy helical toggle (`false`) migrates to `true`
+  - legacy layout mode migrates to `AutoAdaptive`
+  - migrated settings are rewritten once after successful load
 
-Implementation steps (phased):
+Remaining follow-ups:
 
-1. Renderer mode + mapping:
-   - add explicit layout mode (`continuous-helical` vs `condensed-10-row`)
-   - implement `(bp + offset_bp) % 10` condensed row mapping
-   - suppress/replace black backbone line with DNA letters in condensed mode
-   - status: implemented baseline
-2. Annotation reflow:
-   - push feature annotation lanes/labels outward with deterministic minimum
-     spacing from condensed DNA text rows
-   - status: implemented baseline
-3. Controls + persistence:
-   - expose mode + span threshold controls (default target around 1500 bp) in
-     Sequence window and Configuration -> Graphics
-   - keep live apply/sync + project persistence behavior adapter-equivalent
-   - status: implemented baseline
-4. Tests + docs:
-   - add deterministic tests for offsets `0/3/9`, seam behavior, backbone
-     replacement, and annotation clearance
-   - update help text/tooltips/docs for the new mode semantics
-   - status: implemented baseline
+1. Add snapshot-style dense readability regression assets/benchmarks
+   (manual screenshot contribution path remains policy-constrained).
+2. Continue condensed/helical stress testing on very large annotation density.
 
 ### XML import integration track (GenBank-first)
 
@@ -768,7 +757,7 @@ Planned upgrades:
 
 ### Phase D: visualization and workflow UX
 
-- Continue dense-case hardening for the linear DNA condensed 10-row layout:
+- Continue dense-case hardening for adaptive linear DNA letter routing:
   - visual benchmark fixtures and regression gates for crowded labels/features
   - snapshot-style stress coverage for condensed readability constraints
   - manual screenshot contribution for curated visual baselines where required

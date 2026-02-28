@@ -29,11 +29,12 @@ use crate::{
     },
     dna_sequence::{self, DNAsequence},
     engine::{
-        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, DEFAULT_BIGWIG_TO_BEDGRAPH_BIN,
-        DisplaySettings, DisplayTarget, Engine, EngineError, ErrorCode, GenomeTrackImportProgress,
-        GenomeTrackSource, GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine,
-        LineageMacroPortBinding, LinearSequenceLetterLayoutMode, OpResult, Operation,
-        OperationProgress, ProjectState, SequenceGenomeAnchorSummary,
+        BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
+        DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DisplaySettings, DisplayTarget, Engine, EngineError,
+        ErrorCode, GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
+        GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, ProjectState,
+        SequenceGenomeAnchorSummary,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, UiIntentTarget, execute_shell_command_with_options,
@@ -68,6 +69,7 @@ const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const AGENT_INTERFACE_MD: &str = include_str!("../docs/agent_interface.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
+const APP_CONFIGURATION_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_PROJECTS: usize = 12;
 const LINEAGE_GRAPH_WORKSPACE_METADATA_KEY: &str = "gui.lineage_graph.workspace";
 const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets";
@@ -323,6 +325,8 @@ pub fn request_focus_window_key_from_native_menu(key: u64) {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 struct PersistedConfiguration {
+    #[serde(default)]
+    schema_version: u32,
     rnapkin_executable: String,
     makeblastdb_executable: String,
     blastn_executable: String,
@@ -335,6 +339,7 @@ struct PersistedConfiguration {
 impl Default for PersistedConfiguration {
     fn default() -> Self {
         Self {
+            schema_version: APP_CONFIGURATION_SCHEMA_VERSION,
             rnapkin_executable: String::new(),
             makeblastdb_executable: String::new(),
             blastn_executable: String::new(),
@@ -732,6 +737,10 @@ enum GenomeBlastTaskMessage {
         done_queries: usize,
         total_queries: usize,
         current_query_label: String,
+    },
+    Status {
+        job_id: u64,
+        status: String,
     },
     Done {
         job_id: u64,
@@ -1247,6 +1256,7 @@ impl GENtleApp {
             }
         }
         let payload = PersistedConfiguration {
+            schema_version: APP_CONFIGURATION_SCHEMA_VERSION,
             rnapkin_executable: self.configuration_rnapkin_executable.trim().to_string(),
             makeblastdb_executable: self.configuration_makeblastdb_executable.trim().to_string(),
             blastn_executable: self.configuration_blastn_executable.trim().to_string(),
@@ -1490,9 +1500,10 @@ impl GENtleApp {
     }
 
     fn load_persisted_configuration(&mut self, apply_graphics_to_current_project: bool) {
-        let Some(saved) = Self::read_persisted_configuration_from_disk() else {
+        let Some(mut saved) = Self::read_persisted_configuration_from_disk() else {
             return;
         };
+        let upgraded = Self::upgrade_persisted_configuration(&mut saved);
         self.configuration_rnapkin_executable = saved.rnapkin_executable.trim().to_string();
         self.configuration_makeblastdb_executable = saved.makeblastdb_executable.trim().to_string();
         self.configuration_blastn_executable = saved.blastn_executable.trim().to_string();
@@ -1516,6 +1527,31 @@ impl GENtleApp {
         if apply_graphics_to_current_project {
             self.apply_configuration_graphics_to_engine_state();
         }
+        if upgraded {
+            let _ = self.write_persisted_configuration_to_disk();
+        }
+    }
+
+    fn upgrade_persisted_configuration(saved: &mut PersistedConfiguration) -> bool {
+        if saved.schema_version >= APP_CONFIGURATION_SCHEMA_VERSION {
+            return false;
+        }
+        if !saved
+            .graphics_defaults
+            .linear_sequence_helical_letters_enabled
+        {
+            saved
+                .graphics_defaults
+                .linear_sequence_helical_letters_enabled = true;
+        }
+        if saved.graphics_defaults.linear_sequence_letter_layout_mode
+            != LinearSequenceLetterLayoutMode::AutoAdaptive
+        {
+            saved.graphics_defaults.linear_sequence_letter_layout_mode =
+                LinearSequenceLetterLayoutMode::AutoAdaptive;
+        }
+        saved.schema_version = APP_CONFIGURATION_SCHEMA_VERSION;
+        true
     }
 
     fn resolve_runtime_doc_path(path: &str) -> Option<PathBuf> {
@@ -5628,6 +5664,16 @@ Error: `{err}`"
         std::thread::spawn(move || {
             let mut reports: Vec<GenomeBlastQueryResult> = vec![];
             let mut failed_queries: Vec<String> = vec![];
+            let task_name_for_status = task_arg
+                .as_deref()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or("blastn-short")
+                .to_string();
+            let blastn_bin_for_status = env::var(BLASTN_ENV_BIN)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| DEFAULT_BLASTN_BIN.to_string());
 
             for (idx, (label, query)) in blast_queries.into_iter().enumerate() {
                 let _ = tx.send(GenomeBlastTaskMessage::Progress {
@@ -5638,15 +5684,76 @@ Error: `{err}`"
                 });
 
                 let query_length = query.len();
-                match GentleEngine::blast_reference_genome(
-                    catalog_path.as_deref(),
-                    &genome_id,
-                    &query,
-                    max_hits,
-                    task_arg.as_deref(),
-                    cache_dir.as_deref(),
-                ) {
+                let invocation_template = format!(
+                    "{} -db <prepared_db_prefix> -query <temp_query.fa> -task {} -max_target_seqs {}",
+                    blastn_bin_for_status, task_name_for_status, max_hits
+                );
+                let _ = tx.send(GenomeBlastTaskMessage::Status {
+                    job_id,
+                    status: format!(
+                        "BLAST query '{}' started ({} bp)\ninvocation template: {}",
+                        label, query_length, invocation_template
+                    ),
+                });
+
+                let query_started = Instant::now();
+                let (query_tx, query_rx) =
+                    mpsc::channel::<Result<GenomeBlastReport, EngineError>>();
+                let catalog_for_query = catalog_path.clone();
+                let cache_for_query = cache_dir.clone();
+                let genome_for_query = genome_id.clone();
+                let task_for_query = task_arg.clone();
+                std::thread::spawn(move || {
+                    let outcome = GentleEngine::blast_reference_genome(
+                        catalog_for_query.as_deref(),
+                        &genome_for_query,
+                        &query,
+                        max_hits,
+                        task_for_query.as_deref(),
+                        cache_for_query.as_deref(),
+                    );
+                    let _ = query_tx.send(outcome);
+                });
+
+                let report_result = loop {
+                    match query_rx.recv_timeout(Duration::from_millis(250)) {
+                        Ok(outcome) => break outcome,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            let _ = tx.send(GenomeBlastTaskMessage::Status {
+                                job_id,
+                                status: format!(
+                                    "BLAST query '{}' running ({:.1}s)\ninvocation template: {}",
+                                    label,
+                                    query_started.elapsed().as_secs_f32(),
+                                    invocation_template
+                                ),
+                            });
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            break Err(EngineError {
+                                code: ErrorCode::Io,
+                                message: "BLAST worker disconnected".to_string(),
+                            });
+                        }
+                    }
+                };
+
+                match report_result {
                     Ok(report) => {
+                        let invocation = Self::format_blast_command_line(
+                            &report.blastn_executable,
+                            &report.command,
+                        );
+                        let _ = tx.send(GenomeBlastTaskMessage::Status {
+                            job_id,
+                            status: format!(
+                                "BLAST query '{}' completed in {:.1}s (hits={})\ninvocation: {}",
+                                label,
+                                query_started.elapsed().as_secs_f32(),
+                                report.hit_count,
+                                invocation
+                            ),
+                        });
                         reports.push(GenomeBlastQueryResult {
                             query_label: label.clone(),
                             query_length,
@@ -5654,6 +5761,15 @@ Error: `{err}`"
                         });
                     }
                     Err(e) => {
+                        let _ = tx.send(GenomeBlastTaskMessage::Status {
+                            job_id,
+                            status: format!(
+                                "BLAST query '{}' failed after {:.1}s: {}",
+                                label,
+                                query_started.elapsed().as_secs_f32(),
+                                e.message
+                            ),
+                        });
                         failed_queries.push(format!("{label}: {}", e.message));
                     }
                 }
@@ -5715,6 +5831,15 @@ Error: `{err}`"
                         self.genome_blast_progress_fraction = Some(fraction);
                         self.genome_blast_progress_label =
                             format!("{done_queries} / {total_queries} ({current_query_label})");
+                    }
+                    Ok(GenomeBlastTaskMessage::Status { job_id, status }) => {
+                        if job_id != active_job_id {
+                            if !stale_job_ids.contains(&job_id) {
+                                stale_job_ids.push(job_id);
+                            }
+                            continue;
+                        }
+                        self.genome_blast_status = status;
                     }
                     Ok(GenomeBlastTaskMessage::Done { job_id, result }) => {
                         if job_id != active_job_id {
@@ -5897,6 +6022,22 @@ Error: `{err}`"
             hits,
             track_name,
             clear_existing: Some(self.genome_blast_import_clear_existing),
+            blast_provenance: Some(BlastInvocationProvenance {
+                genome_id: result.report.genome_id.clone(),
+                query_label: result.query_label.clone(),
+                query_length: result.query_length,
+                max_hits: result.report.max_hits,
+                task: result.report.task.clone(),
+                blastn_executable: result.report.blastn_executable.clone(),
+                blast_db_prefix: result.report.blast_db_prefix.clone(),
+                command: result.report.command.clone(),
+                command_line: Self::format_blast_command_line(
+                    &result.report.blastn_executable,
+                    &result.report.command,
+                ),
+                catalog_path: self.genome_catalog_path_opt(),
+                cache_dir: self.genome_cache_dir_opt(),
+            }),
         };
         match self.engine.write().unwrap().apply(op) {
             Ok(result) => {
@@ -6680,6 +6821,17 @@ Error: `{err}`"
         self.show_reference_genome_retrieve_dialog = open;
     }
 
+    fn format_blast_command_line(executable: &str, args: &[String]) -> String {
+        let exe = executable.trim();
+        if args.is_empty() {
+            return exe.to_string();
+        }
+        if exe.is_empty() {
+            return args.join(" ");
+        }
+        format!("{exe} {}", args.join(" "))
+    }
+
     fn render_blast_query_result(ui: &mut Ui, result: &GenomeBlastQueryResult) {
         let report = &result.report;
         ui.label(format!(
@@ -6692,8 +6844,10 @@ Error: `{err}`"
         ));
         ui.monospace(format!("blastn: {}", report.blastn_executable));
         ui.monospace(format!("db: {}", report.blast_db_prefix));
-        if !report.command.is_empty() {
-            ui.monospace(format!("command: {}", report.command.join(" ")));
+        let invocation =
+            Self::format_blast_command_line(&report.blastn_executable, &report.command);
+        if !invocation.trim().is_empty() {
+            ui.monospace(format!("invocation: {invocation}"));
         }
         if !report.warnings.is_empty() {
             ui.separator();
@@ -13791,40 +13945,59 @@ Error: `{err}`"
                 &mut self
                     .configuration_graphics
                     .linear_sequence_helical_letters_enabled,
-                "Enable helical-compressed linear DNA letter rendering",
+                "Enable compressed DNA letters in Auto routing mode",
+            )
+            .on_hover_text(
+                "In Auto mode: disabled means dense views switch letters OFF instead of helical/condensed. Forced modes ignore this toggle.",
             )
             .changed();
         changed |= helical_letters_enabled_changed;
         ui.horizontal(|ui| {
-            ui.label("Helical letter layout");
+            ui.label("DNA letter routing mode");
             let mut selected = self
                 .configuration_graphics
                 .linear_sequence_letter_layout_mode;
             let mut layout_changed = false;
             egui::ComboBox::from_id_salt("config_linear_helical_letter_layout_mode")
                 .selected_text(match selected {
-                    LinearSequenceLetterLayoutMode::ContinuousHelical => "Continuous helical",
-                    LinearSequenceLetterLayoutMode::Condensed10Row => "Condensed 10-row",
+                    LinearSequenceLetterLayoutMode::AutoAdaptive => "Auto adaptive",
+                    LinearSequenceLetterLayoutMode::StandardLinear => "Force standard",
+                    LinearSequenceLetterLayoutMode::ContinuousHelical => "Force helical",
+                    LinearSequenceLetterLayoutMode::Condensed10Row => "Force condensed 10-row",
                 })
                 .show_ui(ui, |ui| {
                     layout_changed |= ui
                         .selectable_value(
                             &mut selected,
+                            LinearSequenceLetterLayoutMode::AutoAdaptive,
+                            "Auto adaptive",
+                        )
+                        .changed();
+                    layout_changed |= ui
+                        .selectable_value(
+                            &mut selected,
+                            LinearSequenceLetterLayoutMode::StandardLinear,
+                            "Force standard",
+                        )
+                        .changed();
+                    layout_changed |= ui
+                        .selectable_value(
+                            &mut selected,
                             LinearSequenceLetterLayoutMode::ContinuousHelical,
-                            "Continuous helical",
+                            "Force helical",
                         )
                         .changed();
                     layout_changed |= ui
                         .selectable_value(
                             &mut selected,
                             LinearSequenceLetterLayoutMode::Condensed10Row,
-                            "Condensed 10-row",
+                            "Force condensed 10-row",
                         )
                         .changed();
                 })
                 .response
                 .on_hover_text(
-                    "Continuous mode keeps the wave-like strand phase. Condensed 10-row mode uses fixed modulo-10 rows, replaces the black backbone line with DNA letters, and pushes feature lanes outward.",
+                    "Auto mode picks STANDARD/HELICAL/CONDENSED from viewport density. Force modes pin one route regardless of density.",
                 );
             if layout_changed {
                 self.configuration_graphics
@@ -13840,69 +14013,6 @@ Error: `{err}`"
                 "Rotate reverse strand letters by 180°",
             )
             .changed();
-        ui.horizontal(|ui| {
-            ui.label("DNA letters max view span");
-            if ui
-                .add(
-                    egui::DragValue::new(
-                        &mut self
-                            .configuration_graphics
-                            .linear_sequence_base_text_max_view_span_bp,
-                    )
-                    .range(0..=5_000_000)
-                    .speed(25.0)
-                    .suffix(" bp"),
-                )
-                .on_hover_text(
-                    "Linear map DNA letters are shown only when current span is <= this threshold (0 disables letter rendering)",
-                )
-                .changed()
-            {
-                changed = true;
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label("Helical letters max view span");
-            if ui
-                .add(
-                    egui::DragValue::new(
-                        &mut self
-                            .configuration_graphics
-                            .linear_sequence_helical_max_view_span_bp,
-                    )
-                    .range(0..=5_000_000)
-                    .speed(25.0)
-                    .suffix(" bp"),
-                )
-                .on_hover_text(
-                    "Helical-compressed DNA letters are shown when span <= this threshold and standard linear letters are no longer shown",
-                )
-                .changed()
-            {
-                changed = true;
-            }
-        });
-        ui.horizontal(|ui| {
-            ui.label("Condensed letters max view span");
-            if ui
-                .add(
-                    egui::DragValue::new(
-                        &mut self
-                            .configuration_graphics
-                            .linear_sequence_condensed_max_view_span_bp,
-                    )
-                    .range(0..=5_000_000)
-                    .speed(25.0)
-                    .suffix(" bp"),
-                )
-                .on_hover_text(
-                    "In condensed 10-row layout mode, DNA letters are shown while span <= this threshold",
-                )
-                .changed()
-            {
-                changed = true;
-            }
-        });
         ui.horizontal(|ui| {
             ui.label("Helical phase offset (mod 10 seam shift)");
             if ui
@@ -13924,6 +14034,7 @@ Error: `{err}`"
                 changed = true;
             }
         });
+        ui.small("Adaptive DNA-letter routing now uses viewport density; these settings persist after Apply.");
         ui.horizontal(|ui| {
             ui.label("Feature detail font size");
             if ui
@@ -15502,13 +15613,31 @@ Error: `{err}`"
                 hits,
                 track_name,
                 clear_existing,
-            } => format!(
-                "Import BLAST hits track: seq_id={}, track_name={}, hits={}, clear_existing={}",
-                seq_id,
-                track_name.clone().unwrap_or_else(|| "-".to_string()),
-                hits.len(),
-                clear_existing.unwrap_or(false)
-            ),
+                blast_provenance,
+            } => {
+                let invocation = blast_provenance
+                    .as_ref()
+                    .map(|entry| {
+                        let raw = if entry.command_line.trim().is_empty() {
+                            Self::format_blast_command_line(
+                                &entry.blastn_executable,
+                                &entry.command,
+                            )
+                        } else {
+                            entry.command_line.clone()
+                        };
+                        Self::compact_lineage_node_label(&raw, 92)
+                    })
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "Import BLAST hits track: seq_id={}, track_name={}, hits={}, clear_existing={}, invocation={}",
+                    seq_id,
+                    track_name.clone().unwrap_or_else(|| "-".to_string()),
+                    hits.len(),
+                    clear_existing.unwrap_or(false),
+                    invocation
+                )
+            }
             other => format!("{other:?}"),
         }
     }
@@ -15710,14 +15839,18 @@ impl eframe::App for GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        BackgroundJobEventPhase, BackgroundJobKind, ConfigurationTab, EngineError, ErrorCode,
-        GENtleApp, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
+        APP_CONFIGURATION_SCHEMA_VERSION, BackgroundJobEventPhase, BackgroundJobKind,
+        ConfigurationTab, EngineError, ErrorCode, GENtleApp, GenomeBlastTask,
+        GenomeBlastTaskMessage, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
         GenomeTrackImportTaskMessage, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-        PersistedLineageNodeGroup,
+        PersistedConfiguration, PersistedLineageNodeGroup,
     };
     use crate::{
         dna_sequence::DNAsequence,
-        engine::{DisplaySettings, GentleEngine, OpResult, ProjectState},
+        engine::{
+            BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, GentleEngine,
+            LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
+        },
         window::Window,
     };
     use eframe::egui;
@@ -15835,6 +15968,56 @@ mod tests {
         assert_eq!(target.linear_external_feature_label_font_size, 11.0);
         assert_eq!(target.linear_external_feature_label_background_opacity, 0.9);
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 0);
+    }
+
+    #[test]
+    fn upgrade_persisted_configuration_migrates_legacy_linear_letter_defaults() {
+        let mut saved = PersistedConfiguration::default();
+        saved.schema_version = 1;
+        saved
+            .graphics_defaults
+            .linear_sequence_helical_letters_enabled = false;
+        saved.graphics_defaults.linear_sequence_letter_layout_mode =
+            LinearSequenceLetterLayoutMode::ContinuousHelical;
+
+        let upgraded = GENtleApp::upgrade_persisted_configuration(&mut saved);
+
+        assert!(upgraded);
+        assert_eq!(saved.schema_version, APP_CONFIGURATION_SCHEMA_VERSION);
+        assert!(
+            saved
+                .graphics_defaults
+                .linear_sequence_helical_letters_enabled
+        );
+        assert_eq!(
+            saved.graphics_defaults.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::AutoAdaptive
+        );
+    }
+
+    #[test]
+    fn upgrade_persisted_configuration_is_noop_for_current_schema() {
+        let mut saved = PersistedConfiguration::default();
+        saved.schema_version = APP_CONFIGURATION_SCHEMA_VERSION;
+        saved
+            .graphics_defaults
+            .linear_sequence_helical_letters_enabled = false;
+        saved.graphics_defaults.linear_sequence_letter_layout_mode =
+            LinearSequenceLetterLayoutMode::Condensed10Row;
+
+        let upgraded = GENtleApp::upgrade_persisted_configuration(&mut saved);
+
+        assert!(!upgraded);
+        assert_eq!(saved.schema_version, APP_CONFIGURATION_SCHEMA_VERSION);
+        assert!(
+            !saved
+                .graphics_defaults
+                .linear_sequence_helical_letters_enabled
+        );
+        assert_eq!(
+            saved.graphics_defaults.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::Condensed10Row
+        );
     }
 
     #[test]
@@ -16070,6 +16253,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn poll_blast_task_updates_runtime_status_from_worker_messages() {
+        let mut app = GENtleApp::default();
+        let (tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
+        app.genome_blast_task = Some(GenomeBlastTask {
+            job_id: 71,
+            started: Instant::now(),
+            receiver: rx,
+        });
+        tx.send(GenomeBlastTaskMessage::Status {
+            job_id: 71,
+            status: "BLAST query 'q1' running (0.5s)".to_string(),
+        })
+        .expect("send status");
+
+        app.poll_reference_genome_blast_task(&egui::Context::default());
+
+        assert!(
+            app.genome_blast_status.contains("running"),
+            "status was: {}",
+            app.genome_blast_status
+        );
+        assert!(app.genome_blast_task.is_some());
+    }
+
     fn make_lineage_row(node_id: &str, seq_id: &str) -> LineageRow {
         LineageRow {
             kind: LineageNodeKind::Sequence,
@@ -16214,6 +16422,47 @@ mod tests {
             "F"
         );
         assert_eq!(GENtleApp::lineage_operation_symbol("unknown op"), "U");
+    }
+
+    #[test]
+    fn summarize_operation_blast_import_includes_invocation_preview() {
+        let op = Operation::ImportBlastHitsTrack {
+            seq_id: "query".to_string(),
+            hits: vec![BlastHitFeatureInput {
+                subject_id: "chr1".to_string(),
+                query_start_1based: 1,
+                query_end_1based: 8,
+                subject_start_1based: 100,
+                subject_end_1based: 107,
+                identity_percent: 99.0,
+                bit_score: 42.0,
+                evalue: 1e-8,
+                query_coverage_percent: Some(100.0),
+            }],
+            track_name: Some("blast_hits".to_string()),
+            clear_existing: Some(true),
+            blast_provenance: Some(BlastInvocationProvenance {
+                genome_id: "grch38".to_string(),
+                query_label: "query".to_string(),
+                query_length: 8,
+                max_hits: 20,
+                task: "blastn-short".to_string(),
+                blastn_executable: "blastn".to_string(),
+                blast_db_prefix: "/tmp/db".to_string(),
+                command: vec![
+                    "-db".to_string(),
+                    "/tmp/db".to_string(),
+                    "-query".to_string(),
+                    "/tmp/query.fa".to_string(),
+                ],
+                command_line: "blastn -db /tmp/db -query /tmp/query.fa".to_string(),
+                catalog_path: None,
+                cache_dir: None,
+            }),
+        };
+        let summary = GENtleApp::summarize_operation(&op);
+        assert!(summary.contains("invocation="));
+        assert!(summary.contains("blastn -db /tmp/db"));
     }
 
     #[test]

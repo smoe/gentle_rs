@@ -1623,7 +1623,12 @@ fn is_entity_port_kind(kind: &str) -> bool {
 
 fn existing_values_for_port_kind(engine: &GentleEngine, kind: &str) -> HashSet<String> {
     match normalize_port_kind(kind).as_str() {
-        "sequence" => engine.state().sequences.keys().cloned().collect::<HashSet<_>>(),
+        "sequence" => engine
+            .state()
+            .sequences
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>(),
         "container" => engine
             .state()
             .container_state
@@ -1716,8 +1721,11 @@ fn validate_sequence_anchor_against_sequence(
         } => {
             let mut match_count = 0usize;
             for feature in dna.features() {
-                if !sequence_anchor_matches_filter(feature_kind.as_ref(), feature_label.as_ref(), feature)
-                {
+                if !sequence_anchor_matches_filter(
+                    feature_kind.as_ref(),
+                    feature_label.as_ref(),
+                    feature,
+                ) {
                     continue;
                 }
                 let Ok((from, to)) = feature.location.find_bounds() else {
@@ -1751,10 +1759,7 @@ fn validate_sequence_anchor_against_sequence(
     }
 }
 
-fn apply_cross_port_semantics(
-    engine: &GentleEngine,
-    report: &mut MacroTemplatePreflightReport,
-) {
+fn apply_cross_port_semantics(engine: &GentleEngine, report: &mut MacroTemplatePreflightReport) {
     let checked_rows = report
         .checked_ports
         .iter()
@@ -2883,7 +2888,10 @@ impl ShellCommand {
             }
             Self::MacrosInstanceList => "list recorded workflow macro instances".to_string(),
             Self::MacrosInstanceShow { macro_instance_id } => {
-                format!("show recorded workflow macro instance '{}'", macro_instance_id)
+                format!(
+                    "show recorded workflow macro instance '{}'",
+                    macro_instance_id
+                )
             }
             Self::MacrosTemplateList => "list workflow macro templates".to_string(),
             Self::MacrosTemplateShow { name } => {
@@ -3308,9 +3316,31 @@ impl ShellCommand {
                     .unwrap_or("-"),
                 include_qc_checklist
             ),
-            Self::SetParameter { name, value_json } => {
-                format!("set parameter '{}' to {}", name, value_json)
-            }
+            Self::SetParameter { name, value_json } => match name.as_str() {
+                "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
+                    format!(
+                        "set adaptive linear DNA letter mode '{}' (auto|standard|helical|condensed_10_row)",
+                        value_json
+                    )
+                }
+                "linear_sequence_helical_letters_enabled"
+                | "linear_helical_letters_enabled"
+                | "helical_letters_enabled" => format!(
+                    "set compressed linear DNA letters '{}' (applies in auto mode)",
+                    value_json
+                ),
+                "linear_sequence_base_text_max_view_span_bp"
+                | "linear_base_text_max_view_span_bp"
+                | "sequence_base_text_max_view_span_bp"
+                | "linear_sequence_helical_max_view_span_bp"
+                | "linear_helical_max_view_span_bp"
+                | "linear_sequence_condensed_max_view_span_bp"
+                | "linear_condensed_max_view_span_bp" => format!(
+                    "set parameter '{}' to {} (deprecated no-op under adaptive routing)",
+                    name, value_json
+                ),
+                _ => format!("set parameter '{}' to {}", name, value_json),
+            },
             Self::Op { .. } => "apply one engine operation from JSON".to_string(),
             Self::Workflow { .. } => "apply engine workflow from JSON".to_string(),
         }
@@ -8874,12 +8904,30 @@ pub fn execute_shell_command_with_options(
                     query_coverage_percent: hit.query_coverage_percent,
                 })
                 .collect::<Vec<_>>();
+            let command_line = if report.command.is_empty() {
+                report.blastn_executable.clone()
+            } else {
+                format!("{} {}", report.blastn_executable, report.command.join(" "))
+            };
             let op_result = engine
                 .apply(Operation::ImportBlastHitsTrack {
                     seq_id: target_seq_id.clone(),
                     hits: hit_inputs,
                     track_name: track_name.clone(),
                     clear_existing: Some(*clear_existing),
+                    blast_provenance: Some(crate::engine::BlastInvocationProvenance {
+                        genome_id: report.genome_id.clone(),
+                        query_label: target_seq_id.clone(),
+                        query_length: report.query_length,
+                        max_hits: report.max_hits,
+                        task: report.task.clone(),
+                        blastn_executable: report.blastn_executable.clone(),
+                        blast_db_prefix: report.blast_db_prefix.clone(),
+                        command: report.command.clone(),
+                        command_line,
+                        catalog_path: resolved_catalog.map(str::to_string),
+                        cache_dir: cache_dir.clone(),
+                    }),
                 })
                 .map_err(|e| e.to_string())?;
             let state_changed =
@@ -9158,10 +9206,7 @@ pub fn execute_shell_command_with_options(
                         status,
                         Some(err.clone()),
                     );
-                    return Err(format!(
-                        "{} [macro_instance_id={}]",
-                        err, macro_instance_id
-                    ));
+                    return Err(format!("{} [macro_instance_id={}]", err, macro_instance_id));
                 }
             }
         }
@@ -9346,10 +9391,7 @@ pub fn execute_shell_command_with_options(
                         macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
                         macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
                         MacroInstanceStatus::Failed,
-                        Some(format!(
-                            "preflight failed: {}",
-                            preflight.errors.join("; ")
-                        )),
+                        Some(format!("preflight failed: {}", preflight.errors.join("; "))),
                     );
                     return Err(format!(
                         "Workflow macro template '{}' preflight failed: {} [macro_instance_id={}]",
@@ -9394,21 +9436,12 @@ pub fn execute_shell_command_with_options(
                             Some(name.clone()),
                             preflight.routine_id.clone(),
                             preflight.routine_title.clone(),
-                            macro_bindings_from_preflight(
-                                &preflight,
-                                RoutinePortDirection::Input,
-                            ),
-                            macro_bindings_from_preflight(
-                                &preflight,
-                                RoutinePortDirection::Output,
-                            ),
+                            macro_bindings_from_preflight(&preflight, RoutinePortDirection::Input),
+                            macro_bindings_from_preflight(&preflight, RoutinePortDirection::Output),
                             status,
                             Some(err.clone()),
                         );
-                        return Err(format!(
-                            "{} [macro_instance_id={}]",
-                            err, macro_instance_id
-                        ));
+                        return Err(format!("{} [macro_instance_id={}]", err, macro_instance_id));
                     }
                 }
             }
@@ -11278,8 +11311,8 @@ mod tests {
             other => panic!("unexpected command: {other:?}"),
         }
 
-        let instance_show = parse_shell_line("macros instance-show macro-1")
-            .expect("parse macros instance-show");
+        let instance_show =
+            parse_shell_line("macros instance-show macro-1").expect("parse macros instance-show");
         match instance_show {
             ShellCommand::MacrosInstanceShow { macro_instance_id } => {
                 assert_eq!(macro_instance_id, "macro-1");
@@ -12378,7 +12411,10 @@ filter set1 set2 --metric score --min 10
         assert_eq!(engine.state().lineage.macro_instances.len(), 1);
         let instance = &engine.state().lineage.macro_instances[0];
         assert_eq!(instance.status, MacroInstanceStatus::Failed);
-        assert_eq!(instance.template_name.as_deref(), Some("branch_reverse_complement"));
+        assert_eq!(
+            instance.template_name.as_deref(),
+            Some("branch_reverse_complement")
+        );
         assert!(instance.status_message.is_some());
     }
 
@@ -12518,7 +12554,8 @@ filter set1 set2 --metric score --min 10
                         description: None,
                     },
                 ],
-                script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_a}"}}"#.to_string(),
+                script: r#"op {"Reverse":{"input":"${seq_id}","output_id":"${out_a}"}}"#
+                    .to_string(),
             },
         )
         .expect("upsert template");

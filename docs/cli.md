@@ -1287,6 +1287,31 @@ Set regulatory-overlay max linear view span threshold (`50000` recommended for a
 {"SetParameter":{"name":"regulatory_feature_max_view_span_bp","value":50000}}
 ```
 
+Set adaptive linear DNA-letter routing parameters (shared GUI/runtime semantics):
+
+```json
+{"SetParameter":{"name":"linear_sequence_letter_layout_mode","value":"auto"}}
+{"SetParameter":{"name":"linear_sequence_helical_letters_enabled","value":true}}
+{"SetParameter":{"name":"linear_sequence_helical_phase_offset_bp","value":3}}
+```
+
+Supported `linear_sequence_letter_layout_mode` values:
+
+- `auto`, `adaptive`, `auto_adaptive`
+- `standard`, `standard_linear`
+- `helical`, `continuous_helical`
+- `condensed_10_row`, `condensed-10-row`, `condensed`
+
+Compatibility notes:
+
+- Legacy fixed-threshold parameters are still accepted for compatibility but are
+  deprecated no-ops under adaptive routing:
+  - `linear_sequence_base_text_max_view_span_bp`
+  - `linear_sequence_helical_max_view_span_bp`
+  - `linear_sequence_condensed_max_view_span_bp`
+- `linear_sequence_helical_letters_enabled` applies to auto mode only
+  (`linear_sequence_letter_layout_mode = auto*`).
+
 Set TFBS display filtering parameters shared by GUI and SVG export:
 
 ```json
@@ -1451,9 +1476,18 @@ Notes:
 - `ExtractGenomeGene` also expects prepared cache and gene index.
 - `genomes/helpers blast` expects prepared cache and a BLAST index.
   If index files are missing, GENtle tries to build them on demand.
+- BLAST progress:
+  - BLAST+ does not provide a native percent-progress CLI flag for `blastn`.
+  - GENtle surfaces deterministic progress at orchestration level (query counts,
+    running elapsed time, and invocation context in adapters that support live status).
 - BLAST executable overrides:
   - `GENTLE_MAKEBLASTDB_BIN` (default: `makeblastdb`)
   - `GENTLE_BLASTN_BIN` (default: `blastn`)
+- When BLAST hits are imported as features (`ImportBlastHitsTrack` /
+  shell `genomes|helpers blast-track`), operation payload now includes
+  `blast_provenance` with invocation details (`blastn_executable`, `blast_db_prefix`,
+  raw `command` args, and compact `command_line`) so sequence history can
+  trace how hits were generated.
 - `ImportGenomeBedTrack` expects `seq_id` to be a sequence created by
   `ExtractGenomeRegion`, `ExtractGenomeGene`, or `ExtendGenomeAnchor`
   (genome-anchored provenance).
