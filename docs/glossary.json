@@ -1,5 +1,5 @@
 {
-   "command_count": 163,
+   "command_count": 164,
    "commands": [
       {
          "aliases": [
@@ -1110,6 +1110,18 @@
          "path": "macros template-run",
          "summary": "Run one persisted workflow macro template with bindings.",
          "usage": "macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "routines list",
+         "summary": "List cloning routines from the typed routine catalog with optional filters.",
+         "usage": "routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]"
       },
       {
          "aliases": [],

@@ -289,6 +289,14 @@ Adapter-equivalence guarantee for UI-intent tools:
   - expanded scripts can execute `op ...` and `workflow ...` statements and
     optionally roll back via `--transactional`
 
+- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+  - shared-shell/CLI routine catalog discovery surface
+  - default catalog path: `assets/cloning_routines.json`
+  - typed catalog schema: `gentle.cloning_routines.v1`
+  - response schema: `gentle.cloning_routines_list.v1`
+  - filters are case-insensitive; query performs substring match across
+    routine id/title/family/status/template/tags/summary
+
 - `screenshot-window OUTPUT.png`
   - currently disabled by security policy
   - returns deterministic disabled message from shared shell/CLI/GUI command
@@ -589,6 +597,13 @@ Candidate-set semantics:
     - legacy pack: `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
     - hierarchical catalog: `assets/cloning_patterns_catalog/**/*.json`
       (`gentle.cloning_pattern_template.v1`, one template per file)
+- Typed cloning-routine catalog baseline:
+  - manifest: `assets/cloning_routines.json`
+  - schema: `gentle.cloning_routines.v1`
+  - typed routine metadata fields include routine family/status/tags, linked
+    template name/path, and typed input/output port declarations
+  - adapter discovery surface:
+    `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
 - Candidate macro templates are persisted in project metadata:
   - `UpsertCandidateMacroTemplate` stores/replaces named templates
   - `DeleteCandidateMacroTemplate` removes templates

@@ -198,6 +198,12 @@ Patterns menu:
     `assets/cloning_patterns_catalog`.
 - `Patterns` submenu hierarchy mirrors the directory hierarchy under
   `assets/cloning_patterns_catalog` (one JSON template file per leaf entry).
+- `Patterns -> Routine catalog`
+  - routine discovery is grouped by `family` and `status`.
+  - selecting a routine imports its linked template file when the routine
+    manifest provides `template_path`.
+  - manifest source: `assets/cloning_routines.json`
+    (`gentle.cloning_routines.v1`).
 
 Node click behavior in lineage `Graph` view:
 
@@ -681,6 +687,17 @@ In `Main window -> Graph` view:
 - Dense graph readability:
   - `Compact labels` reduces label density when the graph is crowded
   - operation labels are shortened and node detail labels are reduced
+  - operation transitions are rendered as square glyph nodes between tube nodes
+    (Petri-net style), with compact operation symbols inside the square
+  - operation squares now use a consistent symbol/color set by operation family
+    (for example digest, ligation, PCR, extract, filter)
+  - when collapsed groups project multiple hidden operations onto one visible
+    transition, the square shows a count symbol (for example `2`) and grouped
+    edge text summarizes the merged operation set
+  - collapsed group representative nodes display a compact hidden-internals
+    badge: total hidden operation count plus top hidden operation-family chips
+    (same symbol/color set as transition squares)
+  - edge text labels remain secondary annotations for detailed operation names
 - Workspace persistence:
   - graph node positions, zoom, compact-label toggle, graph scroll/pan offset,
     and preferred graph/container panel heights are stored in project metadata

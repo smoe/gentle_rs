@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-27
+Last updated: 2026-02-28
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -570,10 +570,27 @@ Command surface:
 - `candidates set-op union|intersect|subtract LEFT RIGHT OUTPUT`
 - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `macros template-list|template-show|template-put|template-delete|template-import|template-run ...`
+- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `candidates template-list|template-show|template-put|template-delete|template-run ...`
 - `set-param NAME JSON_VALUE`
 - Starter cloning-pattern pack: `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
+- Hierarchical per-template cloning-pattern catalog:
+  `assets/cloning_patterns_catalog/**/*.json`
+  (`gentle.cloning_pattern_template.v1`)
+- `macros template-import PATH` supports:
+  - single template file
+  - legacy pack file
+  - recursive directory import
+- Typed cloning-routine manifest baseline:
+  `assets/cloning_routines.json` (`gentle.cloning_routines.v1`)
+- GUI `Patterns` menu mirrors the catalog folder hierarchy and routes imports
+  through the same shared-shell command path.
+- GUI `Patterns` menu now also exposes routine catalog discovery grouped by
+  family/status and routine-linked template import actions.
+- Multiple template runs in one project are supported today via normal
+  operation execution and persistence; explicit typed routine metadata and
+  macro-instance graph nodes remain planned follow-up items.
 
 This enables reusable query composition:
 

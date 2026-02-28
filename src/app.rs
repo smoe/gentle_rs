@@ -74,6 +74,7 @@ const LINEAGE_NODE_OFFSETS_METADATA_KEY: &str = "gui.lineage_graph.node_offsets"
 const LINEAGE_NODE_GROUPS_METADATA_KEY: &str = "gui.lineage_graph.node_groups";
 const DEFAULT_CLONING_PATTERN_CATALOG_DIR: &str = "assets/cloning_patterns_catalog";
 const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
+const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -856,6 +857,12 @@ struct LineageTableEntry {
     hidden_group_member_count: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LineageGroupHiddenOpBadge {
+    total_ops: usize,
+    families: Vec<(String, usize)>,
+}
+
 #[derive(Clone, Debug)]
 struct AnchorProvenanceSnapshot {
     catalog_path: Option<String>,
@@ -897,6 +904,21 @@ struct CloningPatternCatalogEntry {
     path: String,
     is_file: bool,
     children: Vec<CloningPatternCatalogEntry>,
+}
+
+#[derive(Clone, Deserialize)]
+struct CloningRoutineCatalogRow {
+    routine_id: String,
+    title: String,
+    family: String,
+    status: String,
+    vocabulary_tags: Vec<String>,
+    summary: Option<String>,
+    details_url: Option<String>,
+    template_name: String,
+    template_path: Option<String>,
+    input_ports: Vec<serde_json::Value>,
+    output_ports: Vec<serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -8558,6 +8580,103 @@ Error: `{err}`"
         }
     }
 
+    fn list_cloning_routines(
+        &mut self,
+        family: Option<&str>,
+        status: Option<&str>,
+        query: Option<&str>,
+    ) -> std::result::Result<Vec<CloningRoutineCatalogRow>, String> {
+        let command = ShellCommand::RoutinesList {
+            catalog_path: Some(DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
+            family: family
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            status: status
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            tag: None,
+            query: query
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+        };
+        let options = ShellExecutionOptions::from_env();
+        let run = {
+            let mut engine = self.engine.write().expect("Engine lock poisoned");
+            execute_shell_command_with_options(&mut engine, &command, &options)
+        }?;
+        let routines_json = run
+            .output
+            .get("routines")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([]));
+        serde_json::from_value::<Vec<CloningRoutineCatalogRow>>(routines_json)
+            .map_err(|e| format!("Could not parse routine catalog output: {e}"))
+    }
+
+    fn render_cloning_routine_menu_entries(
+        ui: &mut Ui,
+        routines: &[CloningRoutineCatalogRow],
+        selected_template_path: &mut Option<String>,
+        status_message: &mut Option<String>,
+    ) {
+        for routine in routines {
+            let label = format!("{} [{}]", routine.title, routine.status);
+            let tags = if routine.vocabulary_tags.is_empty() {
+                "-".to_string()
+            } else {
+                routine.vocabulary_tags.join(", ")
+            };
+            let template_path = routine
+                .template_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("-");
+            let details_url = routine
+                .details_url
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("-");
+            let hover = format!(
+                "routine_id: {}\nfamily: {}\nstatus: {}\ntemplate: {}\ntemplate_path: {}\ndetails_url: {}\ninput_ports: {}\noutput_ports: {}\ntags: {}\n{}",
+                routine.routine_id,
+                routine.family,
+                routine.status,
+                routine.template_name,
+                template_path,
+                details_url,
+                routine.input_ports.len(),
+                routine.output_ports.len(),
+                tags,
+                routine.summary.as_deref().unwrap_or("No summary")
+            );
+            let response = ui.button(label).on_hover_text(hover);
+            if response.clicked() {
+                if let Some(path) = routine
+                    .template_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    *selected_template_path = Some(path.to_string());
+                    *status_message = Some(format!(
+                        "Importing template '{}' for routine '{}'",
+                        routine.template_name, routine.routine_id
+                    ));
+                } else {
+                    *status_message = Some(format!(
+                        "Routine '{}' uses template '{}' (no template_path specified)",
+                        routine.routine_id, routine.template_name
+                    ));
+                }
+            }
+        }
+    }
+
     fn save_current_project(&mut self) -> bool {
         if let Some(path) = self.current_project_path.clone() {
             if self.save_project_to_file(&path).is_ok() {
@@ -9371,6 +9490,98 @@ Error: `{err}`"
                         ui.small(err);
                     }
                 }
+
+                ui.separator();
+                ui.small("Routine catalog");
+                match self.list_cloning_routines(None, None, None) {
+                    Ok(mut routines) => {
+                        if routines.is_empty() {
+                            ui.add_enabled(false, egui::Button::new("No routines found"));
+                        } else {
+                            routines.sort_by(|left, right| {
+                                left.family
+                                    .to_ascii_lowercase()
+                                    .cmp(&right.family.to_ascii_lowercase())
+                                    .then(
+                                        left.title
+                                            .to_ascii_lowercase()
+                                            .cmp(&right.title.to_ascii_lowercase()),
+                                    )
+                            });
+                            if ui
+                                .button("Show Routine Catalog Summary")
+                                .on_hover_text(
+                                    "Show current routine catalog location and routine count",
+                                )
+                                .clicked()
+                            {
+                                self.app_status = format!(
+                                    "Loaded {} routine(s) from '{}'",
+                                    routines.len(),
+                                    DEFAULT_CLONING_ROUTINE_CATALOG_PATH
+                                );
+                                ui.close_menu();
+                            }
+
+                            let mut selected_template_path: Option<String> = None;
+                            let mut status_message: Option<String> = None;
+                            let mut by_family: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
+                                BTreeMap::new();
+                            let mut by_status: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
+                                BTreeMap::new();
+                            for routine in routines {
+                                by_family
+                                    .entry(routine.family.clone())
+                                    .or_default()
+                                    .push(routine.clone());
+                                by_status
+                                    .entry(routine.status.clone())
+                                    .or_default()
+                                    .push(routine);
+                            }
+
+                            ui.menu_button("Browse by Family", |ui| {
+                                for (family, rows) in &by_family {
+                                    ui.menu_button(format!("{family} ({})", rows.len()), |ui| {
+                                        Self::render_cloning_routine_menu_entries(
+                                            ui,
+                                            rows,
+                                            &mut selected_template_path,
+                                            &mut status_message,
+                                        );
+                                    });
+                                }
+                            });
+                            ui.menu_button("Browse by Status", |ui| {
+                                for (status, rows) in &by_status {
+                                    ui.menu_button(format!("{status} ({})", rows.len()), |ui| {
+                                        Self::render_cloning_routine_menu_entries(
+                                            ui,
+                                            rows,
+                                            &mut selected_template_path,
+                                            &mut status_message,
+                                        );
+                                    });
+                                }
+                            });
+
+                            if let Some(path) = selected_template_path {
+                                self.import_workflow_macro_templates_from_path(&path);
+                                if let Some(message) = status_message {
+                                    self.app_status = message;
+                                }
+                                ui.close_menu();
+                            } else if let Some(message) = status_message {
+                                self.app_status = message;
+                                ui.close_menu();
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        ui.add_enabled(false, egui::Button::new("Routine catalog unavailable"));
+                        ui.small(err);
+                    }
+                }
             });
             ui.menu_button("Windows", |ui| {
                 let jobs_panel_resp = self.track_hover_status(
@@ -9955,6 +10166,266 @@ Error: `{err}`"
             head.push_str("...");
         }
         head
+    }
+
+    fn lineage_operation_family(raw: &str) -> &'static str {
+        let head = raw.split(':').next().unwrap_or(raw).trim();
+        let lower = head.to_ascii_lowercase();
+        if lower.contains("reverse complement") {
+            return "reverse_complement";
+        }
+        if lower.contains("digest") {
+            return "digest";
+        }
+        if lower.contains("ligation") {
+            return "ligation";
+        }
+        if lower.contains("pcr") {
+            return "pcr";
+        }
+        if lower.contains("extract") {
+            return "extract";
+        }
+        if lower.contains("merge") {
+            return "merge";
+        }
+        if lower.contains("filter") {
+            return "filter";
+        }
+        if lower.contains("annotate") {
+            return "annotate";
+        }
+        if lower.contains("load") || lower.contains("import") {
+            return "import";
+        }
+        if lower.contains("set parameter") {
+            return "set_parameter";
+        }
+        if lower.contains("branch") {
+            return "branch";
+        }
+        if lower.contains("reverse") {
+            return "reverse";
+        }
+        if lower.contains("complement") {
+            return "complement";
+        }
+        "other"
+    }
+
+    fn lineage_operation_symbol_for_family(family: &str) -> &'static str {
+        match family {
+            "reverse_complement" => "RC",
+            "digest" => "D",
+            "ligation" => "L",
+            "pcr" => "P",
+            "extract" => "E",
+            "merge" => "M",
+            "filter" => "F",
+            "annotate" => "A",
+            "import" => "I",
+            "set_parameter" => "S",
+            "branch" => "B",
+            "reverse" => "R",
+            "complement" => "C",
+            _ => "O",
+        }
+    }
+
+    fn lineage_operation_symbol(raw: &str) -> String {
+        let family = Self::lineage_operation_family(raw);
+        if family != "other" {
+            return Self::lineage_operation_symbol_for_family(family).to_string();
+        }
+        let head = raw.split(':').next().unwrap_or(raw).trim();
+        for ch in head.chars() {
+            if ch.is_ascii_alphabetic() {
+                return ch.to_ascii_uppercase().to_string();
+            }
+        }
+        "O".to_string()
+    }
+
+    fn lineage_operation_color_for_family(family: &str) -> egui::Color32 {
+        match family {
+            "reverse_complement" => egui::Color32::from_rgb(84, 118, 172),
+            "digest" => egui::Color32::from_rgb(176, 126, 70),
+            "ligation" => egui::Color32::from_rgb(78, 144, 108),
+            "pcr" => egui::Color32::from_rgb(72, 124, 186),
+            "extract" => egui::Color32::from_rgb(153, 121, 74),
+            "merge" => egui::Color32::from_rgb(96, 146, 88),
+            "filter" => egui::Color32::from_rgb(120, 120, 120),
+            "annotate" => egui::Color32::from_rgb(74, 150, 156),
+            "import" => egui::Color32::from_rgb(111, 131, 170),
+            "set_parameter" => egui::Color32::from_rgb(128, 109, 82),
+            "branch" => egui::Color32::from_rgb(130, 110, 152),
+            "reverse" => egui::Color32::from_rgb(108, 130, 174),
+            "complement" => egui::Color32::from_rgb(108, 137, 176),
+            _ => egui::Color32::from_rgb(102, 102, 102),
+        }
+    }
+
+    fn lineage_operation_color(raw: &str) -> egui::Color32 {
+        let family = Self::lineage_operation_family(raw);
+        Self::lineage_operation_color_for_family(family)
+    }
+
+    fn lineage_operation_glyph(op_labels: &[String]) -> (String, egui::Color32) {
+        if op_labels.is_empty() {
+            return ("O".to_string(), egui::Color32::from_rgb(102, 102, 102));
+        }
+        let first_symbol = Self::lineage_operation_symbol(&op_labels[0]);
+        let first_color = Self::lineage_operation_color(&op_labels[0]);
+        let all_same = op_labels
+            .iter()
+            .all(|label| Self::lineage_operation_symbol(label) == first_symbol);
+        if all_same {
+            return (first_symbol, first_color);
+        }
+        let count = op_labels.len().min(99);
+        (count.to_string(), egui::Color32::from_rgb(102, 102, 102))
+    }
+
+    fn lineage_edge_groups(
+        lineage_edges: &[(String, String, String)],
+    ) -> Vec<(String, String, Vec<String>)> {
+        let mut edge_groups: Vec<(String, String, Vec<String>)> = vec![];
+        let mut by_pair: HashMap<(String, String), usize> = HashMap::new();
+        for (from_node, to_node, op_id) in lineage_edges {
+            let key = (from_node.clone(), to_node.clone());
+            if let Some(group_idx) = by_pair.get(&key).copied() {
+                let group = &mut edge_groups[group_idx].2;
+                if !group.iter().any(|existing| existing == op_id) {
+                    group.push(op_id.clone());
+                }
+                continue;
+            }
+            by_pair.insert(key, edge_groups.len());
+            edge_groups.push((from_node.clone(), to_node.clone(), vec![op_id.clone()]));
+        }
+        edge_groups
+    }
+
+    fn lineage_edge_operation_labels(
+        op_ids: &[String],
+        op_label_by_id: &HashMap<String, String>,
+    ) -> Vec<String> {
+        let mut labels: Vec<String> = op_ids
+            .iter()
+            .map(|op_id| {
+                op_label_by_id
+                    .get(op_id)
+                    .cloned()
+                    .unwrap_or_else(|| op_id.clone())
+            })
+            .collect();
+        labels.sort();
+        labels.dedup();
+        labels
+    }
+
+    fn lineage_edge_display_label(op_labels: &[String]) -> String {
+        match op_labels.len() {
+            0 => "Operation".to_string(),
+            1 => op_labels[0].clone(),
+            count => format!("{count} operations"),
+        }
+    }
+
+    fn lineage_edge_accessible_name(op_labels: &[String]) -> String {
+        match op_labels.len() {
+            0 => "operation".to_string(),
+            1 => op_labels[0].clone(),
+            count => {
+                let preview = op_labels
+                    .iter()
+                    .take(3)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if op_labels.len() <= 3 {
+                    format!("{count} operations: {preview}")
+                } else {
+                    format!("{count} operations: {preview}, ...")
+                }
+            }
+        }
+    }
+
+    fn lineage_collapsed_group_hidden_op_badges(
+        edges: &[(String, String, String)],
+        groups: &[PersistedLineageNodeGroup],
+        op_label_by_id: &HashMap<String, String>,
+    ) -> HashMap<String, LineageGroupHiddenOpBadge> {
+        let mut badges: HashMap<String, LineageGroupHiddenOpBadge> = HashMap::new();
+        for group in groups {
+            if !group.collapsed || group.member_node_ids.is_empty() {
+                continue;
+            }
+            let member_node_ids: HashSet<&str> = group
+                .member_node_ids
+                .iter()
+                .map(|node_id| node_id.as_str())
+                .collect();
+            let mut seen_op_ids: HashSet<String> = HashSet::new();
+            let mut family_counts: HashMap<String, usize> = HashMap::new();
+            for (from_node, to_node, op_id) in edges {
+                if !member_node_ids.contains(from_node.as_str())
+                    && !member_node_ids.contains(to_node.as_str())
+                {
+                    continue;
+                }
+                if !seen_op_ids.insert(op_id.clone()) {
+                    continue;
+                }
+                let op_label = op_label_by_id
+                    .get(op_id)
+                    .cloned()
+                    .unwrap_or_else(|| op_id.clone());
+                let family = Self::lineage_operation_family(&op_label).to_string();
+                *family_counts.entry(family).or_insert(0) += 1;
+            }
+            if family_counts.is_empty() {
+                continue;
+            }
+            let total_ops = seen_op_ids.len();
+            let mut families: Vec<(String, usize)> = family_counts.into_iter().collect();
+            families.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
+            badges.insert(
+                group.representative_node_id.clone(),
+                LineageGroupHiddenOpBadge {
+                    total_ops,
+                    families,
+                },
+            );
+        }
+        badges
+    }
+
+    fn lineage_hidden_op_families_summary(
+        badge: &LineageGroupHiddenOpBadge,
+        max_families: usize,
+    ) -> String {
+        if badge.families.is_empty() {
+            return "none".to_string();
+        }
+        let mut entries: Vec<String> = badge
+            .families
+            .iter()
+            .take(max_families)
+            .map(|(family, count)| {
+                let symbol = Self::lineage_operation_symbol_for_family(family);
+                if *count > 1 {
+                    format!("{symbol}{count}")
+                } else {
+                    symbol.to_string()
+                }
+            })
+            .collect();
+        if badge.families.len() > max_families {
+            entries.push(format!("+{}", badge.families.len() - max_families));
+        }
+        entries.join(" ")
     }
 
     fn parse_lineage_group_node_list(raw: &str) -> Vec<String> {
@@ -10769,6 +11240,11 @@ Error: `{err}`"
         let (group_by_id, node_to_group_id) = Self::lineage_node_group_maps(&lineage_groups);
         let (projected_graph_rows, projected_graph_edges) =
             Self::project_lineage_graph_by_groups(&graph_rows, &graph_edges, &lineage_groups);
+        let collapsed_group_badges = Self::lineage_collapsed_group_hidden_op_badges(
+            &graph_edges,
+            &lineage_groups,
+            &graph_op_label_by_id,
+        );
         let table_entries = Self::build_lineage_table_entries(&graph_rows, &lineage_groups);
         let visible_node_ids: HashSet<String> = projected_graph_rows
             .iter()
@@ -11178,8 +11654,9 @@ Error: `{err}`"
                             let mut used_label_rects: Vec<egui::Rect> = Vec::new();
                             let mut op_label_galleys: HashMap<String, Arc<egui::Galley>> =
                                 HashMap::new();
-                            for (edge_idx, (from_node, to_node, op_id)) in
-                                lineage_edges.iter().enumerate()
+                            let edge_groups = Self::lineage_edge_groups(lineage_edges);
+                            for (edge_idx, (from_node, to_node, op_ids)) in
+                                edge_groups.iter().enumerate()
                             {
                                 let Some(from) = pos_by_node.get(from_node) else {
                                     continue;
@@ -11187,22 +11664,64 @@ Error: `{err}`"
                                 let Some(to) = pos_by_node.get(to_node) else {
                                     continue;
                                 };
-                                painter.line_segment(
-                                    [*from, *to],
-                                    egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
+                                let mid = Pos2::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
+                                let op_labels = Self::lineage_edge_operation_labels(op_ids, op_label_by_id);
+                                let op_label = Self::lineage_edge_display_label(&op_labels);
+                                let edge = *to - *from;
+                                let edge_len = edge.length();
+                                if edge_len < 0.1 {
+                                    continue;
+                                }
+                                let edge_dir = edge / edge_len;
+                                let op_node_size = (14.0 * graph_zoom).clamp(10.0, 20.0);
+                                let op_rect =
+                                    egui::Rect::from_center_size(mid, Vec2::splat(op_node_size));
+                                let op_gap = op_node_size * 0.5 + 2.0 * graph_zoom;
+                                if edge_len > op_gap * 2.0 + 2.0 * graph_zoom {
+                                    painter.line_segment(
+                                        [*from, mid - edge_dir * op_gap],
+                                        egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
+                                    );
+                                    painter.line_segment(
+                                        [mid + edge_dir * op_gap, *to],
+                                        egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
+                                    );
+                                } else {
+                                    painter.line_segment(
+                                        [*from, *to],
+                                        egui::Stroke::new(edge_stroke_width, egui::Color32::GRAY),
+                                    );
+                                }
+                                let (op_symbol, op_fill_color) = Self::lineage_operation_glyph(&op_labels);
+                                painter.rect_filled(op_rect, 2.0 * graph_zoom, op_fill_color);
+                                painter.rect_stroke(
+                                    op_rect,
+                                    2.0 * graph_zoom,
+                                    egui::Stroke::new(
+                                        (1.1 * graph_zoom).clamp(1.0, 2.0),
+                                        egui::Color32::from_rgb(55, 55, 55),
+                                    ),
                                 );
+                                let op_symbol_font_size = if op_symbol.len() > 1 {
+                                    (8.4 * graph_zoom).clamp(7.0, 10.5)
+                                } else {
+                                    (9.4 * graph_zoom).clamp(7.8, 11.8)
+                                };
+                                painter.text(
+                                    mid,
+                                    egui::Align2::CENTER_CENTER,
+                                    op_symbol,
+                                    egui::FontId::monospace(op_symbol_font_size),
+                                    egui::Color32::WHITE,
+                                );
+                                used_label_rects.push(op_rect.expand(2.0 * graph_zoom));
                                 if edge_label_stride > 1 && edge_idx % edge_label_stride != 0 {
                                     continue;
                                 }
-                                let mid = Pos2::new((from.x + to.x) * 0.5, (from.y + to.y) * 0.5);
-                                let op_label = op_label_by_id
-                                    .get(op_id)
-                                    .cloned()
-                                    .unwrap_or_else(|| op_id.clone());
                                 let display = if simplify_labels {
                                     Self::compact_lineage_op_label(&op_label)
                                 } else {
-                                    op_label
+                                    Self::lineage_edge_accessible_name(&op_labels)
                                 };
                                 let galley = op_label_galleys
                                     .entry(display.clone())
@@ -11214,12 +11733,6 @@ Error: `{err}`"
                                         )
                                     })
                                     .clone();
-                                let edge = *to - *from;
-                                let edge_len = edge.length();
-                                if edge_len < 0.1 {
-                                    continue;
-                                }
-                                let edge_dir = edge / edge_len;
                                 let perp = Vec2::new(-edge_dir.y, edge_dir.x);
                                 let mut placed = None;
                                 for idx in 0..14 {
@@ -11364,6 +11877,76 @@ Error: `{err}`"
                                     egui::FontId::monospace(node_id_font_size),
                                     egui::Color32::WHITE,
                                 );
+                                if let Some(badge) = collapsed_group_badges.get(&row.node_id) {
+                                    let chip_font =
+                                        egui::FontId::monospace((8.2 * graph_zoom).clamp(6.8, 10.8));
+                                    let chip_spacing = 3.0 * graph_zoom;
+                                    let mut chips: Vec<(String, egui::Color32)> =
+                                        Vec::with_capacity(5);
+                                    chips.push((
+                                        badge.total_ops.min(99).to_string(),
+                                        egui::Color32::from_rgb(52, 52, 52),
+                                    ));
+                                    for (family, count) in badge.families.iter().take(3) {
+                                        let symbol = Self::lineage_operation_symbol_for_family(family);
+                                        let label = if *count > 1 {
+                                            format!("{}{}", symbol, (*count).min(99))
+                                        } else {
+                                            symbol.to_string()
+                                        };
+                                        chips.push((label, Self::lineage_operation_color_for_family(family)));
+                                    }
+                                    if badge.families.len() > 3 {
+                                        chips.push((
+                                            format!("+{}", badge.families.len() - 3),
+                                            egui::Color32::from_rgb(95, 95, 95),
+                                        ));
+                                    }
+
+                                    let mut chip_sizes: Vec<Vec2> = Vec::with_capacity(chips.len());
+                                    let mut total_width = 0.0f32;
+                                    for (label, _) in &chips {
+                                        let galley = painter.layout_no_wrap(
+                                            label.clone(),
+                                            chip_font.clone(),
+                                            egui::Color32::WHITE,
+                                        );
+                                        let size = Vec2::new(
+                                            (galley.size().x + 8.0 * graph_zoom)
+                                                .max(12.0 * graph_zoom),
+                                            (galley.size().y + 4.0 * graph_zoom)
+                                                .max(10.0 * graph_zoom),
+                                        );
+                                        total_width += size.x;
+                                        chip_sizes.push(size);
+                                    }
+                                    total_width += chip_spacing * chips.len().saturating_sub(1) as f32;
+                                    let mut chip_x = pos.x - total_width * 0.5;
+                                    let chip_y = pos.y - 24.0 * graph_zoom;
+                                    for ((label, fill), size) in chips.into_iter().zip(chip_sizes) {
+                                        let chip_rect = egui::Rect::from_min_size(
+                                            Pos2::new(chip_x, chip_y),
+                                            size,
+                                        );
+                                        painter.rect_filled(chip_rect, 2.8 * graph_zoom, fill);
+                                        painter.rect_stroke(
+                                            chip_rect,
+                                            2.8 * graph_zoom,
+                                            egui::Stroke::new(
+                                                (0.9 * graph_zoom).clamp(0.7, 1.6),
+                                                egui::Color32::from_rgb(40, 40, 40),
+                                            ),
+                                        );
+                                        painter.text(
+                                            chip_rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            label,
+                                            chip_font.clone(),
+                                            egui::Color32::WHITE,
+                                        );
+                                        chip_x += size.x + chip_spacing;
+                                    }
+                                }
                                 let display_name = if simplify_labels {
                                     Self::compact_lineage_node_label(&row.display_name, 26)
                                 } else {
@@ -11500,6 +12083,17 @@ Error: `{err}`"
                                     }
                                     ui.small(format!("node={} | origin={}", row.node_id, row.origin));
                                     ui.small(format!("parents={} | op={}", row.parents.len(), row.created_by_op));
+                                    if let Some(badge) = collapsed_group_badges.get(&row.node_id) {
+                                        ui.separator();
+                                        ui.small(format!(
+                                            "collapsed hidden operations={}",
+                                            badge.total_ops
+                                        ));
+                                        ui.small(format!(
+                                            "hidden families={}",
+                                            Self::lineage_hidden_op_families_summary(badge, 5)
+                                        ));
+                                    }
                                     if let Some(anchor) = &row.genome_anchor_summary {
                                         let strand = anchor.strand.unwrap_or('+');
                                         let mut anchor_text = format!(
@@ -14684,7 +15278,7 @@ mod tests {
     };
     use eframe::egui;
     use std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         fs,
         sync::{
             Arc, RwLock,
@@ -15146,6 +15740,117 @@ mod tests {
         assert_eq!(collapsed_entries[0].row.node_id, "n1");
         assert_eq!(collapsed_entries[0].hidden_group_member_count, 1);
         assert_eq!(collapsed_entries[1].row.node_id, "n3");
+    }
+
+    #[test]
+    fn lineage_operation_symbol_prefers_common_operation_families() {
+        assert_eq!(GENtleApp::lineage_operation_symbol("Digest: input=a"), "D");
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("Ligation: inputs=a,b"),
+            "L"
+        );
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("PCR advanced: template=x"),
+            "P"
+        );
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("Reverse complement: input=x"),
+            "RC"
+        );
+        assert_eq!(
+            GENtleApp::lineage_operation_symbol("Molecular weight filter: inputs=x"),
+            "F"
+        );
+        assert_eq!(GENtleApp::lineage_operation_symbol("unknown op"), "U");
+    }
+
+    #[test]
+    fn lineage_operation_glyph_collapses_mixed_edge_families_to_count_symbol() {
+        let labels = vec![
+            "Digest: input=a".to_string(),
+            "Ligation: inputs=a,b".to_string(),
+        ];
+        let (symbol, color) = GENtleApp::lineage_operation_glyph(&labels);
+        assert_eq!(symbol, "2");
+        assert_eq!(color, egui::Color32::from_rgb(102, 102, 102));
+    }
+
+    #[test]
+    fn lineage_edge_groups_collapses_parallel_edges_by_endpoints() {
+        let edges = vec![
+            ("n1".to_string(), "n2".to_string(), "opA".to_string()),
+            ("n1".to_string(), "n2".to_string(), "opB".to_string()),
+            ("n2".to_string(), "n3".to_string(), "opC".to_string()),
+            ("n1".to_string(), "n2".to_string(), "opA".to_string()),
+        ];
+        let groups = GENtleApp::lineage_edge_groups(&edges);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0, "n1");
+        assert_eq!(groups[0].1, "n2");
+        assert_eq!(groups[0].2, vec!["opA".to_string(), "opB".to_string()]);
+        assert_eq!(groups[1].0, "n2");
+        assert_eq!(groups[1].1, "n3");
+        assert_eq!(groups[1].2, vec!["opC".to_string()]);
+    }
+
+    #[test]
+    fn lineage_collapsed_group_hidden_op_badges_summarizes_member_hidden_ops() {
+        let edges = vec![
+            ("n2".to_string(), "n3".to_string(), "op_digest".to_string()),
+            ("n2".to_string(), "n4".to_string(), "op_digest".to_string()),
+            (
+                "n3".to_string(),
+                "n2".to_string(),
+                "op_ligation".to_string(),
+            ),
+            ("n2".to_string(), "n1".to_string(), "op_reverse".to_string()),
+            ("n1".to_string(), "n3".to_string(), "op_visible".to_string()),
+        ];
+        let groups = vec![
+            PersistedLineageNodeGroup {
+                group_id: "grp-1".to_string(),
+                label: "Collapsed".to_string(),
+                representative_node_id: "n1".to_string(),
+                member_node_ids: vec!["n2".to_string()],
+                collapsed: true,
+            },
+            PersistedLineageNodeGroup {
+                group_id: "grp-2".to_string(),
+                label: "Expanded".to_string(),
+                representative_node_id: "n3".to_string(),
+                member_node_ids: vec!["n4".to_string()],
+                collapsed: false,
+            },
+        ];
+        let op_label_by_id: HashMap<String, String> = [
+            ("op_digest".to_string(), "Digest: input=a".to_string()),
+            (
+                "op_ligation".to_string(),
+                "Ligation: inputs=a,b".to_string(),
+            ),
+            (
+                "op_reverse".to_string(),
+                "Reverse complement: input=x".to_string(),
+            ),
+            ("op_visible".to_string(), "PCR: template=z".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        let badges =
+            GENtleApp::lineage_collapsed_group_hidden_op_badges(&edges, &groups, &op_label_by_id);
+        assert_eq!(badges.len(), 1);
+        let badge = badges.get("n1").expect("collapsed group badge");
+        assert_eq!(badge.total_ops, 3);
+        let family_counts: HashMap<String, usize> = badge.families.iter().cloned().collect();
+        assert_eq!(family_counts.get("digest"), Some(&1));
+        assert_eq!(family_counts.get("ligation"), Some(&1));
+        assert_eq!(family_counts.get("reverse_complement"), Some(&1));
+        assert_eq!(family_counts.get("pcr"), None);
+        let summary = GENtleApp::lineage_hidden_op_families_summary(badge, 2);
+        assert!(summary.contains("D"));
+        assert!(summary.contains("L"));
+        assert!(summary.contains("+1"));
     }
 
     #[test]

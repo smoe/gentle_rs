@@ -70,6 +70,9 @@ use std::{
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
 const CLONING_PATTERN_TEMPLATE_FILE_SCHEMA: &str = "gentle.cloning_pattern_template.v1";
+const CLONING_ROUTINE_CATALOG_SCHEMA: &str = "gentle.cloning_routines.v1";
+const CLONING_ROUTINE_LIST_SCHEMA: &str = "gentle.cloning_routines_list.v1";
+const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -119,6 +122,48 @@ impl Default for CloningPatternTemplateFile {
             script: String::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+struct CloningRoutineCatalog {
+    schema: String,
+    routines: Vec<CloningRoutineDefinition>,
+}
+
+impl Default for CloningRoutineCatalog {
+    fn default() -> Self {
+        Self {
+            schema: CLONING_ROUTINE_CATALOG_SCHEMA.to_string(),
+            routines: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CloningRoutinePort {
+    port_id: String,
+    kind: String,
+    required: bool,
+    cardinality: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct CloningRoutineDefinition {
+    routine_id: String,
+    title: String,
+    family: String,
+    status: String,
+    vocabulary_tags: Vec<String>,
+    summary: Option<String>,
+    details_url: Option<String>,
+    template_name: String,
+    template_path: Option<String>,
+    input_ports: Vec<CloningRoutinePort>,
+    output_ports: Vec<CloningRoutinePort>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,6 +326,13 @@ pub enum ShellCommand {
     ResourcesSyncJaspar {
         input: String,
         output: Option<String>,
+    },
+    RoutinesList {
+        catalog_path: Option<String>,
+        family: Option<String>,
+        status: Option<String>,
+        tag: Option<String>,
+        query: Option<String>,
     },
     AgentsList {
         catalog_path: Option<String>,
@@ -1099,6 +1151,148 @@ fn load_cloning_pattern_templates_from_path(
     Ok((templates, source_files))
 }
 
+fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, String> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| format!("Could not read cloning routine catalog '{}': {e}", path))?;
+    let mut catalog: CloningRoutineCatalog = serde_json::from_str(&raw)
+        .map_err(|e| format!("Could not parse cloning routine catalog '{}': {e}", path))?;
+    let schema = catalog.schema.trim();
+    if !schema.eq_ignore_ascii_case(CLONING_ROUTINE_CATALOG_SCHEMA) {
+        return Err(format!(
+            "Unsupported cloning routine catalog schema '{}' in '{}' (expected '{}')",
+            catalog.schema, path, CLONING_ROUTINE_CATALOG_SCHEMA
+        ));
+    }
+
+    let mut seen_ids = BTreeSet::new();
+    for routine in &mut catalog.routines {
+        if routine.routine_id.trim().is_empty() {
+            return Err(format!(
+                "Cloning routine catalog '{}' contains a routine with empty routine_id",
+                path
+            ));
+        }
+        if !seen_ids.insert(routine.routine_id.trim().to_string()) {
+            return Err(format!(
+                "Cloning routine catalog '{}' contains duplicate routine_id '{}'",
+                path, routine.routine_id
+            ));
+        }
+        if routine.title.trim().is_empty() {
+            return Err(format!(
+                "Cloning routine '{}' in '{}' has empty title",
+                routine.routine_id, path
+            ));
+        }
+        if routine.family.trim().is_empty() {
+            return Err(format!(
+                "Cloning routine '{}' in '{}' has empty family",
+                routine.routine_id, path
+            ));
+        }
+        if routine.status.trim().is_empty() {
+            return Err(format!(
+                "Cloning routine '{}' in '{}' has empty status",
+                routine.routine_id, path
+            ));
+        }
+        if routine.template_name.trim().is_empty() {
+            return Err(format!(
+                "Cloning routine '{}' in '{}' has empty template_name",
+                routine.routine_id, path
+            ));
+        }
+        routine.vocabulary_tags = routine
+            .vocabulary_tags
+            .iter()
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty())
+            .collect::<Vec<_>>();
+        routine
+            .vocabulary_tags
+            .sort_by_key(|tag| tag.to_ascii_lowercase());
+        routine
+            .vocabulary_tags
+            .dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+
+        for port in routine
+            .input_ports
+            .iter()
+            .chain(routine.output_ports.iter())
+        {
+            if port.port_id.trim().is_empty() {
+                return Err(format!(
+                    "Cloning routine '{}' in '{}' has a port with empty port_id",
+                    routine.routine_id, path
+                ));
+            }
+            if port.kind.trim().is_empty() {
+                return Err(format!(
+                    "Cloning routine '{}' in '{}' has port '{}' with empty kind",
+                    routine.routine_id, path, port.port_id
+                ));
+            }
+        }
+    }
+    Ok(catalog)
+}
+
+fn routine_matches_filter(
+    routine: &CloningRoutineDefinition,
+    family: Option<&str>,
+    status: Option<&str>,
+    tag: Option<&str>,
+    query: Option<&str>,
+) -> bool {
+    if let Some(family_filter) = family.map(str::trim).filter(|v| !v.is_empty()) {
+        if !routine.family.eq_ignore_ascii_case(family_filter) {
+            return false;
+        }
+    }
+    if let Some(status_filter) = status.map(str::trim).filter(|v| !v.is_empty()) {
+        if !routine.status.eq_ignore_ascii_case(status_filter) {
+            return false;
+        }
+    }
+    if let Some(tag_filter) = tag.map(str::trim).filter(|v| !v.is_empty()) {
+        if !routine
+            .vocabulary_tags
+            .iter()
+            .any(|entry| entry.eq_ignore_ascii_case(tag_filter))
+        {
+            return false;
+        }
+    }
+    if let Some(query_filter) = query
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| v.to_ascii_lowercase())
+    {
+        let mut haystack = vec![
+            routine.routine_id.to_ascii_lowercase(),
+            routine.title.to_ascii_lowercase(),
+            routine.family.to_ascii_lowercase(),
+            routine.status.to_ascii_lowercase(),
+            routine.template_name.to_ascii_lowercase(),
+            routine
+                .summary
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+        ];
+        haystack.extend(
+            routine
+                .vocabulary_tags
+                .iter()
+                .map(|tag| tag.to_ascii_lowercase()),
+        );
+        if !haystack.iter().any(|entry| entry.contains(&query_filter)) {
+            return false;
+        }
+    }
+    true
+}
+
 fn parse_sequence_anchor_json(raw: &str, option_name: &str) -> Result<SequenceAnchor, String> {
     serde_json::from_str::<SequenceAnchor>(raw)
         .map_err(|e| format!("Invalid {} JSON '{}': {}", option_name, raw, e))
@@ -1268,6 +1462,40 @@ impl ShellCommand {
                     .clone()
                     .unwrap_or_else(|| resource_sync::DEFAULT_JASPAR_RESOURCE_PATH.to_string());
                 format!("sync JASPAR from '{input}' to '{output}'")
+            }
+            Self::RoutinesList {
+                catalog_path,
+                family,
+                status,
+                tag,
+                query,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string());
+                let family = family
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                let status = status
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                let tag = tag
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                let query = query
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("-");
+                format!(
+                    "list cloning routines from '{catalog}' (family={family}, status={status}, tag={tag}, query={query})"
+                )
             }
             Self::AgentsList { catalog_path } => {
                 let catalog = catalog_path
@@ -4597,6 +4825,79 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("routines requires a subcommand: list".to_string());
+    }
+    match tokens[1].as_str() {
+        "list" => {
+            let mut catalog_path: Option<String> = None;
+            let mut family: Option<String> = None;
+            let mut status: Option<String> = None;
+            let mut tag: Option<String> = None;
+            let mut query: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "routines list",
+                        )?);
+                    }
+                    "--family" => {
+                        family = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--family",
+                            "routines list",
+                        )?);
+                    }
+                    "--status" => {
+                        status = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--status",
+                            "routines list",
+                        )?);
+                    }
+                    "--tag" => {
+                        tag = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tag",
+                            "routines list",
+                        )?);
+                    }
+                    "--query" => {
+                        query = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--query",
+                            "routines list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for routines list"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RoutinesList {
+                catalog_path,
+                family,
+                status,
+                tag,
+                query,
+            })
+        }
+        other => Err(format!(
+            "Unknown routines subcommand '{other}' (expected list)"
+        )),
+    }
+}
+
 fn parse_agents_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err("agents requires a subcommand: list or ask".to_string());
@@ -5401,6 +5702,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
+        "routines" => parse_routines_command(tokens),
         "resources" => {
             if tokens.len() < 2 {
                 return Err(
@@ -6736,6 +7038,89 @@ pub fn execute_shell_command_with_options(
                 output: json!({
                     "message": format!("Synced {} {} entries to '{}'", report.item_count, report.resource, report.output),
                     "report": report,
+                }),
+            }
+        }
+        ShellCommand::RoutinesList {
+            catalog_path,
+            family,
+            status,
+            tag,
+            query,
+        } => {
+            let resolved_catalog = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+                .to_string();
+            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
+            let catalog_schema = catalog.schema.clone();
+
+            let mut available_families = catalog
+                .routines
+                .iter()
+                .map(|routine| routine.family.trim().to_string())
+                .filter(|family| !family.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            available_families.sort_by_key(|value| value.to_ascii_lowercase());
+
+            let mut available_statuses = catalog
+                .routines
+                .iter()
+                .map(|routine| routine.status.trim().to_string())
+                .filter(|status| !status.is_empty())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            available_statuses.sort_by_key(|value| value.to_ascii_lowercase());
+
+            let mut routines = catalog
+                .routines
+                .into_iter()
+                .filter(|routine| {
+                    routine_matches_filter(
+                        routine,
+                        family.as_deref(),
+                        status.as_deref(),
+                        tag.as_deref(),
+                        query.as_deref(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            routines.sort_by(|left, right| {
+                left.family
+                    .to_ascii_lowercase()
+                    .cmp(&right.family.to_ascii_lowercase())
+                    .then(
+                        left.title
+                            .to_ascii_lowercase()
+                            .cmp(&right.title.to_ascii_lowercase()),
+                    )
+                    .then(
+                        left.routine_id
+                            .to_ascii_lowercase()
+                            .cmp(&right.routine_id.to_ascii_lowercase()),
+                    )
+            });
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": CLONING_ROUTINE_LIST_SCHEMA,
+                    "catalog_path": resolved_catalog,
+                    "catalog_schema": catalog_schema,
+                    "filters": {
+                        "family": family,
+                        "status": status,
+                        "tag": tag,
+                        "query": query,
+                    },
+                    "available_families": available_families,
+                    "available_statuses": available_statuses,
+                    "routine_count": routines.len(),
+                    "routines": routines,
                 }),
             }
         }
@@ -9174,6 +9559,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_routines_list_with_filters() {
+        let cmd = parse_shell_line(
+            "routines list --catalog assets/cloning_routines.json --family crispr --status implemented --tag guide --query scan",
+        )
+        .expect("parse routines list");
+        match cmd {
+            ShellCommand::RoutinesList {
+                catalog_path,
+                family,
+                status,
+                tag,
+                query,
+            } => {
+                assert_eq!(
+                    catalog_path.as_deref(),
+                    Some("assets/cloning_routines.json")
+                );
+                assert_eq!(family.as_deref(), Some("crispr"));
+                assert_eq!(status.as_deref(), Some("implemented"));
+                assert_eq!(tag.as_deref(), Some("guide"));
+                assert_eq!(query.as_deref(), Some("scan"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_candidates_generate_with_feature_filters() {
         let cmd = parse_shell_line(
             "candidates generate set1 seqA --length 20 --step 5 --feature-kind gene --feature-kind CDS --feature-label-regex '^TP53$' --max-distance 100 --limit 50",
@@ -10086,6 +10498,79 @@ filter set1 set2 --metric score --min 10
                 .list_candidate_sets()
                 .iter()
                 .any(|set| set.name == "hits")
+        );
+    }
+
+    #[test]
+    fn execute_routines_list_filters_and_searches() {
+        let mut engine = GentleEngine::default();
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("cloning_routines.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "restriction.digest_basic",
+      "title": "Restriction Digest Basic",
+      "family": "restriction",
+      "status": "implemented",
+      "vocabulary_tags": ["restriction", "digest", "sticky"],
+      "template_name": "digest_ligate_extract_sticky",
+      "input_ports": [
+        { "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one" }
+      ]
+    },
+    {
+      "routine_id": "crispr.guides.scan_basic",
+      "title": "Guide Candidate Scan",
+      "family": "crispr",
+      "status": "planned",
+      "vocabulary_tags": ["crispr", "guide", "scan"],
+      "template_name": "grna_candidate_priority_scan",
+      "input_ports": [
+        { "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "set_name", "kind": "candidate_set", "required": true, "cardinality": "one" }
+      ]
+    }
+  ]
+}"#,
+        )
+        .expect("write routines catalog");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RoutinesList {
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                family: Some("crispr".to_string()),
+                status: Some("planned".to_string()),
+                tag: Some("guide".to_string()),
+                query: Some("scan".to_string()),
+            },
+        )
+        .expect("list routines");
+        assert!(!run.state_changed);
+        assert_eq!(
+            run.output["schema"].as_str(),
+            Some(CLONING_ROUTINE_LIST_SCHEMA)
+        );
+        assert_eq!(run.output["routine_count"].as_u64(), Some(1));
+        let rows = run
+            .output
+            .get("routines")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].get("routine_id").and_then(|value| value.as_str()),
+            Some("crispr.guides.scan_basic")
         );
     }
 

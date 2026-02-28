@@ -635,6 +635,7 @@ Shared shell command:
     - `macros template-delete TEMPLATE_NAME`
     - `macros template-import PATH`
     - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional]`
+    - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
     - `candidates list`
     - `candidates delete SET_NAME`
     - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
@@ -911,6 +912,14 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Expands a named template with provided bindings/defaults, then executes it as
     a workflow macro script.
 
+Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'routines ...'`):
+
+- `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+  - Lists typed cloning routines from catalog JSON (`gentle.cloning_routines.v1`).
+  - `--family`, `--status`, `--tag`: exact case-insensitive filters.
+  - `--query`: case-insensitive substring match across id/title/family/status/template/tags/summary.
+  - Default catalog path: `assets/cloning_routines.json`.
+
 Shipped starter assets:
 
 - Legacy pack:
@@ -919,6 +928,9 @@ Shipped starter assets:
   - `assets/cloning_patterns_catalog/**/*.json`
   - each file schema: `gentle.cloning_pattern_template.v1`
   - folder hierarchy is used by GUI `Patterns` menu hierarchy
+- Typed routine manifest:
+  - `assets/cloning_routines.json`
+  - schema: `gentle.cloning_routines.v1`
 - Import commands:
   - `gentle_cli shell 'macros template-import assets/cloning_patterns.json'`
   - `gentle_cli shell 'macros template-import assets/cloning_patterns_catalog'`

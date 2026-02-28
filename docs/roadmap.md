@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-27
+Last updated: 2026-02-28
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -51,6 +51,16 @@ order. Durable architecture constraints and decisions remain in
   - per-template schema support (`gentle.cloning_pattern_template.v1`)
   - starter hierarchy at `assets/cloning_patterns_catalog`
   - GUI `Patterns` menu mirrors folder hierarchy for in-app selection/import
+  - `template-import PATH` accepts single template file, legacy pack file, or
+    folder tree
+  - template execution can be repeated per project with different bindings and
+    persists resulting sequences/containers via regular operation persistence
+- Typed cloning-routine catalog baseline is now available:
+  - versioned manifest at `assets/cloning_routines.json`
+  - shared-shell/CLI discovery command:
+    `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+  - GUI `Patterns` menu now exposes routine browsing grouped by family/status
+    and routine-level template import actions
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
 
@@ -67,6 +77,12 @@ order. Durable architecture constraints and decisions remain in
   - single-click selects
   - double-click opens sequence/pool context
   - hover exposes node context (pool range and ladder hints for pool nodes)
+  - operation transitions render as square intermediate glyphs between node
+    circles, with compact operation symbols and optional edge-label text
+  - projected parallel transitions (common with collapsed groups) are
+    coalesced into one visible edge with grouped operation semantics
+  - collapsed group representatives display hidden-internals badges (total
+    hidden operation count + top hidden operation-family chips)
   - serial arrangements are rendered as dedicated graph nodes linked from lane-source sequences
 - Dense rendering controls including regulatory placement policy and visibility
   toggles persisted through display state.
@@ -140,9 +156,9 @@ Notes:
 ## 2. Active known gaps (priority-ordered)
 
 1. Cloning routine standardization is incomplete:
-   - no first-class typed cloning-routine catalog exists yet to map protocol
-     vocabulary to selectable macro entries with explicit family/status metadata
-     (current baseline is hierarchical file-based macro catalog import only)
+   - first typed cloning-routine catalog baseline exists (manifest + list/filter
+     discovery), but the contract is not yet fully integrated into macro
+     validation and lineage visualization
    - workflow macro templates do not yet declare typed input/output contracts
    - lineage graph does not yet render explicit macro-instance box nodes with
      input/output edges
@@ -337,19 +353,30 @@ Current baseline:
 
 - shared workflow macro persistence and execution are implemented
   (`UpsertWorkflowMacroTemplate`, `macros template-*`, `macros run`).
-- starter macro import pack exists (`assets/cloning_patterns.json`).
+- macro import supports both:
+  - legacy pack file (`assets/cloning_patterns.json`)
+  - per-template hierarchy (`assets/cloning_patterns_catalog/**/*.json`)
+- GUI `Patterns` menu mirrors hierarchy and imports templates through shared
+  shell command contracts.
+- templates can be executed repeatedly with distinct bindings/output IDs in one
+  project; resulting outputs persist through regular operation state.
+- typed cloning-routine manifest baseline is implemented at
+  `assets/cloning_routines.json` (`gentle.cloning_routines.v1`), including
+  routine-family/status/tag metadata and typed input/output port declarations.
+- shared-shell/CLI discovery now supports routine list/filter/search via
+  `routines list ...`.
+- GUI routine discovery baseline is now exposed under `Patterns` with grouped
+  family/status browsing.
 - routine-family coverage and graph visualization are still incomplete.
 
 Planned work:
 
-1. Add a versioned cloning-routine catalog manifest with family/tag/status and
-   template bindings.
-2. Extend macro templates with optional typed input/output port contracts.
-3. Persist macro-run instance records (resolved bindings + emitted op ids).
-4. Render macro instances as box nodes in lineage/workflow graph with explicit
+1. Extend macro templates with optional typed input/output port contracts.
+2. Persist macro-run instance records (resolved bindings + emitted op ids).
+3. Render macro instances as box nodes in lineage/workflow graph with explicit
    input/output edges; support multiple instances of the same routine per
    project.
-5. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
+4. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
    Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
 
 Detailed plan and support crosswalk:

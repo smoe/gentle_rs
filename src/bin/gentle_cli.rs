@@ -524,6 +524,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] guides oligos-show OLIGO_SET_ID\n  \
   gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
   gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
+  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -539,6 +540,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "helpers",
     "agents",
     "ui",
+    "routines",
     "macros",
     "resources",
     "import-pool",
@@ -2293,6 +2295,17 @@ T [ 0 0 0 10 ]
             ShellCommand::MacrosTemplateImport { .. }
         ));
 
+        let routines_list = parse_shell_tokens(&[
+            "routines".to_string(),
+            "list".to_string(),
+            "--family".to_string(),
+            "crispr".to_string(),
+            "--query".to_string(),
+            "scan".to_string(),
+        ])
+        .expect("parse routines list");
+        assert!(matches!(routines_list, ShellCommand::RoutinesList { .. }));
+
         let ui_open = parse_shell_tokens(&[
             "ui".to_string(),
             "open".to_string(),
@@ -2368,6 +2381,24 @@ T [ 0 0 0 10 ]
         match parsed {
             Some(ShellCommand::MacrosTemplateImport { path }) => {
                 assert_eq!(path, "assets/cloning_patterns.json");
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_routines_list() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "routines".to_string(),
+            "list".to_string(),
+            "--family".to_string(),
+            "crispr".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::RoutinesList { family, .. }) => {
+                assert_eq!(family.as_deref(), Some("crispr"));
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }
