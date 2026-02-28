@@ -1,6 +1,6 @@
 # GENtle Agent Interface
 
-Last updated: 2026-02-27
+Last updated: 2026-02-28
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
@@ -96,6 +96,12 @@ Key properties:
 - produces suggestions that can be executed through shared shell contracts
 - recursion guardrail blocks nested `agents ask` execution from suggested
   commands
+- suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
+  `genomes/helpers blast-track`) because they use the same parser/executor as
+  CLI shell
+- current limitation: long-running suggested commands execute synchronously;
+  dedicated async job-handle/progress/cancel flow for agent-driven BLAST (and
+  future primer-pair multi-BLAST selection) is planned
 
 ## CLI vs MCP vs Agent Assistant
 
@@ -152,6 +158,11 @@ In short:
 2. Ask for explicit command suggestions.
 3. Execute selected suggestions through shared shell.
 4. Keep `ask-before-run` by default for safety.
+
+Example command suggestions (valid through Agent Assistant execution path):
+
+- `genomes blast "Human GRCh38 Ensembl 116" ACGTACGT --task blastn-short --max-hits 20`
+- `helpers blast-track "Plasmid pUC19 (local)" ACGTACGT seq1 --track-name primer_offtarget --clear-existing`
 
 ## Safety and governance notes
 

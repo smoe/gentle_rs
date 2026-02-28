@@ -34,8 +34,9 @@ use crate::{
         GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        ProjectState, RenderSvgMode, SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY,
-        Workflow, WorkflowMacroTemplate, WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, ProjectState, RenderSvgMode, SequenceAnchor,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
@@ -738,6 +739,17 @@ pub enum ShellCommand {
         oligo_set_id: Option<String>,
         path: String,
         include_qc_checklist: bool,
+    },
+    PrimersDesign {
+        request_json: String,
+    },
+    PrimersListReports,
+    PrimersShowReport {
+        report_id: String,
+    },
+    PrimersExportReport {
+        report_id: String,
+        path: String,
     },
     SetParameter {
         name: String,
@@ -3316,6 +3328,18 @@ impl ShellCommand {
                     .unwrap_or("-"),
                 include_qc_checklist
             ),
+            Self::PrimersDesign { request_json } => format!(
+                "design primer pairs from JSON request payload (len={})",
+                request_json.len()
+            ),
+            Self::PrimersListReports => "list stored primer-design reports".to_string(),
+            Self::PrimersShowReport { report_id } => {
+                format!("show stored primer-design report '{}'", report_id)
+            }
+            Self::PrimersExportReport { report_id, path } => format!(
+                "export stored primer-design report '{}' to '{}'",
+                report_id, path
+            ),
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
                     format!(
@@ -3393,6 +3417,7 @@ impl ShellCommand {
                 | Self::GuidesOligosGenerate { .. }
                 | Self::GuidesOligosExport { .. }
                 | Self::GuidesProtocolExport { .. }
+                | Self::PrimersDesign { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -5611,6 +5636,51 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "primers requires a subcommand: design, list-reports, show-report, export-report"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "design" => {
+            if tokens.len() != 3 {
+                return Err("primers design requires REQUEST_JSON_OR_@FILE".to_string());
+            }
+            Ok(ShellCommand::PrimersDesign {
+                request_json: tokens[2].clone(),
+            })
+        }
+        "list-reports" => {
+            if tokens.len() != 2 {
+                return Err("primers list-reports takes no options".to_string());
+            }
+            Ok(ShellCommand::PrimersListReports)
+        }
+        "show-report" => {
+            if tokens.len() != 3 {
+                return Err("primers show-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersShowReport {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-report" => {
+            if tokens.len() != 4 {
+                return Err("primers export-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::PrimersExportReport {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown primers subcommand '{other}' (expected design, list-reports, show-report, export-report)"
+        )),
+    }
+}
+
 fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -7224,6 +7294,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
         "guides" => parse_guides_command(tokens),
+        "primers" => parse_primers_command(tokens),
         "set-param" => {
             if tokens.len() < 3 {
                 return Err("set-param requires NAME JSON_VALUE".to_string());
@@ -10262,6 +10333,90 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::PrimersDesign { request_json } => {
+            let json_text = parse_json_payload(request_json)?;
+            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
+                format!(
+                    "Invalid primers design request JSON: {} (expected Operation payload with DesignPrimerPairs)",
+                    e
+                )
+            })?;
+            let (template_id, requested_report_id) = match &op {
+                Operation::DesignPrimerPairs {
+                    template, report_id, ..
+                } => (template.clone(), report_id.clone()),
+                _ => {
+                    return Err(
+                        "primers design expects an Operation payload with DesignPrimerPairs"
+                            .to_string(),
+                    );
+                }
+            };
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let reports = engine.list_primer_design_reports();
+            let selected_report = if let Some(report_id) = requested_report_id {
+                engine.get_primer_design_report(&report_id).ok()
+            } else {
+                reports
+                    .iter()
+                    .filter(|summary| summary.template == template_id)
+                    .max_by_key(|summary| summary.generated_at_unix_ms)
+                    .and_then(|summary| engine.get_primer_design_report(&summary.report_id).ok())
+            };
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "report": selected_report,
+                }),
+            }
+        }
+        ShellCommand::PrimersListReports => {
+            let reports = engine.list_primer_design_reports();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_design_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            }
+        }
+        ShellCommand::PrimersShowReport { report_id } => {
+            let report = engine
+                .get_primer_design_report(report_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::PrimersExportReport { report_id, path } => {
+            let report = engine
+                .export_primer_design_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_design_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "pair_count": report.pair_count,
+                }),
+            }
+        }
         ShellCommand::SetParameter { name, value_json } => {
             let raw = parse_json_payload(value_json)?;
             let value: serde_json::Value = serde_json::from_str(&raw)
@@ -12782,6 +12937,105 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_primers_design_list_show_export() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempdir().expect("tempdir");
+        let export_path = tmp.path().join("primer_report.json");
+        let request = serde_json::to_string(&Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 30,
+            roi_end_0based: 70,
+            forward: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 10,
+            },
+            reverse: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(60),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 10,
+            },
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 130,
+            max_tm_delta_c: Some(50.0),
+            max_pairs: Some(10),
+            report_id: Some("tp73_roi".to_string()),
+        })
+        .expect("serialize request");
+
+        let design = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersDesign {
+                request_json: request,
+            },
+        )
+        .expect("primers design");
+        assert!(design.state_changed);
+        let report_id = design.output["report"]["report_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert_eq!(report_id, "tp73_roi");
+
+        let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersListReports)
+            .expect("primers list-reports");
+        assert!(!listed.state_changed);
+        assert_eq!(
+            listed.output["schema"].as_str(),
+            Some("gentle.primer_design_report_list.v1")
+        );
+        assert_eq!(listed.output["report_count"].as_u64(), Some(1));
+
+        let shown = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersShowReport {
+                report_id: report_id.clone(),
+            },
+        )
+        .expect("primers show-report");
+        assert!(!shown.state_changed);
+        assert_eq!(shown.output["report"]["report_id"].as_str(), Some("tp73_roi"));
+
+        let exported = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersExportReport {
+                report_id,
+                path: export_path.to_string_lossy().to_string(),
+            },
+        )
+        .expect("primers export-report");
+        assert!(!exported.state_changed);
+        assert_eq!(
+            exported.output["schema"].as_str(),
+            Some("gentle.primer_design_report_export.v1")
+        );
+        let text = fs::read_to_string(&export_path).expect("read export");
+        assert!(text.contains("gentle.primer_design_report.v1"));
+    }
+
+    #[test]
     fn execute_workflow_macro_transactional_rolls_back_on_error() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -13121,6 +13375,44 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         assert!(
             error.contains("agent-to-agent recursion guardrail"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn execute_agent_suggestions_allows_blast_shell_route() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
+            title: Some("BLAST".to_string()),
+            rationale: Some("Check specificity".to_string()),
+            command: "genomes blast __missing_genome__ ACGT".to_string(),
+            execution: AgentExecutionIntent::Auto,
+        }];
+        let execute_indices = std::collections::BTreeSet::new();
+        let (changed, reports) = execute_agent_suggested_commands(
+            &mut engine,
+            &suggestions,
+            false,
+            &execute_indices,
+            true,
+            &ShellExecutionOptions::default(),
+        );
+        assert!(!changed);
+        assert_eq!(reports.len(), 1);
+        let row = &reports[0];
+        assert!(row.executed);
+        assert!(!row.ok);
+        let error = row
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        assert!(
+            !error.contains("agent-to-agent"),
+            "BLAST route should not be blocked by recursion guardrail: {error}"
+        );
+        assert!(
+            !error.contains("blocked in this context"),
+            "BLAST route should be executable in suggested-command context: {error}"
         );
     }
 

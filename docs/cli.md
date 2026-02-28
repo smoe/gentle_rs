@@ -69,6 +69,12 @@ Guide-design capability status:
 - `gentle_js`: supported via `apply_operation` with the same guide-design operations
 - `gentle_lua`: supported via `apply_operation` with the same guide-design operations
 
+Primer-design report capability status:
+
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs` and persisted report inspect/export helpers
+- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`) plus shared-shell execution for report listing/show/export
+- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`) plus shared-shell execution for report listing/show/export
+
 ## Build and run
 
 From the repository root:
@@ -668,6 +674,10 @@ Shared shell command:
     - `guides oligos-show OLIGO_SET_ID`
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
+    - `primers design REQUEST_JSON_OR_@FILE`
+    - `primers list-reports`
+    - `primers show-report REPORT_ID`
+    - `primers export-report REPORT_ID OUTPUT.json`
     - `set-param NAME JSON_VALUE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`

@@ -528,6 +528,12 @@ Execution safety model:
 - Nested/recursive `agents ask` execution is blocked in suggested-command runs.
 - Suggested commands are executed through the same shared shell parser/executor
   used by GUI shell and `gentle_cli shell`.
+- This includes BLAST shell routes (`genomes blast`, `helpers blast`,
+  `genomes blast-track`, `helpers blast-track`) when agents suggest them.
+- Current limitation: suggested-command execution is synchronous/inline for
+  long-running shell commands. A dedicated async job contract for agent-driven
+  long-running commands (especially BLAST and upcoming primer-pair multi-BLAST
+  selection workflows) remains a planned follow-up.
 - Protocol-level JSON shapes and exact command contract are specified in
   `docs/protocol.md` (agent catalog/request/response schemas and execution
   intent semantics).
@@ -605,6 +611,30 @@ This enables reusable query composition:
 3. run explicit optimizer primitives (weighted objective, top-k, Pareto frontier)
 4. filter by absolute threshold and/or quantile
 5. intersect/union/subtract with other candidate sets
+
+### Primer design report command contract (baseline)
+
+Primer-pair design is now a first-class engine operation plus shared-shell
+report inspection/export path:
+
+- Engine operation:
+  - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+- Persisted metadata:
+  - `primer_design_reports` (`gentle.primer_design_reports.v1`)
+  - report payload schema: `gentle.primer_design_report.v1`
+- Shared-shell commands:
+  - `primers design REQUEST_JSON_OR_@FILE`
+  - `primers list-reports`
+  - `primers show-report REPORT_ID`
+  - `primers export-report REPORT_ID OUTPUT.json`
+
+Adapter contract:
+
+- `gentle_cli` exposes this surface directly (`gentle_cli primers ...`) by
+  forwarding into the same shared-shell parser/executor path.
+- JS/Lua adapters consume the same operation contract via `apply_operation`
+  and can use the same shared-shell routes for report inspection/export.
+- No adapter-specific primer-design business logic is permitted.
 
 Local anchor model (for candidate/extraction workflows):
 
@@ -802,6 +832,8 @@ Deferred-scope rules:
 - Add agent-assistant bridge with catalog-driven transports, per-reply
   execution intents, shared-shell execution, and standalone GUI viewport:
   accepted and implemented
+- Add async long-running command execution contract for agent-suggested BLAST
+  and primer-pair multi-BLAST workflows: accepted and planned
 - Add shared GUI intent command plane (`ui intents`, `ui open|focus`, prepared
   query helpers) and wire it into GUI-host dialog openers with deterministic
   prepared-reference selection: accepted and implemented (baseline)
@@ -841,6 +873,11 @@ Deferred-scope rules:
   accepted and implemented as first-class engine operations, exposed through
   first-class CLI (`gentle_cli candidates ...`), shared shell (`candidates`),
   and dedicated GUI Engine Ops candidate forms.
+- Add first-class primer-pair design/report baseline (`DesignPrimerPairs`) with
+  shared-shell report inspection/export (`primers design|list-reports|show-report|export-report`)
+  and metadata persistence (`gentle.primer_design_report.v1`):
+  accepted and implemented baseline (follow-up planned for richer thermodynamic
+  scoring and off-target evaluation tiers).
 - Add optional per-window-type visual identity backdrops with persisted app
   settings and subtle tint/watermark rendering:
   accepted and in progress (experimental GUI implementation).

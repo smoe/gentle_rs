@@ -88,6 +88,12 @@ order. Durable architecture constraints and decisions remain in
     `macros instance-list`, `macros instance-show`
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
+- Primer-design report baseline:
+  - engine operation `DesignPrimerPairs` now persists deterministic report
+    payloads (`gentle.primer_design_report.v1`) in project metadata
+  - shared-shell/CLI inspection/export commands are available:
+    `primers design`, `primers list-reports`, `primers show-report`,
+    `primers export-report`
 
 ### GUI baseline in place
 
@@ -140,6 +146,9 @@ order. Durable architecture constraints and decisions remain in
   - status/result views show explicit invocation template and resolved command line.
   - BLAST-hit import operations now persist invocation metadata in
     `ImportBlastHitsTrack.blast_provenance` for operation history/lineage context.
+  - agent-suggested shell commands can execute shared BLAST routes
+    (`genomes/helpers blast`, `genomes/helpers blast-track`); recursion guardrail
+    blocks only nested `agents ask`
 - Native macOS menu mirrors of open windows are available under:
   - `Window -> GENtle Open Windows…`
   - `GENtle -> GENtle Windows…`
@@ -219,16 +228,22 @@ Notes:
    coverage).
 3. Mutating-intent safety policy is not yet fully hardened across agent, voice,
    and MCP invocation paths.
-4. Core architecture parity gaps remain:
+4. Agent-facing execution of long-running shell commands is still synchronous:
+   - BLAST can be triggered by agent suggestions through shared shell routes,
+     but there is no dedicated async job-handle/progress/cancel contract yet for
+     agent-driven BLAST execution.
+   - upcoming primer-pair selection workflows are expected to fan out into
+     multiple BLAST searches; this requires the same async execution contract.
+5. Core architecture parity gaps remain:
    - some utilities are still adapter-level rather than engine operations
      (notably `import-pool` and resource-sync utilities)
    - no dedicated engine operation yet for exporting a full run/process as a
      technical-assistant protocol text artifact
    - view-model contract is not yet formalized as a frontend-neutral schema
-5. guideRNA workflow remains incomplete (guide-candidate model, oligo
+6. guideRNA workflow remains incomplete (guide-candidate model, oligo
    generation/export, macro template flow; draft in `docs/rna_guides_spec.md`).
-6. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
-7. Visualization and workflow UX gaps remain:
+7. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
+8. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
    - dedicated primary map-mode splicing view is still pending
    - adaptive linear DNA-letter routing baseline is implemented (shared
@@ -247,10 +262,10 @@ Notes:
      engine-owned transcript/CDS-aware translation contracts are implemented
      (explicit codon-table resolution plus frame/phase context); current dormant
      AA-row path is maintained as safe no-op
-8. Cross-application clipboard interoperability for sequence + feature transfer
+9. Cross-application clipboard interoperability for sequence + feature transfer
    is not yet implemented (current baseline is deterministic in-app extraction).
-9. Screenshot bridge execution remains disabled by security policy.
-10. Auto-updated documentation with embedded graphics remains postponed.
+10. Screenshot bridge execution remains disabled by security policy.
+11. Auto-updated documentation with embedded graphics remains postponed.
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
@@ -555,9 +570,15 @@ Reference matrix:
 Repeated multi-tool gaps to prioritize:
 
 1. Primer design and validation workflow:
-   - first-class primer design/test flow (pair interaction checks, practical
-     constraints, saved primer sets)
-   - keep deterministic engine contracts so GUI/CLI/JS/Lua/MCP stay aligned
+   - baseline now implemented:
+     - first-class `DesignPrimerPairs` operation
+     - persisted report contract + shell/CLI inspect/export routes
+   - next:
+     - pair interaction checks and richer thermodynamic scoring
+     - saved/reusable primer sets with explicit versioning
+     - async-capable batch off-target/specificity checks so primer-pair
+       selection can run multiple BLAST searches through agent/MCP/CLI routes
+       with progress/cancel parity
 2. Auto-annotation library scan:
    - detect missing/plausible features from curated vector/feature libraries
    - keep machine-readable confidence/overlap diagnostics for automation

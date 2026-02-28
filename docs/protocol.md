@@ -91,6 +91,7 @@ Current draft operations:
 - `Pcr { template, forward_primer, reverse_primer, output_id?, unique? }`
 - `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
+- `DesignPrimerPairs { ... }` (implemented baseline)
 - `ExtractRegion { input, from, to, output_id? }`
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
@@ -825,6 +826,88 @@ Operation progress/cancellation semantics:
 - Filters amplicons to those that introduce requested SNPs.
 - `require_all_mutations` (default `true`) controls whether all or at least one
   mutation must be introduced.
+
+`DesignPrimerPairs` contract (implemented baseline):
+
+- Purpose:
+  - propose ranked forward/reverse primer pairs for one linear template under
+    explicit constraints
+  - provide deterministic, machine-readable reports that can be consumed by
+    GUI/CLI/scripting/agents
+- Operation payload:
+
+```json
+{
+  "DesignPrimerPairs": {
+    "template": "seq_id",
+    "roi_start_0based": 1000,
+    "roi_end_0based": 1600,
+    "forward": {
+      "min_length": 18,
+      "max_length": 24,
+      "location_0based": null,
+      "start_0based": null,
+      "end_0based": null,
+      "min_tm_c": 55.0,
+      "max_tm_c": 68.0,
+      "min_gc_fraction": 0.35,
+      "max_gc_fraction": 0.70,
+      "max_anneal_hits": 1
+    },
+    "reverse": {
+      "min_length": 18,
+      "max_length": 24,
+      "location_0based": null,
+      "start_0based": null,
+      "end_0based": null,
+      "min_tm_c": 55.0,
+      "max_tm_c": 68.0,
+      "min_gc_fraction": 0.35,
+      "max_gc_fraction": 0.70,
+      "max_anneal_hits": 1
+    },
+    "min_amplicon_bp": 120,
+    "max_amplicon_bp": 1200,
+    "max_tm_delta_c": 2.0,
+    "max_pairs": 200,
+    "report_id": "tp73_roi_primers_v1"
+  }
+}
+```
+
+- `max_tm_delta_c`, `max_pairs`, and `report_id` are optional in current
+  implementation:
+  - `max_tm_delta_c` default: `2.0`
+  - `max_pairs` default: `200`
+  - `report_id` default: auto-generated deterministic-safe id stem
+
+- Report schema:
+  - `gentle.primer_design_report.v1`
+  - deterministic ordering by score then tie-break fields
+  - each pair includes:
+    - forward/reverse primer sequence and genomic binding window
+    - estimated Tm and GC fraction
+    - anneal-hit counts per side
+    - amplicon start/end/length
+    - rule-pass flags and aggregate score
+  - optional rejection summary buckets (for explainability):
+    - out-of-window
+    - GC/Tm out of bounds
+    - non-unique anneal
+    - amplicon-size or ROI-coverage failure
+
+Primer-design shell command family (implemented):
+
+- Shared-shell family:
+  - `primers design REQUEST_JSON_OR_@FILE`
+  - `primers list-reports`
+  - `primers show-report REPORT_ID`
+  - `primers export-report REPORT_ID OUTPUT.json`
+- `primers design` expects an operation payload whose root variant is
+  `{"DesignPrimerPairs": {...}}`.
+- Response schemas:
+  - `gentle.primer_design_report.v1`
+  - `gentle.primer_design_report_list.v1`
 
 ### Workflow
 

@@ -87,6 +87,9 @@ const CANDIDATE_SETS_LOAD_WARNING_METADATA_KEY: &str = "candidate_sets_load_warn
 const CANDIDATE_STORE_STRICT_LOAD_ENV: &str = "GENTLE_CANDIDATE_STORE_STRICT_LOAD";
 pub const GUIDE_DESIGN_METADATA_KEY: &str = "guide_design";
 const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
+pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
+const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
+const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
 pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
@@ -1141,6 +1144,113 @@ pub struct SnpMutationSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PrimerDesignSideConstraint {
+    pub min_length: usize,
+    pub max_length: usize,
+    pub location_0based: Option<usize>,
+    pub start_0based: Option<usize>,
+    pub end_0based: Option<usize>,
+    pub min_tm_c: f64,
+    pub max_tm_c: f64,
+    pub min_gc_fraction: f64,
+    pub max_gc_fraction: f64,
+    pub max_anneal_hits: usize,
+}
+
+impl Default for PrimerDesignSideConstraint {
+    fn default() -> Self {
+        Self {
+            min_length: 18,
+            max_length: 24,
+            location_0based: None,
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 55.0,
+            max_tm_c: 68.0,
+            min_gc_fraction: 0.35,
+            max_gc_fraction: 0.70,
+            max_anneal_hits: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignPrimerRecord {
+    pub sequence: String,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub tm_c: f64,
+    pub gc_fraction: f64,
+    pub anneal_hits: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignPairRuleFlags {
+    pub roi_covered: bool,
+    pub amplicon_size_in_range: bool,
+    pub tm_delta_in_range: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignPairRecord {
+    pub rank: usize,
+    pub score: f64,
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    pub tm_delta_c: f64,
+    pub rule_flags: PrimerDesignPairRuleFlags,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignRejectionSummary {
+    pub out_of_window: usize,
+    pub gc_or_tm_out_of_bounds: usize,
+    pub non_unique_anneal: usize,
+    pub amplicon_or_roi_failure: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignReport {
+    pub schema: String,
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub forward: PrimerDesignSideConstraint,
+    pub reverse: PrimerDesignSideConstraint,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub max_tm_delta_c: f64,
+    pub max_pairs: usize,
+    pub pair_count: usize,
+    #[serde(default)]
+    pub pairs: Vec<PrimerDesignPairRecord>,
+    #[serde(default)]
+    pub rejection_summary: PrimerDesignRejectionSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignReportSummary {
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub pair_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TfThresholdOverride {
     pub tf: String,
     pub min_llr_bits: Option<f64>,
@@ -1522,6 +1632,14 @@ struct GuideDesignStore {
     oligo_sets: HashMap<String, GuideOligoSet>,
     latest_oligo_set_by_guide_set: HashMap<String, String>,
     audit_log: Vec<GuideDesignAuditEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PrimerDesignStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    reports: HashMap<String, PrimerDesignReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2018,6 +2136,20 @@ pub enum Operation {
         unique: Option<bool>,
         require_all_mutations: Option<bool>,
     },
+    DesignPrimerPairs {
+        template: SeqId,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        #[serde(default)]
+        forward: PrimerDesignSideConstraint,
+        #[serde(default)]
+        reverse: PrimerDesignSideConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: Option<f64>,
+        max_pairs: Option<usize>,
+        report_id: Option<String>,
+    },
     ExtractRegion {
         input: SeqId,
         from: usize,
@@ -2508,6 +2640,16 @@ struct FeatureLocationSegment {
     start_0based: usize,
     end_0based: usize,
     strand: Option<char>,
+}
+
+#[derive(Debug, Clone)]
+struct PrimerDesignCandidate {
+    sequence: String,
+    start_0based: usize,
+    end_0based_exclusive: usize,
+    tm_c: f64,
+    gc_fraction: f64,
+    anneal_hits: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3072,6 +3214,7 @@ impl GentleEngine {
                 "Pcr".to_string(),
                 "PcrAdvanced".to_string(),
                 "PcrMutagenesis".to_string(),
+                "DesignPrimerPairs".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -5183,6 +5326,118 @@ impl GentleEngine {
             .metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), value);
         Ok(())
+    }
+
+    fn read_primer_design_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> PrimerDesignStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<PrimerDesignStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = PRIMER_DESIGN_REPORTS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_primer_design_store(&self) -> PrimerDesignStore {
+        Self::read_primer_design_store_from_metadata(
+            self.state.metadata.get(PRIMER_DESIGN_REPORTS_METADATA_KEY),
+        )
+    }
+
+    fn write_primer_design_store(&mut self, mut store: PrimerDesignStore) -> Result<(), EngineError> {
+        if store.reports.is_empty() {
+            self.state
+                .metadata
+                .remove(PRIMER_DESIGN_REPORTS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = PRIMER_DESIGN_REPORTS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize primer-design metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(PRIMER_DESIGN_REPORTS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn normalize_primer_design_report_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "report_id cannot be empty".to_string(),
+            });
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
+                        .to_string(),
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn list_primer_design_reports(&self) -> Vec<PrimerDesignReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store.reports.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.reports.get(&id))
+            .map(|report| PrimerDesignReportSummary {
+                report_id: report.report_id.clone(),
+                template: report.template.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                roi_start_0based: report.roi_start_0based,
+                roi_end_0based: report.roi_end_0based,
+                pair_count: report.pair_count,
+            })
+            .collect()
+    }
+
+    pub fn get_primer_design_report(&self, report_id: &str) -> Result<PrimerDesignReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        let store = self.read_primer_design_store();
+        store
+            .reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Primer-design report '{}' not found", report_id),
+            })
+    }
+
+    pub fn export_primer_design_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<PrimerDesignReport, EngineError> {
+        let report = self.get_primer_design_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize primer-design report '{}': {e}", report.report_id),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write primer-design report to '{path}': {e}"),
+        })?;
+        Ok(report)
     }
 
     fn read_guide_design_store_from_metadata(
@@ -12770,6 +13025,197 @@ impl GentleEngine {
         ret
     }
 
+    fn estimate_primer_tm_c(primer: &[u8]) -> f64 {
+        let mut at = 0usize;
+        let mut gc = 0usize;
+        for base in primer {
+            match base.to_ascii_uppercase() {
+                b'A' | b'T' => at += 1,
+                b'C' | b'G' => gc += 1,
+                _ => {}
+            }
+        }
+        (2 * at + 4 * gc) as f64
+    }
+
+    fn validate_primer_design_side_constraints(
+        label: &str,
+        side: &PrimerDesignSideConstraint,
+    ) -> Result<(), EngineError> {
+        if side.min_length == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("{label}.min_length must be >= 1"),
+            });
+        }
+        if side.min_length > side.max_length {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.min_length ({}) must be <= {label}.max_length ({})",
+                    side.min_length, side.max_length
+                ),
+            });
+        }
+        if !(0.0..=1.0).contains(&side.min_gc_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.min_gc_fraction ({}) must be between 0.0 and 1.0",
+                    side.min_gc_fraction
+                ),
+            });
+        }
+        if !(0.0..=1.0).contains(&side.max_gc_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.max_gc_fraction ({}) must be between 0.0 and 1.0",
+                    side.max_gc_fraction
+                ),
+            });
+        }
+        if side.min_gc_fraction > side.max_gc_fraction {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.min_gc_fraction ({}) must be <= {label}.max_gc_fraction ({})",
+                    side.min_gc_fraction, side.max_gc_fraction
+                ),
+            });
+        }
+        if side.min_tm_c > side.max_tm_c {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{label}.min_tm_c ({}) must be <= {label}.max_tm_c ({})",
+                    side.min_tm_c, side.max_tm_c
+                ),
+            });
+        }
+        if side.max_anneal_hits == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("{label}.max_anneal_hits must be >= 1"),
+            });
+        }
+        if let (Some(start), Some(end)) = (side.start_0based, side.end_0based) {
+            if start >= end {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.start_0based ({start}) must be < {label}.end_0based ({end})"
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn generate_primer_side_candidates(
+        template: &[u8],
+        side: &PrimerDesignSideConstraint,
+        reverse_orientation: bool,
+        rejections: &mut PrimerDesignRejectionSummary,
+    ) -> Vec<PrimerDesignCandidate> {
+        let mut ret = vec![];
+        if template.is_empty() || side.min_length > template.len() {
+            return ret;
+        }
+        let max_start = template.len().saturating_sub(side.min_length);
+        for start in 0..=max_start {
+            if let Some(location) = side.location_0based {
+                if start != location {
+                    continue;
+                }
+            }
+            if let Some(min_start) = side.start_0based {
+                if start < min_start {
+                    continue;
+                }
+            }
+            for length in side.min_length..=side.max_length {
+                let Some(end) = start.checked_add(length) else {
+                    continue;
+                };
+                if end > template.len() {
+                    break;
+                }
+                if let Some(max_end) = side.end_0based {
+                    if end > max_end {
+                        rejections.out_of_window = rejections.out_of_window.saturating_add(1);
+                        continue;
+                    }
+                }
+                let binding_window = &template[start..end];
+                let primer_bytes = if reverse_orientation {
+                    Self::reverse_complement_bytes(binding_window)
+                } else {
+                    binding_window.to_vec()
+                };
+                let gc_fraction = Self::sequence_gc_fraction(&primer_bytes).unwrap_or(0.0);
+                let tm_c = Self::estimate_primer_tm_c(&primer_bytes);
+                if gc_fraction < side.min_gc_fraction
+                    || gc_fraction > side.max_gc_fraction
+                    || tm_c < side.min_tm_c
+                    || tm_c > side.max_tm_c
+                {
+                    rejections.gc_or_tm_out_of_bounds =
+                        rejections.gc_or_tm_out_of_bounds.saturating_add(1);
+                    continue;
+                }
+                let anneal_hits = Self::find_all_subsequences(template, binding_window).len();
+                if anneal_hits == 0 || anneal_hits > side.max_anneal_hits {
+                    rejections.non_unique_anneal = rejections.non_unique_anneal.saturating_add(1);
+                    continue;
+                }
+                ret.push(PrimerDesignCandidate {
+                    sequence: String::from_utf8(primer_bytes).unwrap_or_default(),
+                    start_0based: start,
+                    end_0based_exclusive: end,
+                    tm_c,
+                    gc_fraction,
+                    anneal_hits,
+                });
+            }
+        }
+        ret.sort_by(|a, b| {
+            a.start_0based
+                .cmp(&b.start_0based)
+                .then(a.end_0based_exclusive.cmp(&b.end_0based_exclusive))
+                .then(a.sequence.cmp(&b.sequence))
+        });
+        ret
+    }
+
+    fn render_primer_design_report_id(raw: Option<String>, template: &str) -> String {
+        let candidate = raw
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| {
+                let stem = template
+                    .chars()
+                    .map(|ch| {
+                        if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                            ch
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect::<String>();
+                format!("primer_report_{}_{}", stem, Self::now_unix_ms())
+            });
+        Self::normalize_primer_design_report_id(&candidate).unwrap_or_else(|_| {
+            format!(
+                "primer_report_{}_{}",
+                template.replace(' ', "_"),
+                Self::now_unix_ms()
+            )
+        })
+    }
+
     fn right_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
         let mut ret = Vec::new();
         if !dna.overhang().forward_3.is_empty() {
@@ -14947,6 +15393,255 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Mutagenesis PCR product '{}' created from fwd@{} rev@{}",
                         seq_id, fwd_pos, rev_pos
+                    ));
+                }
+            }
+            Operation::DesignPrimerPairs {
+                template,
+                roi_start_0based,
+                roi_end_0based,
+                forward,
+                reverse,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_pairs,
+                report_id,
+            } => {
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&template)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{template}' not found"),
+                    })?
+                    .clone();
+                if dna.is_circular() {
+                    return Err(EngineError {
+                        code: ErrorCode::Unsupported,
+                        message: "DesignPrimerPairs currently supports linear templates only"
+                            .to_string(),
+                    });
+                }
+
+                let template_seq = dna.get_forward_string().to_ascii_uppercase();
+                let template_bytes = template_seq.as_bytes();
+                if template_bytes.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "DesignPrimerPairs requires a non-empty template sequence"
+                            .to_string(),
+                    });
+                }
+                if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignPrimerPairs ROI {}..{} is invalid for template length {}",
+                            roi_start_0based,
+                            roi_end_0based,
+                            template_bytes.len()
+                        ),
+                    });
+                }
+                if min_amplicon_bp == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "DesignPrimerPairs min_amplicon_bp must be >= 1".to_string(),
+                    });
+                }
+                if min_amplicon_bp > max_amplicon_bp {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignPrimerPairs min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+                        ),
+                    });
+                }
+                let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
+                if max_tm_delta_c < 0.0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignPrimerPairs max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
+                        ),
+                    });
+                }
+                let max_pairs = max_pairs.unwrap_or(200);
+                if max_pairs == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "DesignPrimerPairs max_pairs must be >= 1".to_string(),
+                    });
+                }
+
+                Self::validate_primer_design_side_constraints("forward", &forward)?;
+                Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+                for (label, side) in [("forward", &forward), ("reverse", &reverse)] {
+                    if let Some(location) = side.location_0based {
+                        if location >= template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "{label}.location_0based ({location}) is outside template length {}",
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                    }
+                    if let Some(start) = side.start_0based {
+                        if start >= template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "{label}.start_0based ({start}) is outside template length {}",
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                    }
+                    if let Some(end) = side.end_0based {
+                        if end == 0 || end > template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "{label}.end_0based ({end}) must be in 1..={} for this template",
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                    }
+                }
+
+                let mut rejection_summary = PrimerDesignRejectionSummary::default();
+                let forward_candidates = Self::generate_primer_side_candidates(
+                    template_bytes,
+                    &forward,
+                    false,
+                    &mut rejection_summary,
+                );
+                let reverse_candidates = Self::generate_primer_side_candidates(
+                    template_bytes,
+                    &reverse,
+                    true,
+                    &mut rejection_summary,
+                );
+
+                let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
+                let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
+                for fwd in &forward_candidates {
+                    for rev in &reverse_candidates {
+                        if rev.end_0based_exclusive <= fwd.start_0based {
+                            rejection_summary.amplicon_or_roi_failure = rejection_summary
+                                .amplicon_or_roi_failure
+                                .saturating_add(1);
+                            continue;
+                        }
+                        let amplicon_start = fwd.start_0based;
+                        let amplicon_end = rev.end_0based_exclusive;
+                        let amplicon_length_bp = amplicon_end.saturating_sub(amplicon_start);
+                        let amplicon_size_ok =
+                            amplicon_length_bp >= min_amplicon_bp
+                                && amplicon_length_bp <= max_amplicon_bp;
+                        let roi_covered =
+                            amplicon_start <= roi_start_0based && amplicon_end >= roi_end_0based;
+                        let tm_delta_c = (fwd.tm_c - rev.tm_c).abs();
+                        let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
+                        if !(amplicon_size_ok && roi_covered && tm_delta_ok) {
+                            rejection_summary.amplicon_or_roi_failure = rejection_summary
+                                .amplicon_or_roi_failure
+                                .saturating_add(1);
+                            continue;
+                        }
+                        let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
+                        let hit_penalty = (fwd.anneal_hits.saturating_sub(1)
+                            + rev.anneal_hits.saturating_sub(1))
+                            as f64;
+                        let score =
+                            1000.0 - (tm_delta_c * 20.0) - (length_penalty * 0.1) - (hit_penalty * 10.0);
+                        pairs.push(PrimerDesignPairRecord {
+                            rank: 0,
+                            score,
+                            forward: PrimerDesignPrimerRecord {
+                                sequence: fwd.sequence.clone(),
+                                start_0based: fwd.start_0based,
+                                end_0based_exclusive: fwd.end_0based_exclusive,
+                                tm_c: fwd.tm_c,
+                                gc_fraction: fwd.gc_fraction,
+                                anneal_hits: fwd.anneal_hits,
+                            },
+                            reverse: PrimerDesignPrimerRecord {
+                                sequence: rev.sequence.clone(),
+                                start_0based: rev.start_0based,
+                                end_0based_exclusive: rev.end_0based_exclusive,
+                                tm_c: rev.tm_c,
+                                gc_fraction: rev.gc_fraction,
+                                anneal_hits: rev.anneal_hits,
+                            },
+                            amplicon_start_0based: amplicon_start,
+                            amplicon_end_0based_exclusive: amplicon_end,
+                            amplicon_length_bp,
+                            tm_delta_c,
+                            rule_flags: PrimerDesignPairRuleFlags {
+                                roi_covered,
+                                amplicon_size_in_range: amplicon_size_ok,
+                                tm_delta_in_range: tm_delta_ok,
+                            },
+                        });
+                    }
+                }
+                pairs.sort_by(|a, b| {
+                    b.score
+                        .total_cmp(&a.score)
+                        .then(a.forward.start_0based.cmp(&b.forward.start_0based))
+                        .then(a.reverse.start_0based.cmp(&b.reverse.start_0based))
+                        .then(a.amplicon_length_bp.cmp(&b.amplicon_length_bp))
+                        .then(a.forward.sequence.cmp(&b.forward.sequence))
+                        .then(a.reverse.sequence.cmp(&b.reverse.sequence))
+                });
+                if pairs.len() > max_pairs {
+                    pairs.truncate(max_pairs);
+                }
+                for (idx, pair) in pairs.iter_mut().enumerate() {
+                    pair.rank = idx + 1;
+                }
+
+                let report_id = Self::render_primer_design_report_id(report_id, &template);
+                let report = PrimerDesignReport {
+                    schema: PRIMER_DESIGN_REPORT_SCHEMA.to_string(),
+                    report_id: report_id.clone(),
+                    template: template.clone(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    roi_start_0based,
+                    roi_end_0based,
+                    forward,
+                    reverse,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_pairs,
+                    pair_count: pairs.len(),
+                    pairs,
+                    rejection_summary,
+                };
+                let mut store = self.read_primer_design_store();
+                let replaced = store
+                    .reports
+                    .insert(report.report_id.clone(), report.clone())
+                    .is_some();
+                self.write_primer_design_store(store)?;
+                result.messages.push(format!(
+                    "{} primer-design report '{}' for template '{}' (pairs={})",
+                    if replaced { "Updated" } else { "Created" },
+                    report.report_id,
+                    report.template,
+                    report.pair_count
+                ));
+                if report.pair_count == 0 {
+                    result.warnings.push(format!(
+                        "No primer pairs satisfied constraints for report '{}'",
+                        report.report_id
                     ));
                 }
             }
@@ -17238,6 +17933,92 @@ exit 2
         assert_eq!(a, b);
         assert!(!a.is_empty());
         assert_eq!(a.first().unwrap(), "lig_1");
+    }
+
+    #[test]
+    fn test_design_primer_pairs_persists_report() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            seq(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            ),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let result = engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                },
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_pairs: Some(10),
+                report_id: Some("tp73_roi".to_string()),
+            })
+            .expect("design primer pairs");
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|line| line.contains("primer-design report"))
+        );
+        let report = engine
+            .get_primer_design_report("tp73_roi")
+            .expect("report by id");
+        assert_eq!(report.report_id, "tp73_roi");
+        assert_eq!(report.template, "tpl");
+        assert!(!report.pairs.is_empty());
+        let listed = engine.list_primer_design_reports();
+        assert!(listed.iter().any(|row| row.report_id == "tp73_roi"));
+    }
+
+    #[test]
+    fn test_design_primer_pairs_rejects_invalid_roi() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("tpl".to_string(), seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"));
+        let mut engine = GentleEngine::from_state(state);
+        let err = engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 200,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 120,
+                max_tm_delta_c: Some(2.0),
+                max_pairs: Some(100),
+                report_id: Some("bad_roi".to_string()),
+            })
+            .expect_err("invalid roi");
+        assert!(err.message.contains("ROI"));
     }
 
     #[test]

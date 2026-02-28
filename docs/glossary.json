@@ -1,5 +1,5 @@
 {
-   "command_count": 166,
+   "command_count": 170,
    "commands": [
       {
          "aliases": [
@@ -842,6 +842,56 @@
          "path": "guides protocol-export",
          "summary": "Export a human-readable guide oligo protocol text file.",
          "usage": "guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DesignPrimerPairs"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design",
+         "summary": "Generate and persist a ranked primer-pair report from a DesignPrimerPairs operation payload.",
+         "usage": "primers design REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-reports",
+         "summary": "List persisted primer-design reports.",
+         "usage": "primers list-reports"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-report",
+         "summary": "Inspect one persisted primer-design report by report ID.",
+         "usage": "primers show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-report",
+         "summary": "Write one persisted primer-design report to JSON.",
+         "usage": "primers export-report REPORT_ID OUTPUT.json"
       },
       {
          "aliases": [],
