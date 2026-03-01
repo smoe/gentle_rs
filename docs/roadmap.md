@@ -96,6 +96,16 @@ order. Durable architecture constraints and decisions remain in
     `primers export-report`
   - current implementation is internal-baseline scoring; Primer3 wrapper
     backend integration remains pending
+- Executable tutorial baseline is now integrated with canonical workflow
+  examples:
+  - tutorial manifest source:
+    `docs/tutorial/manifest.json` (`gentle.tutorial_manifest.v1`)
+  - committed generated tutorial output:
+    `docs/tutorial/generated/` (chapters + retained artifacts + report)
+  - `gentle_examples_docs` now supports:
+    `tutorial-generate` and `tutorial-check`
+  - CI now gates tutorial drift and workflow runtime coverage through
+    `tutorial-check` and `cargo test workflow_examples`
 
 ### GUI baseline in place
 
@@ -128,24 +138,35 @@ order. Durable architecture constraints and decisions remain in
     `auto-adaptive`, `force-standard`, `force-helical`, `force-condensed-10`
   - compressed-letter toggle semantics scoped to auto mode
     (`linear_sequence_helical_letters_enabled`)
-  - deterministic tier routing in auto mode (`1x / 2x / 10x` capacity tiers)
+  - deterministic tier routing in auto mode (`1.5x / 2x / 10x` capacity tiers)
     with explicit `OFF` when condensed capacity is exceeded
   - modulo-10 seam offset control for row alignment (`(bp + offset) % 10`)
   - condensed layout backbone replacement and outward feature-lane clearance
   - configurable double-strand display with optional 180° reverse-letter rotation
+  - configurable helical strand geometry (`parallel` vs `mirrored`) for
+    reverse-strand visual semantics
   - optional sequence-panel auto-hide when map letters are visible
   - one shared routing helper used by renderer diagnostics and Sequence-window
     status/auto-hide decisions (UI-status parity)
 - Linear-map drag selection can now be extracted directly to a new sequence via
   `ExtractRegion`, preserving overlapping features in the derived fragment.
+- Sequence-window `Export View SVG` now includes profile-aware export routes:
+  - default `screen` profile for current-window composition
+  - `wide-context` profile for larger canvas and expanded linear bp context
+  - `print-a3` profile with A3 landscape physical-size metadata and higher
+    sequence text capacity
+  - debug builds include routing-tier diagnostics in the SVG header block
 - Scrollable/resizable Engine Ops area and shared-shell panel.
 - Context-sensitive hover descriptions on actionable controls.
-- Unified interaction policy rollout is in progress:
+- Unified interaction policy baseline is implemented across primary canvases and panes:
   - default wheel/trackpad scroll pans/scrolls
   - zoom on canvases is `Shift + wheel`
   - hand-pan drag mode is `Option` (Alt) + drag
   - legacy graph aliases (`Cmd/Ctrl + wheel`, `Space + drag`) remain
     transitionally enabled
+  - keyboard pane scrolling (`Arrow`, `PageUp/PageDown`, `Home/End`) is enabled
+    for major scroll panes (help, lineage tables/lists, jobs/history,
+    configuration, and sequence-window feature/detail panes)
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
 - BLAST UX/provenance hardening baseline:
@@ -266,8 +287,8 @@ Notes:
      snapshot/readability benchmarking remains pending
    - any screenshot-based readability baseline artifacts require manual human
      contribution while agent screenshot execution remains policy-disabled
-  - unified zoom/pan policy rollout is in progress; full propagation to all
-    scrollable panes plus regression coverage is still pending
+   - unified zoom/pan behavior is now implemented for map/graph/help/list panes;
+    focused-region fallback behavior and wider regression coverage are pending
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
@@ -349,7 +370,7 @@ Current baseline:
 - shared routing helper (`linear_base_routing`) is now authoritative for both
   renderer mode selection and Sequence-window status/auto-hide decisions
 - deterministic auto tiers use density capacity limits:
-  - `<= 1x`: standard
+  - `<= 1.5x`: standard
   - `<= 2x`: helical (when compressed mode enabled)
   - `<= 10x`: condensed-10 (when compressed mode enabled)
   - `> 10x`: `OFF`
@@ -709,10 +730,13 @@ Status (2026-03-01):
   - effective-options preflight preview via shared engine resolver.
 - Result panel now displays both request override JSON and resolved effective
   options payloads.
+- Implemented BLAST cancellation from both:
+  - BLAST dialog execution controls (`Cancel BLAST`)
+  - Background Jobs panel (`BLAST -> Cancel`)
+  - worker-side interruption now propagates cancellation through shared engine/genomes BLAST paths.
 - Remaining in Phase 2:
   - preset catalog persistence and named reusable GUI presets
   - polish structured threshold UX (units/tooltips/preset interop helpers).
-  - BLAST cancellation support from GUI execution controls.
 
 Phase 3 (single-primer design UI):
 
@@ -846,7 +870,6 @@ Planned upgrades:
     - idempotent cancellation handlers reused by dialogs and jobs panel
     - explicit retry events from jobs panel actions
   - Next:
-    - add BLAST cancellation support (worker-side interruption)
     - optionally persist recent job-event history across restarts
     - track retry argument snapshots for reproducibility/debugging
 
@@ -862,7 +885,7 @@ Planned upgrades:
 - Add external-binary preflight diagnostics (BLAST and related tools) with
   explicit "found/missing/version/path" reporting before long jobs start.
 - Extend cancellation/timebox controls beyond current genome-track import flow
-  so long-running genome-prepare/BLAST jobs can be stopped cleanly.
+  (BLAST now supported; continue hardening prepare + future long-running jobs).
 
 ### Missing test coverage (current priority list)
 
@@ -937,8 +960,8 @@ Planned upgrades:
   - realism upgrades (topology, intensity, co-migration, lane tables)
 - Add visual benchmark fixtures and readability regression gates for map
   export; treat screenshot/raster baseline assets as manual contributions.
-- Complete unified scroll/zoom policy propagation across map/graph/help/list
-  panes and close remaining feature-tree UI snapshot gaps.
+- Add focused-region fallback + regression/snapshot coverage for unified
+  scroll/zoom policy and close remaining feature-tree UI snapshot gaps.
 
 ### Phase E: integration polish and deferred policy items
 

@@ -1,0 +1,87 @@
+{
+  "schema": "gentle.tutorial_manifest.v1",
+  "chapters": [
+    {
+      "id": "load_branch_reverse_complement_pgex_fasta",
+      "order": 1,
+      "title": "Load FASTA, branch, and reverse-complement",
+      "example_id": "load_branch_reverse_complement_pgex_fasta",
+      "tier": "core",
+      "summary": "Start with a deterministic local sequence operation pipeline.",
+      "retain_outputs": [],
+      "checkpoints": [
+        "Workflow executes without warnings or errors.",
+        "Derived sequence IDs include a branch and reverse-complement product."
+      ]
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "order": 2,
+      "title": "Load pGEX and digest with BamHI/EcoRI",
+      "example_id": "load_and_digest_pgex",
+      "tier": "core",
+      "summary": "Demonstrates deterministic restriction digest product generation.",
+      "retain_outputs": [],
+      "checkpoints": [
+        "Digest operation completes and creates fragment sequence IDs.",
+        "Fragment IDs are deterministic across repeated runs."
+      ]
+    },
+    {
+      "id": "guides_filter_and_generate_oligos",
+      "order": 3,
+      "title": "Guide practical filtering and oligo generation",
+      "example_id": "guides_filter_and_generate_oligos",
+      "tier": "core",
+      "summary": "Covers guide-set creation, practical filtering, and oligo generation.",
+      "retain_outputs": [],
+      "checkpoints": [
+        "Guide set and passed guide set are present in metadata.",
+        "Oligo set generation succeeds for passed guides."
+      ]
+    },
+    {
+      "id": "digest_ligation_extract_region_minimal",
+      "order": 4,
+      "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+      "example_id": "digest_ligation_extract_region_minimal",
+      "tier": "core",
+      "summary": "Minimal end-to-end cloning operation chain used as a regression slice.",
+      "retain_outputs": [],
+      "checkpoints": [
+        "Digest creates at least two fragments for ligation input.",
+        "Ligation creates deterministic output IDs.",
+        "ExtractRegion creates `lig_extract`."
+      ]
+    },
+    {
+      "id": "guides_export_csv_and_protocol",
+      "order": 5,
+      "title": "Guide oligo export (CSV + protocol)",
+      "example_id": "guides_export_csv_and_protocol",
+      "tier": "advanced",
+      "summary": "Retains one representative oligo CSV and one protocol text artifact for GitHub inspection.",
+      "retain_outputs": [
+        "exports/demo_guides.csv",
+        "exports/demo_guides.protocol.txt"
+      ],
+      "checkpoints": [
+        "CSV export file exists and contains guide rows.",
+        "Protocol text export exists and contains checklist content."
+      ]
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "order": 6,
+      "title": "Prepare a reference genome cache (online)",
+      "example_id": "prepare_reference_genome_online",
+      "tier": "online",
+      "summary": "Network/tooling-dependent chapter, executed only with explicit online opt-in.",
+      "retain_outputs": [],
+      "checkpoints": [
+        "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",
+        "Offline generation still emits the chapter with execution status noted."
+      ]
+    }
+  ]
+}

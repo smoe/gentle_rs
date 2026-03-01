@@ -51,6 +51,19 @@ Validation only:
 cargo run --bin gentle_examples_docs -- --check
 ```
 
+Tutorial manifest + generated outputs:
+
+- manifest: `docs/tutorial/manifest.json`
+- schema: `gentle.tutorial_manifest.v1`
+- committed generated outputs: `docs/tutorial/generated/`
+
+Generate/check tutorial outputs:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-generate
+cargo run --bin gentle_examples_docs -- tutorial-check
+```
+
 ## Core entities
 
 ### ProjectState
@@ -501,7 +514,7 @@ Current parameter support:
 - `max_fragments_per_container` (default `80000`)
   - limits digest fragment output per operation
   - also serves as ligation product-count limit guard
-- `feature_details_font_size` (default `11.0`, range `8.0..24.0`)
+- `feature_details_font_size` (default `9.0`, range `8.0..24.0`)
   - controls GUI font size for the feature tree entries and feature range details
 - `regulatory_feature_max_view_span_bp` (default `50000`, range `>= 0`)
   - hides regulatory feature overlays in linear view when current view span
@@ -517,7 +530,7 @@ Current parameter support:
       - `helical|continuous_helical`
       - `condensed_10_row|condensed`
     - auto mode uses deterministic viewport-density tiers:
-      - `<= 1x`: standard
+      - `<= 1.5x`: standard
       - `<= 2x`: helical (if compressed letters enabled)
       - `<= 10x`: condensed-10 (if compressed letters enabled)
       - `> 10x`: `OFF`
@@ -525,6 +538,12 @@ Current parameter support:
     - applies to auto mode only (allows/disallows compressed auto tiers)
   - `linear_sequence_helical_phase_offset_bp` (range `0..9`)
     - seam offset used by helical/condensed row mapping
+  - reverse/helical strand geometry controls:
+    - `linear_show_double_strand_bases` / `linear_show_reverse_strand_bases`
+      (bool alias pair; controls reverse-strand letter visibility)
+    - `linear_helical_parallel_strands` (default `true`)
+      - `true`: forward/reverse helical slant stays parallel
+      - `false`: forward/reverse helical slant is mirrored (cross-over look)
 - Legacy linear-letter threshold knobs are compatibility-only and return
   deterministic deprecated no-op messages (no routing effect):
   - `linear_sequence_base_text_max_view_span_bp`

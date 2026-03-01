@@ -1,0 +1,95 @@
+{
+  "schema": "gentle.tutorial_generation_report.v1",
+  "manifest": "docs/tutorial/manifest.json",
+  "source_examples": "docs/examples/workflows",
+  "chapter_count": 6,
+  "online_enabled": false,
+  "generated_files": [
+    "README.md",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md",
+    "chapters/02_load_and_digest_pgex.md",
+    "chapters/03_guides_filter_and_generate_oligos.md",
+    "chapters/04_digest_ligation_extract_region_minimal.md",
+    "chapters/05_guides_export_csv_and_protocol.md",
+    "chapters/06_prepare_reference_genome_online.md",
+    "report.json"
+  ],
+  "file_checksums": {
+    "README.md": "16604b9dbe8280e73a89ea3ba733429abb92b5f7",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
+    "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "68f5a3f2e9e4469abe2a622a904f8a8653b0e77b",
+    "chapters/02_load_and_digest_pgex.md": "ce5b3888871b9d488ac7ba831c7b7fc1971980ce",
+    "chapters/03_guides_filter_and_generate_oligos.md": "b85169adc991f18eb47f12f8a04bcb7224fa07af",
+    "chapters/04_digest_ligation_extract_region_minimal.md": "64c54810e10957323121246c70897758b2fe6dda",
+    "chapters/05_guides_export_csv_and_protocol.md": "f41a09f71398b434c8ae085700bac429c8582af1",
+    "chapters/06_prepare_reference_genome_online.md": "6bc4da4cf499b5b76a6f3f81ca23b6d4a2f0b205"
+  },
+  "chapters": [
+    {
+      "id": "load_branch_reverse_complement_pgex_fasta",
+      "order": 1,
+      "title": "Load FASTA, branch, and reverse-complement",
+      "tier": "core",
+      "example_id": "load_branch_reverse_complement_pgex_fasta",
+      "example_source": "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json",
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "order": 2,
+      "title": "Load pGEX and digest with BamHI/EcoRI",
+      "tier": "core",
+      "example_id": "load_and_digest_pgex",
+      "example_source": "docs/examples/workflows/load_and_digest_pgex.json",
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "guides_filter_and_generate_oligos",
+      "order": 3,
+      "title": "Guide practical filtering and oligo generation",
+      "tier": "core",
+      "example_id": "guides_filter_and_generate_oligos",
+      "example_source": "docs/examples/workflows/guides_filter_and_generate_oligos.json",
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "digest_ligation_extract_region_minimal",
+      "order": 4,
+      "title": "Digest -> Ligation -> ExtractRegion minimal slice",
+      "tier": "core",
+      "example_id": "digest_ligation_extract_region_minimal",
+      "example_source": "docs/examples/workflows/digest_ligation_extract_region_minimal.json",
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "guides_export_csv_and_protocol",
+      "order": 5,
+      "title": "Guide oligo export (CSV + protocol)",
+      "tier": "advanced",
+      "example_id": "guides_export_csv_and_protocol",
+      "example_source": "docs/examples/workflows/guides_export_csv_and_protocol.json",
+      "executed": true,
+      "retained_artifacts": [
+        "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
+        "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt"
+      ]
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "order": 6,
+      "title": "Prepare a reference genome cache (online)",
+      "tier": "online",
+      "example_id": "prepare_reference_genome_online",
+      "example_source": "docs/examples/workflows/prepare_reference_genome_online.json",
+      "executed": false,
+      "retained_artifacts": []
+    }
+  ]
+}

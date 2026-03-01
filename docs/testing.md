@@ -63,6 +63,27 @@ GENTLE_TEST_ONLINE=1 cargo test workflow_examples -- --test-threads=1
 - `online`: executed only with `GENTLE_TEST_ONLINE=1`
 - `skip`: parsed/validated only
 
+### 3.2 Tutorial drift and runtime checks
+
+Tutorial source + generated outputs are part of the test surface:
+
+- manifest: `docs/tutorial/manifest.json`
+- generated output: `docs/tutorial/generated/`
+
+Validation commands:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-check
+cargo test workflow_examples -- --test-threads=1
+```
+
+`tutorial-check` regenerates tutorial outputs in a temp directory and compares
+byte-for-byte with committed files under `docs/tutorial/generated`.
+
+CI additionally runs a CLI smoke path for core tutorial chapters via:
+
+- `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/<core>.json`
+
 ## 4. Rendering tests (required)
 
 Graphics are part of functionality. Visibility toggles and biology overlays must

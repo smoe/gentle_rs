@@ -118,6 +118,9 @@ Interaction consistency rule:
   - `Shift` hover on zoom-capable canvases uses zoom cursor (`ZoomIn`/`ZoomOut`)
 - Arrow keys pan active scroll surfaces; `Shift + arrows` map to zoom intents
   on zoom-capable canvases.
+- Non-zoom scroll panes should expose keyboard navigation (`Arrow`,
+  `PageUp/PageDown`, `Home/End`) when the pane is active and text fields do not
+  hold keyboard focus.
 - Temporary compatibility aliases are allowed (for example legacy
   `Cmd/Ctrl + wheel` or `Space + drag`) but must be documented and treated as
   transitional.
@@ -321,6 +324,12 @@ Practical rule:
   - schema: `gentle.workflow_example.v1`
   - snippet generator binary: `gentle_examples_docs`
   - generated adapter snippets: `docs/examples/generated/*.md`
+  - tutorial manifest source: `docs/tutorial/manifest.json`
+  - tutorial schema: `gentle.tutorial_manifest.v1`
+  - committed tutorial runtime outputs: `docs/tutorial/generated/`
+  - tutorial generator/check commands:
+    - `gentle_examples_docs tutorial-generate`
+    - `gentle_examples_docs tutorial-check`
   - test gating by example metadata:
     - `always`: execute in default test runs
     - `online`: execute only with `GENTLE_TEST_ONLINE=1`

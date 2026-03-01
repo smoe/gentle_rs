@@ -10,7 +10,7 @@ GENtle currently provides six binaries:
 - `gentle_cli`: JSON operation/workflow CLI for automation and AI tools
 - `gentle_js`: interactive JavaScript shell
 - `gentle_lua`: interactive Lua shell
-- `gentle_examples_docs`: generates adapter snippets from canonical protocol examples
+- `gentle_examples_docs`: generates adapter snippets and tutorial artifacts from canonical protocol examples
 - `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline)
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
@@ -30,6 +30,10 @@ Structured workflow examples:
   - `cargo run --bin gentle_examples_docs -- generate`
 - validation only:
   - `cargo run --bin gentle_examples_docs -- --check`
+- tutorial generation:
+  - `cargo run --bin gentle_examples_docs -- tutorial-generate`
+- tutorial drift check:
+  - `cargo run --bin gentle_examples_docs -- tutorial-check`
 - test gating:
   - `always` examples run in default tests
   - `online` examples run only with `GENTLE_TEST_ONLINE=1`
@@ -85,6 +89,7 @@ cargo run --bin gentle_js
 cargo run --bin gentle_lua
 cargo run --bin gentle_cli -- capabilities
 cargo run --bin gentle_examples_docs -- --check
+cargo run --bin gentle_examples_docs -- tutorial-check
 cargo run --bin gentle_mcp -- --help
 cargo run --bin gentle -- --version
 cargo run --bin gentle_cli -- --version
@@ -98,6 +103,7 @@ cargo run --release --bin gentle_js
 cargo run --release --bin gentle_lua
 cargo run --release --bin gentle_cli -- capabilities
 cargo run --release --bin gentle_examples_docs -- --check
+cargo run --release --bin gentle_examples_docs -- tutorial-check
 cargo run --release --bin gentle_mcp -- --help
 cargo run --release --bin gentle -- --version
 cargo run --release --bin gentle_cli -- --version
@@ -112,6 +118,8 @@ Canonical workflow examples are adapter-neutral JSON files:
 
 - source: `docs/examples/workflows/*.json`
 - generated adapter snippets: `docs/examples/generated/*.md`
+- tutorial manifest source: `docs/tutorial/manifest.json`
+- committed generated tutorial output: `docs/tutorial/generated/`
 
 Regenerate snippets on demand:
 
@@ -123,6 +131,18 @@ Validate example files and schema without writing output:
 
 ```bash
 cargo run --bin gentle_examples_docs -- --check
+```
+
+Generate tutorial markdown + retained artifacts:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-generate
+```
+
+Validate committed tutorial-generated output:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-check
 ```
 
 ## `gentle` (GUI launcher)
@@ -237,6 +257,7 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/load_and_digest_pgex.md`
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 - `docs/examples/generated/guides_filter_and_generate_oligos.md`
+- `docs/examples/generated/digest_ligation_extract_region_minimal.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
 
 ## `gentle_mcp` (MCP stdio server)
@@ -440,6 +461,7 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/load_and_digest_pgex.md`
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 - `docs/examples/generated/guides_filter_and_generate_oligos.md`
+- `docs/examples/generated/digest_ligation_extract_region_minimal.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
 
 ## File format expectations
@@ -1306,6 +1328,8 @@ Set adaptive linear DNA-letter routing parameters (shared GUI/runtime semantics)
 {"SetParameter":{"name":"linear_sequence_letter_layout_mode","value":"auto"}}
 {"SetParameter":{"name":"linear_sequence_helical_letters_enabled","value":true}}
 {"SetParameter":{"name":"linear_sequence_helical_phase_offset_bp","value":3}}
+{"SetParameter":{"name":"linear_show_reverse_strand_bases","value":true}}
+{"SetParameter":{"name":"linear_helical_parallel_strands","value":true}}
 ```
 
 Supported `linear_sequence_letter_layout_mode` values:
@@ -1324,6 +1348,11 @@ Compatibility notes:
   - `linear_sequence_condensed_max_view_span_bp`
 - `linear_sequence_helical_letters_enabled` applies to auto mode only
   (`linear_sequence_letter_layout_mode = auto*`).
+- reverse-strand visibility aliases map to the same control:
+  - `linear_show_double_strand_bases`
+  - `linear_show_reverse_strand_bases`
+- `linear_helical_parallel_strands=true` keeps forward/reverse helical slant
+  in parallel; `false` uses mirrored slant.
 
 Set TFBS display filtering parameters shared by GUI and SVG export:
 

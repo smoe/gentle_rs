@@ -33,6 +33,28 @@ Validation only:
 cargo run --bin gentle_examples_docs -- --check
 ```
 
+## Generate tutorial output
+
+Generated tutorial pages and retained runtime artifacts are committed under:
+
+- `docs/tutorial/generated`
+
+Source manifest:
+
+- `docs/tutorial/manifest.json` (schema `gentle.tutorial_manifest.v1`)
+
+Generate tutorial output:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-generate
+```
+
+Validate committed tutorial output against fresh generation:
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-check
+```
+
 ## Test examples
 
 Run default (offline-safe) example tests:

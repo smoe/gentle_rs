@@ -1,0 +1,24 @@
+GENtle Guide Oligo Protocol
+==========================
+
+Guide set: demo_guides
+Oligo set: demo_lenti
+Template: lenti_bsmbi_u6_default (U6 sgRNA cloning oligos with BsmBI overhangs)
+Generated guides: 1
+
+Suggested steps:
+1. Prepare oligo stocks according to ordering sheet.
+2. Anneal forward/reverse oligo pairs.
+3. Clone into vector backbone using template-defined overhang strategy.
+4. Transform, recover colonies, and verify insertion by sequencing.
+
+Guide oligos:
+- demo_1 (rank=1)
+  forward: CACCGACCTGTTGACGATGTTCCA
+  reverse: AAACTGGAACATCGTCAACAGGTCC
+
+QC checklist:
+- Confirm oligo lengths and overhang sequences.
+- Confirm no guide contains forbidden motifs for your cloning strategy.
+- Confirm expected insert size by colony PCR or digest.
+- Confirm sequence identity by Sanger/NGS.

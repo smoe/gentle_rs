@@ -278,7 +278,13 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Exports the active sequence map via engine `RenderSequenceSvg`.
 14. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
-     (map panel + sequence panel extract).
+     using the default `screen` profile (map panel + sequence panel extract).
+   - `View SVG ▾` exposes additional export profiles:
+     - `wide-context`: larger canvas + expanded base-span context around the
+       current linear viewport.
+     - `print-a3`: print-oriented A3 landscape SVG with expanded context and
+       physical-size metadata (`420mm x 297mm`) for direct print workflows.
+   - Debug builds include adaptive routing-tier diagnostics in the SVG header.
 15. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
@@ -655,17 +661,27 @@ The DNA map supports mouse interactions:
 - Click: selects a feature
 - Double-click: creates a sequence selection from the clicked feature or restriction site
 
+### Unified scroll/zoom policy
+
+Across GUI panes, GENtle uses one interaction policy:
+
+- Default wheel/trackpad scroll pans or scrolls content.
+- `Shift + wheel/trackpad` zooms on zoomable canvases.
+- `Option` (`Alt`) + drag enables hand-pan mode (`Grab`/`Grabbing` cursor).
+- Arrow keys pan the active hovered region.
+- `Shift + ArrowUp/ArrowRight` zoom in, `Shift + ArrowDown/ArrowLeft` zoom out
+  on zoomable canvases.
+- Non-zoom scroll panes (help/table/list areas) support keyboard scrolling with
+  `Arrow`, `PageUp/PageDown`, and `Home/End` when hovered and no text field has
+  keyboard focus.
+
 ### Linear DNA map: zoom and pan (mouse/touchpad)
 
 When the sequence is in linear mode and your pointer is over the map:
 
-- Zoom with vertical scroll:
-  - mouse wheel up/down
-  - touchpad two-finger vertical swipe
-- Pan with horizontal scroll:
-  - touchpad two-finger horizontal swipe
-  - on many mice/systems: Shift + mouse wheel
-- Zoom is centered around the current cursor position on the map.
+- wheel/trackpad scroll pans the viewport
+- `Shift + wheel` zooms around the current cursor position
+- `Option + drag` pans the map by hand
 
 Toolbar alternatives (linear mode):
 
@@ -674,24 +690,19 @@ Toolbar alternatives (linear mode):
 - `Fit`: reset view to full sequence
 - `Pan` slider: move the current viewport left/right
 
-Notes:
-
-- The map reacts to scroll only while hovered.
-- Scroll direction follows your OS/input-device settings (for example natural
-  scrolling).
-
 ### Lineage graph: zoom and pan (mouse/touchpad)
 
 In `Main window -> Graph` view:
 
 - Zoom:
-  - hold `Cmd` (macOS) or `Ctrl` (Windows/Linux), then scroll vertically
-    over the graph
-  - or use `-`, `+`, `Reset`, `Fit`, and the `Zoom` slider above the graph
+  - `Shift + wheel` over the graph (primary)
+  - `Cmd/Ctrl + wheel` also zooms (legacy alias kept for compatibility)
+  - `-`, `+`, `Reset`, `Fit`, and `Zoom` slider remain available
   - `Reset Layout` restores default node placement after manual moves
 - Pan:
-  - use scrollbars, mouse wheel, or touchpad scrolling in the graph viewport
-  - hold `Space` and drag on empty graph background
+  - scrollbars, wheel, or touchpad scrolling
+  - `Option + drag` pans by hand
+  - `Space + drag` on empty background remains available as a legacy alias
 - Node layout:
   - drag a node with the mouse to reposition it
   - double-click a node to open it (`pool` nodes open pool view)
@@ -722,13 +733,6 @@ In `Main window -> Graph` view:
   - the lineage page itself is vertically scrollable; oversized graph areas no
     longer hide the containers/arrangements section
   - panel heights can be adjusted with `Graph h` and `Container h`
-
-Why zoom controls differ between views:
-
-- Linear DNA map uses plain vertical scroll for zoom because it has dedicated
-  horizontal panning (scroll + pan slider) and a cursor-centered local viewport.
-- Lineage graph uses `Cmd/Ctrl + scroll` for zoom so plain scrolling remains
-  available for navigating the larger graph canvas.
 
 ## Command Palette and History/Jobs Panels
 
@@ -772,7 +776,7 @@ Current linear map conventions are:
     - `Force helical`
     - `Force condensed 10-row`
   - in `Auto adaptive`, density tiers are deterministic:
-    - `density <= 1.0`: standard letters
+    - `density <= 1.5`: standard letters
     - `density <= 2.0`: helical letters (if compressed letters enabled)
     - `density <= 10.0`: condensed 10-row letters (if compressed letters enabled)
     - `density > 10.0`: letters hidden (`OFF`)
@@ -788,8 +792,11 @@ Current linear map conventions are:
     row step, so the full 10-row band remains readable in dense views
   - feature lanes are pushed outward in condensed mode to preserve readability
     around the DNA text band
-  - forward/reverse strand letter placement remains symmetric around the DNA
-    baseline (with optional 180° reverse-letter rotation)
+  - reverse-strand letter visibility is configurable (`Show reverse-strand DNA letters`)
+  - helical strand geometry is configurable:
+    - `parallel` (same slant direction for forward/reverse)
+    - `mirrored` (cross-over slant)
+  - optional 180° reverse-letter rotation is available independently
   - the top-right map diagnostics show active mode, route policy, density,
     estimated columns fit, glyph width, and a deterministic reason string
   - Sequence-window edits are runtime-local; restart persistence still follows
@@ -863,7 +870,7 @@ Within `Region extraction and engine settings`, GUI provides:
 - `Feature details font` slider (`8.0..24.0 px`)
   - controls the font size used in the feature tree/detail text
   - persists in project display settings (`feature_details_font_size`)
-  - `Reset Font` restores default (`11.0 px`)
+  - `Reset Font` restores default (`9.0 px`)
 
 ## Design Constraints Filter (Engine Ops)
 
@@ -1056,8 +1063,9 @@ Recommended flow:
        - built-in defaults
        - optional defaults file / project override parameters
        - quick controls
-       - preset + advanced JSON override
+       - preset + structured thresholds + advanced JSON override
    - click `Run BLAST`
+   - while running, click `Cancel BLAST` in the dialog (or `Cancel` in `Window -> Show Background Jobs`).
    - BLAST runs in background and keeps the UI responsive; pool mode returns one result set per member
    - BLAST itself does not expose a native `% complete` CLI flag; GENtle therefore shows:
      - query-level progress (`done / total`)

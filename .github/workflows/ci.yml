@@ -42,6 +42,21 @@ jobs:
       - name: Cargo check
         run: cargo check -q
 
+      - name: Examples and tutorial schema/drift checks
+        run: |
+          cargo run --bin gentle_examples_docs -- --check
+          cargo run --bin gentle_examples_docs -- tutorial-check
+
+      - name: Workflow example runtime tests
+        run: cargo test -q workflow_examples -- --test-threads=1
+
+      - name: Tutorial core CLI runtime smoke
+        run: |
+          cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
+          cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json
+          cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
+          cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
+
       - name: Engine tests
         run: cargo test -q "engine::tests::"
 
@@ -59,6 +74,17 @@ jobs:
 
       - name: Render snapshot tests
         run: cargo test -q render_export::tests::snapshot_
+
+      - name: Archive export-ignore guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_path="$RUNNER_TEMP/gentle-src.tar"
+          git archive --format=tar HEAD > "$archive_path"
+          if tar -tf "$archive_path" | grep -q '^docs/tutorial/generated/'; then
+            echo "docs/tutorial/generated unexpectedly present in git archive output"
+            exit 1
+          fi
 
       - name: CLI protocol smoke test
         run: |

@@ -8,6 +8,24 @@ This project publishes installable desktop packages for:
 Linux installable packaging is intentionally deferred. The target is Debian
 packaging once dependency packaging is finalized.
 
+## Source Archive Exclusions
+
+Tutorial runtime-generated files are committed for GitHub browsing under:
+
+- `docs/tutorial/generated/`
+
+They are excluded from `git archive` source bundles via:
+
+- `.gitattributes`: `docs/tutorial/generated/** export-ignore`
+
+Local guard check:
+
+```bash
+archive_path=/tmp/gentle-src.tar
+git archive --format=tar HEAD > "$archive_path"
+tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
+```
+
 ## Workflows
 
 - CI validation workflow: `.github/workflows/ci.yml`
@@ -66,4 +84,3 @@ If a release artifact is broken:
    create a new patch tag (`vX.Y.Z+1`) and publish normally.
 3. If needed, remove incorrect assets from the GitHub Release UI before
    republishing.
-
