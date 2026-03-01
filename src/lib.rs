@@ -83,6 +83,8 @@ pub mod resource_sync;
 pub mod restriction_enzyme;
 /// RNA structure wrappers and tool integration glue.
 pub mod rna_structure;
+/// Shared wheel/key/cursor interaction policy for scroll, pan, and zoom.
+pub mod scroll_input_policy;
 /// Sequence-row abstraction shared by specialized row renderers.
 pub mod sequence_rows;
 /// Blank-row renderer implementation.

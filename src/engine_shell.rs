@@ -3386,6 +3386,19 @@ impl ShellCommand {
                     "set compressed linear DNA letters '{}' (applies in auto mode)",
                     value_json
                 ),
+                "linear_show_double_strand_bases"
+                | "show_linear_double_strand_bases"
+                | "linear_show_reverse_strand_bases"
+                | "show_linear_reverse_strand_bases" => format!(
+                    "set reverse-strand linear DNA letter visibility to {}",
+                    value_json
+                ),
+                "linear_helical_parallel_strands" | "linear_sequence_helical_parallel_strands" => {
+                    format!(
+                        "set parallel-vs-mirrored helical strand geometry to {}",
+                        value_json
+                    )
+                }
                 "linear_sequence_base_text_max_view_span_bp"
                 | "linear_base_text_max_view_span_bp"
                 | "sequence_base_text_max_view_span_bp"

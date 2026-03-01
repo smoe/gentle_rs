@@ -187,6 +187,8 @@ pub struct DisplaySettings {
     pub linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode,
     pub linear_sequence_helical_phase_offset_bp: usize,
     pub linear_show_double_strand_bases: bool,
+    #[serde(default = "DisplaySettings::default_linear_helical_parallel_strands")]
+    pub linear_helical_parallel_strands: bool,
     pub linear_hide_backbone_when_sequence_bases_visible: bool,
     pub linear_reverse_strand_use_upside_down_letters: bool,
     pub feature_details_font_size: f32,
@@ -201,6 +203,10 @@ impl DisplaySettings {
 
     pub const fn default_linear_sequence_condensed_max_view_span_bp() -> usize {
         1500
+    }
+
+    pub const fn default_linear_helical_parallel_strands() -> bool {
+        true
     }
 }
 
@@ -251,6 +257,7 @@ impl Default for DisplaySettings {
             linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::AutoAdaptive,
             linear_sequence_helical_phase_offset_bp: 0,
             linear_show_double_strand_bases: true,
+            linear_helical_parallel_strands: Self::default_linear_helical_parallel_strands(),
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
             feature_details_font_size: 9.0,
@@ -4699,15 +4706,17 @@ impl GentleEngine {
         max_hits: usize,
         task: Option<&str>,
         cache_dir: Option<&str>,
+        should_cancel: &mut dyn FnMut() -> bool,
     ) -> Result<GenomeBlastReport, EngineError> {
         let (catalog, catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
         catalog
-            .blast_sequence_with_cache(
+            .blast_sequence_with_cache_and_cancel(
                 genome_id,
                 query_sequence,
                 max_hits,
                 task,
                 cache_dir.map(str::trim).filter(|v| !v.is_empty()),
+                should_cancel,
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
@@ -4725,6 +4734,7 @@ impl GentleEngine {
         task: Option<&str>,
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
+        should_cancel: &mut dyn FnMut() -> bool,
     ) -> Result<GenomeBlastReport, EngineError> {
         let chosen = catalog_path
             .map(str::trim)
@@ -4737,6 +4747,7 @@ impl GentleEngine {
             max_hits,
             task,
             cache_dir,
+            should_cancel,
         )
     }
 
@@ -5007,6 +5018,30 @@ impl GentleEngine {
         legacy_max_hits: Option<usize>,
         cache_dir: Option<&str>,
     ) -> Result<GenomeBlastReport, EngineError> {
+        let mut never_cancel = || false;
+        self.blast_reference_genome_with_project_and_request_options_and_cancel(
+            catalog_path,
+            genome_id,
+            query_sequence,
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+            cache_dir,
+            &mut never_cancel,
+        )
+    }
+
+    pub fn blast_reference_genome_with_project_and_request_options_and_cancel(
+        &self,
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+        cache_dir: Option<&str>,
+        should_cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<GenomeBlastReport, EngineError> {
         let resolved = self.resolve_blast_options_for_request(
             request_override_json,
             legacy_task,
@@ -5019,6 +5054,7 @@ impl GentleEngine {
             resolved.max_hits,
             Some(&resolved.task),
             cache_dir,
+            should_cancel,
         )?;
         Self::apply_blast_thresholds_to_report(&mut report, &resolved.thresholds)?;
         report.options_override_json = request_override_json.cloned();
@@ -5036,6 +5072,30 @@ impl GentleEngine {
         catalog_path: Option<&str>,
         cache_dir: Option<&str>,
     ) -> Result<GenomeBlastReport, EngineError> {
+        let mut never_cancel = || false;
+        self.blast_helper_genome_with_project_and_request_options_and_cancel(
+            genome_id,
+            query_sequence,
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+            catalog_path,
+            cache_dir,
+            &mut never_cancel,
+        )
+    }
+
+    pub fn blast_helper_genome_with_project_and_request_options_and_cancel(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+        should_cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<GenomeBlastReport, EngineError> {
         let resolved = self.resolve_blast_options_for_request(
             request_override_json,
             legacy_task,
@@ -5048,6 +5108,7 @@ impl GentleEngine {
             Some(&resolved.task),
             catalog_path,
             cache_dir,
+            should_cancel,
         )?;
         Self::apply_blast_thresholds_to_report(&mut report, &resolved.thresholds)?;
         report.options_override_json = request_override_json.cloned();
@@ -17686,7 +17747,11 @@ impl GentleEngine {
                 | "tfbs_display_use_true_log_odds_quantile"
                 | "auto_hide_sequence_panel_when_linear_bases_visible"
                 | "linear_show_double_strand_bases"
+                | "linear_show_reverse_strand_bases"
                 | "show_linear_double_strand_bases"
+                | "show_linear_reverse_strand_bases"
+                | "linear_helical_parallel_strands"
+                | "linear_sequence_helical_parallel_strands"
                 | "linear_hide_backbone_when_sequence_bases_visible"
                 | "hide_linear_backbone_when_bases_visible"
                 | "linear_sequence_helical_letters_enabled"
@@ -17727,8 +17792,15 @@ impl GentleEngine {
                                 .display
                                 .auto_hide_sequence_panel_when_linear_bases_visible = raw
                         }
-                        "linear_show_double_strand_bases" | "show_linear_double_strand_bases" => {
+                        "linear_show_double_strand_bases"
+                        | "linear_show_reverse_strand_bases"
+                        | "show_linear_double_strand_bases"
+                        | "show_linear_reverse_strand_bases" => {
                             self.state.display.linear_show_double_strand_bases = raw
+                        }
+                        "linear_helical_parallel_strands"
+                        | "linear_sequence_helical_parallel_strands" => {
+                            self.state.display.linear_helical_parallel_strands = raw
                         }
                         "linear_hide_backbone_when_sequence_bases_visible"
                         | "hide_linear_backbone_when_bases_visible" => {
@@ -18952,6 +19024,18 @@ exit 2
                 value: serde_json::json!(true),
             })
             .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_helical_parallel_strands".to_string(),
+                value: serde_json::json!(false),
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "linear_show_reverse_strand_bases".to_string(),
+                value: serde_json::json!(false),
+            })
+            .unwrap();
         assert!(
             engine
                 .state()
@@ -18989,6 +19073,8 @@ exit 2
                 .display
                 .linear_hide_backbone_when_sequence_bases_visible
         );
+        assert!(!engine.state().display.linear_helical_parallel_strands);
+        assert!(!engine.state().display.linear_show_double_strand_bases);
     }
 
     #[test]

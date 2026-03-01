@@ -111,6 +111,11 @@ Linear map zoom detail:
   - medium density: helical-compressed letters (when compressed mode is enabled)
   - high density: condensed 10-row letters (when compressed mode is enabled)
   - over-capacity density: letters are hidden (`OFF`) to preserve readability
+- In `HELICAL` mode, base letters now use a true oscillating phase path
+  (sin/cos projection) with endpoint pinning, so the first/last visible bases
+  remain anchored to viewport edges while interior overlap is distributed.
+- When `Hide DNA backbone line when letters are shown` is enabled and bases are
+  visible, the backbone line and bp tick marks are both suppressed.
 - In debug builds, the top-right DNA diagnostics additionally show the active
   tier thresholds (`standard/helical/condensed`) used by adaptive routing.
 

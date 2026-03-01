@@ -50,6 +50,7 @@ use crate::{
     },
     icons::APP_ICON,
     resource_sync,
+    scroll_input_policy::{self, WheelIntent, ZoomDirection},
     shell_docs::{
         shell_help_markdown as render_shell_help_markdown,
         shell_help_markdown_from_glossary_json as render_shell_help_markdown_from_glossary_json,
@@ -789,6 +790,7 @@ impl GenomeBlastOptionsPreset {
 struct GenomeBlastTask {
     job_id: u64,
     started: Instant,
+    cancel_requested: Arc<AtomicBool>,
     receiver: mpsc::Receiver<GenomeBlastTaskMessage>,
 }
 
@@ -1545,6 +1547,7 @@ impl GENtleApp {
             source.linear_sequence_helical_phase_offset_bp,
         );
         target.linear_show_double_strand_bases = source.linear_show_double_strand_bases;
+        target.linear_helical_parallel_strands = source.linear_helical_parallel_strands;
         target.linear_hide_backbone_when_sequence_bases_visible =
             source.linear_hide_backbone_when_sequence_bases_visible;
         target.linear_reverse_strand_use_upside_down_letters =
@@ -2234,6 +2237,31 @@ Error: `{err}`"
         );
     }
 
+    fn request_blast_task_cancel(&mut self, origin: &str) {
+        let Some((job_id, already_requested)) = self.genome_blast_task.as_ref().map(|task| {
+            (
+                task.job_id,
+                task.cancel_requested.swap(true, Ordering::Relaxed),
+            )
+        }) else {
+            self.genome_blast_status = "No running BLAST job to cancel".to_string();
+            return;
+        };
+
+        if already_requested {
+            self.genome_blast_status = "Cancellation was already requested for BLAST".to_string();
+            return;
+        }
+
+        self.genome_blast_status = "Cancellation requested for running BLAST job".to_string();
+        self.push_job_event(
+            BackgroundJobKind::BlastGenome,
+            BackgroundJobEventPhase::CancelRequested,
+            Some(job_id),
+            format!("Cancellation requested from {origin}"),
+        );
+    }
+
     fn has_active_background_jobs(&self) -> bool {
         self.genome_prepare_task.is_some()
             || self.genome_blast_task.is_some()
@@ -2903,6 +2931,7 @@ Error: `{err}`"
             .linear_sequence_helical_phase_offset_bp
             .hash(&mut hasher);
         display.linear_show_double_strand_bases.hash(&mut hasher);
+        display.linear_helical_parallel_strands.hash(&mut hasher);
         display
             .linear_hide_backbone_when_sequence_bases_visible
             .hash(&mut hasher);
@@ -5189,6 +5218,10 @@ Error: `{err}`"
         egui::ScrollArea::vertical()
             .max_height(280.0)
             .show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
                 for record in chromosomes {
                     ui.horizontal(|ui| {
                         ui.add_sized(
@@ -5917,6 +5950,7 @@ Error: `{err}`"
         let project_state_snapshot = self.engine.read().unwrap().state().clone();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
+        let cancel_requested = Arc::new(AtomicBool::new(false));
         self.genome_blast_results.clear();
         self.genome_blast_selected_result = 0;
         self.genome_blast_progress_fraction = Some(0.0);
@@ -5947,11 +5981,14 @@ Error: `{err}`"
         self.genome_blast_task = Some(GenomeBlastTask {
             job_id,
             started: Instant::now(),
+            cancel_requested: cancel_requested.clone(),
             receiver: rx,
         });
         std::thread::spawn(move || {
             let mut reports: Vec<GenomeBlastQueryResult> = vec![];
             let mut failed_queries: Vec<String> = vec![];
+            let mut cancelled = false;
+            let cancel_flag = cancel_requested.clone();
             let task_name_for_status = resolved_preview.task.clone();
             let max_hits_for_status = resolved_preview.max_hits;
             let blastn_bin_for_status = env::var(BLASTN_ENV_BIN)
@@ -5961,6 +5998,14 @@ Error: `{err}`"
                 .unwrap_or_else(|| DEFAULT_BLASTN_BIN.to_string());
 
             for (idx, (label, query)) in blast_queries.into_iter().enumerate() {
+                if cancel_flag.load(Ordering::Relaxed) {
+                    let _ = tx.send(GenomeBlastTaskMessage::Status {
+                        job_id,
+                        status: format!("BLAST cancellation acknowledged before query '{}'", label),
+                    });
+                    cancelled = true;
+                    break;
+                }
                 let _ = tx.send(GenomeBlastTaskMessage::Progress {
                     job_id,
                     done_queries: idx,
@@ -5990,10 +6035,12 @@ Error: `{err}`"
                 let task_for_query = legacy_task_arg.clone();
                 let request_override_for_query = request_override_json.clone();
                 let project_state_for_query = project_state_snapshot.clone();
+                let cancel_for_query = cancel_flag.clone();
                 std::thread::spawn(move || {
                     let blast_engine = GentleEngine::from_state(project_state_for_query);
+                    let mut should_cancel = || cancel_for_query.load(Ordering::Relaxed);
                     let outcome = blast_engine
-                        .blast_reference_genome_with_project_and_request_options(
+                        .blast_reference_genome_with_project_and_request_options_and_cancel(
                             catalog_for_query.as_deref(),
                             &genome_for_query,
                             &query,
@@ -6001,6 +6048,7 @@ Error: `{err}`"
                             task_for_query.as_deref(),
                             Some(legacy_max_hits),
                             cache_for_query.as_deref(),
+                            &mut should_cancel,
                         );
                     let _ = query_tx.send(outcome);
                 });
@@ -6009,12 +6057,18 @@ Error: `{err}`"
                     match query_rx.recv_timeout(Duration::from_millis(250)) {
                         Ok(outcome) => break outcome,
                         Err(mpsc::RecvTimeoutError::Timeout) => {
+                            let cancel_suffix = if cancel_flag.load(Ordering::Relaxed) {
+                                " (cancellation requested)"
+                            } else {
+                                ""
+                            };
                             let _ = tx.send(GenomeBlastTaskMessage::Status {
                                 job_id,
                                 status: format!(
-                                    "BLAST query '{}' running ({:.1}s)\ninvocation template: {}",
+                                    "BLAST query '{}' running ({:.1}s){}\ninvocation template: {}",
                                     label,
                                     query_started.elapsed().as_secs_f32(),
+                                    cancel_suffix,
                                     invocation_template
                                 ),
                             });
@@ -6051,6 +6105,20 @@ Error: `{err}`"
                         });
                     }
                     Err(e) => {
+                        if crate::genomes::is_blast_cancelled_error(&e.message)
+                            || cancel_flag.load(Ordering::Relaxed)
+                        {
+                            let _ = tx.send(GenomeBlastTaskMessage::Status {
+                                job_id,
+                                status: format!(
+                                    "BLAST cancelled while running query '{}' after {:.1}s",
+                                    label,
+                                    query_started.elapsed().as_secs_f32()
+                                ),
+                            });
+                            cancelled = true;
+                            break;
+                        }
                         let _ = tx.send(GenomeBlastTaskMessage::Status {
                             job_id,
                             status: format!(
@@ -6071,7 +6139,15 @@ Error: `{err}`"
                 });
             }
 
-            let done_result = if reports.is_empty() && !failed_queries.is_empty() {
+            let completed_queries = reports.len() + failed_queries.len();
+            let done_result = if cancelled {
+                Err(format!(
+                    "BLAST cancelled by user after {} / {} quer{}",
+                    completed_queries,
+                    total_queries,
+                    if total_queries == 1 { "y" } else { "ies" }
+                ))
+            } else if reports.is_empty() && !failed_queries.is_empty() {
                 Err(format!(
                     "BLAST failed for all queries: {}",
                     failed_queries.join(" | ")
@@ -6118,9 +6194,12 @@ Error: `{err}`"
                         } else {
                             (done_queries as f32 / total_queries as f32).clamp(0.0, 1.0)
                         };
+                        let canceling = task.cancel_requested.load(Ordering::Relaxed);
                         self.genome_blast_progress_fraction = Some(fraction);
-                        self.genome_blast_progress_label =
-                            format!("{done_queries} / {total_queries} ({current_query_label})");
+                        self.genome_blast_progress_label = format!(
+                            "{done_queries} / {total_queries} ({current_query_label}){}",
+                            if canceling { " [cancel requested]" } else { "" }
+                        );
                     }
                     Ok(GenomeBlastTaskMessage::Status { job_id, status }) => {
                         if job_id != active_job_id {
@@ -6164,6 +6243,11 @@ Error: `{err}`"
                 .as_ref()
                 .map(|task| task.started.elapsed().as_secs_f64())
                 .unwrap_or(0.0);
+            let cancellation_requested = self
+                .genome_blast_task
+                .as_ref()
+                .map(|task| task.cancel_requested.load(Ordering::Relaxed))
+                .unwrap_or(false);
             self.genome_blast_task = None;
             self.genome_blast_progress_fraction = None;
             self.genome_blast_progress_label.clear();
@@ -6181,7 +6265,25 @@ Error: `{err}`"
                         .iter()
                         .map(|r| r.report.hit_count)
                         .sum();
-                    if batch.failed_queries.is_empty() {
+                    if cancellation_requested {
+                        self.genome_blast_status = format!(
+                            "BLAST finished after cancellation request in {:.1}s: {} query result(s), {} total hit(s)",
+                            elapsed,
+                            self.genome_blast_results.len(),
+                            hit_total
+                        );
+                        self.push_job_event(
+                            BackgroundJobKind::BlastGenome,
+                            BackgroundJobEventPhase::Completed,
+                            Some(job_id),
+                            format!(
+                                "BLAST finished after cancellation request in {:.1}s: {} result(s), {} hit(s)",
+                                elapsed,
+                                self.genome_blast_results.len(),
+                                hit_total
+                            ),
+                        );
+                    } else if batch.failed_queries.is_empty() {
                         self.genome_blast_status = format!(
                             "BLAST finished in {:.1}s: {} query result(s), {} total hit(s)",
                             elapsed,
@@ -6228,7 +6330,16 @@ Error: `{err}`"
                 Err(e) => {
                     self.genome_blast_results.clear();
                     self.genome_blast_selected_result = 0;
-                    self.genome_blast_status = format!("BLAST failed after {:.1}s: {}", elapsed, e);
+                    if cancellation_requested
+                        || crate::genomes::is_blast_cancelled_error(&e)
+                        || e.to_ascii_lowercase().contains("cancel")
+                    {
+                        self.genome_blast_status =
+                            format!("BLAST cancelled after {:.1}s: {}", elapsed, e);
+                    } else {
+                        self.genome_blast_status =
+                            format!("BLAST failed after {:.1}s: {}", elapsed, e);
+                    }
                     self.push_job_event(
                         BackgroundJobKind::BlastGenome,
                         BackgroundJobEventPhase::Failed,
@@ -6973,6 +7084,10 @@ Error: `{err}`"
                         egui::ScrollArea::vertical()
                             .max_height(120.0)
                             .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
                                 for biotype in biotypes {
                                     if let Some(enabled) =
                                         self.genome_biotype_filter.get_mut(&biotype)
@@ -7041,6 +7156,10 @@ Error: `{err}`"
                     egui::ScrollArea::vertical()
                         .max_height(220.0)
                         .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
                             for idx in filtered_indices
                                 .iter()
                                 .copied()
@@ -7175,6 +7294,10 @@ Error: `{err}`"
             ));
         }
         egui::ScrollArea::both().max_height(280.0).show(ui, |ui| {
+            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                ui,
+                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            );
             egui::Grid::new(format!("blast_hits_{}", result.query_label))
                 .striped(true)
                 .show(ui, |ui| {
@@ -7630,6 +7753,13 @@ Error: `{err}`"
                 self.start_reference_genome_blast();
             }
             if ui
+                .add_enabled(running, egui::Button::new("Cancel BLAST"))
+                .on_hover_text("Request cancellation of the running BLAST task")
+                .clicked()
+            {
+                self.request_blast_task_cancel("blast dialog");
+            }
+            if ui
                 .button("Clear Results")
                 .on_hover_text("Clear all BLAST query results from this dialog")
                 .clicked()
@@ -7814,6 +7944,10 @@ Error: `{err}`"
                             egui::ScrollArea::vertical()
                                 .max_height(320.0)
                                 .show(ui, |ui| {
+                                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                        ui,
+                                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                    );
                                     egui::Grid::new("prepared_genome_inspector_grid")
                                         .striped(true)
                                         .num_columns(8)
@@ -8992,6 +9126,10 @@ Error: `{err}`"
             egui::ScrollArea::vertical()
                 .max_height(180.0)
                 .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
                     for entry in self.agent_execution_log.iter().rev() {
                         ui.label(format!(
                             "#{} [{}] {} | {} | changed={} | t={}",
@@ -11909,6 +12047,10 @@ Error: `{err}`"
             .id_salt("lineage_main_scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
                 ui.collapsing("Node Groups", |ui| {
                     ui.small(
                         "Group lineage nodes into disjoint sets. Members are shown indented in table view and can collapse to the representative node in graph view.",
@@ -12240,7 +12382,7 @@ Error: `{err}`"
                     ui.set_max_width(graph_resize_width);
                     graph_area_height = ui.max_rect().height().clamp(220.0, 2400.0);
                     ui.small(
-                        "Resize area by dragging lower edge. Hold Space + drag background to pan. Drag nodes to reposition. Cmd/Ctrl+scroll zooms.",
+                        "Resize area by dragging lower edge. Shift+scroll zooms (Cmd/Ctrl+scroll still works). Option+drag pans; Space+drag pans on background. Drag nodes to reposition.",
                     );
                     let graph_scroll_output = egui::ScrollArea::both()
                         .id_salt("lineage_graph_scroll")
@@ -12275,16 +12417,48 @@ Error: `{err}`"
                                 Vec2::new(width, height),
                                 egui::Sense::click_and_drag(),
                             );
+                            let mut graph_wheel_intent = WheelIntent::None;
                             if resp.hovered() {
-                                let (zoom_modifier, scroll_y) = ui.input(|i| {
-                                    (
-                                        i.modifiers.ctrl || i.modifiers.command,
-                                        i.smooth_scroll_delta.y,
-                                    )
-                                });
-                                if zoom_modifier && scroll_y.abs() > f32::EPSILON {
-                                    let factor = (1.0 + scroll_y * 0.0015).clamp(0.8, 1.25);
+                                let (wheel_delta, modifiers) =
+                                    ui.input(|i| (i.smooth_scroll_delta, i.modifiers));
+                                graph_wheel_intent = scroll_input_policy::lineage_graph_wheel_intent(
+                                    wheel_delta,
+                                    modifiers,
+                                );
+                                if let WheelIntent::Zoom { direction, amount } = graph_wheel_intent
+                                {
+                                    let signed_amount = if direction == ZoomDirection::In {
+                                        amount
+                                    } else {
+                                        -amount
+                                    };
+                                    let factor = (1.0 + signed_amount * 0.0015).clamp(0.8, 1.25);
                                     graph_zoom = (graph_zoom * factor).clamp(0.35, 4.0);
+                                }
+                                if !ui.ctx().wants_keyboard_input() {
+                                    let keyboard_pan_delta = ui.input(|i| {
+                                        scroll_input_policy::canvas_keyboard_pan_delta(
+                                            i,
+                                            scroll_input_policy::DEFAULT_CANVAS_PAN_STEP,
+                                        )
+                                    });
+                                    if keyboard_pan_delta != Vec2::ZERO {
+                                        graph_scroll_offset.x =
+                                            (graph_scroll_offset.x + keyboard_pan_delta.x).max(0.0);
+                                        graph_scroll_offset.y =
+                                            (graph_scroll_offset.y + keyboard_pan_delta.y).max(0.0);
+                                    }
+                                    let zoom_steps =
+                                        ui.input(scroll_input_policy::canvas_keyboard_zoom_steps);
+                                    if zoom_steps != 0 {
+                                        for _ in 0..zoom_steps.unsigned_abs() {
+                                            graph_zoom = if zoom_steps > 0 {
+                                                (graph_zoom * 1.12).clamp(0.35, 4.0)
+                                            } else {
+                                                (graph_zoom / 1.12).clamp(0.35, 4.0)
+                                            };
+                                        }
+                                    }
                                 }
                             }
                             let dense_graph = rows.len() >= 22 || lineage_edges.len() >= 30;
@@ -13127,9 +13301,17 @@ Error: `{err}`"
                                     ui.label("No node under cursor");
                                 }
                             });
-                            let space_pan_requested = ui.input(|i| i.key_down(Key::Space));
+                            let (space_pan_requested, option_pan_requested, modifiers) = ui
+                                .input(|i| {
+                                    (
+                                        i.key_down(Key::Space),
+                                        scroll_input_policy::option_pan_modifier_active(i.modifiers),
+                                        i.modifiers,
+                                    )
+                                });
                             if resp.drag_started() {
-                                if space_pan_requested && hit_row.is_none() {
+                                if option_pan_requested || (space_pan_requested && hit_row.is_none())
+                                {
                                     self.lineage_graph_pan_origin = Some(graph_scroll_offset);
                                     self.lineage_graph_drag_origin = None;
                                 } else if let Some(row) = hit_row {
@@ -13174,12 +13356,16 @@ Error: `{err}`"
                                     }
                                 }
                             }
-                            if self.lineage_graph_pan_origin.is_some() {
-                                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                            if let Some(cursor) = scroll_input_policy::canvas_hover_cursor(
+                                modifiers,
+                                true,
+                                self.lineage_graph_pan_origin.is_some(),
+                                self.lineage_graph_drag_origin.is_some(),
+                                graph_wheel_intent,
+                            ) {
+                                ui.output_mut(|o| o.cursor_icon = cursor);
                             } else if space_pan_requested && hit_row.is_none() {
                                 ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
-                            } else if self.lineage_graph_drag_origin.is_some() {
-                                ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
                             }
                             if self.lineage_graph_pan_origin.is_none()
                                 && self.lineage_graph_drag_origin.is_none()
@@ -13248,6 +13434,10 @@ Error: `{err}`"
                 .auto_shrink([false, false])
                 .max_height(table_max_height)
                 .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
                     ui.set_min_width(1080.0);
                     egui::Grid::new("lineage_table_grid")
                         .striped(true)
@@ -13647,6 +13837,10 @@ Error: `{err}`"
                     .auto_shrink([false, false])
                     .max_height(ui.available_height())
                     .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
                         egui::Grid::new("container_grid")
                             .striped(true)
                             .show(ui, |ui| {
@@ -13988,6 +14182,8 @@ Error: `{err}`"
             defaults.linear_sequence_helical_phase_offset_bp;
         self.configuration_graphics.linear_show_double_strand_bases =
             defaults.linear_show_double_strand_bases;
+        self.configuration_graphics.linear_helical_parallel_strands =
+            defaults.linear_helical_parallel_strands;
         self.configuration_graphics
             .linear_hide_backbone_when_sequence_bases_visible =
             defaults.linear_hide_backbone_when_sequence_bases_visible;
@@ -14461,9 +14657,20 @@ Error: `{err}`"
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.linear_show_double_strand_bases,
-                "Render double-strand DNA letters in linear view",
+                "Show reverse-strand DNA letters in linear view",
             )
             .changed();
+        if self.configuration_graphics.linear_show_double_strand_bases {
+            changed |= ui
+                .checkbox(
+                    &mut self.configuration_graphics.linear_helical_parallel_strands,
+                    "Keep helical strands parallel (same slant direction)",
+                )
+                .on_hover_text(
+                    "When enabled, forward and reverse strands move in parallel during helical rendering; disable for mirrored/cross-over slant.",
+                )
+                .changed();
+        }
         let hide_backbone_changed = ui
             .checkbox(
                 &mut self
@@ -14957,12 +15164,18 @@ Error: `{err}`"
             ui.separator();
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .show(ui, |ui| match self.configuration_tab {
-                    ConfigurationTab::ExternalApplications => {
-                        self.render_configuration_external_tab(ui);
-                    }
-                    ConfigurationTab::Graphics => {
-                        self.render_configuration_graphics_tab(ui);
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    match self.configuration_tab {
+                        ConfigurationTab::ExternalApplications => {
+                            self.render_configuration_external_tab(ui);
+                        }
+                        ConfigurationTab::Graphics => {
+                            self.render_configuration_graphics_tab(ui);
+                        }
                     }
                 });
         });
@@ -15133,6 +15346,10 @@ Error: `{err}`"
                         egui::ScrollArea::vertical()
                             .max_height(400.0)
                             .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
                                 for (idx, entry) in entries.iter().enumerate() {
                                     let selected = self.command_palette_selected == idx;
                                     let label = format!("{} — {}", entry.title, entry.detail);
@@ -15242,11 +15459,20 @@ Error: `{err}`"
 
                 ui.separator();
                 ui.strong("BLAST");
+                let mut cancel_blast_clicked = false;
                 if let Some(task) = &self.genome_blast_task {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
                         ui.label(format!("Running ({:.1}s)", task.started.elapsed().as_secs_f32()));
-                        ui.small("Cancellation is not yet available for BLAST jobs");
+                        if task.cancel_requested.load(Ordering::Relaxed) {
+                            ui.small("Cancellation requested...");
+                        } else if ui
+                            .button("Cancel")
+                            .on_hover_text("Request cancellation of running BLAST job")
+                            .clicked()
+                        {
+                            cancel_blast_clicked = true;
+                        }
                     });
                     if let Some(fraction) = self.genome_blast_progress_fraction {
                         ui.add(
@@ -15272,6 +15498,9 @@ Error: `{err}`"
                             self.start_reference_genome_blast();
                         }
                     });
+                }
+                if cancel_blast_clicked {
+                    self.request_blast_task_cancel("background jobs panel");
                 }
                 if !self.genome_blast_status.trim().is_empty() {
                     ui.small(self.genome_blast_status.clone());
@@ -15365,6 +15594,10 @@ Error: `{err}`"
                 egui::ScrollArea::vertical()
                     .max_height(180.0)
                     .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
                         for event in self.job_event_log.iter().rev().take(40) {
                             ui.small(event.to_line());
                         }
@@ -15429,6 +15662,10 @@ Error: `{err}`"
                     ui.small("No operations recorded yet.");
                 } else {
                     egui::ScrollArea::vertical().show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
                         for (op_id, run_id, summary) in &history_rows {
                             ui.monospace(format!("[{op_id}] run={run_id}"));
                             ui.small(summary);
@@ -15674,6 +15911,10 @@ Error: `{err}`"
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
                 let markdown = self.active_help_markdown().to_string();
                 let max_image_width = (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
                 CommonMarkViewer::new()
@@ -16689,6 +16930,39 @@ mod tests {
     }
 
     #[test]
+    fn request_blast_cancel_is_idempotent() {
+        let mut app = GENtleApp::default();
+        let (_tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
+        app.genome_blast_task = Some(GenomeBlastTask {
+            job_id: 43,
+            started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            receiver: rx,
+        });
+
+        app.request_blast_task_cancel("test");
+        app.request_blast_task_cancel("test");
+
+        let cancel_events = app
+            .job_event_log
+            .iter()
+            .filter(|event| {
+                event.kind == BackgroundJobKind::BlastGenome
+                    && event.phase == BackgroundJobEventPhase::CancelRequested
+                    && event.job_id == Some(43)
+            })
+            .count();
+        assert_eq!(cancel_events, 1);
+        assert!(
+            app.genome_blast_task
+                .as_ref()
+                .expect("blast task should still exist")
+                .cancel_requested
+                .load(Ordering::Relaxed)
+        );
+    }
+
+    #[test]
     fn poll_prepare_ignores_stale_job_messages() {
         let mut app = GENtleApp::default();
         let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
@@ -16812,6 +17086,7 @@ mod tests {
         app.genome_blast_task = Some(GenomeBlastTask {
             job_id: 71,
             started: Instant::now(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
             receiver: rx,
         });
         tx.send(GenomeBlastTaskMessage::Status {

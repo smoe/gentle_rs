@@ -31,6 +31,7 @@ use crate::{
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_export::{export_circular_svg, export_linear_svg},
     render_sequence::RenderSequence,
+    scroll_input_policy::{self, WheelIntent, ZoomDirection},
     tf_motifs,
     window_backdrop::{
         WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
@@ -342,7 +343,7 @@ struct EngineOpsUiState {
 
 #[cfg(test)]
 mod tests {
-    use super::MainAreaDna;
+    use super::{MainAreaDna, ViewSvgExportProfile};
     use crate::{
         dna_sequence::DNAsequence,
         engine::{GentleEngine, LinearSequenceLetterLayoutMode, ProjectState},
@@ -838,6 +839,46 @@ mod tests {
     }
 
     #[test]
+    fn view_svg_export_profiles_scale_canvas_and_context() {
+        let screen =
+            MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::Screen, 1280.0, true, true);
+        let wide = MainAreaDna::view_svg_export_layout(
+            ViewSvgExportProfile::WideContext,
+            1280.0,
+            true,
+            true,
+        );
+        let print = MainAreaDna::view_svg_export_layout(
+            ViewSvgExportProfile::PrintA3Landscape,
+            1280.0,
+            true,
+            true,
+        );
+
+        assert!(wide.canvas_width_px > screen.canvas_width_px);
+        assert!(print.canvas_width_px > wide.canvas_width_px);
+        assert!(wide.viewport_span_multiplier > screen.viewport_span_multiplier);
+        assert!(print.viewport_span_multiplier > wide.viewport_span_multiplier);
+        assert_eq!(print.print_size_mm, Some((420.0, 297.0)));
+    }
+
+    #[test]
+    fn expand_linear_export_window_expands_and_clamps_to_bounds() {
+        assert_eq!(
+            MainAreaDna::expand_linear_export_window(100, 200, 1000, 2.0),
+            (0, 400)
+        );
+        assert_eq!(
+            MainAreaDna::expand_linear_export_window(850, 200, 1000, 2.0),
+            (600, 400)
+        );
+        assert_eq!(
+            MainAreaDna::expand_linear_export_window(10, 0, 0, 4.0),
+            (0, 0)
+        );
+    }
+
+    #[test]
     fn splicing_expert_viewport_id_is_stable_and_feature_scoped() {
         let baseline = MainAreaDna::splicing_expert_viewport_id("seq1", 7);
         assert_eq!(
@@ -896,6 +937,58 @@ const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
         "GeneRuler 100bp DNA Ladder Plus,GeneRuler Mix",
     ),
 ];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ViewSvgExportProfile {
+    Screen,
+    WideContext,
+    PrintA3Landscape,
+}
+
+impl ViewSvgExportProfile {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Screen => "screen",
+            Self::WideContext => "wide-context",
+            Self::PrintA3Landscape => "print-a3",
+        }
+    }
+
+    fn file_stem_suffix(self) -> &'static str {
+        match self {
+            Self::Screen => "view",
+            Self::WideContext => "view.wide",
+            Self::PrintA3Landscape => "view.print_a3",
+        }
+    }
+
+    fn hover_text(self) -> &'static str {
+        match self {
+            Self::Screen => "Export the currently visible sequence-window composition as SVG.",
+            Self::WideContext => {
+                "Export a wider sequence-window context SVG (larger canvas + expanded bp span)."
+            }
+            Self::PrintA3Landscape => {
+                "Export a print-oriented A3 landscape SVG with expanded context and density."
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ViewSvgExportLayout {
+    canvas_width_px: f32,
+    margin_px: f32,
+    map_panel_height_px: f32,
+    sequence_panel_height_px: f32,
+    header_height_px: f32,
+    footer_height_px: f32,
+    sequence_font_size_px: f32,
+    sequence_line_height_px: f32,
+    max_text_lines: usize,
+    viewport_span_multiplier: f32,
+    print_size_mm: Option<(f32, f32)>,
+}
 
 #[derive(Clone, Copy, Debug)]
 enum MapViewPreset {
@@ -1188,6 +1281,7 @@ pub struct MainAreaDna {
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<SplicingExpertView>,
     linear_drag_selection_anchor_bp: Option<usize>,
+    linear_pan_drag_origin_bp: Option<usize>,
     last_linear_map_width_px: f32,
 }
 
@@ -1418,6 +1512,7 @@ impl MainAreaDna {
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
             linear_drag_selection_anchor_bp: None,
+            linear_pan_drag_origin_bp: None,
             last_linear_map_width_px: 0.0,
         };
         ret.sync_from_engine_display();
@@ -2302,7 +2397,8 @@ impl MainAreaDna {
                     ui.separator();
                     ui.label("Linear DNA letters");
                     let (
-                        mut show_double_strand,
+                        mut show_reverse_strand_letters,
+                        mut helical_parallel_strands,
                         mut hide_backbone_when_letters_visible,
                         mut reverse_upside_down,
                         mut helical_letters_enabled,
@@ -2318,6 +2414,7 @@ impl MainAreaDna {
                         .map(|display| {
                             (
                                 display.linear_show_double_strand_bases(),
+                                display.linear_helical_parallel_strands(),
                                 display.linear_hide_backbone_when_sequence_bases_visible(),
                                 display.linear_reverse_strand_use_upside_down_letters(),
                                 display.linear_sequence_helical_letters_enabled(),
@@ -2331,6 +2428,7 @@ impl MainAreaDna {
                         })
                         .unwrap_or((
                             true,
+                            true,
                             false,
                             true,
                             true,
@@ -2343,17 +2441,18 @@ impl MainAreaDna {
                         ));
                     if ui
                         .checkbox(
-                            &mut show_double_strand,
-                            "Show double-strand DNA letters on linear map",
+                            &mut show_reverse_strand_letters,
+                            "Show reverse-strand DNA letters on linear map",
                         )
                         .changed()
                     {
                         self.dna_display
                             .write()
                             .expect("DNA display lock poisoned")
-                            .set_linear_show_double_strand_bases(show_double_strand);
+                            .set_linear_show_double_strand_bases(show_reverse_strand_letters);
                         self.sync_linear_double_strand_settings_to_engine(
-                            show_double_strand,
+                            show_reverse_strand_letters,
+                            helical_parallel_strands,
                             reverse_upside_down,
                         );
                     }
@@ -2374,23 +2473,46 @@ impl MainAreaDna {
                             hide_backbone_when_letters_visible,
                         );
                     }
-                    if ui
-                        .checkbox(
-                            &mut reverse_upside_down,
-                            "Rotate reverse strand letters by 180°",
-                        )
-                        .changed()
-                    {
-                        self.dna_display
-                            .write()
-                            .expect("DNA display lock poisoned")
-                            .set_linear_reverse_strand_use_upside_down_letters(
+                    if show_reverse_strand_letters {
+                        if ui
+                            .checkbox(
+                                &mut helical_parallel_strands,
+                                "Keep helical strands parallel (same slant direction)",
+                            )
+                            .on_hover_text(
+                                "When enabled, forward and reverse strands move in parallel during helical rendering; disable for mirrored/cross-over slant.",
+                            )
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_helical_parallel_strands(helical_parallel_strands);
+                            self.sync_linear_double_strand_settings_to_engine(
+                                show_reverse_strand_letters,
+                                helical_parallel_strands,
                                 reverse_upside_down,
                             );
-                        self.sync_linear_double_strand_settings_to_engine(
-                            show_double_strand,
-                            reverse_upside_down,
-                        );
+                        }
+                        if ui
+                            .checkbox(
+                                &mut reverse_upside_down,
+                                "Rotate reverse strand letters by 180°",
+                            )
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_linear_reverse_strand_use_upside_down_letters(
+                                    reverse_upside_down,
+                                );
+                            self.sync_linear_double_strand_settings_to_engine(
+                                show_reverse_strand_letters,
+                                helical_parallel_strands,
+                                reverse_upside_down,
+                            );
+                        }
                     }
                     if ui
                         .checkbox(
@@ -2519,13 +2641,21 @@ impl MainAreaDna {
                         LinearBaseRenderMode::StandardLinear => egui::Color32::from_rgb(80, 80, 80),
                         LinearBaseRenderMode::Off => egui::Color32::from_rgb(150, 30, 30),
                     };
+                    let effective_backbone_visible =
+                        routing.active_mode != LinearBaseRenderMode::Condensed10Row
+                            && !(hide_backbone_when_letters_visible
+                                && routing.active_mode != LinearBaseRenderMode::Off);
                     let view_end_bp = view_start_bp.saturating_add(view_span_bp);
                     ui.colored_label(status_color, format!("Active render: {active_mode_label}"));
                     ui.monospace(format!(
-                        "route={} | setting={} | compressed={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
+                        "route={} | setting={} | compressed={} | reverse={} | parallel={} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
                         routing.route_policy.label(),
                         mode_setting_label(helical_layout_mode),
                         helical_letters_enabled,
+                        show_reverse_strand_letters,
+                        helical_parallel_strands,
+                        hide_backbone_when_letters_visible,
+                        if effective_backbone_visible { "on" } else { "off" },
                         view_span_bp,
                         view_start_bp.saturating_add(1),
                         view_end_bp,
@@ -2977,13 +3107,36 @@ impl MainAreaDna {
             }
             if ui
                 .button("Export View SVG")
-                .on_hover_text(
-                    "Export the currently shown sequence window view (map + sequence panel) as SVG",
-                )
+                .on_hover_text(ViewSvgExportProfile::Screen.hover_text())
                 .clicked()
             {
-                self.export_active_view_svg();
+                self.export_active_view_svg(ViewSvgExportProfile::Screen);
             }
+            ui.menu_button("View SVG ▾", |ui| {
+                if ui
+                    .button("Export wide-context SVG")
+                    .on_hover_text(ViewSvgExportProfile::WideContext.hover_text())
+                    .clicked()
+                {
+                    self.export_active_view_svg(ViewSvgExportProfile::WideContext);
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Export print A3 SVG")
+                    .on_hover_text(ViewSvgExportProfile::PrintA3Landscape.hover_text())
+                    .clicked()
+                {
+                    self.export_active_view_svg(ViewSvgExportProfile::PrintA3Landscape);
+                    ui.close_menu();
+                }
+                ui.separator();
+                ui.small(
+                    "Wide/print exports use larger canvases and expanded bp context for reporting and printing.",
+                );
+                if cfg!(debug_assertions) {
+                    ui.small("Debug builds include routing-tier diagnostics in the SVG header block.");
+                }
+            });
             if self.is_single_stranded_rna()
                 && ui
                     .button("Export RNA SVG")
@@ -3063,6 +3216,10 @@ impl MainAreaDna {
                         egui::ScrollArea::vertical()
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
                         ui.label("IDs are comma-separated sequence IDs.");
                         let template_seq_id = self.seq_id.clone().unwrap_or_default();
                         egui::CollapsingHeader::new("Core cloning operations")
@@ -3979,6 +4136,10 @@ impl MainAreaDna {
                     egui::ScrollArea::vertical()
                         .max_height(110.0)
                         .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
                             for motif in motifs.iter() {
                                 let id_match = motif.id.to_ascii_uppercase().contains(&filter);
                                 let name_match = motif
@@ -4432,6 +4593,10 @@ impl MainAreaDna {
                 .auto_shrink([false, false])
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
                     ui.add_sized(
                         [ui.available_width(), output_height],
                         egui::TextEdit::multiline(&mut self.shell_output_text)
@@ -4535,6 +4700,7 @@ impl MainAreaDna {
     fn sync_linear_double_strand_settings_to_engine(
         &self,
         show_double_strand: bool,
+        helical_parallel_strands: bool,
         reverse_upside_down: bool,
     ) {
         let Some(engine) = &self.engine else {
@@ -4543,6 +4709,7 @@ impl MainAreaDna {
         let mut guard = engine.write().expect("Engine lock poisoned");
         let display = &mut guard.state_mut().display;
         display.linear_show_double_strand_bases = show_double_strand;
+        display.linear_helical_parallel_strands = helical_parallel_strands;
         display.linear_reverse_strand_use_upside_down_letters = reverse_upside_down;
     }
 
@@ -4662,6 +4829,7 @@ impl MainAreaDna {
             settings.linear_sequence_helical_phase_offset_bp,
         );
         display.set_linear_show_double_strand_bases(settings.linear_show_double_strand_bases);
+        display.set_linear_helical_parallel_strands(settings.linear_helical_parallel_strands);
         display.set_linear_hide_backbone_when_sequence_bases_visible(
             settings.linear_hide_backbone_when_sequence_bases_visible,
         );
@@ -5120,6 +5288,10 @@ impl MainAreaDna {
         let desired_width = (view.columns.len() as f32 * 24.0 + 90.0).max(ui.available_width());
         let desired_height = 220.0;
         egui::ScrollArea::horizontal().show(ui, |ui| {
+            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                ui,
+                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            );
             let (rect, response) = ui.allocate_exact_size(
                 egui::Vec2::new(desired_width, desired_height),
                 egui::Sense::hover(),
@@ -5269,6 +5441,10 @@ impl MainAreaDna {
         let desired_width = (top.chars().count() as f32 * 24.0 + 110.0).max(ui.available_width());
         let desired_height = 130.0;
         egui::ScrollArea::horizontal().show(ui, |ui| {
+            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                ui,
+                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            );
             let (rect, response) = ui.allocate_exact_size(
                 egui::Vec2::new(desired_width, desired_height),
                 egui::Sense::hover(),
@@ -5370,6 +5546,10 @@ impl MainAreaDna {
         let desired_width = (ui.available_width()).max(920.0);
 
         egui::ScrollArea::horizontal().show(ui, |ui| {
+            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                ui,
+                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            );
             let (rect, response) = ui.allocate_exact_size(
                 egui::Vec2::new(desired_width, plot_height),
                 egui::Sense::hover(),
@@ -5532,6 +5712,10 @@ impl MainAreaDna {
                     .size(self.feature_details_font_size()),
             );
             egui::ScrollArea::horizontal().show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
                 egui::Grid::new("splicing_expert_matrix")
                     .striped(true)
                     .show(ui, |ui| {
@@ -6161,7 +6345,146 @@ impl MainAreaDna {
         out
     }
 
-    fn export_active_view_svg(&mut self) {
+    fn extract_svg_attribute<'a>(open_tag: &'a str, name: &str) -> Option<&'a str> {
+        let needle = format!("{name}=\"");
+        let start = open_tag.find(&needle)? + needle.len();
+        let rest = &open_tag[start..];
+        let end = rest.find('"')?;
+        Some(&rest[..end])
+    }
+
+    fn parse_svg_scalar(value: &str) -> Option<f32> {
+        let numeric: String = value
+            .trim()
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit() || matches!(*ch, '.' | '-' | '+' | 'e' | 'E'))
+            .collect();
+        if numeric.is_empty() {
+            return None;
+        }
+        numeric.parse::<f32>().ok()
+    }
+
+    fn extract_svg_canvas_size(svg: &str) -> Option<(f32, f32)> {
+        let open_end = svg.find('>')?;
+        let open_tag = &svg[..open_end];
+        if let Some(view_box) = Self::extract_svg_attribute(open_tag, "viewBox") {
+            let values: Vec<f32> = view_box
+                .split_whitespace()
+                .filter_map(|v| v.parse::<f32>().ok())
+                .collect();
+            if values.len() == 4
+                && values[2].is_finite()
+                && values[3].is_finite()
+                && values[2] > 1.0
+                && values[3] > 1.0
+            {
+                return Some((values[2], values[3]));
+            }
+        }
+        let width = Self::extract_svg_attribute(open_tag, "width").and_then(Self::parse_svg_scalar);
+        let height =
+            Self::extract_svg_attribute(open_tag, "height").and_then(Self::parse_svg_scalar);
+        match (width, height) {
+            (Some(w), Some(h)) if w > 1.0 && h > 1.0 => Some((w, h)),
+            _ => None,
+        }
+    }
+
+    fn view_svg_export_layout(
+        profile: ViewSvgExportProfile,
+        observed_map_width_px: f32,
+        show_map: bool,
+        show_sequence: bool,
+    ) -> ViewSvgExportLayout {
+        let observed_map_width_px = if observed_map_width_px.is_finite() {
+            observed_map_width_px.clamp(320.0, 8192.0)
+        } else {
+            1200.0
+        };
+        match profile {
+            ViewSvgExportProfile::Screen => ViewSvgExportLayout {
+                canvas_width_px: (observed_map_width_px + 56.0).clamp(1200.0, 2400.0),
+                margin_px: 28.0,
+                map_panel_height_px: if show_map && show_sequence {
+                    520.0
+                } else {
+                    700.0
+                },
+                sequence_panel_height_px: 380.0,
+                header_height_px: 78.0,
+                footer_height_px: 20.0,
+                sequence_font_size_px: 16.0,
+                sequence_line_height_px: 22.0,
+                max_text_lines: 24,
+                viewport_span_multiplier: 1.0,
+                print_size_mm: None,
+            },
+            ViewSvgExportProfile::WideContext => ViewSvgExportLayout {
+                canvas_width_px: (observed_map_width_px * 1.8).clamp(1800.0, 3600.0),
+                margin_px: 32.0,
+                map_panel_height_px: if show_map && show_sequence {
+                    760.0
+                } else {
+                    1040.0
+                },
+                sequence_panel_height_px: 680.0,
+                header_height_px: 90.0,
+                footer_height_px: 28.0,
+                sequence_font_size_px: 14.0,
+                sequence_line_height_px: 19.0,
+                max_text_lines: 56,
+                viewport_span_multiplier: 2.0,
+                print_size_mm: None,
+            },
+            ViewSvgExportProfile::PrintA3Landscape => ViewSvgExportLayout {
+                canvas_width_px: 4960.0,
+                margin_px: 40.0,
+                map_panel_height_px: if show_map && show_sequence {
+                    1750.0
+                } else {
+                    2900.0
+                },
+                sequence_panel_height_px: 1450.0,
+                header_height_px: 120.0,
+                footer_height_px: 60.0,
+                sequence_font_size_px: 13.0,
+                sequence_line_height_px: 17.0,
+                max_text_lines: 130,
+                viewport_span_multiplier: 4.0,
+                print_size_mm: Some((420.0, 297.0)),
+            },
+        }
+    }
+
+    fn expand_linear_export_window(
+        start_bp: usize,
+        span_bp: usize,
+        sequence_len_bp: usize,
+        multiplier: f32,
+    ) -> (usize, usize) {
+        if sequence_len_bp == 0 {
+            return (0, 0);
+        }
+        let base_span = span_bp.max(1).min(sequence_len_bp);
+        let multiplier = if multiplier.is_finite() {
+            multiplier.max(1.0)
+        } else {
+            1.0
+        };
+        let expanded_span = ((base_span as f64) * (multiplier as f64)).round() as usize;
+        let expanded_span = expanded_span.clamp(base_span, sequence_len_bp);
+        let center = start_bp
+            .saturating_add(base_span / 2)
+            .min(sequence_len_bp.saturating_sub(1));
+        let mut expanded_start = center.saturating_sub(expanded_span / 2);
+        if expanded_start.saturating_add(expanded_span) > sequence_len_bp {
+            expanded_start = sequence_len_bp.saturating_sub(expanded_span);
+        }
+        (expanded_start, expanded_span)
+    }
+
+    fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile) {
         let Some(seq_id) = self.seq_id.clone() else {
             self.op_status = "No active sequence to export".to_string();
             return;
@@ -6170,7 +6493,7 @@ impl MainAreaDna {
             self.op_status = "No engine attached".to_string();
             return;
         };
-        let default_name = format!("{seq_id}.view.svg");
+        let default_name = format!("{seq_id}.{}.svg", profile.file_stem_suffix());
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
             .add_filter("SVG", &["svg"])
@@ -6217,17 +6540,23 @@ impl MainAreaDna {
             }
         };
 
-        let mut width_px = 1780.0_f32;
-        let mut y = 26.0_f32;
-        let margin = 28.0_f32;
-        let map_panel_h = if self.show_map && self.show_sequence {
-            520.0
+        let layout = Self::view_svg_export_layout(
+            profile,
+            self.last_linear_map_width_px,
+            self.show_map,
+            self.show_sequence,
+        );
+        let width_px = layout.canvas_width_px.max(1200.0);
+        let margin = layout.margin_px;
+        let map_panel_h = layout.map_panel_height_px;
+        let sequence_panel_h = if self.show_sequence {
+            layout.sequence_panel_height_px
         } else {
-            700.0
+            0.0
         };
-        let sequence_panel_h = if self.show_sequence { 380.0 } else { 0.0 };
-        let header_h = 78.0_f32;
-        let footer_h = 20.0_f32;
+        let header_h = layout.header_height_px;
+        let footer_h = layout.footer_height_px;
+        let mut y = (header_h * 0.34).max(24.0);
         let mut total_h = header_h + footer_h;
         if self.show_map {
             total_h += map_panel_h + 14.0;
@@ -6235,13 +6564,19 @@ impl MainAreaDna {
         if self.show_sequence {
             total_h += sequence_panel_h + 14.0;
         }
-        width_px = width_px.max(1200.0);
 
         let mut svg = String::new();
-        svg.push_str(&format!(
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
-            width_px, total_h, width_px, total_h
-        ));
+        if let Some((print_w_mm, print_h_mm)) = layout.print_size_mm {
+            svg.push_str(&format!(
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.1}mm\" height=\"{:.1}mm\" viewBox=\"0 0 {:.0} {:.0}\">",
+                print_w_mm, print_h_mm, width_px, total_h
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
+                width_px, total_h, width_px, total_h
+            ));
+        }
         svg.push_str(&format!(
             "<rect x=\"0\" y=\"0\" width=\"{:.0}\" height=\"{:.0}\" fill=\"#ffffff\"/>",
             width_px, total_h
@@ -6260,8 +6595,11 @@ impl MainAreaDna {
             Self::xml_escape(&header_left)
         ));
         let status_right = format!(
-            "map={} | show-map={} | show-sequence={}",
-            map_mode_label, self.show_map, self.show_sequence
+            "map={} | profile={} | show-map={} | show-sequence={}",
+            map_mode_label,
+            profile.label(),
+            self.show_map,
+            self.show_sequence
         );
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"13\" fill=\"#444444\">{}</text>",
@@ -6277,7 +6615,7 @@ impl MainAreaDna {
             format!("circular view | {} bp", dna_guard.len())
         } else {
             format!(
-                "linear view {}..{} ({} bp) of {} bp | density {:.2} | cols-fit {:.0} | glyph {:.2}px",
+                "linear view {}..{} ({} bp) of {} bp | density {:.2} | cols-fit {:.0} | glyph {:.2}px | export-span x{:.1}",
                 linear_start.saturating_add(1),
                 linear_start
                     .saturating_add(linear_span)
@@ -6286,7 +6624,8 @@ impl MainAreaDna {
                 sequence_length,
                 routing.density_ratio,
                 routing.columns_fit,
-                routing.glyph_width_px
+                routing.glyph_width_px,
+                layout.viewport_span_multiplier
             )
         };
         svg.push_str(&format!(
@@ -6320,8 +6659,8 @@ impl MainAreaDna {
                 margin, y, panel_w, panel_h
             ));
             if let Some(inner) = Self::extract_svg_inner(&map_svg) {
-                let map_native_w = 1200.0_f32;
-                let map_native_h = 700.0_f32;
+                let (map_native_w, map_native_h) =
+                    Self::extract_svg_canvas_size(&map_svg).unwrap_or((1200.0, 700.0));
                 let scale = (panel_w / map_native_w)
                     .min(panel_h / map_native_h)
                     .max(0.1);
@@ -6340,6 +6679,7 @@ impl MainAreaDna {
                     y + 22.0
                 ));
             }
+            y += panel_h + 14.0;
         }
 
         if self.show_sequence {
@@ -6352,21 +6692,37 @@ impl MainAreaDna {
             let y0 = y + 22.0;
             let digits = dna_guard.len().max(1).to_string().len();
             let show_rc = display_guard.show_reverse_complement();
-            let estimated_bpl = ((self.last_linear_map_width_px.max(640.0) / 8.0).floor() as usize)
+            let estimated_bpl = ((panel_w / (layout.sequence_font_size_px * 0.62)).floor()
+                as usize)
                 .saturating_div(11)
                 .saturating_mul(10)
-                .clamp(40, 200);
+                .clamp(40, 1200);
             let (window_start, window_span) = if self.is_circular() {
-                (0usize, dna_guard.len().min(estimated_bpl.saturating_mul(8)))
+                let base_line_budget = if show_rc {
+                    layout.max_text_lines.saturating_div(2).max(1)
+                } else {
+                    layout.max_text_lines.max(1)
+                };
+                (
+                    0usize,
+                    dna_guard
+                        .len()
+                        .min(estimated_bpl.saturating_mul(base_line_budget)),
+                )
             } else {
-                (linear_start, linear_span)
+                Self::expand_linear_export_window(
+                    linear_start,
+                    linear_span,
+                    dna_guard.len(),
+                    layout.viewport_span_multiplier,
+                )
             };
             let window_end = window_start
                 .saturating_add(window_span)
                 .min(dna_guard.len());
             let mut line_idx = 0usize;
             let mut bp = window_start;
-            let max_text_lines = 24usize;
+            let max_text_lines = layout.max_text_lines;
             while bp < window_end && line_idx < max_text_lines {
                 let end = (bp + estimated_bpl).min(window_end);
                 let Some(segment) = dna_guard.get_inclusive_range_safe(bp..=end.saturating_sub(1))
@@ -6381,9 +6737,10 @@ impl MainAreaDna {
                     width = digits
                 );
                 svg.push_str(&format!(
-                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"16\" fill=\"#111111\">{}</text>",
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"{:.1}\" fill=\"#111111\">{}</text>",
                     margin + 10.0,
-                    y0 + line_idx as f32 * 22.0,
+                    y0 + line_idx as f32 * layout.sequence_line_height_px,
+                    layout.sequence_font_size_px,
                     Self::xml_escape(&text)
                 ));
                 line_idx += 1;
@@ -6395,9 +6752,10 @@ impl MainAreaDna {
                     let rc_grouped = Self::format_grouped_bases(&rc);
                     let rc_text = format!("{:>width$} {}", "", rc_grouped, width = digits);
                     svg.push_str(&format!(
-                        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"16\" fill=\"#666666\">{}</text>",
+                        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"{:.1}\" fill=\"#666666\">{}</text>",
                         margin + 10.0,
-                        y0 + line_idx as f32 * 22.0,
+                        y0 + line_idx as f32 * layout.sequence_line_height_px,
+                        layout.sequence_font_size_px,
                         Self::xml_escape(&rc_text)
                     ));
                     line_idx += 1;
@@ -6416,16 +6774,21 @@ impl MainAreaDna {
         }
 
         svg.push_str(&format!(
-            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"11\" fill=\"#666666\">GENtle view export</text>",
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"11\" fill=\"#666666\">GENtle view export ({})</text>",
             width_px - margin,
-            total_h - 8.0
+            total_h - 8.0,
+            profile.label()
         ));
         svg.push_str("</svg>");
 
         let path_text = path.display().to_string();
         match fs::write(&path, svg) {
             Ok(()) => {
-                self.op_status = format!("Exported sequence window view SVG to '{}'", path_text);
+                self.op_status = format!(
+                    "Exported sequence window view SVG ({}) to '{}'",
+                    profile.label(),
+                    path_text
+                );
             }
             Err(e) => {
                 self.op_status = format!("Could not write view SVG '{}': {e}", path_text);
@@ -7540,6 +7903,10 @@ impl MainAreaDna {
                     egui::ScrollArea::vertical()
                         .max_height(180.0)
                         .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
                             egui::Grid::new(format!(
                                 "candidate_rows_grid_{}",
                                 self.seq_id.as_deref().unwrap_or("_global")
@@ -9804,6 +10171,10 @@ impl MainAreaDna {
 
     pub fn render_description(&mut self, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical().show(ui, |ui| {
+            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                ui,
+                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            );
             ui.set_min_height(150.0);
             self.refresh_description_cache();
             let detail_font_size = self.feature_details_font_size();
@@ -9932,6 +10303,10 @@ impl MainAreaDna {
                                 .auto_shrink([false, false])
                                 .max_height(tree_height)
                                 .show(ui, |ui| {
+                                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                        ui,
+                                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                    );
                                     ui.vertical(|ui| {
                                         self.render_features(ui);
                                     });
@@ -10000,42 +10375,117 @@ impl MainAreaDna {
                 }
 
                 if !self.is_circular() {
-                    let scroll = ctx.input(|i| i.raw_scroll_delta);
-                    if scroll.y.abs() > 0.0 {
-                        let (start_bp, span_bp, sequence_length) = self.current_linear_viewport();
-                        if sequence_length > 0 {
-                            let center_bp = response
-                                .hover_pos()
-                                .map(|pos| {
-                                    let frac = ((pos.x - response.rect.left())
-                                        / response.rect.width().max(1.0))
-                                    .clamp(0.0, 1.0);
-                                    start_bp + (frac * span_bp as f32).floor() as usize
-                                })
-                                .unwrap_or_else(|| start_bp.saturating_add(span_bp / 2));
-                            self.zoom_linear_viewport_around(center_bp, scroll.y > 0.0);
+                    let (wheel_delta, modifiers) =
+                        ctx.input(|i| (i.smooth_scroll_delta, i.modifiers));
+                    let linear_map_wheel_intent =
+                        scroll_input_policy::wheel_intent(wheel_delta, modifiers);
+                    match linear_map_wheel_intent {
+                        WheelIntent::None => {}
+                        WheelIntent::Pan { delta } => {
+                            let (_, span_bp, _) = self.current_linear_viewport();
+                            let dominant_delta = if delta.x.abs() >= delta.y.abs() {
+                                delta.x
+                            } else {
+                                delta.y
+                            };
+                            let delta_bp = ((-dominant_delta / response.rect.width().max(1.0))
+                                * span_bp as f32)
+                                .round() as isize;
+                            self.pan_linear_viewport(delta_bp);
                         }
-                    } else if scroll.x.abs() > 0.0 {
-                        let (_, span_bp, _) = self.current_linear_viewport();
-                        let delta_bp = ((-scroll.x / response.rect.width().max(1.0))
-                            * span_bp as f32) as isize;
-                        self.pan_linear_viewport(delta_bp);
+                        WheelIntent::Zoom { direction, .. } => {
+                            let (start_bp, span_bp, sequence_length) =
+                                self.current_linear_viewport();
+                            if sequence_length > 0 {
+                                let center_bp = response
+                                    .hover_pos()
+                                    .map(|pos| {
+                                        let frac = ((pos.x - response.rect.left())
+                                            / response.rect.width().max(1.0))
+                                        .clamp(0.0, 1.0);
+                                        start_bp + (frac * span_bp as f32).floor() as usize
+                                    })
+                                    .unwrap_or_else(|| start_bp.saturating_add(span_bp / 2));
+                                self.zoom_linear_viewport_around(
+                                    center_bp,
+                                    direction == ZoomDirection::In,
+                                );
+                            }
+                        }
+                    }
+                    if !ctx.wants_keyboard_input() {
+                        let keyboard_pan_delta = ctx.input(|i| {
+                            scroll_input_policy::canvas_keyboard_pan_delta(
+                                i,
+                                scroll_input_policy::DEFAULT_CANVAS_PAN_STEP,
+                            )
+                        });
+                        if keyboard_pan_delta != Vec2::ZERO {
+                            let (_, span_bp, _) = self.current_linear_viewport();
+                            let axis_delta =
+                                if keyboard_pan_delta.x.abs() >= keyboard_pan_delta.y.abs() {
+                                    keyboard_pan_delta.x
+                                } else {
+                                    keyboard_pan_delta.y
+                                };
+                            let delta_bp = ((axis_delta / response.rect.width().max(1.0))
+                                * span_bp as f32)
+                                .round() as isize;
+                            self.pan_linear_viewport(delta_bp);
+                        }
+                        let zoom_steps = ctx.input(scroll_input_policy::canvas_keyboard_zoom_steps);
+                        if zoom_steps != 0 {
+                            let (start_bp, span_bp, sequence_length) =
+                                self.current_linear_viewport();
+                            if sequence_length > 0 {
+                                let center_bp = start_bp.saturating_add(span_bp / 2);
+                                for _ in 0..zoom_steps.unsigned_abs() {
+                                    self.zoom_linear_viewport_around(center_bp, zoom_steps > 0);
+                                }
+                            }
+                        }
+                    }
+                    if let Some(cursor) = scroll_input_policy::canvas_hover_cursor(
+                        modifiers,
+                        true,
+                        self.linear_pan_drag_origin_bp.is_some(),
+                        false,
+                        linear_map_wheel_intent,
+                    ) {
+                        ui.output_mut(|o| o.cursor_icon = cursor);
                     }
                 }
             }
 
             if !self.is_circular() {
+                let option_pan_modifier =
+                    ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
                 if response.drag_started() {
-                    if let Some(pos) = response.interact_pointer_pos() {
+                    if option_pan_modifier {
+                        self.linear_pan_drag_origin_bp = Some(self.current_linear_viewport().0);
+                        self.linear_drag_selection_anchor_bp = None;
+                    } else if let Some(pos) = response.interact_pointer_pos() {
                         if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
                             self.linear_drag_selection_anchor_bp = Some(bp);
+                            self.linear_pan_drag_origin_bp = None;
                             self.update_linear_drag_selection(bp, bp);
                             self.clear_feature_focus_keep_map_selection();
                         }
                     }
                 }
                 if response.dragged() {
-                    if let (Some(anchor_bp), Some(pos)) = (
+                    if let Some(start_bp) = self.linear_pan_drag_origin_bp {
+                        let (_, span_bp, sequence_length) = self.current_linear_viewport();
+                        if sequence_length > span_bp {
+                            let delta_bp = ((-response.drag_delta().x
+                                / response.rect.width().max(1.0))
+                                * span_bp as f32)
+                                .round() as isize;
+                            let max_start = sequence_length.saturating_sub(span_bp) as isize;
+                            let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
+                            self.set_linear_viewport(new_start as usize, span_bp);
+                        }
+                    } else if let (Some(anchor_bp), Some(pos)) = (
                         self.linear_drag_selection_anchor_bp,
                         response.interact_pointer_pos(),
                     ) {
@@ -10048,6 +10498,15 @@ impl MainAreaDna {
                 }
                 if response.drag_stopped() {
                     self.linear_drag_selection_anchor_bp = None;
+                    self.linear_pan_drag_origin_bp = None;
+                }
+                if self.linear_pan_drag_origin_bp.is_some()
+                    && !ctx.input(|i| i.pointer.primary_down())
+                {
+                    self.linear_pan_drag_origin_bp = None;
+                }
+                if self.linear_pan_drag_origin_bp.is_some() {
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
                 }
             }
 

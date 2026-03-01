@@ -12,7 +12,7 @@ pub const GLYPH_WIDTH_SCALE: f32 = 0.62;
 /// We intentionally allow a small readability-overlap buffer above 1.0 because
 /// the glyph-width estimator is conservative and real rendered glyph advance is
 /// often narrower than nominal monospace cell width.
-pub const AUTO_STANDARD_MAX_DENSITY: f32 = 1.35;
+pub const AUTO_STANDARD_MAX_DENSITY: f32 = 1.50;
 /// Auto-routing threshold: dense enough to leave 2-row helical view.
 pub const AUTO_HELICAL_MAX_DENSITY: f32 = 2.0;
 /// Auto-routing threshold: dense enough to leave 10-row condensed view.
@@ -233,8 +233,15 @@ mod tests {
     }
 
     #[test]
+    fn auto_keeps_standard_for_short_spans_that_fit_visually() {
+        let decision = decide_linear_base_routing(input(326, 1080.0));
+        assert_eq!(decision.active_mode, LinearBaseRenderMode::StandardLinear);
+        assert!(decision.density_ratio <= AUTO_STANDARD_MAX_DENSITY);
+    }
+
+    #[test]
     fn auto_uses_helical_for_mid_density_when_enabled() {
-        let decision = decide_linear_base_routing(input(300, 1000.0));
+        let decision = decide_linear_base_routing(input(340, 1000.0));
         assert_eq!(
             decision.active_mode,
             LinearBaseRenderMode::ContinuousHelical

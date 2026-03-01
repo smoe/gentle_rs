@@ -145,6 +145,11 @@ order. Durable architecture constraints and decisions remain in
   - configurable double-strand display with optional 180° reverse-letter rotation
   - configurable helical strand geometry (`parallel` vs `mirrored`) for
     reverse-strand visual semantics
+  - continuous-helical rendering now uses oscillating phase geometry with
+    endpoint-anchored width projection (full viewport span retained while
+    avoiding monotonic "ramp" artifacts in 1.5x..2.0x density range)
+  - when backbone hiding is active and letters are visible, baseline tick marks
+    are suppressed alongside the backbone line for clearer dense views
   - optional sequence-panel auto-hide when map letters are visible
   - one shared routing helper used by renderer diagnostics and Sequence-window
     status/auto-hide decisions (UI-status parity)

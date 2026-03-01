@@ -45,7 +45,7 @@ use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::Duration;
 use tempfile::NamedTempFile;
@@ -68,6 +68,7 @@ const HTTP_READ_TIMEOUT_SECS: u64 = 120;
 const BLASTN_OUTFMT_FIELDS: &str =
     "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs";
 const PREPARE_CANCELLED_BY_CALLER: &str = "Genome preparation cancelled by caller";
+const BLAST_CANCELLED_BY_CALLER: &str = "BLAST search cancelled by caller";
 const ANNOTATION_PARSE_ISSUE_LIMIT: usize = 12;
 const ANNOTATION_PARSE_CONTEXT_CHARS: usize = 140;
 
@@ -1072,6 +1073,29 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         task: Option<&str>,
         cache_dir_override: Option<&str>,
     ) -> Result<GenomeBlastReport, String> {
+        let mut never_cancel = || false;
+        self.blast_sequence_with_cache_and_cancel(
+            genome_id,
+            query_sequence,
+            max_hits,
+            task,
+            cache_dir_override,
+            &mut never_cancel,
+        )
+    }
+
+    pub fn blast_sequence_with_cache_and_cancel(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        cache_dir_override: Option<&str>,
+        should_cancel: &mut dyn FnMut() -> bool,
+    ) -> Result<GenomeBlastReport, String> {
+        if should_cancel() {
+            return Err(blast_cancelled_error("before blast start"));
+        }
         if max_hits == 0 {
             return Err("BLAST search requires max_hits >= 1".to_string());
         }
@@ -1129,6 +1153,9 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
                 genome_id, blast_prefix, detail
             ));
         }
+        if should_cancel() {
+            return Err(blast_cancelled_error("before blast launch"));
+        }
 
         let blastn_executable = resolve_tool_executable(BLASTN_ENV_BIN, DEFAULT_BLASTN_BIN);
         let mut query_file = NamedTempFile::new_in(&install_dir).map_err(|e| {
@@ -1156,9 +1183,11 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
             "-max_target_seqs".to_string(),
             max_hits.to_string(),
         ];
-        let output = Command::new(&blastn_executable)
+        let mut child = Command::new(&blastn_executable)
             .args(&args)
-            .output()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     format!(
@@ -1174,6 +1203,12 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
                     )
                 }
             })?;
+        let output = wait_for_child_output_with_cancel(
+            &mut child,
+            &blastn_executable,
+            &args,
+            should_cancel,
+        )?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         if !output.status.success() {
@@ -1355,6 +1390,14 @@ pub fn is_prepare_cancelled_error(message: &str) -> bool {
 
 fn prepare_cancelled_error(context: &str) -> String {
     format!("{PREPARE_CANCELLED_BY_CALLER}: {context}")
+}
+
+pub fn is_blast_cancelled_error(message: &str) -> bool {
+    message.contains(BLAST_CANCELLED_BY_CALLER)
+}
+
+fn blast_cancelled_error(context: &str) -> String {
+    format!("{BLAST_CANCELLED_BY_CALLER}: {context}")
 }
 
 fn forward_prepare_progress(
@@ -2486,6 +2529,78 @@ fn first_non_empty_output_line(stdout: &str, stderr: &str) -> String {
         .find(|line| !line.trim().is_empty())
         .map(|line| line.trim().to_string())
         .unwrap_or_else(|| "no output".to_string())
+}
+
+fn wait_for_child_output_with_cancel(
+    child: &mut Child,
+    executable: &str,
+    args: &[String],
+    should_cancel: &mut dyn FnMut() -> bool,
+) -> Result<Output, String> {
+    let Some(stdout_pipe) = child.stdout.take() else {
+        return Err(format!(
+            "Could not capture blastn stdout for '{}' with args [{}]",
+            executable,
+            args.join(" ")
+        ));
+    };
+    let Some(stderr_pipe) = child.stderr.take() else {
+        return Err(format!(
+            "Could not capture blastn stderr for '{}' with args [{}]",
+            executable,
+            args.join(" ")
+        ));
+    };
+
+    let stdout_reader = thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut reader = BufReader::new(stdout_pipe);
+        let _ = reader.read_to_end(&mut buf);
+        buf
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut reader = BufReader::new(stderr_pipe);
+        let _ = reader.read_to_end(&mut buf);
+        buf
+    });
+
+    loop {
+        if should_cancel() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(blast_cancelled_error("running blastn process"));
+        }
+
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = stdout_reader.join().unwrap_or_else(|_| vec![]);
+                let stderr = stderr_reader.join().unwrap_or_else(|_| vec![]);
+                return Ok(Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            Ok(None) => {
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_reader.join();
+                let _ = stderr_reader.join();
+                return Err(format!(
+                    "Could not poll blastn process '{}' with args [{}]: {}",
+                    executable,
+                    args.join(" "),
+                    e
+                ));
+            }
+        }
+    }
 }
 
 fn ensure_blast_index(sequence_path: &Path, db_prefix: &Path) -> BlastIndexOutcome {
@@ -4825,6 +4940,13 @@ mod tests {
             "blastn"
         );
         assert!(normalize_blast_task(Some("megablast")).is_err());
+    }
+
+    #[test]
+    fn test_is_blast_cancelled_error_matches_prefix() {
+        let msg = blast_cancelled_error("test");
+        assert!(is_blast_cancelled_error(&msg));
+        assert!(!is_blast_cancelled_error("regular blast error"));
     }
 
     #[test]

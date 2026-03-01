@@ -204,6 +204,7 @@ pub struct DnaDisplay {
     linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode,
     linear_sequence_helical_phase_offset_bp: usize,
     linear_show_double_strand_bases: bool,
+    linear_helical_parallel_strands: bool,
     linear_hide_backbone_when_sequence_bases_visible: bool,
     linear_reverse_strand_use_upside_down_letters: bool,
     feature_details_font_size: f32,
@@ -691,6 +692,17 @@ impl DnaDisplay {
         }
     }
 
+    pub fn linear_helical_parallel_strands(&self) -> bool {
+        self.linear_helical_parallel_strands
+    }
+
+    pub fn set_linear_helical_parallel_strands(&mut self, value: bool) {
+        if self.linear_helical_parallel_strands != value {
+            self.linear_helical_parallel_strands = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn linear_hide_backbone_when_sequence_bases_visible(&self) -> bool {
         self.linear_hide_backbone_when_sequence_bases_visible
     }
@@ -791,6 +803,7 @@ impl Default for DnaDisplay {
             linear_sequence_letter_layout_mode: LinearSequenceLetterLayoutMode::AutoAdaptive,
             linear_sequence_helical_phase_offset_bp: 0,
             linear_show_double_strand_bases: true,
+            linear_helical_parallel_strands: true,
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
             feature_details_font_size: 9.0,
