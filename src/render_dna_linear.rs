@@ -1479,6 +1479,23 @@ impl RenderDnaLinear {
             },
             Color32::from_gray(110),
         );
+        if cfg!(debug_assertions) {
+            painter.text(
+                Pos2::new(self.area.right() - 6.0, self.area.top() + 73.0),
+                Align2::RIGHT_TOP,
+                format!(
+                    "tiers: std<= {:.2} hel<= {:.2} cond<= {:.2}",
+                    status.routing.tier_standard_max_density,
+                    status.routing.tier_helical_max_density,
+                    status.routing.tier_condensed_max_density
+                ),
+                FontId {
+                    size: 9.0,
+                    family: FontFamily::Monospace,
+                },
+                Color32::from_gray(110),
+            );
+        }
     }
 
     fn orf_colors() -> HashMap<i32, Color32> {

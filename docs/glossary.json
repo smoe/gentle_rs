@@ -406,8 +406,8 @@
             "cli-direct"
          ],
          "path": "genomes blast",
-         "summary": "Run BLAST query against one reference genome.",
-         "usage": "genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]"
+         "summary": "Run BLAST query against one reference genome (quick flags plus optional JSON override object).",
+         "usage": "genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -420,8 +420,8 @@
             "cli-direct"
          ],
          "path": "genomes blast-track",
-         "summary": "BLAST query and import hits as features on target sequence.",
-         "usage": "genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+         "summary": "BLAST query and import hits as features on target sequence (supports optional JSON override object).",
+         "usage": "genomes blast-track GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -536,8 +536,8 @@
             "cli-direct"
          ],
          "path": "helpers blast",
-         "summary": "Run BLAST query against one helper genome.",
-         "usage": "helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]"
+         "summary": "Run BLAST query against one helper genome (quick flags plus optional JSON override object).",
+         "usage": "helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -550,8 +550,8 @@
             "cli-direct"
          ],
          "path": "helpers blast-track",
-         "summary": "BLAST query and import hits as features on target sequence.",
-         "usage": "helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+         "summary": "BLAST query and import hits as features on target sequence (supports optional JSON override object).",
+         "usage": "helpers blast-track HELPER_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],

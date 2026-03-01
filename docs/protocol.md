@@ -98,7 +98,8 @@ Current draft operations:
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,
     `blastn_executable`, `blast_db_prefix`, raw `command[]`, `command_line`,
-    `catalog_path?`, `cache_dir?`) for sequence-history/audit views.
+    `catalog_path?`, `cache_dir?`, `options_override_json?`,
+    `effective_options_json?`) for sequence-history/audit views.
 - `SelectCandidate { input, criterion, output_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
@@ -541,6 +542,13 @@ Current parameter support:
   - `vcf_display_use_max_qual`
   - `vcf_display_max_qual`
   - `vcf_display_required_info_keys` (CSV string or string array)
+- BLAST options-layer parameters:
+  - `blast_options_override` (JSON object or `null`)
+    - project-level BLAST option layer merged before per-command request JSON
+    - supports the same keys as request JSON (`task`, `max_hits`, `thresholds`)
+  - `blast_options_defaults_path` (string path or `null`)
+    - optional defaults-file path used ahead of project/request layers
+    - if unset, engine falls back to `assets/blast_defaults.json`
 
 Current ligation protocol behavior:
 

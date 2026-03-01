@@ -99,6 +99,9 @@ const GENOME_BED_TRACK_GENERATED_TAG: &str = "genome_bed_track";
 const GENOME_BIGWIG_TRACK_GENERATED_TAG: &str = "genome_bigwig_track";
 const GENOME_VCF_TRACK_GENERATED_TAG: &str = "genome_vcf_track";
 const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
+const BLAST_OPTIONS_OVERRIDE_METADATA_KEY: &str = "blast_options_override";
+const BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY: &str = "blast_options_defaults_path";
+const DEFAULT_BLAST_OPTIONS_PATH: &str = "assets/blast_defaults.json";
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
@@ -250,7 +253,7 @@ impl Default for DisplaySettings {
             linear_show_double_strand_bases: true,
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
-            feature_details_font_size: 8.25,
+            feature_details_font_size: 9.0,
             linear_external_feature_label_font_size: 11.0,
             linear_external_feature_label_background_opacity: 0.9,
         }
@@ -1929,6 +1932,73 @@ pub struct BlastInvocationProvenance {
     pub command_line: String,
     pub catalog_path: Option<String>,
     pub cache_dir: Option<String>,
+    #[serde(default)]
+    pub options_override_json: Option<serde_json::Value>,
+    #[serde(default)]
+    pub effective_options_json: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct BlastThresholdOptions {
+    pub max_evalue: Option<f64>,
+    pub min_identity_percent: Option<f64>,
+    pub min_query_coverage_percent: Option<f64>,
+    pub min_alignment_length_bp: Option<usize>,
+    pub min_bit_score: Option<f64>,
+    pub unique_best_hit: Option<bool>,
+}
+
+impl BlastThresholdOptions {
+    fn merge_from(&mut self, other: &Self) {
+        if other.max_evalue.is_some() {
+            self.max_evalue = other.max_evalue;
+        }
+        if other.min_identity_percent.is_some() {
+            self.min_identity_percent = other.min_identity_percent;
+        }
+        if other.min_query_coverage_percent.is_some() {
+            self.min_query_coverage_percent = other.min_query_coverage_percent;
+        }
+        if other.min_alignment_length_bp.is_some() {
+            self.min_alignment_length_bp = other.min_alignment_length_bp;
+        }
+        if other.min_bit_score.is_some() {
+            self.min_bit_score = other.min_bit_score;
+        }
+        if other.unique_best_hit.is_some() {
+            self.unique_best_hit = other.unique_best_hit;
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct BlastRunOptions {
+    pub task: Option<String>,
+    pub max_hits: Option<usize>,
+    #[serde(default)]
+    pub thresholds: BlastThresholdOptions,
+}
+
+impl BlastRunOptions {
+    fn merge_from(&mut self, other: &Self) {
+        if let Some(task) = other.task.as_ref() {
+            self.task = Some(task.clone());
+        }
+        if other.max_hits.is_some() {
+            self.max_hits = other.max_hits;
+        }
+        self.thresholds.merge_from(&other.thresholds);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlastResolvedOptions {
+    pub task: String,
+    pub max_hits: usize,
+    #[serde(default)]
+    pub thresholds: BlastThresholdOptions,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -4622,7 +4692,7 @@ impl GentleEngine {
         Self::list_reference_genome_genes(Some(chosen), genome_id, cache_dir)
     }
 
-    pub fn blast_reference_genome(
+    fn blast_reference_genome_raw(
         catalog_path: Option<&str>,
         genome_id: &str,
         query_sequence: &str,
@@ -4648,7 +4718,7 @@ impl GentleEngine {
             })
     }
 
-    pub fn blast_helper_genome(
+    fn blast_helper_genome_raw(
         genome_id: &str,
         query_sequence: &str,
         max_hits: usize,
@@ -4660,12 +4730,411 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|v| !v.is_empty())
             .unwrap_or(DEFAULT_HELPER_GENOME_CATALOG_PATH);
-        Self::blast_reference_genome(
+        Self::blast_reference_genome_raw(
             Some(chosen),
             genome_id,
             query_sequence,
             max_hits,
             task,
+            cache_dir,
+        )
+    }
+
+    fn normalize_blast_task_value(raw: &str) -> Result<String, EngineError> {
+        let normalized = raw.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "blastn-short" | "blastn" => Ok(normalized),
+            _ => Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported BLAST task '{}'. Expected one of: blastn-short, blastn",
+                    raw
+                ),
+            }),
+        }
+    }
+
+    fn validate_blast_thresholds(thresholds: &BlastThresholdOptions) -> Result<(), EngineError> {
+        if let Some(max_evalue) = thresholds.max_evalue {
+            if !max_evalue.is_finite() || max_evalue < 0.0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "BLAST max_evalue must be a finite number >= 0.0".to_string(),
+                });
+            }
+        }
+        if let Some(identity) = thresholds.min_identity_percent {
+            if !identity.is_finite() || !(0.0..=100.0).contains(&identity) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "BLAST min_identity_percent must be within [0, 100]".to_string(),
+                });
+            }
+        }
+        if let Some(qcov) = thresholds.min_query_coverage_percent {
+            if !qcov.is_finite() || !(0.0..=100.0).contains(&qcov) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "BLAST min_query_coverage_percent must be within [0, 100]".to_string(),
+                });
+            }
+        }
+        if let Some(min_len) = thresholds.min_alignment_length_bp {
+            if min_len == 0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "BLAST min_alignment_length_bp must be >= 1".to_string(),
+                });
+            }
+        }
+        if let Some(min_bitscore) = thresholds.min_bit_score {
+            if !min_bitscore.is_finite() || min_bitscore < 0.0 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: "BLAST min_bit_score must be a finite number >= 0.0".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_blast_run_options_from_value(
+        value: &serde_json::Value,
+        source: &str,
+    ) -> Result<BlastRunOptions, EngineError> {
+        if value.is_null() {
+            return Ok(BlastRunOptions::default());
+        }
+        if !value.is_object() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("BLAST options in {source} must be a JSON object"),
+            });
+        }
+        serde_json::from_value::<BlastRunOptions>(value.clone()).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Invalid BLAST options in {source}: {e}"),
+        })
+    }
+
+    fn built_in_blast_run_options() -> BlastRunOptions {
+        BlastRunOptions {
+            task: Some("blastn-short".to_string()),
+            max_hits: Some(25),
+            thresholds: BlastThresholdOptions::default(),
+        }
+    }
+
+    fn load_blast_options_from_file(
+        path: &str,
+        strict_missing: bool,
+    ) -> Result<Option<BlastRunOptions>, EngineError> {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        let p = Path::new(trimmed);
+        if !p.exists() {
+            if strict_missing {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("BLAST defaults file '{}' does not exist", trimmed),
+                });
+            }
+            return Ok(None);
+        }
+        let text = std::fs::read_to_string(p).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read BLAST defaults file '{}': {}", trimmed, e),
+        })?;
+        let value = serde_json::from_str::<serde_json::Value>(&text).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Could not parse BLAST defaults file '{}': {}", trimmed, e),
+        })?;
+        let parsed = Self::parse_blast_run_options_from_value(
+            &value,
+            &format!("defaults file '{}'", trimmed),
+        )?;
+        Ok(Some(parsed))
+    }
+
+    pub fn resolve_blast_options_with_layers(
+        defaults_path: Option<&str>,
+        project_override_json: Option<&serde_json::Value>,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+    ) -> Result<BlastResolvedOptions, EngineError> {
+        let mut merged = Self::built_in_blast_run_options();
+
+        let explicit_defaults_path = defaults_path.map(str::trim).filter(|v| !v.is_empty());
+        let defaults_path = explicit_defaults_path.unwrap_or(DEFAULT_BLAST_OPTIONS_PATH);
+        if let Some(from_file) =
+            Self::load_blast_options_from_file(defaults_path, explicit_defaults_path.is_some())?
+        {
+            merged.merge_from(&from_file);
+        }
+
+        if let Some(project_json) = project_override_json {
+            let from_project =
+                Self::parse_blast_run_options_from_value(project_json, "project override")?;
+            merged.merge_from(&from_project);
+        }
+
+        if legacy_task.is_some() || legacy_max_hits.is_some() {
+            let legacy = BlastRunOptions {
+                task: legacy_task.map(|v| v.to_string()),
+                max_hits: legacy_max_hits,
+                thresholds: BlastThresholdOptions::default(),
+            };
+            merged.merge_from(&legacy);
+        }
+
+        if let Some(request_json) = request_override_json {
+            let from_request =
+                Self::parse_blast_run_options_from_value(request_json, "request override")?;
+            merged.merge_from(&from_request);
+        }
+
+        let task = Self::normalize_blast_task_value(
+            merged.task.as_deref().unwrap_or("blastn-short").trim(),
+        )?;
+        let max_hits = merged.max_hits.unwrap_or(25);
+        if max_hits == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "BLAST max_hits must be >= 1".to_string(),
+            });
+        }
+        Self::validate_blast_thresholds(&merged.thresholds)?;
+        Ok(BlastResolvedOptions {
+            task,
+            max_hits,
+            thresholds: merged.thresholds,
+        })
+    }
+
+    fn blast_report_passes_thresholds(
+        hit: &crate::genomes::BlastHit,
+        t: &BlastThresholdOptions,
+    ) -> bool {
+        if let Some(max_evalue) = t.max_evalue {
+            if hit.evalue > max_evalue {
+                return false;
+            }
+        }
+        if let Some(min_identity_percent) = t.min_identity_percent {
+            if hit.identity_percent < min_identity_percent {
+                return false;
+            }
+        }
+        if let Some(min_query_coverage_percent) = t.min_query_coverage_percent {
+            match hit.query_coverage_percent {
+                Some(v) if v >= min_query_coverage_percent => {}
+                _ => return false,
+            }
+        }
+        if let Some(min_alignment_length_bp) = t.min_alignment_length_bp {
+            if hit.alignment_length < min_alignment_length_bp {
+                return false;
+            }
+        }
+        if let Some(min_bit_score) = t.min_bit_score {
+            if hit.bit_score < min_bit_score {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn apply_blast_thresholds_to_report(
+        report: &mut GenomeBlastReport,
+        thresholds: &BlastThresholdOptions,
+    ) -> Result<(), EngineError> {
+        let before = report.hits.len();
+        report
+            .hits
+            .retain(|hit| Self::blast_report_passes_thresholds(hit, thresholds));
+        let removed = before.saturating_sub(report.hits.len());
+        report.hit_count = report.hits.len();
+        if removed > 0 {
+            report.warnings.push(format!(
+                "BLAST thresholds removed {} hit(s) (remaining={})",
+                removed, report.hit_count
+            ));
+        }
+        if thresholds.unique_best_hit.unwrap_or(false) && report.hit_count != 1 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "BLAST unique_best_hit requires exactly one remaining hit, found {}",
+                    report.hit_count
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    pub fn resolve_blast_options_for_request(
+        &self,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+    ) -> Result<BlastResolvedOptions, EngineError> {
+        let defaults_path = self
+            .state
+            .metadata
+            .get(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY)
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string());
+        let project_override = self.state.metadata.get(BLAST_OPTIONS_OVERRIDE_METADATA_KEY);
+        Self::resolve_blast_options_with_layers(
+            defaults_path.as_deref(),
+            project_override,
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+        )
+    }
+
+    pub fn blast_reference_genome_with_project_and_request_options(
+        &self,
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let resolved = self.resolve_blast_options_for_request(
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+        )?;
+        let mut report = Self::blast_reference_genome_raw(
+            catalog_path,
+            genome_id,
+            query_sequence,
+            resolved.max_hits,
+            Some(&resolved.task),
+            cache_dir,
+        )?;
+        Self::apply_blast_thresholds_to_report(&mut report, &resolved.thresholds)?;
+        report.options_override_json = request_override_json.cloned();
+        report.effective_options_json = serde_json::to_value(&resolved).ok();
+        Ok(report)
+    }
+
+    pub fn blast_helper_genome_with_project_and_request_options(
+        &self,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        legacy_task: Option<&str>,
+        legacy_max_hits: Option<usize>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let resolved = self.resolve_blast_options_for_request(
+            request_override_json,
+            legacy_task,
+            legacy_max_hits,
+        )?;
+        let mut report = Self::blast_helper_genome_raw(
+            genome_id,
+            query_sequence,
+            resolved.max_hits,
+            Some(&resolved.task),
+            catalog_path,
+            cache_dir,
+        )?;
+        Self::apply_blast_thresholds_to_report(&mut report, &resolved.thresholds)?;
+        report.options_override_json = request_override_json.cloned();
+        report.effective_options_json = serde_json::to_value(&resolved).ok();
+        Ok(report)
+    }
+
+    pub fn blast_reference_genome_with_request_options(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let engine = Self::default();
+        engine.blast_reference_genome_with_project_and_request_options(
+            catalog_path,
+            genome_id,
+            query_sequence,
+            request_override_json,
+            None,
+            None,
+            cache_dir,
+        )
+    }
+
+    pub fn blast_helper_genome_with_request_options(
+        genome_id: &str,
+        query_sequence: &str,
+        request_override_json: Option<&serde_json::Value>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let engine = Self::default();
+        engine.blast_helper_genome_with_project_and_request_options(
+            genome_id,
+            query_sequence,
+            request_override_json,
+            None,
+            None,
+            catalog_path,
+            cache_dir,
+        )
+    }
+
+    pub fn blast_reference_genome(
+        catalog_path: Option<&str>,
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let mut request = serde_json::Map::new();
+        request.insert("max_hits".to_string(), serde_json::Value::from(max_hits));
+        if let Some(task) = task.map(str::trim).filter(|v| !v.is_empty()) {
+            request.insert("task".to_string(), serde_json::Value::from(task));
+        }
+        let request_json = serde_json::Value::Object(request);
+        Self::blast_reference_genome_with_request_options(
+            catalog_path,
+            genome_id,
+            query_sequence,
+            Some(&request_json),
+            cache_dir,
+        )
+    }
+
+    pub fn blast_helper_genome(
+        genome_id: &str,
+        query_sequence: &str,
+        max_hits: usize,
+        task: Option<&str>,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<GenomeBlastReport, EngineError> {
+        let mut request = serde_json::Map::new();
+        request.insert("max_hits".to_string(), serde_json::Value::from(max_hits));
+        if let Some(task) = task.map(str::trim).filter(|v| !v.is_empty()) {
+            request.insert("task".to_string(), serde_json::Value::from(task));
+        }
+        let request_json = serde_json::Value::Object(request);
+        Self::blast_helper_genome_with_request_options(
+            genome_id,
+            query_sequence,
+            Some(&request_json),
+            catalog_path,
             cache_dir,
         )
     }
@@ -5347,7 +5816,10 @@ impl GentleEngine {
         )
     }
 
-    fn write_primer_design_store(&mut self, mut store: PrimerDesignStore) -> Result<(), EngineError> {
+    fn write_primer_design_store(
+        &mut self,
+        mut store: PrimerDesignStore,
+    ) -> Result<(), EngineError> {
         if store.reports.is_empty() {
             self.state
                 .metadata
@@ -5385,9 +5857,8 @@ impl GentleEngine {
         if out.is_empty() {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message:
-                    "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
-                        .to_string(),
+                message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
+                    .to_string(),
             });
         }
         Ok(out)
@@ -5410,7 +5881,10 @@ impl GentleEngine {
             .collect()
     }
 
-    pub fn get_primer_design_report(&self, report_id: &str) -> Result<PrimerDesignReport, EngineError> {
+    pub fn get_primer_design_report(
+        &self,
+        report_id: &str,
+    ) -> Result<PrimerDesignReport, EngineError> {
         let report_id = Self::normalize_primer_design_report_id(report_id)?;
         let store = self.read_primer_design_store();
         store
@@ -5431,7 +5905,10 @@ impl GentleEngine {
         let report = self.get_primer_design_report(report_id)?;
         let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
             code: ErrorCode::Internal,
-            message: format!("Could not serialize primer-design report '{}': {e}", report.report_id),
+            message: format!(
+                "Could not serialize primer-design report '{}': {e}",
+                report.report_id
+            ),
         })?;
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -15533,33 +16010,32 @@ impl GentleEngine {
                 for fwd in &forward_candidates {
                     for rev in &reverse_candidates {
                         if rev.end_0based_exclusive <= fwd.start_0based {
-                            rejection_summary.amplicon_or_roi_failure = rejection_summary
-                                .amplicon_or_roi_failure
-                                .saturating_add(1);
+                            rejection_summary.amplicon_or_roi_failure =
+                                rejection_summary.amplicon_or_roi_failure.saturating_add(1);
                             continue;
                         }
                         let amplicon_start = fwd.start_0based;
                         let amplicon_end = rev.end_0based_exclusive;
                         let amplicon_length_bp = amplicon_end.saturating_sub(amplicon_start);
-                        let amplicon_size_ok =
-                            amplicon_length_bp >= min_amplicon_bp
-                                && amplicon_length_bp <= max_amplicon_bp;
+                        let amplicon_size_ok = amplicon_length_bp >= min_amplicon_bp
+                            && amplicon_length_bp <= max_amplicon_bp;
                         let roi_covered =
                             amplicon_start <= roi_start_0based && amplicon_end >= roi_end_0based;
                         let tm_delta_c = (fwd.tm_c - rev.tm_c).abs();
                         let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
                         if !(amplicon_size_ok && roi_covered && tm_delta_ok) {
-                            rejection_summary.amplicon_or_roi_failure = rejection_summary
-                                .amplicon_or_roi_failure
-                                .saturating_add(1);
+                            rejection_summary.amplicon_or_roi_failure =
+                                rejection_summary.amplicon_or_roi_failure.saturating_add(1);
                             continue;
                         }
                         let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
                         let hit_penalty = (fwd.anneal_hits.saturating_sub(1)
                             + rev.anneal_hits.saturating_sub(1))
                             as f64;
-                        let score =
-                            1000.0 - (tm_delta_c * 20.0) - (length_penalty * 0.1) - (hit_penalty * 10.0);
+                        let score = 1000.0
+                            - (tm_delta_c * 20.0)
+                            - (length_penalty * 0.1)
+                            - (hit_penalty * 10.0);
                         pairs.push(PrimerDesignPairRecord {
                             rank: 0,
                             score,
@@ -17135,6 +17611,66 @@ impl GentleEngine {
                         self.state.display.linear_sequence_helical_phase_offset_bp
                     ));
                 }
+                "blast_options_override" => {
+                    if value.is_null() {
+                        self.state
+                            .metadata
+                            .remove(BLAST_OPTIONS_OVERRIDE_METADATA_KEY);
+                        result
+                            .messages
+                            .push("Cleared parameter 'blast_options_override'".to_string());
+                    } else {
+                        let parsed =
+                            Self::parse_blast_run_options_from_value(&value, "SetParameter")?;
+                        self.state.metadata.insert(
+                            BLAST_OPTIONS_OVERRIDE_METADATA_KEY.to_string(),
+                            serde_json::to_value(parsed).map_err(|e| EngineError {
+                                code: ErrorCode::Internal,
+                                message: format!(
+                                    "Could not serialize blast_options_override metadata: {e}"
+                                ),
+                            })?,
+                        );
+                        result
+                            .messages
+                            .push("Set parameter 'blast_options_override'".to_string());
+                    }
+                }
+                "blast_options_defaults_path" => {
+                    if value.is_null() {
+                        self.state
+                            .metadata
+                            .remove(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY);
+                        result
+                            .messages
+                            .push("Cleared parameter 'blast_options_defaults_path'".to_string());
+                    } else {
+                        let raw = value.as_str().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message:
+                                "SetParameter blast_options_defaults_path requires a string or null"
+                                    .to_string(),
+                        })?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            self.state
+                                .metadata
+                                .remove(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY);
+                            result.messages.push(
+                                "Cleared parameter 'blast_options_defaults_path'".to_string(),
+                            );
+                        } else {
+                            self.state.metadata.insert(
+                                BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY.to_string(),
+                                serde_json::Value::String(trimmed.to_string()),
+                            );
+                            result.messages.push(format!(
+                                "Set parameter 'blast_options_defaults_path' to '{}'",
+                                trimmed
+                            ));
+                        }
+                    }
+                }
                 "vcf_display_show_snp"
                 | "vcf_display_show_ins"
                 | "vcf_display_show_del"
@@ -17380,6 +17916,7 @@ impl Engine for GentleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::genomes::BlastHit;
     use bio::io::fasta;
     use flate2::{Compression, write::GzEncoder};
     use std::env;
@@ -17392,6 +17929,53 @@ mod tests {
 
     fn seq(s: &str) -> DNAsequence {
         DNAsequence::from_sequence(s).unwrap()
+    }
+
+    fn demo_blast_report() -> GenomeBlastReport {
+        GenomeBlastReport {
+            genome_id: "demo".to_string(),
+            query_length: 12,
+            max_hits: 25,
+            task: "blastn-short".to_string(),
+            blastn_executable: "blastn".to_string(),
+            blast_db_prefix: "/tmp/demo".to_string(),
+            command: vec![],
+            hit_count: 2,
+            hits: vec![
+                BlastHit {
+                    subject_id: "chr1".to_string(),
+                    identity_percent: 99.0,
+                    alignment_length: 12,
+                    mismatches: 0,
+                    gap_opens: 0,
+                    query_start: 1,
+                    query_end: 12,
+                    subject_start: 100,
+                    subject_end: 111,
+                    evalue: 1e-9,
+                    bit_score: 42.0,
+                    query_coverage_percent: Some(100.0),
+                },
+                BlastHit {
+                    subject_id: "chr2".to_string(),
+                    identity_percent: 93.5,
+                    alignment_length: 10,
+                    mismatches: 1,
+                    gap_opens: 0,
+                    query_start: 2,
+                    query_end: 11,
+                    subject_start: 200,
+                    subject_end: 209,
+                    evalue: 1e-4,
+                    bit_score: 27.0,
+                    query_coverage_percent: Some(83.3),
+                },
+            ],
+            warnings: vec![],
+            stderr: String::new(),
+            options_override_json: None,
+            effective_options_json: None,
+        }
     }
 
     fn splicing_test_sequence() -> DNAsequence {
@@ -18000,9 +18584,10 @@ exit 2
     #[test]
     fn test_design_primer_pairs_rejects_invalid_roi() {
         let mut state = ProjectState::default();
-        state
-            .sequences
-            .insert("tpl".to_string(), seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"));
+        state.sequences.insert(
+            "tpl".to_string(),
+            seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+        );
         let mut engine = GentleEngine::from_state(state);
         let err = engine
             .apply(Operation::DesignPrimerPairs {
@@ -22173,6 +22758,8 @@ ORIGIN
                     command_line: "blastn -db /tmp/blastdb/genome -query /tmp/query.fa".to_string(),
                     catalog_path: Some("assets/genomes.json".to_string()),
                     cache_dir: Some("data/genomes".to_string()),
+                    options_override_json: None,
+                    effective_options_json: None,
                 }),
             })
             .unwrap();
@@ -22236,6 +22823,130 @@ ORIGIN
                 .unwrap_or_default(),
             "chr3"
         );
+    }
+
+    #[test]
+    fn test_resolve_blast_options_for_request_uses_project_legacy_and_request_layers() {
+        let mut state = ProjectState::default();
+        state.metadata.insert(
+            BLAST_OPTIONS_OVERRIDE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                "task": "blastn",
+                "max_hits": 31,
+                "thresholds": {
+                    "min_identity_percent": 91.0
+                }
+            }),
+        );
+        let engine = GentleEngine::from_state(state);
+        let request = serde_json::json!({
+            "max_hits": 7,
+            "thresholds": {
+                "min_identity_percent": 99.0
+            }
+        });
+        let resolved = engine
+            .resolve_blast_options_for_request(Some(&request), Some("blastn-short"), Some(5))
+            .expect("resolve blast options");
+        assert_eq!(resolved.task, "blastn-short");
+        assert_eq!(resolved.max_hits, 7);
+        assert_eq!(resolved.thresholds.min_identity_percent, Some(99.0));
+    }
+
+    #[test]
+    fn test_resolve_blast_options_rejects_unknown_keys() {
+        let request = serde_json::json!({
+            "unknown_key": 1
+        });
+        let err =
+            GentleEngine::resolve_blast_options_with_layers(None, None, Some(&request), None, None)
+                .expect_err("unknown key should be rejected");
+        assert!(matches!(err.code, ErrorCode::InvalidInput));
+        assert!(err.message.contains("Invalid BLAST options"));
+    }
+
+    #[test]
+    fn test_set_parameter_blast_options_metadata_roundtrip() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "blast_options_override".to_string(),
+                value: serde_json::json!({
+                    "max_hits": 13,
+                    "thresholds": {
+                        "min_bit_score": 42.0
+                    }
+                }),
+            })
+            .expect("set blast_options_override");
+        assert_eq!(
+            engine
+                .state()
+                .metadata
+                .get(BLAST_OPTIONS_OVERRIDE_METADATA_KEY)
+                .and_then(|v| v.get("max_hits"))
+                .and_then(|v| v.as_u64()),
+            Some(13)
+        );
+
+        engine
+            .apply(Operation::SetParameter {
+                name: "blast_options_defaults_path".to_string(),
+                value: serde_json::json!("config/blast_defaults.json"),
+            })
+            .expect("set blast_options_defaults_path");
+        assert_eq!(
+            engine
+                .state()
+                .metadata
+                .get(BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY)
+                .and_then(|v| v.as_str()),
+            Some("config/blast_defaults.json")
+        );
+
+        engine
+            .apply(Operation::SetParameter {
+                name: "blast_options_override".to_string(),
+                value: serde_json::Value::Null,
+            })
+            .expect("clear blast_options_override");
+        assert!(
+            !engine
+                .state()
+                .metadata
+                .contains_key(BLAST_OPTIONS_OVERRIDE_METADATA_KEY)
+        );
+    }
+
+    #[test]
+    fn test_apply_blast_thresholds_filters_hits_and_enforces_unique_best_hit() {
+        let mut filtered = demo_blast_report();
+        let thresholds = BlastThresholdOptions {
+            min_identity_percent: Some(98.0),
+            ..Default::default()
+        };
+        GentleEngine::apply_blast_thresholds_to_report(&mut filtered, &thresholds)
+            .expect("threshold filtering");
+        assert_eq!(filtered.hit_count, 1);
+        assert_eq!(filtered.hits.len(), 1);
+        assert_eq!(filtered.hits[0].subject_id, "chr1");
+        assert!(
+            filtered
+                .warnings
+                .iter()
+                .any(|w| w.contains("thresholds removed 1 hit"))
+        );
+
+        let mut strict = demo_blast_report();
+        let strict_thresholds = BlastThresholdOptions {
+            min_identity_percent: Some(100.0),
+            unique_best_hit: Some(true),
+            ..Default::default()
+        };
+        let err = GentleEngine::apply_blast_thresholds_to_report(&mut strict, &strict_thresholds)
+            .expect_err("unique_best_hit should fail when no hit remains");
+        assert!(matches!(err.code, ErrorCode::InvalidInput));
+        assert!(err.message.contains("unique_best_hit"));
     }
 
     #[test]

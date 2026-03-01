@@ -417,6 +417,7 @@ pub struct GENtleApp {
     configuration_window_backdrops: WindowBackdropSettings,
     configuration_window_backdrops_dirty: bool,
     configuration_status: String,
+    window_backdrop_path_status_cache: HashMap<String, (egui::Color32, String)>,
     current_project_path: Option<String>,
     recent_project_paths: Vec<String>,
     lineage_graph_view: bool,
@@ -488,6 +489,19 @@ pub struct GENtleApp {
     genome_blast_query_pool_id: String,
     genome_blast_max_hits: usize,
     genome_blast_task_name: String,
+    genome_blast_options_preset: GenomeBlastOptionsPreset,
+    genome_blast_threshold_use_max_evalue: bool,
+    genome_blast_threshold_max_evalue: String,
+    genome_blast_threshold_use_min_identity_percent: bool,
+    genome_blast_threshold_min_identity_percent: String,
+    genome_blast_threshold_use_min_query_coverage_percent: bool,
+    genome_blast_threshold_min_query_coverage_percent: String,
+    genome_blast_threshold_use_min_alignment_length_bp: bool,
+    genome_blast_threshold_min_alignment_length_bp: String,
+    genome_blast_threshold_use_min_bit_score: bool,
+    genome_blast_threshold_min_bit_score: String,
+    genome_blast_threshold_unique_best_hit: bool,
+    genome_blast_options_json: String,
     genome_blast_task: Option<GenomeBlastTask>,
     genome_blast_progress_fraction: Option<f32>,
     genome_blast_progress_label: String,
@@ -723,6 +737,53 @@ enum GenomeBlastSourceMode {
     Manual,
     ProjectSequence,
     ProjectPool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum GenomeBlastOptionsPreset {
+    #[default]
+    None,
+    StrictIdentityCoverage,
+    UniqueBestHit,
+    HighStringency,
+}
+
+impl GenomeBlastOptionsPreset {
+    fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::StrictIdentityCoverage => "Strict identity+coverage",
+            Self::UniqueBestHit => "Unique best hit",
+            Self::HighStringency => "High stringency",
+        }
+    }
+
+    fn as_request_override_json(self) -> Option<serde_json::Value> {
+        match self {
+            Self::None => None,
+            Self::StrictIdentityCoverage => Some(serde_json::json!({
+                "thresholds": {
+                    "min_identity_percent": 97.0,
+                    "min_query_coverage_percent": 80.0
+                }
+            })),
+            Self::UniqueBestHit => Some(serde_json::json!({
+                "thresholds": {
+                    "unique_best_hit": true
+                }
+            })),
+            Self::HighStringency => Some(serde_json::json!({
+                "task": "blastn",
+                "max_hits": 50,
+                "thresholds": {
+                    "max_evalue": 1e-6,
+                    "min_identity_percent": 99.0,
+                    "min_query_coverage_percent": 90.0,
+                    "min_bit_score": 50.0
+                }
+            })),
+        }
+    }
 }
 
 struct GenomeBlastTask {
@@ -1046,6 +1107,7 @@ impl Default for GENtleApp {
             configuration_window_backdrops: WindowBackdropSettings::default(),
             configuration_window_backdrops_dirty: false,
             configuration_status: String::new(),
+            window_backdrop_path_status_cache: HashMap::new(),
             current_project_path: None,
             recent_project_paths: vec![],
             lineage_graph_view: false,
@@ -1117,6 +1179,19 @@ impl Default for GENtleApp {
             genome_blast_query_pool_id: String::new(),
             genome_blast_max_hits: 25,
             genome_blast_task_name: "blastn-short".to_string(),
+            genome_blast_options_preset: GenomeBlastOptionsPreset::None,
+            genome_blast_threshold_use_max_evalue: false,
+            genome_blast_threshold_max_evalue: String::new(),
+            genome_blast_threshold_use_min_identity_percent: false,
+            genome_blast_threshold_min_identity_percent: String::new(),
+            genome_blast_threshold_use_min_query_coverage_percent: false,
+            genome_blast_threshold_min_query_coverage_percent: String::new(),
+            genome_blast_threshold_use_min_alignment_length_bp: false,
+            genome_blast_threshold_min_alignment_length_bp: String::new(),
+            genome_blast_threshold_use_min_bit_score: false,
+            genome_blast_threshold_min_bit_score: String::new(),
+            genome_blast_threshold_unique_best_hit: false,
+            genome_blast_options_json: String::new(),
             genome_blast_task: None,
             genome_blast_progress_fraction: None,
             genome_blast_progress_label: String::new(),
@@ -1383,7 +1458,7 @@ impl GENtleApp {
         if value.is_finite() {
             value.clamp(8.0, 24.0)
         } else {
-            8.25
+            9.0
         }
     }
 
@@ -1517,6 +1592,7 @@ impl GENtleApp {
         self.configuration_window_backdrops = runtime_backdrops;
         self.configuration_window_backdrops_dirty = false;
         window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
+        self.window_backdrop_path_status_cache.clear();
         self.recent_project_paths = Self::normalize_recent_project_paths(saved.recent_projects);
         self.configuration_graphics_dirty = false;
         self.configuration_rnapkin_validation_ok = None;
@@ -1978,6 +2054,7 @@ Error: `{err}`"
         }
         self.configuration_window_backdrops = self.window_backdrops.clone();
         self.configuration_window_backdrops_dirty = false;
+        self.window_backdrop_path_status_cache.clear();
         self.clear_rnapkin_validation();
         self.clear_blast_validation();
     }
@@ -5542,6 +5619,192 @@ Error: `{err}`"
         }
     }
 
+    fn merge_json_objects_recursive(
+        base: &mut serde_json::Map<String, serde_json::Value>,
+        overlay: &serde_json::Map<String, serde_json::Value>,
+    ) {
+        for (key, value) in overlay {
+            match (base.get_mut(key), value) {
+                (
+                    Some(serde_json::Value::Object(existing)),
+                    serde_json::Value::Object(incoming),
+                ) => {
+                    Self::merge_json_objects_recursive(existing, incoming);
+                }
+                _ => {
+                    base.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    fn build_genome_blast_request_override_json(
+        &self,
+    ) -> Result<Option<serde_json::Value>, String> {
+        let mut merged = serde_json::Map::<String, serde_json::Value>::new();
+        if let Some(preset) = self.genome_blast_options_preset.as_request_override_json() {
+            let Some(obj) = preset.as_object() else {
+                return Err(
+                    "Internal preset error: BLAST preset payload is not a JSON object".to_string(),
+                );
+            };
+            Self::merge_json_objects_recursive(&mut merged, obj);
+        }
+        if let Some(structured_thresholds) =
+            self.build_structured_blast_thresholds_override_json()?
+        {
+            let Some(obj) = structured_thresholds.as_object() else {
+                return Err("Internal threshold error: structured BLAST thresholds payload is not a JSON object".to_string());
+            };
+            Self::merge_json_objects_recursive(&mut merged, obj);
+        }
+        let raw_advanced = self.genome_blast_options_json.trim();
+        if !raw_advanced.is_empty() {
+            let parsed: serde_json::Value = serde_json::from_str(raw_advanced)
+                .map_err(|e| format!("Invalid advanced BLAST options JSON: {e}"))?;
+            let Some(obj) = parsed.as_object() else {
+                return Err("Advanced BLAST options must decode to a JSON object".to_string());
+            };
+            Self::merge_json_objects_recursive(&mut merged, obj);
+        }
+        if merged.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(serde_json::Value::Object(merged)))
+        }
+    }
+
+    fn build_structured_blast_thresholds_override_json(
+        &self,
+    ) -> Result<Option<serde_json::Value>, String> {
+        let mut thresholds = serde_json::Map::<String, serde_json::Value>::new();
+
+        if self.genome_blast_threshold_use_max_evalue {
+            let parsed = self
+                .genome_blast_threshold_max_evalue
+                .trim()
+                .parse::<f64>()
+                .map_err(|e| format!("Invalid max_evalue value: {e}"))?;
+            if !parsed.is_finite() || parsed < 0.0 {
+                return Err("max_evalue must be a finite number >= 0.0".to_string());
+            }
+            thresholds.insert("max_evalue".to_string(), serde_json::Value::from(parsed));
+        }
+
+        if self.genome_blast_threshold_use_min_identity_percent {
+            let parsed = self
+                .genome_blast_threshold_min_identity_percent
+                .trim()
+                .parse::<f64>()
+                .map_err(|e| format!("Invalid min_identity_percent value: {e}"))?;
+            if !parsed.is_finite() || !(0.0..=100.0).contains(&parsed) {
+                return Err("min_identity_percent must be within [0, 100]".to_string());
+            }
+            thresholds.insert(
+                "min_identity_percent".to_string(),
+                serde_json::Value::from(parsed),
+            );
+        }
+
+        if self.genome_blast_threshold_use_min_query_coverage_percent {
+            let parsed = self
+                .genome_blast_threshold_min_query_coverage_percent
+                .trim()
+                .parse::<f64>()
+                .map_err(|e| format!("Invalid min_query_coverage_percent value: {e}"))?;
+            if !parsed.is_finite() || !(0.0..=100.0).contains(&parsed) {
+                return Err("min_query_coverage_percent must be within [0, 100]".to_string());
+            }
+            thresholds.insert(
+                "min_query_coverage_percent".to_string(),
+                serde_json::Value::from(parsed),
+            );
+        }
+
+        if self.genome_blast_threshold_use_min_alignment_length_bp {
+            let parsed = self
+                .genome_blast_threshold_min_alignment_length_bp
+                .trim()
+                .parse::<usize>()
+                .map_err(|e| format!("Invalid min_alignment_length_bp value: {e}"))?;
+            if parsed == 0 {
+                return Err("min_alignment_length_bp must be >= 1".to_string());
+            }
+            thresholds.insert(
+                "min_alignment_length_bp".to_string(),
+                serde_json::Value::from(parsed),
+            );
+        }
+
+        if self.genome_blast_threshold_use_min_bit_score {
+            let parsed = self
+                .genome_blast_threshold_min_bit_score
+                .trim()
+                .parse::<f64>()
+                .map_err(|e| format!("Invalid min_bit_score value: {e}"))?;
+            if !parsed.is_finite() || parsed < 0.0 {
+                return Err("min_bit_score must be a finite number >= 0.0".to_string());
+            }
+            thresholds.insert("min_bit_score".to_string(), serde_json::Value::from(parsed));
+        }
+
+        if self.genome_blast_threshold_unique_best_hit {
+            thresholds.insert("unique_best_hit".to_string(), serde_json::Value::from(true));
+        }
+
+        if thresholds.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(serde_json::json!({ "thresholds": thresholds })))
+        }
+    }
+
+    fn resolve_genome_blast_options_preview(
+        &self,
+        request_override_json: Option<&serde_json::Value>,
+    ) -> Result<crate::engine::BlastResolvedOptions, String> {
+        let task_name = self.genome_blast_task_name.trim();
+        let legacy_task = if task_name.is_empty() {
+            None
+        } else {
+            Some(task_name)
+        };
+        let legacy_max_hits = Some(self.genome_blast_max_hits.max(1));
+        let engine = self.engine.read().unwrap();
+        engine
+            .resolve_blast_options_for_request(request_override_json, legacy_task, legacy_max_hits)
+            .map_err(|e| e.message)
+    }
+
+    fn format_blast_thresholds_summary(
+        thresholds: &crate::engine::BlastThresholdOptions,
+    ) -> String {
+        let mut parts: Vec<String> = vec![];
+        if let Some(v) = thresholds.max_evalue {
+            parts.push(format!("max_evalue={v:.3e}"));
+        }
+        if let Some(v) = thresholds.min_identity_percent {
+            parts.push(format!("min_identity={v:.2}%"));
+        }
+        if let Some(v) = thresholds.min_query_coverage_percent {
+            parts.push(format!("min_qcov={v:.2}%"));
+        }
+        if let Some(v) = thresholds.min_alignment_length_bp {
+            parts.push(format!("min_aln_bp={v}"));
+        }
+        if let Some(v) = thresholds.min_bit_score {
+            parts.push(format!("min_bit_score={v:.2}"));
+        }
+        if let Some(v) = thresholds.unique_best_hit {
+            parts.push(format!("unique_best_hit={v}"));
+        }
+        if parts.is_empty() {
+            "none".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
+
     fn start_reference_genome_blast(&mut self) {
         if self.genome_blast_task.is_some() {
             self.genome_blast_status = "A BLAST task is already running".to_string();
@@ -5629,13 +5892,29 @@ Error: `{err}`"
         let total_queries = blast_queries.len();
         let catalog_path = self.genome_catalog_path_opt();
         let cache_dir = self.genome_cache_dir_opt();
-        let max_hits = self.genome_blast_max_hits.max(1);
+        let legacy_max_hits = self.genome_blast_max_hits.max(1);
         let blast_task_name = self.genome_blast_task_name.trim().to_string();
-        let task_arg = if blast_task_name.is_empty() {
+        let legacy_task_arg = if blast_task_name.is_empty() {
             None
         } else {
             Some(blast_task_name)
         };
+        let request_override_json = match self.build_genome_blast_request_override_json() {
+            Ok(v) => v,
+            Err(e) => {
+                self.genome_blast_status = e;
+                return;
+            }
+        };
+        let resolved_preview =
+            match self.resolve_genome_blast_options_preview(request_override_json.as_ref()) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.genome_blast_status = format!("BLAST options preflight failed: {e}");
+                    return;
+                }
+            };
+        let project_state_snapshot = self.engine.read().unwrap().state().clone();
         let job_id = self.alloc_background_job_id();
         let (tx, rx) = mpsc::channel::<GenomeBlastTaskMessage>();
         self.genome_blast_results.clear();
@@ -5652,8 +5931,17 @@ Error: `{err}`"
             BackgroundJobEventPhase::Started,
             Some(job_id),
             format!(
-                "BLAST started: genome='{}', queries={}, max_hits={}",
-                genome_id, total_queries, max_hits
+                "BLAST started: genome='{}', queries={}, task='{}', max_hits={}, thresholds={}, request_override={}",
+                genome_id,
+                total_queries,
+                resolved_preview.task,
+                resolved_preview.max_hits,
+                Self::format_blast_thresholds_summary(&resolved_preview.thresholds),
+                if request_override_json.is_some() {
+                    "yes"
+                } else {
+                    "no"
+                }
             ),
         );
         self.genome_blast_task = Some(GenomeBlastTask {
@@ -5664,11 +5952,8 @@ Error: `{err}`"
         std::thread::spawn(move || {
             let mut reports: Vec<GenomeBlastQueryResult> = vec![];
             let mut failed_queries: Vec<String> = vec![];
-            let task_name_for_status = task_arg
-                .as_deref()
-                .filter(|v| !v.trim().is_empty())
-                .unwrap_or("blastn-short")
-                .to_string();
+            let task_name_for_status = resolved_preview.task.clone();
+            let max_hits_for_status = resolved_preview.max_hits;
             let blastn_bin_for_status = env::var(BLASTN_ENV_BIN)
                 .ok()
                 .map(|v| v.trim().to_string())
@@ -5686,7 +5971,7 @@ Error: `{err}`"
                 let query_length = query.len();
                 let invocation_template = format!(
                     "{} -db <prepared_db_prefix> -query <temp_query.fa> -task {} -max_target_seqs {}",
-                    blastn_bin_for_status, task_name_for_status, max_hits
+                    blastn_bin_for_status, task_name_for_status, max_hits_for_status
                 );
                 let _ = tx.send(GenomeBlastTaskMessage::Status {
                     job_id,
@@ -5702,16 +5987,21 @@ Error: `{err}`"
                 let catalog_for_query = catalog_path.clone();
                 let cache_for_query = cache_dir.clone();
                 let genome_for_query = genome_id.clone();
-                let task_for_query = task_arg.clone();
+                let task_for_query = legacy_task_arg.clone();
+                let request_override_for_query = request_override_json.clone();
+                let project_state_for_query = project_state_snapshot.clone();
                 std::thread::spawn(move || {
-                    let outcome = GentleEngine::blast_reference_genome(
-                        catalog_for_query.as_deref(),
-                        &genome_for_query,
-                        &query,
-                        max_hits,
-                        task_for_query.as_deref(),
-                        cache_for_query.as_deref(),
-                    );
+                    let blast_engine = GentleEngine::from_state(project_state_for_query);
+                    let outcome = blast_engine
+                        .blast_reference_genome_with_project_and_request_options(
+                            catalog_for_query.as_deref(),
+                            &genome_for_query,
+                            &query,
+                            request_override_for_query.as_ref(),
+                            task_for_query.as_deref(),
+                            Some(legacy_max_hits),
+                            cache_for_query.as_deref(),
+                        );
                     let _ = query_tx.send(outcome);
                 });
 
@@ -6037,6 +6327,8 @@ Error: `{err}`"
                 ),
                 catalog_path: self.genome_catalog_path_opt(),
                 cache_dir: self.genome_cache_dir_opt(),
+                options_override_json: result.report.options_override_json.clone(),
+                effective_options_json: result.report.effective_options_json.clone(),
             }),
         };
         match self.engine.write().unwrap().apply(op) {
@@ -6849,6 +7141,16 @@ Error: `{err}`"
         if !invocation.trim().is_empty() {
             ui.monospace(format!("invocation: {invocation}"));
         }
+        if let Some(request) = report.options_override_json.as_ref() {
+            if let Ok(compact) = serde_json::to_string(request) {
+                ui.monospace(format!("request_options: {compact}"));
+            }
+        }
+        if let Some(effective) = report.effective_options_json.as_ref() {
+            if let Ok(compact) = serde_json::to_string(effective) {
+                ui.monospace(format!("effective_options: {compact}"));
+            }
+        }
         if !report.warnings.is_empty() {
             ui.separator();
             ui.label("Warnings");
@@ -6923,6 +7225,8 @@ Error: `{err}`"
         }
 
         ui.label("Run BLAST against a prepared genome index.");
+        ui.separator();
+        ui.strong("1. Target");
         ui.horizontal(|ui| {
             ui.label("catalog");
             ui.text_edit_singleline(&mut self.genome_catalog_path);
@@ -6997,6 +7301,7 @@ Error: `{err}`"
         }
 
         ui.separator();
+        ui.strong("2. Input");
         ui.label("Query source");
         ui.horizontal(|ui| {
             ui.selectable_value(
@@ -7078,6 +7383,7 @@ Error: `{err}`"
         }
 
         ui.separator();
+        ui.strong("3. Options");
         ui.horizontal(|ui| {
             ui.label("max_hits");
             ui.add(
@@ -7101,7 +7407,216 @@ Error: `{err}`"
                     );
                 });
         });
+        ui.horizontal(|ui| {
+            ui.label("preset");
+            egui::ComboBox::from_id_salt("genome_blast_options_preset_combo")
+                .selected_text(self.genome_blast_options_preset.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.genome_blast_options_preset,
+                        GenomeBlastOptionsPreset::None,
+                        GenomeBlastOptionsPreset::None.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.genome_blast_options_preset,
+                        GenomeBlastOptionsPreset::StrictIdentityCoverage,
+                        GenomeBlastOptionsPreset::StrictIdentityCoverage.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.genome_blast_options_preset,
+                        GenomeBlastOptionsPreset::UniqueBestHit,
+                        GenomeBlastOptionsPreset::UniqueBestHit.label(),
+                    );
+                    ui.selectable_value(
+                        &mut self.genome_blast_options_preset,
+                        GenomeBlastOptionsPreset::HighStringency,
+                        GenomeBlastOptionsPreset::HighStringency.label(),
+                    );
+                });
+            if ui
+                .button("Load JSON...")
+                .on_hover_text("Load advanced BLAST options JSON from file")
+                .clicked()
+            {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("JSON", &["json"])
+                    .pick_file()
+                {
+                    match fs::read_to_string(&path) {
+                        Ok(text) => {
+                            self.genome_blast_options_json = text;
+                        }
+                        Err(e) => {
+                            self.genome_blast_status = format!(
+                                "Could not read BLAST options file '{}': {}",
+                                path.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        });
+        ui.group(|ui| {
+            ui.label("Structured threshold controls");
+            egui::Grid::new("genome_blast_structured_threshold_grid")
+                .num_columns(3)
+                .spacing([8.0, 4.0])
+                .show(ui, |ui| {
+                    ui.checkbox(
+                        &mut self.genome_blast_threshold_use_max_evalue,
+                        "max_evalue",
+                    );
+                    ui.add_enabled(
+                        self.genome_blast_threshold_use_max_evalue,
+                        egui::TextEdit::singleline(&mut self.genome_blast_threshold_max_evalue)
+                            .desired_width(140.0)
+                            .hint_text("1e-6"),
+                    );
+                    ui.small("finite >= 0");
+                    ui.end_row();
 
+                    ui.checkbox(
+                        &mut self.genome_blast_threshold_use_min_identity_percent,
+                        "min_identity_percent",
+                    );
+                    ui.add_enabled(
+                        self.genome_blast_threshold_use_min_identity_percent,
+                        egui::TextEdit::singleline(
+                            &mut self.genome_blast_threshold_min_identity_percent,
+                        )
+                        .desired_width(140.0)
+                        .hint_text("97.0"),
+                    );
+                    ui.small("0..100");
+                    ui.end_row();
+
+                    ui.checkbox(
+                        &mut self.genome_blast_threshold_use_min_query_coverage_percent,
+                        "min_query_coverage_percent",
+                    );
+                    ui.add_enabled(
+                        self.genome_blast_threshold_use_min_query_coverage_percent,
+                        egui::TextEdit::singleline(
+                            &mut self.genome_blast_threshold_min_query_coverage_percent,
+                        )
+                        .desired_width(140.0)
+                        .hint_text("80.0"),
+                    );
+                    ui.small("0..100");
+                    ui.end_row();
+
+                    ui.checkbox(
+                        &mut self.genome_blast_threshold_use_min_alignment_length_bp,
+                        "min_alignment_length_bp",
+                    );
+                    ui.add_enabled(
+                        self.genome_blast_threshold_use_min_alignment_length_bp,
+                        egui::TextEdit::singleline(
+                            &mut self.genome_blast_threshold_min_alignment_length_bp,
+                        )
+                        .desired_width(140.0)
+                        .hint_text("20"),
+                    );
+                    ui.small(">= 1");
+                    ui.end_row();
+
+                    ui.checkbox(
+                        &mut self.genome_blast_threshold_use_min_bit_score,
+                        "min_bit_score",
+                    );
+                    ui.add_enabled(
+                        self.genome_blast_threshold_use_min_bit_score,
+                        egui::TextEdit::singleline(&mut self.genome_blast_threshold_min_bit_score)
+                            .desired_width(140.0)
+                            .hint_text("40.0"),
+                    );
+                    ui.small("finite >= 0");
+                    ui.end_row();
+
+                    ui.checkbox(
+                        &mut self.genome_blast_threshold_unique_best_hit,
+                        "unique_best_hit",
+                    );
+                    ui.small("-");
+                    ui.small("require exactly one hit after filtering");
+                    ui.end_row();
+                });
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Reset thresholds")
+                    .on_hover_text("Clear all structured threshold controls")
+                    .clicked()
+                {
+                    self.genome_blast_threshold_use_max_evalue = false;
+                    self.genome_blast_threshold_max_evalue.clear();
+                    self.genome_blast_threshold_use_min_identity_percent = false;
+                    self.genome_blast_threshold_min_identity_percent.clear();
+                    self.genome_blast_threshold_use_min_query_coverage_percent = false;
+                    self.genome_blast_threshold_min_query_coverage_percent
+                        .clear();
+                    self.genome_blast_threshold_use_min_alignment_length_bp = false;
+                    self.genome_blast_threshold_min_alignment_length_bp.clear();
+                    self.genome_blast_threshold_use_min_bit_score = false;
+                    self.genome_blast_threshold_min_bit_score.clear();
+                    self.genome_blast_threshold_unique_best_hit = false;
+                }
+            });
+        });
+        ui.label("advanced options JSON (object; merged after preset + structured controls)");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.genome_blast_options_json)
+                .desired_rows(4)
+                .hint_text("{\"thresholds\":{\"min_identity_percent\":97.0}}"),
+        );
+        match self.build_genome_blast_request_override_json() {
+            Ok(request_override_json) => {
+                if let Some(v) = request_override_json.as_ref() {
+                    match self.resolve_genome_blast_options_preview(Some(v)) {
+                        Ok(resolved) => {
+                            ui.small(format!(
+                                "Effective options preview: task='{}', max_hits={}, thresholds={}",
+                                resolved.task,
+                                resolved.max_hits,
+                                Self::format_blast_thresholds_summary(&resolved.thresholds)
+                            ));
+                        }
+                        Err(e) => {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(190, 70, 70),
+                                format!("Options validation error: {e}"),
+                            );
+                        }
+                    }
+                } else {
+                    match self.resolve_genome_blast_options_preview(None) {
+                        Ok(resolved) => {
+                            ui.small(format!(
+                                "Effective options preview: task='{}', max_hits={}, thresholds={}",
+                                resolved.task,
+                                resolved.max_hits,
+                                Self::format_blast_thresholds_summary(&resolved.thresholds)
+                            ));
+                        }
+                        Err(e) => {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(190, 70, 70),
+                                format!("Options validation error: {e}"),
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                ui.colored_label(
+                    egui::Color32::from_rgb(190, 70, 70),
+                    format!("Options JSON error: {e}"),
+                );
+            }
+        }
+
+        ui.separator();
+        ui.strong("4. Execution");
         let running = self.genome_blast_task.is_some();
         ui.horizontal(|ui| {
             if ui
@@ -7144,6 +7659,7 @@ Error: `{err}`"
         }
         if !self.genome_blast_results.is_empty() {
             ui.separator();
+            ui.strong("5. Results");
             if self.genome_blast_selected_result >= self.genome_blast_results.len() {
                 self.genome_blast_selected_result = 0;
             }
@@ -13484,6 +14000,7 @@ Error: `{err}`"
     fn apply_configuration_window_backdrops(&mut self) {
         self.window_backdrops = self.configuration_window_backdrops.clone();
         window_backdrop::set_window_backdrop_settings(self.window_backdrops.clone());
+        self.window_backdrop_path_status_cache.clear();
         self.configuration_window_backdrops_dirty = false;
         self.configuration_status = "Window styling settings applied".to_string();
         match self.write_persisted_configuration_to_disk() {
@@ -13558,30 +14075,42 @@ Error: `{err}`"
         }
     }
 
-    fn window_backdrop_path_status(path: &str) -> (egui::Color32, String) {
+    fn window_backdrop_path_status(
+        path: &str,
+        status_cache: &mut HashMap<String, (egui::Color32, String)>,
+    ) -> (egui::Color32, String) {
         let trimmed = path.trim();
-        if trimmed.is_empty() {
-            return (
+        let cache_key = trimmed.to_string();
+        if let Some(cached) = status_cache.get(&cache_key) {
+            return cached.clone();
+        }
+
+        let status = if trimmed.is_empty() {
+            (
                 egui::Color32::from_gray(120),
                 "No image path configured (text watermark/tint fallback only)".to_string(),
-            );
-        }
-        match window_backdrop::validate_window_backdrop_image_path(trimmed) {
-            Ok(resolved) => (
-                egui::Color32::from_rgb(20, 140, 45),
-                format!("Resolved image: {resolved}"),
-            ),
-            Err(message) => (
-                egui::Color32::from_rgb(180, 50, 50),
-                format!("Path check failed: {message}"),
-            ),
-        }
+            )
+        } else {
+            match window_backdrop::validate_window_backdrop_image_path(trimmed) {
+                Ok(resolved) => (
+                    egui::Color32::from_rgb(20, 140, 45),
+                    format!("Resolved image: {resolved}"),
+                ),
+                Err(message) => (
+                    egui::Color32::from_rgb(180, 50, 50),
+                    format!("Path check failed: {message}"),
+                ),
+            }
+        };
+        status_cache.insert(cache_key, status.clone());
+        status
     }
 
     fn render_window_backdrop_path_table(
         ui: &mut Ui,
         settings: &mut WindowBackdropSettings,
         changed: &mut bool,
+        path_status_cache: &mut HashMap<String, (egui::Color32, String)>,
     ) {
         const ROW_COUNT: usize = 6;
         ui.label("Per-window tint and image paths");
@@ -13627,8 +14156,10 @@ Error: `{err}`"
                             .changed()
                         {
                             *changed = true;
+                            path_status_cache.clear();
                         }
-                        let (status_color, status_message) = Self::window_backdrop_path_status(value);
+                        let (status_color, status_message) =
+                            Self::window_backdrop_path_status(value, path_status_cache);
                         ui.label(egui::RichText::new("●").color(status_color))
                             .on_hover_text(status_message);
                     });
@@ -13646,6 +14177,7 @@ Error: `{err}`"
                             {
                                 *value = path.display().to_string();
                                 *changed = true;
+                                path_status_cache.clear();
                             }
                         }
                         if ui
@@ -13655,6 +14187,7 @@ Error: `{err}`"
                         {
                             value.clear();
                             *changed = true;
+                            path_status_cache.clear();
                         }
                         if ui
                             .add_enabled(
@@ -14251,10 +14784,21 @@ Error: `{err}`"
                 backdrop_changed = true;
             }
         });
+        let preload_status =
+            window_backdrop::window_backdrop_preload_status(&self.window_backdrops);
+        if preload_status.active {
+            ui.small(format!(
+                "Backdrop preload status: {}/{} image(s) queued in texture cache.",
+                preload_status.queued_images, preload_status.configured_images
+            ));
+        } else {
+            ui.small("Backdrop preload status: inactive (images are currently disabled).");
+        }
         Self::render_window_backdrop_path_table(
             ui,
             &mut self.configuration_window_backdrops,
             &mut backdrop_changed,
+            &mut self.window_backdrop_path_status_cache,
         );
 
         if changed {
@@ -14382,13 +14926,20 @@ Error: `{err}`"
                     ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
                 }
                 if ui
-                    .add_enabled(has_unapplied_changes, egui::Button::new("Cancel"))
-                    .on_hover_text("Discard unapplied configuration changes and close")
+                    .button("Cancel")
+                    .on_hover_text(if has_unapplied_changes {
+                        "Discard unapplied configuration changes and close"
+                    } else {
+                        "Close configuration dialog"
+                    })
                     .clicked()
                 {
                     self.sync_configuration_from_runtime();
-                    self.configuration_status =
-                        "Discarded unapplied configuration changes".to_string();
+                    self.configuration_status = if has_unapplied_changes {
+                        "Discarded unapplied configuration changes".to_string()
+                    } else {
+                        "Closed configuration dialog".to_string()
+                    };
                     self.show_configuration_dialog = false;
                 }
                 if ui
@@ -15650,6 +16201,7 @@ impl eframe::App for GENtleApp {
                 egui_extras::install_image_loaders(ctx);
                 self.update_has_run_before = true;
             }
+            window_backdrop::preload_window_backdrop_images(ctx, &self.window_backdrops);
             about::install_native_help_menu_bridge();
             about::install_native_settings_menu_bridge();
             about::install_native_windows_menu_bridge();
@@ -15840,10 +16392,10 @@ impl eframe::App for GENtleApp {
 mod tests {
     use super::{
         APP_CONFIGURATION_SCHEMA_VERSION, BackgroundJobEventPhase, BackgroundJobKind,
-        ConfigurationTab, EngineError, ErrorCode, GENtleApp, GenomeBlastTask,
-        GenomeBlastTaskMessage, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-        PersistedConfiguration, PersistedLineageNodeGroup,
+        ConfigurationTab, EngineError, ErrorCode, GENtleApp, GenomeBlastOptionsPreset,
+        GenomeBlastTask, GenomeBlastTaskMessage, GenomePrepareTask, GenomePrepareTaskMessage,
+        GenomeTrackImportTask, GenomeTrackImportTaskMessage, LineageNodeKind, LineageRow,
+        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageNodeGroup,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -15964,7 +16516,7 @@ mod tests {
         source.linear_sequence_helical_phase_offset_bp = 10;
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
-        assert_eq!(target.feature_details_font_size, 8.25);
+        assert_eq!(target.feature_details_font_size, 9.0);
         assert_eq!(target.linear_external_feature_label_font_size, 11.0);
         assert_eq!(target.linear_external_feature_label_background_opacity, 0.9);
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 0);
@@ -16278,6 +16830,99 @@ mod tests {
         assert!(app.genome_blast_task.is_some());
     }
 
+    #[test]
+    fn blast_options_preset_payloads_are_json_objects() {
+        let presets = [
+            GenomeBlastOptionsPreset::StrictIdentityCoverage,
+            GenomeBlastOptionsPreset::UniqueBestHit,
+            GenomeBlastOptionsPreset::HighStringency,
+        ];
+        for preset in presets {
+            let payload = preset
+                .as_request_override_json()
+                .expect("non-empty preset payload");
+            assert!(payload.is_object(), "preset {} payload", preset.label());
+        }
+    }
+
+    #[test]
+    fn build_genome_blast_request_override_merges_preset_and_advanced_json() {
+        let mut app = GENtleApp::default();
+        app.genome_blast_options_preset = GenomeBlastOptionsPreset::StrictIdentityCoverage;
+        app.genome_blast_options_json =
+            r#"{"thresholds":{"min_query_coverage_percent":85.0},"max_hits":9}"#.to_string();
+        let merged = app
+            .build_genome_blast_request_override_json()
+            .expect("merge override")
+            .expect("override object");
+        assert_eq!(merged.get("max_hits").and_then(|v| v.as_u64()), Some(9));
+        let thresholds = merged.get("thresholds").expect("thresholds object");
+        assert_eq!(
+            thresholds
+                .get("min_identity_percent")
+                .and_then(|v| v.as_f64()),
+            Some(97.0)
+        );
+        assert_eq!(
+            thresholds
+                .get("min_query_coverage_percent")
+                .and_then(|v| v.as_f64()),
+            Some(85.0)
+        );
+    }
+
+    #[test]
+    fn build_genome_blast_request_override_rejects_non_object_json() {
+        let mut app = GENtleApp::default();
+        app.genome_blast_options_json = "[1,2,3]".to_string();
+        let err = app
+            .build_genome_blast_request_override_json()
+            .expect_err("non-object should fail");
+        assert!(err.contains("JSON object"), "{err}");
+    }
+
+    #[test]
+    fn build_genome_blast_request_override_includes_structured_thresholds() {
+        let mut app = GENtleApp::default();
+        app.genome_blast_threshold_use_min_identity_percent = true;
+        app.genome_blast_threshold_min_identity_percent = "98.5".to_string();
+        app.genome_blast_threshold_use_min_query_coverage_percent = true;
+        app.genome_blast_threshold_min_query_coverage_percent = "82.0".to_string();
+        app.genome_blast_threshold_unique_best_hit = true;
+        let merged = app
+            .build_genome_blast_request_override_json()
+            .expect("merge override")
+            .expect("override object");
+        let thresholds = merged.get("thresholds").expect("thresholds object");
+        assert_eq!(
+            thresholds
+                .get("min_identity_percent")
+                .and_then(|v| v.as_f64()),
+            Some(98.5)
+        );
+        assert_eq!(
+            thresholds
+                .get("min_query_coverage_percent")
+                .and_then(|v| v.as_f64()),
+            Some(82.0)
+        );
+        assert_eq!(
+            thresholds.get("unique_best_hit").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn build_genome_blast_request_override_rejects_invalid_structured_threshold_value() {
+        let mut app = GENtleApp::default();
+        app.genome_blast_threshold_use_min_identity_percent = true;
+        app.genome_blast_threshold_min_identity_percent = "abc".to_string();
+        let err = app
+            .build_genome_blast_request_override_json()
+            .expect_err("invalid threshold should fail");
+        assert!(err.contains("min_identity_percent"), "{err}");
+    }
+
     fn make_lineage_row(node_id: &str, seq_id: &str) -> LineageRow {
         LineageRow {
             kind: LineageNodeKind::Sequence,
@@ -16458,6 +17103,8 @@ mod tests {
                 command_line: "blastn -db /tmp/db -query /tmp/query.fa".to_string(),
                 catalog_path: None,
                 cache_dir: None,
+                options_override_json: None,
+                effective_options_json: None,
             }),
         };
         let summary = GENtleApp::summarize_operation(&op);

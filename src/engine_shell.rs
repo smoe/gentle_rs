@@ -501,7 +501,9 @@ pub enum ShellCommand {
         genome_id: String,
         query_sequence: String,
         max_hits: usize,
+        max_hits_explicit: bool,
         task: Option<String>,
+        request_options_json: Option<Value>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
@@ -511,7 +513,9 @@ pub enum ShellCommand {
         query_sequence: String,
         target_seq_id: String,
         max_hits: usize,
+        max_hits_explicit: bool,
         task: Option<String>,
+        request_options_json: Option<Value>,
         track_name: Option<String>,
         clear_existing: bool,
         catalog_path: Option<String>,
@@ -2737,7 +2741,9 @@ impl ShellCommand {
                 genome_id,
                 query_sequence,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 catalog_path,
                 cache_dir,
             } => {
@@ -2747,9 +2753,23 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+                let max_hits_label = if *max_hits_explicit {
+                    max_hits.to_string()
+                } else {
+                    "layered-default".to_string()
+                };
                 format!(
-                    "blast query (len={}) against {label} '{genome_id}' (max_hits={max_hits}, task='{task}', catalog='{catalog}', cache='{cache}')",
-                    query_sequence.len()
+                    "blast query (len={}) against {label} '{genome_id}' (max_hits={}, task='{}', request_options={}, catalog='{}', cache='{}')",
+                    query_sequence.len(),
+                    max_hits_label,
+                    task,
+                    if request_options_json.is_some() {
+                        "yes"
+                    } else {
+                        "no"
+                    },
+                    catalog,
+                    cache
                 )
             }
             Self::ReferenceBlastTrack {
@@ -2758,7 +2778,9 @@ impl ShellCommand {
                 query_sequence,
                 target_seq_id,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 track_name,
                 clear_existing,
                 catalog_path,
@@ -2770,11 +2792,22 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+                let max_hits_label = if *max_hits_explicit {
+                    max_hits.to_string()
+                } else {
+                    "layered-default".to_string()
+                };
                 format!(
-                    "blast query (len={}) against {label} '{genome_id}' and import hits to '{}' (max_hits={max_hits}, task='{}', track_name='{}', clear_existing={}, catalog='{}', cache='{}')",
+                    "blast query (len={}) against {label} '{genome_id}' and import hits to '{}' (max_hits={}, task='{}', request_options={}, track_name='{}', clear_existing={}, catalog='{}', cache='{}')",
                     query_sequence.len(),
                     target_seq_id,
+                    max_hits_label,
                     task,
+                    if request_options_json.is_some() {
+                        "yes"
+                    } else {
+                        "no"
+                    },
                     track_name
                         .clone()
                         .unwrap_or_else(|| "blast_hits".to_string()),
@@ -3843,6 +3876,18 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
     }
 }
 
+fn parse_blast_options_override(raw: &str, label: &str, flag: &str) -> Result<Value, String> {
+    let loaded = parse_json_payload(raw)?;
+    let parsed: Value = serde_json::from_str(&loaded)
+        .map_err(|e| format!("Invalid {flag} payload for {label} blast command: {e}"))?;
+    if !parsed.is_object() {
+        return Err(format!(
+            "{flag} payload for {label} blast command must decode to a JSON object"
+        ));
+    }
+    Ok(parsed)
+}
+
 fn token_error(command: &str) -> String {
     format!("Invalid '{command}' usage. Try: help")
 }
@@ -4064,13 +4109,15 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "blast" => {
             if tokens.len() < 4 {
                 return Err(format!(
-                    "{label} blast requires GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} blast requires GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
             let query_sequence = tokens[3].clone();
             let mut max_hits: usize = 25;
+            let mut max_hits_explicit = false;
             let mut task: Option<String> = None;
+            let mut request_options_json: Option<Value> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
             let mut idx = 4usize;
@@ -4084,6 +4131,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         if max_hits == 0 {
                             return Err("--max-hits must be >= 1".to_string());
                         }
+                        max_hits_explicit = true;
                     }
                     "--task" => {
                         let raw = parse_option_path(tokens, &mut idx, "--task", label)?;
@@ -4097,6 +4145,30 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                                 ));
                             }
                         }
+                    }
+                    "--options-json" => {
+                        if request_options_json.is_some() {
+                            return Err(format!(
+                                "Only one of --options-json/--options-file may be provided for {label} blast"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, "--options-json", label)?;
+                        request_options_json =
+                            Some(parse_blast_options_override(&raw, label, "--options-json")?);
+                    }
+                    "--options-file" => {
+                        if request_options_json.is_some() {
+                            return Err(format!(
+                                "Only one of --options-json/--options-file may be provided for {label} blast"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, "--options-file", label)?;
+                        let file_ref = format!("@{raw}");
+                        request_options_json = Some(parse_blast_options_override(
+                            &file_ref,
+                            label,
+                            "--options-file",
+                        )?);
                     }
                     "--catalog" => {
                         catalog_path =
@@ -4115,7 +4187,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 genome_id,
                 query_sequence,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 catalog_path,
                 cache_dir,
             })
@@ -4123,14 +4197,16 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "blast-track" => {
             if tokens.len() < 5 {
                 return Err(format!(
-                    "{label} blast-track requires GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} blast-track requires GENOME_ID QUERY_SEQUENCE TARGET_SEQ_ID [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--track-name NAME] [--clear-existing] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
             let query_sequence = tokens[3].clone();
             let target_seq_id = tokens[4].clone();
             let mut max_hits: usize = 25;
+            let mut max_hits_explicit = false;
             let mut task: Option<String> = None;
+            let mut request_options_json: Option<Value> = None;
             let mut track_name: Option<String> = None;
             let mut clear_existing = false;
             let mut catalog_path: Option<String> = None;
@@ -4146,6 +4222,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         if max_hits == 0 {
                             return Err("--max-hits must be >= 1".to_string());
                         }
+                        max_hits_explicit = true;
                     }
                     "--task" => {
                         let raw = parse_option_path(tokens, &mut idx, "--task", label)?;
@@ -4159,6 +4236,30 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                                 ));
                             }
                         }
+                    }
+                    "--options-json" => {
+                        if request_options_json.is_some() {
+                            return Err(format!(
+                                "Only one of --options-json/--options-file may be provided for {label} blast-track"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, "--options-json", label)?;
+                        request_options_json =
+                            Some(parse_blast_options_override(&raw, label, "--options-json")?);
+                    }
+                    "--options-file" => {
+                        if request_options_json.is_some() {
+                            return Err(format!(
+                                "Only one of --options-json/--options-file may be provided for {label} blast-track"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, "--options-file", label)?;
+                        let file_ref = format!("@{raw}");
+                        request_options_json = Some(parse_blast_options_override(
+                            &file_ref,
+                            label,
+                            "--options-file",
+                        )?);
                     }
                     "--track-name" => {
                         track_name =
@@ -4186,7 +4287,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 query_sequence,
                 target_seq_id,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 track_name,
                 clear_existing,
                 catalog_path,
@@ -8892,27 +8995,39 @@ pub fn execute_shell_command_with_options(
             genome_id,
             query_sequence,
             max_hits,
+            max_hits_explicit,
             task,
+            request_options_json,
             catalog_path,
             cache_dir,
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
             let report = if *helper_mode {
-                GentleEngine::blast_helper_genome(
+                engine.blast_helper_genome_with_project_and_request_options(
                     genome_id,
                     query_sequence,
-                    *max_hits,
+                    request_options_json.as_ref(),
                     task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
                     resolved_catalog,
                     cache_dir.as_deref(),
                 )
             } else {
-                GentleEngine::blast_reference_genome(
+                engine.blast_reference_genome_with_project_and_request_options(
                     resolved_catalog,
                     genome_id,
                     query_sequence,
-                    *max_hits,
+                    request_options_json.as_ref(),
                     task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
                     cache_dir.as_deref(),
                 )
             }
@@ -8933,7 +9048,9 @@ pub fn execute_shell_command_with_options(
             query_sequence,
             target_seq_id,
             max_hits,
+            max_hits_explicit,
             task,
+            request_options_json,
             track_name,
             clear_existing,
             catalog_path,
@@ -8941,21 +9058,31 @@ pub fn execute_shell_command_with_options(
         } => {
             let resolved_catalog = resolved_catalog_path(catalog_path, *helper_mode);
             let report = if *helper_mode {
-                GentleEngine::blast_helper_genome(
+                engine.blast_helper_genome_with_project_and_request_options(
                     genome_id,
                     query_sequence,
-                    *max_hits,
+                    request_options_json.as_ref(),
                     task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
                     resolved_catalog,
                     cache_dir.as_deref(),
                 )
             } else {
-                GentleEngine::blast_reference_genome(
+                engine.blast_reference_genome_with_project_and_request_options(
                     resolved_catalog,
                     genome_id,
                     query_sequence,
-                    *max_hits,
+                    request_options_json.as_ref(),
                     task.as_deref(),
+                    if *max_hits_explicit {
+                        Some(*max_hits)
+                    } else {
+                        None
+                    },
                     cache_dir.as_deref(),
                 )
             }
@@ -8998,6 +9125,8 @@ pub fn execute_shell_command_with_options(
                         command_line,
                         catalog_path: resolved_catalog.map(str::to_string),
                         cache_dir: cache_dir.clone(),
+                        options_override_json: report.options_override_json.clone(),
+                        effective_options_json: report.effective_options_json.clone(),
                     }),
                 })
                 .map_err(|e| e.to_string())?;
@@ -10343,7 +10472,9 @@ pub fn execute_shell_command_with_options(
             })?;
             let (template_id, requested_report_id) = match &op {
                 Operation::DesignPrimerPairs {
-                    template, report_id, ..
+                    template,
+                    report_id,
+                    ..
                 } => (template.clone(), report_id.clone()),
                 _ => {
                     return Err(
@@ -10753,7 +10884,9 @@ mod tests {
                 genome_id,
                 query_sequence,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 catalog_path,
                 cache_dir,
             } => {
@@ -10761,7 +10894,9 @@ mod tests {
                 assert_eq!(genome_id, "ToyGenome");
                 assert_eq!(query_sequence, "ACGTACGT");
                 assert_eq!(max_hits, 12);
+                assert!(max_hits_explicit);
                 assert_eq!(task.as_deref(), Some("blastn"));
+                assert!(request_options_json.is_none());
                 assert_eq!(catalog_path.as_deref(), Some("c.json"));
                 assert_eq!(cache_dir.as_deref(), Some("cache"));
             }
@@ -10778,14 +10913,86 @@ mod tests {
                 genome_id,
                 query_sequence,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 ..
             } => {
                 assert!(helper_mode);
                 assert_eq!(genome_id, "pUC19");
                 assert_eq!(query_sequence, "ACGTAG");
                 assert_eq!(max_hits, 25);
+                assert!(!max_hits_explicit);
                 assert!(task.is_none());
+                assert!(request_options_json.is_none());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_blast_with_options_json_override() {
+        let cmd = parse_shell_line(
+            "genomes blast ToyGenome ACGTACGT --options-json '{\"max_hits\":7,\"thresholds\":{\"min_identity_percent\":97.5}}'",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                ..
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome");
+                assert_eq!(max_hits, 25);
+                assert!(!max_hits_explicit);
+                assert!(task.is_none());
+                let options = request_options_json.expect("options json");
+                assert_eq!(options.get("max_hits").and_then(|v| v.as_u64()), Some(7));
+                let min_ident = options
+                    .get("thresholds")
+                    .and_then(|v| v.get("min_identity_percent"))
+                    .and_then(|v| v.as_f64());
+                assert_eq!(min_ident, Some(97.5));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_helpers_blast_with_options_file_override() {
+        let td = tempdir().expect("tempdir");
+        let options_path = td.path().join("blast_options.json");
+        fs::write(
+            &options_path,
+            r#"{"max_hits":9,"thresholds":{"min_bit_score":55.0}}"#,
+        )
+        .expect("write options file");
+        let cmd = parse_shell_line(&format!(
+            "helpers blast pUC19 ACGTAG --options-file {}",
+            options_path.to_string_lossy()
+        ))
+        .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlast {
+                helper_mode,
+                request_options_json,
+                max_hits_explicit,
+                ..
+            } => {
+                assert!(helper_mode);
+                assert!(!max_hits_explicit);
+                let options = request_options_json.expect("options json");
+                assert_eq!(options.get("max_hits").and_then(|v| v.as_u64()), Some(9));
+                let min_bit = options
+                    .get("thresholds")
+                    .and_then(|v| v.get("min_bit_score"))
+                    .and_then(|v| v.as_f64());
+                assert_eq!(min_bit, Some(55.0));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -10804,7 +11011,9 @@ mod tests {
                 query_sequence,
                 target_seq_id,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 track_name,
                 clear_existing,
                 catalog_path,
@@ -10815,7 +11024,9 @@ mod tests {
                 assert_eq!(query_sequence, "ACGTACGT");
                 assert_eq!(target_seq_id, "query_seq");
                 assert_eq!(max_hits, 8);
+                assert!(max_hits_explicit);
                 assert_eq!(task.as_deref(), Some("blastn"));
+                assert!(request_options_json.is_none());
                 assert_eq!(track_name.as_deref(), Some("Hits"));
                 assert!(clear_existing);
                 assert_eq!(catalog_path.as_deref(), Some("c.json"));
@@ -10836,7 +11047,9 @@ mod tests {
                 query_sequence,
                 target_seq_id,
                 max_hits,
+                max_hits_explicit,
                 task,
+                request_options_json,
                 track_name,
                 clear_existing,
                 ..
@@ -10846,7 +11059,9 @@ mod tests {
                 assert_eq!(query_sequence, "ACGTAG");
                 assert_eq!(target_seq_id, "target_seq");
                 assert_eq!(max_hits, 25);
+                assert!(!max_hits_explicit);
                 assert!(task.is_none());
+                assert!(request_options_json.is_none());
                 assert!(track_name.is_none());
                 assert!(!clear_existing);
             }
@@ -13016,7 +13231,10 @@ filter set1 set2 --metric score --min 10
         )
         .expect("primers show-report");
         assert!(!shown.state_changed);
-        assert_eq!(shown.output["report"]["report_id"].as_str(), Some("tp73_roi"));
+        assert_eq!(
+            shown.output["report"]["report_id"].as_str(),
+            Some("tp73_roi")
+        );
 
         let exported = execute_shell_command(
             &mut engine,

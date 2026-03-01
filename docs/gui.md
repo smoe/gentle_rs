@@ -47,7 +47,7 @@ Tabs:
   - Validate executable availability/version from within the UI.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
-  - Configure feature-details font size (`Feature detail font size`, live-applied).
+  - Configure feature-details font size (`Feature detail font size`, default `9 px`, live-applied).
   - Configure GC-content bin size (`GC bin size`, default `100 bp`) used by
     map overlays and SVG export.
   - Configure optional `Window Styling (experimental)`:
@@ -111,6 +111,8 @@ Linear map zoom detail:
   - medium density: helical-compressed letters (when compressed mode is enabled)
   - high density: condensed 10-row letters (when compressed mode is enabled)
   - over-capacity density: letters are hidden (`OFF`) to preserve readability
+- In debug builds, the top-right DNA diagnostics additionally show the active
+  tier thresholds (`standard/helical/condensed`) used by adaptive routing.
 
 Feature tree grouping:
 
@@ -274,12 +276,15 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
 13. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-14. Export RNA SVG (ssRNA only)
+14. Export View SVG
+   - Exports the currently shown sequence-window view composition as SVG
+     (map panel + sequence panel extract).
+15. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
-15. Engine Ops
+16. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
-16. Shell
+17. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 
@@ -1023,12 +1028,35 @@ Recommended flow:
    - coordinates are 1-based and inclusive
 3. Run BLAST searches against prepared references:
    - open `BLAST Genome Sequence...`
+   - dialog layout is organized into sections:
+     - `1. Target`
+     - `2. Input`
+     - `3. Options`
+     - `4. Execution`
+     - `5. Results`
    - select a prepared `genome` from the selected `catalog` + `cache_dir`
    - choose query source:
      - `Manual sequence` (paste sequence text)
      - `Project sequence` (blast one loaded sequence by id)
      - `Project pool` (blast all members of a selected pool/container)
-   - set `max_hits` and `task` (`blastn-short` or `blastn`)
+   - set quick options:
+     - `max_hits`
+     - `task` (`blastn-short` or `blastn`)
+   - optional advanced options:
+     - choose a `preset` (`None`, `Strict identity+coverage`, `Unique best hit`, `High stringency`)
+     - optionally use structured threshold controls for:
+       - `max_evalue`
+       - `min_identity_percent`
+       - `min_query_coverage_percent`
+       - `min_alignment_length_bp`
+       - `min_bit_score`
+       - `unique_best_hit`
+     - provide additional JSON object in `advanced options JSON` (or load via `Load JSON...`)
+     - GUI shows `Effective options preview` after layering:
+       - built-in defaults
+       - optional defaults file / project override parameters
+       - quick controls
+       - preset + advanced JSON override
    - click `Run BLAST`
    - BLAST runs in background and keeps the UI responsive; pool mode returns one result set per member
    - BLAST itself does not expose a native `% complete` CLI flag; GENtle therefore shows:
@@ -1036,7 +1064,7 @@ Recommended flow:
      - live heartbeat status (`running`, elapsed seconds)
      - invocation template while running
      - resolved invocation line after each query completes
-   - result details show executable, database prefix, and full invocation.
+   - result details show executable, database prefix, full invocation, request override JSON, and resolved effective options.
    - when `Import Hits To Sequence` is used, GENtle stores BLAST invocation provenance
      in the corresponding `ImportBlastHitsTrack` operation (history/lineage context).
 4. Inspect prepared installations when needed:

@@ -205,6 +205,10 @@ pub struct GenomeBlastReport {
     #[serde(default)]
     pub warnings: Vec<String>,
     pub stderr: String,
+    #[serde(default)]
+    pub options_override_json: Option<serde_json::Value>,
+    #[serde(default)]
+    pub effective_options_json: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1198,6 +1202,8 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
             hits,
             warnings: blast_outcome.warnings,
             stderr,
+            options_override_json: None,
+            effective_options_json: None,
         })
     }
 

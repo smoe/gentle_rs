@@ -24,6 +24,32 @@ fn empty_to_none(value: &str) -> Option<&str> {
     }
 }
 
+fn compose_blast_request_override(
+    max_hits: u32,
+    task: &str,
+    options_json: &str,
+) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+    let mut request = serde_json::Map::new();
+    request.insert(
+        "max_hits".to_string(),
+        serde_json::Value::from(max_hits.max(1) as usize),
+    );
+    if let Some(task) = empty_to_none(task) {
+        request.insert("task".to_string(), serde_json::Value::from(task));
+    }
+    if let Some(raw) = empty_to_none(options_json) {
+        let parsed: serde_json::Value = serde_json::from_str(raw)
+            .map_err(|e| deno_core::anyhow::anyhow!("Invalid BLAST options_json payload: {e}"))?;
+        let obj = parsed.as_object().ok_or_else(|| {
+            deno_core::anyhow::anyhow!("BLAST options_json payload must decode to a JSON object")
+        })?;
+        for (k, v) in obj {
+            request.insert(k.clone(), v.clone());
+        }
+    }
+    Ok(serde_json::Value::Object(request))
+}
+
 #[derive(Serialize)]
 struct OperationApplyResponse {
     state: ProjectState,
@@ -368,13 +394,14 @@ fn blast_reference_genome(
     #[string] task: &str,
     #[string] catalog_path: &str,
     #[string] cache_dir: &str,
+    #[string] options_json: &str,
 ) -> Result<crate::genomes::GenomeBlastReport, deno_core::anyhow::Error> {
-    GentleEngine::blast_reference_genome(
+    let request = compose_blast_request_override(max_hits, task, options_json)?;
+    GentleEngine::blast_reference_genome_with_request_options(
         empty_to_none(catalog_path),
         genome_id,
         query_sequence,
-        max_hits.max(1) as usize,
-        empty_to_none(task),
+        Some(&request),
         empty_to_none(cache_dir),
     )
     .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
@@ -389,12 +416,13 @@ fn blast_helper_genome(
     #[string] task: &str,
     #[string] catalog_path: &str,
     #[string] cache_dir: &str,
+    #[string] options_json: &str,
 ) -> Result<crate::genomes::GenomeBlastReport, deno_core::anyhow::Error> {
-    GentleEngine::blast_helper_genome(
+    let request = compose_blast_request_override(max_hits, task, options_json)?;
+    GentleEngine::blast_helper_genome_with_request_options(
         genome_id,
         query_sequence,
-        max_hits.max(1) as usize,
-        empty_to_none(task),
+        Some(&request),
         empty_to_none(catalog_path),
         empty_to_none(cache_dir),
     )
@@ -561,24 +589,26 @@ impl JavaScriptInterface {
           	function list_reference_genome_genes(genome_id, catalog_path, cache_dir) {
           		return Deno.core.ops.list_reference_genome_genes(genome_id, catalog_path ?? "", cache_dir ?? "");
           	}
-          	function blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir) {
+          	function blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json) {
           		return Deno.core.ops.blast_reference_genome(
           			genome_id,
           			query_sequence,
           			(max_hits === undefined ? 25 : max_hits),
           			task ?? "",
           			catalog_path ?? "",
-          			cache_dir ?? ""
+          			cache_dir ?? "",
+          			options_json ?? ""
           		);
           	}
-          	function blast_helper_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir) {
+          	function blast_helper_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json) {
           		return Deno.core.ops.blast_helper_genome(
           			genome_id,
           			query_sequence,
           			(max_hits === undefined ? 25 : max_hits),
           			task ?? "",
           			catalog_path ?? "",
-          			cache_dir ?? ""
+          			cache_dir ?? "",
+          			options_json ?? ""
           		);
           	}
 	          	function apply_operation(state, op) {

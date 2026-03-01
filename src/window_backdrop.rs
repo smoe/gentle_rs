@@ -3,6 +3,7 @@
 use eframe::egui::{self, Color32, Rect, Ui, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     env,
     path::PathBuf,
     sync::{OnceLock, RwLock},
@@ -228,9 +229,28 @@ impl WindowBackdropSettings {
 }
 
 static ACTIVE_SETTINGS: OnceLock<RwLock<WindowBackdropSettings>> = OnceLock::new();
+static RESOLVED_URI_CACHE: OnceLock<RwLock<HashMap<String, Option<String>>>> = OnceLock::new();
+static PREWARMED_URI_SET: OnceLock<RwLock<HashSet<String>>> = OnceLock::new();
 
 fn active_settings() -> &'static RwLock<WindowBackdropSettings> {
     ACTIVE_SETTINGS.get_or_init(|| RwLock::new(WindowBackdropSettings::default()))
+}
+
+fn resolved_uri_cache() -> &'static RwLock<HashMap<String, Option<String>>> {
+    RESOLVED_URI_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn prewarmed_uri_set() -> &'static RwLock<HashSet<String>> {
+    PREWARMED_URI_SET.get_or_init(|| RwLock::new(HashSet::new()))
+}
+
+fn clear_runtime_caches() {
+    if let Ok(mut cache) = resolved_uri_cache().write() {
+        cache.clear();
+    }
+    if let Ok(mut warmed) = prewarmed_uri_set().write() {
+        warmed.clear();
+    }
 }
 
 pub fn current_window_backdrop_settings() -> WindowBackdropSettings {
@@ -244,6 +264,7 @@ pub fn set_window_backdrop_settings(settings: WindowBackdropSettings) {
     if let Ok(mut slot) = active_settings().write() {
         *slot = settings;
     }
+    clear_runtime_caches();
 }
 
 fn alpha_to_u8(opacity: f32) -> u8 {
@@ -267,7 +288,7 @@ fn migrate_legacy_image_path(path: &str) -> String {
     trimmed.to_string()
 }
 
-fn resolve_runtime_asset_uri(path: &str) -> Option<String> {
+fn resolve_runtime_asset_uri_uncached(path: &str) -> Option<String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return None;
@@ -296,6 +317,123 @@ fn resolve_runtime_asset_uri(path: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn resolve_runtime_asset_uri(path: &str) -> Option<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("file://")
+        || trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("bytes://")
+    {
+        return Some(trimmed.to_string());
+    }
+
+    if let Ok(cache) = resolved_uri_cache().read() {
+        if let Some(cached) = cache.get(trimmed) {
+            return cached.clone();
+        }
+    }
+
+    let resolved = resolve_runtime_asset_uri_uncached(trimmed);
+    if let Ok(mut cache) = resolved_uri_cache().write() {
+        cache.insert(trimmed.to_string(), resolved.clone());
+    }
+    resolved
+}
+
+pub fn preload_window_backdrop_images(ctx: &egui::Context, settings: &WindowBackdropSettings) {
+    if !settings.enabled || !settings.draw_images || alpha_to_u8(settings.image_opacity) == 0 {
+        return;
+    }
+
+    for kind in [
+        WindowBackdropKind::Main,
+        WindowBackdropKind::Sequence,
+        WindowBackdropKind::Splicing,
+        WindowBackdropKind::Pool,
+        WindowBackdropKind::Configuration,
+        WindowBackdropKind::Help,
+    ] {
+        let Some(resolved_uri) = resolve_runtime_asset_uri(settings.image_path_for_kind(kind))
+        else {
+            continue;
+        };
+
+        let already_warmed = prewarmed_uri_set()
+            .read()
+            .map(|set| set.contains(&resolved_uri))
+            .unwrap_or(false);
+        if already_warmed {
+            continue;
+        }
+
+        match egui::Image::new(resolved_uri.clone())
+            .show_loading_spinner(false)
+            .load_for_size(ctx, egui::vec2(64.0, 64.0))
+        {
+            Ok(egui::load::TexturePoll::Ready { .. })
+            | Ok(egui::load::TexturePoll::Pending { .. }) => {
+                if let Ok(mut set) = prewarmed_uri_set().write() {
+                    set.insert(resolved_uri);
+                }
+            }
+            Err(_) => {}
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowBackdropPreloadStatus {
+    pub active: bool,
+    pub configured_images: usize,
+    pub queued_images: usize,
+}
+
+pub fn window_backdrop_preload_status(
+    settings: &WindowBackdropSettings,
+) -> WindowBackdropPreloadStatus {
+    if !settings.enabled || !settings.draw_images || alpha_to_u8(settings.image_opacity) == 0 {
+        return WindowBackdropPreloadStatus {
+            active: false,
+            configured_images: 0,
+            queued_images: 0,
+        };
+    }
+
+    let mut configured_uris = HashSet::new();
+    for kind in [
+        WindowBackdropKind::Main,
+        WindowBackdropKind::Sequence,
+        WindowBackdropKind::Splicing,
+        WindowBackdropKind::Pool,
+        WindowBackdropKind::Configuration,
+        WindowBackdropKind::Help,
+    ] {
+        if let Some(uri) = resolve_runtime_asset_uri(settings.image_path_for_kind(kind)) {
+            configured_uris.insert(uri);
+        }
+    }
+
+    let queued_images = prewarmed_uri_set()
+        .read()
+        .map(|set| {
+            configured_uris
+                .iter()
+                .filter(|uri| set.contains(*uri))
+                .count()
+        })
+        .unwrap_or(0);
+
+    WindowBackdropPreloadStatus {
+        active: true,
+        configured_images: configured_uris.len(),
+        queued_images,
+    }
 }
 
 fn cover_uv_rect(texture_size: Vec2, target_size: Vec2) -> Rect {

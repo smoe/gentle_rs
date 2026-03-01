@@ -13,6 +13,7 @@ dna_ladders.json:: Collection of DNA ladders, i.e. fragments of DNA of well-defi
 enzymes.json:: List of DNA restriction enzymes (endonucleases) and proteases
 genomes.json::
 helper_genomes.json::
+blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
 jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 ncoils.matrix::
 

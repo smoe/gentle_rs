@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -94,6 +94,8 @@ order. Durable architecture constraints and decisions remain in
   - shared-shell/CLI inspection/export commands are available:
     `primers design`, `primers list-reports`, `primers show-report`,
     `primers export-report`
+  - current implementation is internal-baseline scoring; Primer3 wrapper
+    backend integration remains pending
 
 ### GUI baseline in place
 
@@ -138,6 +140,12 @@ order. Durable architecture constraints and decisions remain in
   `ExtractRegion`, preserving overlapping features in the derived fragment.
 - Scrollable/resizable Engine Ops area and shared-shell panel.
 - Context-sensitive hover descriptions on actionable controls.
+- Unified interaction policy rollout is in progress:
+  - default wheel/trackpad scroll pans/scrolls
+  - zoom on canvases is `Shift + wheel`
+  - hand-pan drag mode is `Option` (Alt) + drag
+  - legacy graph aliases (`Cmd/Ctrl + wheel`, `Space + drag`) remain
+    transitionally enabled
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
 - BLAST UX/provenance hardening baseline:
@@ -220,6 +228,12 @@ Notes:
      confirms additional repeated gaps are not yet first-class:
      primer design/validation workflows, auto-annotation library scans,
      sequencing-confirmation workflows, and interactive cloning clipboard/model
+   - primer design backend parity is still incomplete:
+     - no first-class Primer3 wrapper (`primer3_core`) behind
+       `DesignPrimerPairs` yet
+     - no backend preflight/version diagnostics for Primer3
+     - no adapter-equivalence test matrix comparing internal vs Primer3-backed
+       report normalization/provenance behavior
 2. MCP route now has guarded mutating execution (`op`/`workflow`) and
    UI-intent parity baseline (`ui_intents`, `ui_intent`,
    `ui_prepared_genomes`, `ui_latest_prepared`), but broader parity breadth is
@@ -252,7 +266,8 @@ Notes:
      snapshot/readability benchmarking remains pending
    - any screenshot-based readability baseline artifacts require manual human
      contribution while agent screenshot execution remains policy-disabled
-   - zoom/pan policy is not yet unified across canvases
+  - unified zoom/pan policy rollout is in progress; full propagation to all
+    scrollable panes plus regression coverage is still pending
    - UI-level snapshot tests for feature-tree grouping/collapse are pending
    - backdrop-image readability guardrails and stricter grayscale handling are
      incomplete
@@ -574,6 +589,13 @@ Repeated multi-tool gaps to prioritize:
      - first-class `DesignPrimerPairs` operation
      - persisted report contract + shell/CLI inspect/export routes
    - next:
+     - integrate optional Primer3 backend (`primer3_core`) through shared
+       engine execution while keeping `DesignPrimerPairs` as the canonical
+       external contract
+     - normalize Primer3 outputs into `gentle.primer_design_report.v1` with
+       deterministic ranking/tie-break behavior identical to internal backend
+     - add Primer3 preflight diagnostics (binary/version/config-path checks)
+       and deterministic provenance payload fields in reports
      - pair interaction checks and richer thermodynamic scoring
      - saved/reusable primer sets with explicit versioning
      - async-capable batch off-target/specificity checks so primer-pair
@@ -596,6 +618,126 @@ Notes:
 
 - If visual comparisons include screenshot/raster baselines, those artifacts
   remain manual contributions while screenshot execution is policy-disabled.
+
+### Primer3 wrapper integration track (new)
+
+Goal: add Primer3 tooling support without fragmenting GENtle's shared engine
+contracts or adapter parity guarantees.
+
+Phase 1 (wrapper + normalization baseline):
+
+- Add an engine-owned Primer3 adapter layer for `DesignPrimerPairs` that
+  translates request constraints to Primer3 input and parses results.
+- Keep shared report schema unchanged (`gentle.primer_design_report.v1`) and
+  enforce deterministic ordering/tie-break behavior independent of backend.
+- Capture backend provenance fields in report metadata
+  (backend id, executable path/version, config hash, invocation summary).
+
+Phase 2 (tooling diagnostics + compatibility hardening):
+
+- Add explicit Primer3 preflight diagnostics in shell/CLI/GUI pathways:
+  found/missing executable, resolved version, and config-path checks.
+- Keep failure modes deterministic and machine-readable
+  (`Unsupported`/`Io`/`InvalidInput` with stable message contracts).
+- Add fixture-backed adapter-equivalence tests that assert matching normalized
+  report semantics between internal and Primer3 backends for representative
+  inputs.
+
+Phase 3 (async specificity tier + agent/MCP parity):
+
+- Add async job-handle/progress/cancel contract for Primer3-driven validation
+  stages that fan out into multiple BLAST checks.
+- Expose the same async contract through GUI background jobs, shared shell/CLI,
+  agent suggested-command execution, and MCP tool routes.
+- Add deterministic integration tests for cancellation/progress/result-shape
+  parity across the above entry points.
+
+### Unified BLAST abstraction + primer UI track (new)
+
+Goal: unify BLAST execution semantics for standalone BLAST, single-primer
+design, and primer-pair design through one engine-owned service contract.
+
+Phase 1 (engine abstraction + options layering):
+
+- Add shared BLAST service/request/response/progress abstractions in engine,
+  reusable by BLAST and primer workflows.
+- Implement deterministic option layering:
+  - built-in defaults
+  - optional defaults file
+  - project-level override operation
+  - per-request JSON overrides
+- Enforce strict option validation (unknown key/type/range failures).
+- Persist both raw override JSON and resolved effective options in provenance.
+
+Status (2026-03-01):
+
+- Implemented baseline in engine:
+  - layered option resolution (`built-in -> defaults file -> project override -> quick flags -> request JSON`)
+  - strict request/default/project JSON object validation
+  - threshold filtering (`max_evalue`, `min_identity_percent`,
+    `min_query_coverage_percent`, `min_alignment_length_bp`, `min_bit_score`,
+    `unique_best_hit`)
+  - provenance/report fields for raw request override + resolved effective options
+  - project-level parameter operations:
+    `blast_options_override`, `blast_options_defaults_path`
+- Shared-shell/CLI BLAST routes now accept:
+  - `--options-json JSON_OR_@FILE`
+  - `--options-file PATH`
+- JS/Lua BLAST wrappers now accept optional `options_json` argument and route
+  through the same request-options engine path.
+- Remaining in Phase 1:
+  - GUI advanced options editor/preset UX (Phase 2 UI work item)
+  - parity tests that exercise identical option layering across GUI/CLI/JS/Lua.
+
+Phase 2 (BLAST UI alignment):
+
+- Refactor BLAST specialist window into stable sections:
+  input, target, options, execution, results.
+- Add advanced options JSON editor + preset selector while keeping quick
+  controls for common fields.
+- Keep heartbeat/query-count progress and invocation visibility wired through
+  the shared BLAST progress/result contracts.
+
+Status (2026-03-01):
+
+- Implemented GUI BLAST sectioning baseline (`Target/Input/Options/Execution/Results`).
+- Implemented BLAST options controls in GUI:
+  - quick controls (`task`, `max_hits`)
+  - preset selector
+  - structured threshold controls (toggle + typed fields)
+  - advanced JSON editor + JSON file loader
+  - effective-options preflight preview via shared engine resolver.
+- Result panel now displays both request override JSON and resolved effective
+  options payloads.
+- Remaining in Phase 2:
+  - preset catalog persistence and named reusable GUI presets
+  - polish structured threshold UX (units/tooltips/preset interop helpers).
+  - BLAST cancellation support from GUI execution controls.
+
+Phase 3 (single-primer design UI):
+
+- Add dedicated sequence-context primer-design specialist window:
+  - target region selector
+  - primer constraints
+  - specificity policy (backed by shared BLAST abstraction)
+  - ranked primer table with diagnostics
+- Add actions for annotation/export and forwarding selected primers into PCR
+  workflows.
+
+Phase 4 (primer-pair UI and specificity tier):
+
+- Expand GUI around `DesignPrimerPairs` with explicit amplicon intent, pair
+  constraints, and specificity tiers.
+- Route pair-specificity BLAST fan-out through the same async BLAST service
+  contract used by standalone BLAST.
+- Keep report/provenance schema adapter-equivalent.
+
+Phase 5 (adapter parity + tests):
+
+- Add parity tests for request normalization, option resolution, progress, and
+  provenance across GUI/CLI/JS/Lua paths.
+- Add regression fixtures for primer/specificity edge cases and deterministic
+  tie-break behavior in ranked outputs.
 
 #### B) Agarose gel simulation improvements (high value)
 
@@ -762,6 +904,7 @@ Planned upgrades:
   NEBuilder HiFi).
 - Start repeated cross-tool cloning UX gaps after routine packs land:
   - primer design/validation workflow contracts
+  - Primer3 wrapper integration + backend-equivalence test matrix
   - auto-annotation library scan contracts
   - interactive cloning workspace/clipboard model
 
@@ -794,7 +937,8 @@ Planned upgrades:
   - realism upgrades (topology, intensity, co-migration, lane tables)
 - Add visual benchmark fixtures and readability regression gates for map
   export; treat screenshot/raster baseline assets as manual contributions.
-- Unify zoom/pan policy and close remaining feature-tree UI snapshot gaps.
+- Complete unified scroll/zoom policy propagation across map/graph/help/list
+  panes and close remaining feature-tree UI snapshot gaps.
 
 ### Phase E: integration polish and deferred policy items
 

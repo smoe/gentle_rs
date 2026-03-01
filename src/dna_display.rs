@@ -793,7 +793,7 @@ impl Default for DnaDisplay {
             linear_show_double_strand_bases: true,
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
-            feature_details_font_size: 8.25,
+            feature_details_font_size: 9.0,
             linear_external_feature_label_font_size: 11.0,
             linear_external_feature_label_background_opacity: 0.9,
         }

@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-02-28
+Last updated: 2026-03-01
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -105,6 +105,22 @@ Visual consistency rule:
   the same change.
 - Interaction contracts should be explicit where ambiguity is costly
   (for example, click vs double-click behavior).
+
+Interaction consistency rule:
+
+- GUI scroll/zoom interaction must follow one cross-surface policy:
+  - default wheel/trackpad motion scrolls or pans content
+  - zoom is reserved for `Shift + wheel` on zoom-capable canvases
+  - `Option` (Alt) + drag enters hand-pan mode on zoom-capable canvases
+- Cursor affordances must mirror mode intent:
+  - `Option` hover uses hand (`Grab`)
+  - `Option` drag uses grabbing hand (`Grabbing`)
+  - `Shift` hover on zoom-capable canvases uses zoom cursor (`ZoomIn`/`ZoomOut`)
+- Arrow keys pan active scroll surfaces; `Shift + arrows` map to zoom intents
+  on zoom-capable canvases.
+- Temporary compatibility aliases are allowed (for example legacy
+  `Cmd/Ctrl + wheel` or `Space + drag`) but must be documented and treated as
+  transitional.
 
 Window visual identity rule:
 
@@ -636,6 +652,112 @@ Adapter contract:
   and can use the same shared-shell routes for report inspection/export.
 - No adapter-specific primer-design business logic is permitted.
 
+Primer3 wrapper integration direction (planned):
+
+- `DesignPrimerPairs` remains the canonical external contract for
+  GUI/CLI/JS/Lua/agent/MCP entry points; Primer3 integration is an engine
+  backend implementation detail, not a new adapter contract family.
+- Backend dispatch should be explicit and deterministic:
+  - maintain current internal baseline backend for deterministic fallback/tests
+  - add an optional Primer3-backed backend (`primer3_core`) selected through
+    engine-owned configuration/operation semantics.
+- A shared request-normalization layer should map `DesignPrimerPairs` payloads
+  to Primer3 input records deterministically (template, ROI/window constraints,
+  side constraints, amplicon bounds, pair caps).
+- Primer3 output should be normalized back into the existing
+  `gentle.primer_design_report.v1` schema with stable ranking/tie-break
+  semantics so downstream automation does not fork by backend.
+- Every Primer3-backed report should carry deterministic provenance metadata
+  (backend id, executable path/version, normalized config hash, invocation
+  summary, runtime diagnostics/warnings) for replay and audit parity.
+- External-tool checks for Primer3 availability/configuration should follow the
+  same explicit preflight pattern used for BLAST tooling (found/missing/version
+  diagnostics before long-running work starts).
+- Planned off-target/specificity tiers for primer-pair selection may fan out
+  into multiple BLAST checks per candidate pair; this stage should bind to the
+  same planned async job-handle/progress/cancel contract used for agent-driven
+  long-running BLAST routes.
+
+### Primer/PCR/BLAST UI and internal BLAST abstraction plan (new)
+
+Goal: present coherent user interfaces for single-primer design, primer-pair
+design, and BLAST, while enforcing one engine-owned BLAST abstraction reused by
+all three pathways.
+
+Current status (2026-03-01):
+
+- Engine now implements layered BLAST option resolution and validation, with
+  persisted request/effective option provenance in BLAST reports/import history.
+- Shared-shell/CLI and JS/Lua routes can now submit per-request BLAST JSON
+  option overrides.
+- GUI now includes a BLAST options section with quick controls, presets,
+  advanced JSON editing, and engine-backed effective-options preflight preview.
+
+Internal abstraction (engine-owned, adapter-neutral):
+
+- Add a shared BLAST service boundary used by GUI/CLI/JS/Lua/MCP-facing flows:
+  - request shape includes:
+    - query payload(s)
+    - target genome/helper selection
+    - `task`
+    - JSON options object (`options_json`) for advanced thresholds/controls
+  - response shape includes:
+    - parsed hits
+    - warnings/errors
+    - invocation/provenance
+    - resolved effective options (post-default merge)
+  - progress shape includes:
+    - phase/status text
+    - query-level done/total counts
+    - elapsed time
+- Keep deterministic option resolution in engine:
+  - built-in defaults
+  - optional defaults file
+  - project-level override operation
+  - per-request JSON override
+  - strict validation for unknown keys and type/range mismatches
+- Primer and primer-pair scoring/specificity steps must call this service, not
+  invoke BLAST binaries directly from adapter/UI code.
+
+BLAST specialist UI direction:
+
+- Keep the dedicated BLAST viewport and evolve it to a five-block structure:
+  1. Input (`manual`, `project sequence`, `project pool`)
+  2. Target (`prepared genome/helper`)
+  3. Options (quick controls + advanced JSON editor + presets)
+  4. Execution (run/cancel/retry with shared progress contract)
+  5. Results (hits table, import-to-track, export JSON, invocation detail)
+- Show both invocation template (pre-run) and resolved invocation (post-run)
+  consistently in status/results.
+
+Single-primer design UI direction:
+
+- Add a dedicated primer-design specialist window, sequence-context aware.
+- Required sections:
+  - target region (selection/feature/manual coordinates)
+  - primer constraints (length/GC/Tm/3' rules/homopolymer/ambiguity)
+  - specificity policy (none/quick/strict) backed by shared BLAST service
+  - ranked result list with per-primer diagnostics
+- Provide actions to annotate selected primer(s), export sets, and forward
+  selected primers into PCR workflows.
+
+Primer-pair (PCR) design UI direction:
+
+- Keep `DesignPrimerPairs` as canonical engine operation and expand GUI around
+  explicit pair-design workflows (amplicon intent + pair constraints +
+  specificity tier + ranked reports).
+- Pair-specificity stages that fan out into multiple BLAST checks must use the
+  same async progress/cancel semantics as standalone BLAST.
+- Selected pair handoff into `Pcr`/`PcrAdvanced`/`PcrMutagenesis` should be
+  explicit and deterministic (no adapter-local hidden transformations).
+
+Parity/invariant requirements:
+
+- No adapter-specific biology logic for primer/blast scoring.
+- Same request/response/progress/provenance semantics across GUI/CLI/JS/Lua.
+- Operation history and lineage summaries must preserve BLAST invocation and
+  effective-option provenance for primer and primer-pair specificity checks.
+
 Local anchor model (for candidate/extraction workflows):
 
 - Local sequence anchors are an in-sequence abstraction (`SequenceAnchor`) and
@@ -878,6 +1000,10 @@ Deferred-scope rules:
   and metadata persistence (`gentle.primer_design_report.v1`):
   accepted and implemented baseline (follow-up planned for richer thermodynamic
   scoring and off-target evaluation tiers).
+- Add Primer3 wrapper backend integration for `DesignPrimerPairs` with
+  deterministic request/response normalization, provenance capture, and
+  adapter-equivalent behavior across GUI/CLI/JS/Lua/agent/MCP:
+  accepted and planned.
 - Add optional per-window-type visual identity backdrops with persisted app
   settings and subtle tint/watermark rendering:
   accepted and in progress (experimental GUI implementation).

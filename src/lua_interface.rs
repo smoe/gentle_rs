@@ -108,10 +108,10 @@ impl LuaInterface {
             "  - list_reference_genome_genes(genome_id, [catalog_path], [cache_dir]): Lists indexed genes"
         );
         println!(
-            "  - blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir]): BLAST query against prepared genome"
+            "  - blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json]): BLAST query against prepared genome"
         );
         println!(
-            "  - blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir]): BLAST query against helper catalog genome"
+            "  - blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json]): BLAST query against helper catalog genome"
         );
         println!(
             "  - prepare_genome(project, genome_id, [catalog_path], [cache_dir]): Engine op helper"
@@ -364,16 +364,39 @@ impl LuaInterface {
         task: Option<String>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        options_json: Option<String>,
     ) -> LuaResult<crate::genomes::GenomeBlastReport> {
-        GentleEngine::blast_reference_genome(
+        let mut request = serde_json::Map::new();
+        request.insert(
+            "max_hits".to_string(),
+            serde_json::Value::from(max_hits.unwrap_or(25).max(1)),
+        );
+        if let Some(task) = task.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            request.insert("task".to_string(), serde_json::Value::from(task));
+        }
+        if let Some(raw) = options_json
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            let parsed: serde_json::Value = serde_json::from_str(raw)
+                .map_err(|e| Self::err(&format!("Invalid BLAST options_json payload: {e}")))?;
+            let obj = parsed.as_object().ok_or_else(|| {
+                Self::err("BLAST options_json payload must decode to a JSON object")
+            })?;
+            for (k, v) in obj {
+                request.insert(k.clone(), v.clone());
+            }
+        }
+        let request_json = serde_json::Value::Object(request);
+        GentleEngine::blast_reference_genome_with_request_options(
             catalog_path
                 .as_deref()
                 .map(str::trim)
                 .filter(|v| !v.is_empty()),
             &genome_id,
             &query_sequence,
-            max_hits.unwrap_or(25).max(1),
-            task.as_deref().map(str::trim).filter(|v| !v.is_empty()),
+            Some(&request_json),
             cache_dir
                 .as_deref()
                 .map(str::trim)
@@ -389,12 +412,35 @@ impl LuaInterface {
         task: Option<String>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        options_json: Option<String>,
     ) -> LuaResult<crate::genomes::GenomeBlastReport> {
-        GentleEngine::blast_helper_genome(
+        let mut request = serde_json::Map::new();
+        request.insert(
+            "max_hits".to_string(),
+            serde_json::Value::from(max_hits.unwrap_or(25).max(1)),
+        );
+        if let Some(task) = task.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            request.insert("task".to_string(), serde_json::Value::from(task));
+        }
+        if let Some(raw) = options_json
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            let parsed: serde_json::Value = serde_json::from_str(raw)
+                .map_err(|e| Self::err(&format!("Invalid BLAST options_json payload: {e}")))?;
+            let obj = parsed.as_object().ok_or_else(|| {
+                Self::err("BLAST options_json payload must decode to a JSON object")
+            })?;
+            for (k, v) in obj {
+                request.insert(k.clone(), v.clone());
+            }
+        }
+        let request_json = serde_json::Value::Object(request);
+        GentleEngine::blast_helper_genome_with_request_options(
             &genome_id,
             &query_sequence,
-            max_hits.unwrap_or(25).max(1),
-            task.as_deref().map(str::trim).filter(|v| !v.is_empty()),
+            Some(&request_json),
             catalog_path
                 .as_deref()
                 .map(str::trim)
@@ -633,10 +679,19 @@ impl LuaInterface {
             "blast_reference_genome",
             self.lua.create_function(
                 |lua,
-                 (genome_id, query_sequence, max_hits, task, catalog_path, cache_dir): (
+                 (
+                    genome_id,
+                    query_sequence,
+                    max_hits,
+                    task,
+                    catalog_path,
+                    cache_dir,
+                    options_json,
+                ): (
                     String,
                     String,
                     Option<usize>,
+                    Option<String>,
                     Option<String>,
                     Option<String>,
                     Option<String>,
@@ -648,6 +703,7 @@ impl LuaInterface {
                         task,
                         catalog_path,
                         cache_dir,
+                        options_json,
                     )?;
                     lua.to_value(&report)
                 },
@@ -658,10 +714,19 @@ impl LuaInterface {
             "blast_helper_genome",
             self.lua.create_function(
                 |lua,
-                 (genome_id, query_sequence, max_hits, task, catalog_path, cache_dir): (
+                 (
+                    genome_id,
+                    query_sequence,
+                    max_hits,
+                    task,
+                    catalog_path,
+                    cache_dir,
+                    options_json,
+                ): (
                     String,
                     String,
                     Option<usize>,
+                    Option<String>,
                     Option<String>,
                     Option<String>,
                     Option<String>,
@@ -673,6 +738,7 @@ impl LuaInterface {
                         task,
                         catalog_path,
                         cache_dir,
+                        options_json,
                     )?;
                     lua.to_value(&report)
                 },

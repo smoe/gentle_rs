@@ -21,6 +21,7 @@ use crate::{
     feature_location::collect_location_ranges_usize,
     gc_contents::GcContents,
     icons::*,
+    iupac_code::IupacCode,
     linear_base_routing::{
         LinearBaseRenderMode, LinearBaseRoutingDecision, LinearBaseRoutingInput,
         decide_linear_base_routing, mode_setting_label,
@@ -28,6 +29,7 @@ use crate::{
     open_reading_frame::OpenReadingFrame,
     pool_gel::build_pool_gel_layout,
     render_dna::{RenderDna, RestrictionEnzymePosition},
+    render_export::{export_circular_svg, export_linear_svg},
     render_sequence::RenderSequence,
     tf_motifs,
     window_backdrop::{
@@ -2335,7 +2337,7 @@ impl MainAreaDna {
                             LinearSequenceLetterLayoutMode::AutoAdaptive,
                             0,
                             false,
-                            8.25,
+                            9.0,
                             11.0,
                             0.9,
                         ));
@@ -2973,6 +2975,15 @@ impl MainAreaDna {
             {
                 self.export_active_sequence_svg();
             }
+            if ui
+                .button("Export View SVG")
+                .on_hover_text(
+                    "Export the currently shown sequence window view (map + sequence panel) as SVG",
+                )
+                .clicked()
+            {
+                self.export_active_view_svg();
+            }
             if self.is_single_stranded_rna()
                 && ui
                     .button("Export RNA SVG")
@@ -3453,7 +3464,7 @@ impl MainAreaDna {
                         .on_hover_text("Reset feature detail font size to default")
                         .clicked()
                     {
-                        let default_size = 8.25;
+                        let default_size = 9.0;
                         self.dna_display
                             .write()
                             .expect("DNA display lock poisoned")
@@ -4577,7 +4588,7 @@ impl MainAreaDna {
         self.dna_display
             .read()
             .map(|display| display.feature_details_font_size())
-            .unwrap_or(8.25)
+            .unwrap_or(9.0)
     }
 
     fn sync_from_engine_display(&mut self) {
@@ -6120,6 +6131,306 @@ impl MainAreaDna {
             RenderSvgMode::Linear
         };
         self.apply_operation_with_feedback(Operation::RenderSequenceSvg { seq_id, mode, path });
+    }
+
+    fn xml_escape(text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+
+    fn extract_svg_inner(svg: &str) -> Option<&str> {
+        let open_end = svg.find('>')?;
+        let close_start = svg.rfind("</svg>")?;
+        if close_start <= open_end {
+            return None;
+        }
+        Some(&svg[(open_end + 1)..close_start])
+    }
+
+    fn format_grouped_bases(bytes: &[u8]) -> String {
+        let mut out = String::with_capacity(bytes.len() + (bytes.len() / 10));
+        for (idx, base) in bytes.iter().enumerate() {
+            out.push((*base as char).to_ascii_uppercase());
+            if (idx + 1) % 10 == 0 && (idx + 1) < bytes.len() {
+                out.push(' ');
+            }
+        }
+        out
+    }
+
+    fn export_active_view_svg(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence to export".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let default_name = format!("{seq_id}.view.svg");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Export canceled".to_string();
+            return;
+        };
+
+        let (map_svg, map_mode_label) = {
+            let guard = engine.read().expect("Engine lock poisoned");
+            let state = guard.state();
+            let Some(dna) = state.sequences.get(&seq_id) else {
+                self.op_status = format!("Active sequence '{seq_id}' not found in engine state");
+                return;
+            };
+            let map_svg = if self.is_circular() {
+                export_circular_svg(dna, &state.display)
+            } else {
+                export_linear_svg(dna, &state.display)
+            };
+            (
+                map_svg,
+                if self.is_circular() {
+                    "circular"
+                } else {
+                    "linear"
+                },
+            )
+        };
+
+        let dna_guard = match self.dna.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                self.op_status = "Could not read active DNA sequence for export".to_string();
+                return;
+            }
+        };
+        let display_guard = match self.dna_display.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                self.op_status = "Could not read display settings for export".to_string();
+                return;
+            }
+        };
+
+        let mut width_px = 1780.0_f32;
+        let mut y = 26.0_f32;
+        let margin = 28.0_f32;
+        let map_panel_h = if self.show_map && self.show_sequence {
+            520.0
+        } else {
+            700.0
+        };
+        let sequence_panel_h = if self.show_sequence { 380.0 } else { 0.0 };
+        let header_h = 78.0_f32;
+        let footer_h = 20.0_f32;
+        let mut total_h = header_h + footer_h;
+        if self.show_map {
+            total_h += map_panel_h + 14.0;
+        }
+        if self.show_sequence {
+            total_h += sequence_panel_h + 14.0;
+        }
+        width_px = width_px.max(1200.0);
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{:.0}\" height=\"{:.0}\" viewBox=\"0 0 {:.0} {:.0}\">",
+            width_px, total_h, width_px, total_h
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"0\" y=\"0\" width=\"{:.0}\" height=\"{:.0}\" fill=\"#ffffff\"/>",
+            width_px, total_h
+        ));
+
+        let seq_name = dna_guard
+            .name()
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| "<Unnamed DNA sequence>".to_string());
+        let header_left = format!("{} ({})", seq_name, seq_id);
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"18\" fill=\"#111111\">{}</text>",
+            margin,
+            y,
+            Self::xml_escape(&header_left)
+        ));
+        let status_right = format!(
+            "map={} | show-map={} | show-sequence={}",
+            map_mode_label, self.show_map, self.show_sequence
+        );
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"13\" fill=\"#444444\">{}</text>",
+            width_px - margin,
+            y,
+            Self::xml_escape(&status_right)
+        ));
+        y += 24.0;
+
+        let routing = self.linear_base_routing_decision();
+        let (linear_start, linear_span, sequence_length) = self.current_linear_viewport();
+        let viewport_text = if self.is_circular() {
+            format!("circular view | {} bp", dna_guard.len())
+        } else {
+            format!(
+                "linear view {}..{} ({} bp) of {} bp | density {:.2} | cols-fit {:.0} | glyph {:.2}px",
+                linear_start.saturating_add(1),
+                linear_start
+                    .saturating_add(linear_span)
+                    .min(sequence_length),
+                linear_span,
+                sequence_length,
+                routing.density_ratio,
+                routing.columns_fit,
+                routing.glyph_width_px
+            )
+        };
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"12\" fill=\"#555555\">{}</text>",
+            margin,
+            y,
+            Self::xml_escape(&viewport_text)
+        ));
+        y += 18.0;
+        if cfg!(debug_assertions) {
+            let threshold_text = format!(
+                "debug tiers: standard<= {:.2}, helical<= {:.2}, condensed<= {:.2}",
+                routing.tier_standard_max_density,
+                routing.tier_helical_max_density,
+                routing.tier_condensed_max_density
+            );
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"11\" fill=\"#666666\">{}</text>",
+                margin,
+                y,
+                Self::xml_escape(&threshold_text)
+            ));
+            y += 18.0;
+        }
+
+        if self.show_map {
+            let panel_w = width_px - 2.0 * margin;
+            let panel_h = map_panel_h;
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#fafafa\" stroke=\"#dddddd\" stroke-width=\"1\"/>",
+                margin, y, panel_w, panel_h
+            ));
+            if let Some(inner) = Self::extract_svg_inner(&map_svg) {
+                let map_native_w = 1200.0_f32;
+                let map_native_h = 700.0_f32;
+                let scale = (panel_w / map_native_w)
+                    .min(panel_h / map_native_h)
+                    .max(0.1);
+                let map_x = margin + (panel_w - map_native_w * scale) * 0.5;
+                let map_y = y + (panel_h - map_native_h * scale) * 0.5;
+                svg.push_str(&format!(
+                    "<g transform=\"translate({:.2} {:.2}) scale({:.5})\">",
+                    map_x, map_y, scale
+                ));
+                svg.push_str(inner);
+                svg.push_str("</g>");
+            } else {
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"13\" fill=\"#a00000\">Could not embed map SVG content</text>",
+                    margin + 10.0,
+                    y + 22.0
+                ));
+            }
+        }
+
+        if self.show_sequence {
+            let panel_w = width_px - 2.0 * margin;
+            let panel_h = sequence_panel_h;
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#fcfcfc\" stroke=\"#dddddd\" stroke-width=\"1\"/>",
+                margin, y, panel_w, panel_h
+            ));
+            let y0 = y + 22.0;
+            let digits = dna_guard.len().max(1).to_string().len();
+            let show_rc = display_guard.show_reverse_complement();
+            let estimated_bpl = ((self.last_linear_map_width_px.max(640.0) / 8.0).floor() as usize)
+                .saturating_div(11)
+                .saturating_mul(10)
+                .clamp(40, 200);
+            let (window_start, window_span) = if self.is_circular() {
+                (0usize, dna_guard.len().min(estimated_bpl.saturating_mul(8)))
+            } else {
+                (linear_start, linear_span)
+            };
+            let window_end = window_start
+                .saturating_add(window_span)
+                .min(dna_guard.len());
+            let mut line_idx = 0usize;
+            let mut bp = window_start;
+            let max_text_lines = 24usize;
+            while bp < window_end && line_idx < max_text_lines {
+                let end = (bp + estimated_bpl).min(window_end);
+                let Some(segment) = dna_guard.get_inclusive_range_safe(bp..=end.saturating_sub(1))
+                else {
+                    break;
+                };
+                let grouped = Self::format_grouped_bases(&segment);
+                let text = format!(
+                    "{:>width$} {}",
+                    bp.saturating_add(1),
+                    grouped,
+                    width = digits
+                );
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"16\" fill=\"#111111\">{}</text>",
+                    margin + 10.0,
+                    y0 + line_idx as f32 * 22.0,
+                    Self::xml_escape(&text)
+                ));
+                line_idx += 1;
+                if show_rc && line_idx < max_text_lines {
+                    let mut rc = Vec::with_capacity(segment.len());
+                    for base in segment.iter().rev() {
+                        rc.push(IupacCode::letter_complement(*base));
+                    }
+                    let rc_grouped = Self::format_grouped_bases(&rc);
+                    let rc_text = format!("{:>width$} {}", "", rc_grouped, width = digits);
+                    svg.push_str(&format!(
+                        "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"16\" fill=\"#666666\">{}</text>",
+                        margin + 10.0,
+                        y0 + line_idx as f32 * 22.0,
+                        Self::xml_escape(&rc_text)
+                    ));
+                    line_idx += 1;
+                }
+                bp = end;
+            }
+            if bp < window_end {
+                let remaining = window_end.saturating_sub(bp);
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"12\" fill=\"#777777\">... {} bp not shown in this SVG panel extract</text>",
+                    margin + 10.0,
+                    y + panel_h - 12.0,
+                    remaining
+                ));
+            }
+        }
+
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"11\" fill=\"#666666\">GENtle view export</text>",
+            width_px - margin,
+            total_h - 8.0
+        ));
+        svg.push_str("</svg>");
+
+        let path_text = path.display().to_string();
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.op_status = format!("Exported sequence window view SVG to '{}'", path_text);
+            }
+            Err(e) => {
+                self.op_status = format!("Could not write view SVG '{}': {e}", path_text);
+            }
+        }
     }
 
     fn is_single_stranded_rna(&self) -> bool {
@@ -9495,19 +9806,24 @@ impl MainAreaDna {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.set_min_height(150.0);
             self.refresh_description_cache();
-            ui.heading(&self.description_cache_title);
+            let detail_font_size = self.feature_details_font_size();
+            ui.label(
+                egui::RichText::new(&self.description_cache_title)
+                    .strong()
+                    .size((detail_font_size + 1.0).clamp(9.0, 26.0)),
+            );
             if let Some(range) = &self.description_cache_range {
                 ui.label(
                     egui::RichText::new(range)
                         .monospace()
-                        .size(self.feature_details_font_size()),
+                        .size(detail_font_size),
                 );
             }
             for detail in &self.description_cache_details {
                 ui.label(
                     egui::RichText::new(detail)
                         .monospace()
-                        .size(self.feature_details_font_size()),
+                        .size(detail_font_size),
                 );
             }
             if let Some(view) = &self.description_cache_expert_view {
@@ -9515,7 +9831,7 @@ impl MainAreaDna {
                 ui.label(
                     egui::RichText::new("Expert view")
                         .strong()
-                        .size(self.feature_details_font_size()),
+                        .size(detail_font_size),
                 );
                 match view {
                     FeatureExpertView::Splicing(splicing) => {
@@ -9523,7 +9839,7 @@ impl MainAreaDna {
                             egui::RichText::new(
                                 "Splicing expert view opens in a dedicated window for readability.",
                             )
-                            .size(self.feature_details_font_size()),
+                            .size(detail_font_size),
                         );
                         let button_label = if self.show_splicing_expert_window {
                             "Focus Splicing Window"
@@ -9559,7 +9875,7 @@ impl MainAreaDna {
                 ui.label(
                     egui::RichText::new(format!("Expert view unavailable: {err}"))
                         .monospace()
-                        .size(self.feature_details_font_size()),
+                        .size(detail_font_size),
                 );
             }
         });

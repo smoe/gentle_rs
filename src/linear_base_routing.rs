@@ -8,7 +8,11 @@ use crate::engine::LinearSequenceLetterLayoutMode;
 /// Approximate monospace glyph width multiplier used for density estimates.
 pub const GLYPH_WIDTH_SCALE: f32 = 0.62;
 /// Auto-routing threshold: dense enough to leave 1-row standard view.
-pub const AUTO_STANDARD_MAX_DENSITY: f32 = 1.0;
+///
+/// We intentionally allow a small readability-overlap buffer above 1.0 because
+/// the glyph-width estimator is conservative and real rendered glyph advance is
+/// often narrower than nominal monospace cell width.
+pub const AUTO_STANDARD_MAX_DENSITY: f32 = 1.35;
 /// Auto-routing threshold: dense enough to leave 2-row helical view.
 pub const AUTO_HELICAL_MAX_DENSITY: f32 = 2.0;
 /// Auto-routing threshold: dense enough to leave 10-row condensed view.
@@ -217,6 +221,14 @@ mod tests {
     fn auto_uses_standard_at_or_below_one_x_density() {
         let decision = decide_linear_base_routing(input(100, 1000.0));
         assert_eq!(decision.active_mode, LinearBaseRenderMode::StandardLinear);
+        assert!(decision.density_ratio <= AUTO_STANDARD_MAX_DENSITY);
+    }
+
+    #[test]
+    fn auto_keeps_standard_for_borderline_density_after_tolerance() {
+        let decision = decide_linear_base_routing(input(320, 1224.0));
+        assert_eq!(decision.active_mode, LinearBaseRenderMode::StandardLinear);
+        assert!(decision.density_ratio > 1.0);
         assert!(decision.density_ratio <= AUTO_STANDARD_MAX_DENSITY);
     }
 

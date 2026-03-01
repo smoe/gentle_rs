@@ -207,9 +207,10 @@ Exit methods:
     - Convenience wrapper around engine `ExtractGenomeRegion`.
 18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-19. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
+19. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
-20. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir)`
+    - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
+20. `blast_helper_genome(helper_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
 21. `set_parameter(state, name, value)`
     - Convenience wrapper for engine `SetParameter`.
@@ -414,9 +415,10 @@ Exit methods:
     - Convenience wrapper around engine `ExtractGenomeRegion`.
 18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
-19. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
+19. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
-20. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir])`
+    - `options_json` is optional and may override any quick option (`max_hits`, `task`) plus threshold fields.
+20. `blast_helper_genome(helper_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Same as `blast_reference_genome`, but defaults to helper catalog context.
 21. `set_parameter(project, name, value)`
     - Convenience wrapper for engine `SetParameter`.
@@ -528,7 +530,7 @@ cargo run --bin gentle_cli -- genomes validate-catalog --catalog assets/genomes.
 cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
-cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":97.0,"min_query_coverage_percent":80.0}}' --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
@@ -539,7 +541,7 @@ cargo run --bin gentle_cli -- helpers validate-catalog
 cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
 cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes --timeout-secs 600
 cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
-cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --cache-dir data/helper_genomes
+cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":95.0}}' --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
 cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
 cargo run --bin gentle_cli -- candidates score-weighted sgrnas priority --term gc_fraction:0.7:max --term distance_to_seq_start_bp:0.3:min --normalize
@@ -620,7 +622,7 @@ Shared shell command:
     - `genomes status GENOME_ID [--catalog PATH] [--cache-dir PATH]`
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
-    - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
@@ -628,7 +630,7 @@ Shared shell command:
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
     - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
-    - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -862,9 +864,10 @@ Genome convenience commands:
   - `--biotype` can be repeated to constrain matches to selected biotypes.
 - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
   - Runs engine `PrepareGenome`.
-- `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
+- `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Runs `blastn` against prepared genome cache/index.
   - `--task` defaults to `blastn-short`; accepted values: `blastn-short`, `blastn`.
+  - `--options-json` / `--options-file` accept a JSON object that can override quick options and include thresholds (`max_evalue`, `min_identity_percent`, `min_query_coverage_percent`, `min_alignment_length_bp`, `min_bit_score`, `unique_best_hit`).
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeRegion`.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -887,7 +890,7 @@ Helper convenience commands:
 - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
   - Same behavior as `genomes prepare`, with helper-catalog default.
   - `--timeout-secs N`: optional prepare-job timebox.
-- `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--catalog PATH] [--cache-dir PATH]`
+- `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes blast`, with helper-catalog default.
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
@@ -1490,6 +1493,14 @@ Notes:
   - BLAST+ does not provide a native percent-progress CLI flag for `blastn`.
   - GENtle surfaces deterministic progress at orchestration level (query counts,
     running elapsed time, and invocation context in adapters that support live status).
+- BLAST options layering (engine contract):
+  - built-in defaults (`task=blastn-short`, `max_hits=25`)
+  - optional defaults file (`assets/blast_defaults.json` or path set by parameter)
+  - optional project override metadata (`set-param blast_options_override ...`)
+  - quick flags (`--max-hits`, `--task`)
+  - per-command JSON override (`--options-json` / `--options-file`)
+  - project defaults file path can be set via
+    `set-param blast_options_defaults_path '"path/to/blast_defaults.json"'`
 - BLAST executable overrides:
   - `GENTLE_MAKEBLASTDB_BIN` (default: `makeblastdb`)
   - `GENTLE_BLASTN_BIN` (default: `blastn`)
