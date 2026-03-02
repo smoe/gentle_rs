@@ -20,6 +20,27 @@ pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_
 pub const DEFAULT_TUTORIAL_MANIFEST_PATH: &str = "docs/tutorial/manifest.json";
 pub const DEFAULT_TUTORIAL_OUTPUT_DIR: &str = "docs/tutorial/generated";
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialConcept {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TutorialParameterNote {
+    pub parameter: String,
+    #[serde(default)]
+    pub where_used: String,
+    #[serde(default)]
+    pub why_it_matters: String,
+    #[serde(default)]
+    pub how_to_derive: String,
+    #[serde(default)]
+    pub omit_when: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TutorialTier {
@@ -55,6 +76,20 @@ pub struct TutorialChapter {
     #[serde(default)]
     pub summary: String,
     #[serde(default)]
+    pub narrative: String,
+    #[serde(default)]
+    pub use_cases: Vec<String>,
+    #[serde(default)]
+    pub gui_steps: Vec<String>,
+    #[serde(default)]
+    pub learning_objectives: Vec<String>,
+    #[serde(default)]
+    pub concepts: Vec<String>,
+    #[serde(default)]
+    pub parameter_notes: Vec<TutorialParameterNote>,
+    #[serde(default)]
+    pub follow_up_commands: Vec<String>,
+    #[serde(default)]
     pub retain_outputs: Vec<String>,
     #[serde(default)]
     pub checkpoints: Vec<String>,
@@ -64,6 +99,8 @@ pub struct TutorialChapter {
 pub struct TutorialManifest {
     #[serde(default = "default_tutorial_manifest_schema")]
     pub schema: String,
+    #[serde(default)]
+    pub concepts: Vec<TutorialConcept>,
     pub chapters: Vec<TutorialChapter>,
 }
 
@@ -75,6 +112,7 @@ pub struct TutorialGenerationChapter {
     pub tier: String,
     pub example_id: String,
     pub example_source: String,
+    pub concepts: Vec<String>,
     pub executed: bool,
     pub retained_artifacts: Vec<String>,
 }
@@ -339,6 +377,18 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
             display_path(manifest_path)
         ));
     }
+    if manifest.concepts.is_empty() {
+        return Err(format!(
+            "Tutorial manifest '{}' has no concept definitions",
+            display_path(manifest_path)
+        ));
+    }
+    let concept_by_id = tutorial_concept_lookup(&manifest.concepts).map_err(|e| {
+        format!(
+            "Tutorial manifest '{}' concept validation error: {e}",
+            display_path(manifest_path)
+        )
+    })?;
     let mut seen_ids: HashSet<String> = HashSet::new();
     let mut seen_orders: HashSet<usize> = HashSet::new();
     for chapter in &manifest.chapters {
@@ -354,6 +404,30 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
         if chapter.example_id.trim().is_empty() {
             return Err(format!(
                 "Tutorial chapter '{}' has empty example_id",
+                chapter.id
+            ));
+        }
+        if chapter.learning_objectives.is_empty() {
+            return Err(format!(
+                "Tutorial chapter '{}' must define at least one learning objective",
+                chapter.id
+            ));
+        }
+        if chapter.use_cases.is_empty() {
+            return Err(format!(
+                "Tutorial chapter '{}' must define at least one use-case context",
+                chapter.id
+            ));
+        }
+        if chapter.tier != TutorialTier::Online && chapter.gui_steps.is_empty() {
+            return Err(format!(
+                "Tutorial chapter '{}' must define at least one GUI-first step",
+                chapter.id
+            ));
+        }
+        if chapter.concepts.is_empty() {
+            return Err(format!(
+                "Tutorial chapter '{}' must reference at least one concept",
                 chapter.id
             ));
         }
@@ -387,6 +461,70 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
                 ));
             }
         }
+        for objective in &chapter.learning_objectives {
+            if objective.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank learning objective",
+                    chapter.id
+                ));
+            }
+        }
+        for use_case in &chapter.use_cases {
+            if use_case.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank use_case entry",
+                    chapter.id
+                ));
+            }
+        }
+        for gui_step in &chapter.gui_steps {
+            if gui_step.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank gui_steps entry",
+                    chapter.id
+                ));
+            }
+        }
+        for concept_id in &chapter.concepts {
+            if concept_id.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank concept id",
+                    chapter.id
+                ));
+            }
+            if !concept_by_id.contains_key(concept_id) {
+                return Err(format!(
+                    "Tutorial chapter '{}' references unknown concept id '{}'",
+                    chapter.id, concept_id
+                ));
+            }
+        }
+        for note in &chapter.parameter_notes {
+            if note.parameter.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains parameter note with empty parameter",
+                    chapter.id
+                ));
+            }
+            if note.where_used.trim().is_empty()
+                && note.why_it_matters.trim().is_empty()
+                && note.how_to_derive.trim().is_empty()
+                && note.omit_when.trim().is_empty()
+            {
+                return Err(format!(
+                    "Tutorial chapter '{}' parameter note '{}' needs explanatory text",
+                    chapter.id, note.parameter
+                ));
+            }
+        }
+        for command in &chapter.follow_up_commands {
+            if command.trim().is_empty() {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank follow_up_commands entry",
+                    chapter.id
+                ));
+            }
+        }
     }
     Ok(manifest)
 }
@@ -399,11 +537,57 @@ fn example_lookup(examples: &[LoadedWorkflowExample]) -> HashMap<String, LoadedW
     by_id
 }
 
+fn tutorial_concept_lookup(
+    concepts: &[TutorialConcept],
+) -> Result<HashMap<String, TutorialConcept>, String> {
+    let mut by_id = HashMap::new();
+    for concept in concepts {
+        if concept.id.trim().is_empty() {
+            return Err("Tutorial concept id must not be empty".to_string());
+        }
+        if concept.name.trim().is_empty() {
+            return Err(format!("Tutorial concept '{}' has empty name", concept.id));
+        }
+        if by_id.insert(concept.id.clone(), concept.clone()).is_some() {
+            return Err(format!("Duplicate tutorial concept id '{}'", concept.id));
+        }
+    }
+    Ok(by_id)
+}
+
+fn concept_occurrences(sorted_chapters: &[TutorialChapter]) -> HashMap<String, Vec<usize>> {
+    let mut occurrences: HashMap<String, Vec<usize>> = HashMap::new();
+    for (chapter_index, chapter) in sorted_chapters.iter().enumerate() {
+        for concept_id in &chapter.concepts {
+            occurrences
+                .entry(concept_id.clone())
+                .or_default()
+                .push(chapter_index);
+        }
+    }
+    occurrences
+}
+
+fn chapter_link_label(chapter: &TutorialChapter) -> String {
+    format!("Chapter {}: {}", chapter.order, chapter.title)
+}
+
+fn chapter_link_target(chapter: &TutorialChapter, from_readme: bool) -> String {
+    let filename = chapter_markdown_filename(chapter.order, &chapter.id);
+    if from_readme {
+        format!("./chapters/{filename}")
+    } else {
+        format!("./{filename}")
+    }
+}
+
 pub fn validate_tutorial_manifest_against_examples(
     manifest: &TutorialManifest,
     examples: &[LoadedWorkflowExample],
 ) -> Result<(), String> {
     let by_id = example_lookup(examples);
+    let concept_by_id = tutorial_concept_lookup(&manifest.concepts)?;
+    let mut concept_used: HashSet<String> = HashSet::new();
     for chapter in &manifest.chapters {
         let loaded = by_id.get(&chapter.example_id).ok_or_else(|| {
             format!(
@@ -428,6 +612,23 @@ pub fn validate_tutorial_manifest_against_examples(
                 chapter.id,
                 chapter.example_id,
                 loaded.example.test_mode.as_str()
+            ));
+        }
+        for concept_id in &chapter.concepts {
+            if !concept_by_id.contains_key(concept_id) {
+                return Err(format!(
+                    "Tutorial chapter '{}' references unknown concept id '{}'",
+                    chapter.id, concept_id
+                ));
+            }
+            concept_used.insert(concept_id.clone());
+        }
+    }
+    for concept_id in concept_by_id.keys() {
+        if !concept_used.contains(concept_id) {
+            return Err(format!(
+                "Tutorial concept '{}' is defined but not used in any chapter",
+                concept_id
             ));
         }
     }
@@ -736,13 +937,11 @@ fn render_tutorial_chapter_markdown(
     executed: bool,
     retained_artifacts: &[String],
     online_enabled: bool,
+    chapter_index: usize,
+    sorted_chapters: &[TutorialChapter],
+    concept_by_id: &HashMap<String, TutorialConcept>,
+    occurrences_by_concept: &HashMap<String, Vec<usize>>,
 ) -> Result<String, String> {
-    let workflow_json = serde_json::to_string_pretty(&loaded.example.workflow).map_err(|e| {
-        format!(
-            "Could not serialize workflow example '{}': {e}",
-            loaded.example.id
-        )
-    })?;
     let source_path = display_path(&loaded.path);
     let mut out = String::new();
     out.push_str("# ");
@@ -774,7 +973,114 @@ fn render_tutorial_chapter_markdown(
         out.push_str(chapter.summary.trim());
         out.push_str("\n");
     }
-    out.push_str("\n## Run Commands\n\n");
+    if !chapter.narrative.trim().is_empty() {
+        out.push('\n');
+        out.push_str(chapter.narrative.trim());
+        out.push_str("\n");
+    }
+    out.push_str("\n## When This Routine Is Useful\n\n");
+    for use_case in &chapter.use_cases {
+        out.push_str("- ");
+        out.push_str(use_case.trim());
+        out.push('\n');
+    }
+    out.push_str("\n## What You Learn\n\n");
+    for objective in &chapter.learning_objectives {
+        out.push_str("- ");
+        out.push_str(objective.trim());
+        out.push('\n');
+    }
+    out.push_str("\n## Concepts and Recurrence\n\n");
+    for concept_id in &chapter.concepts {
+        let concept = concept_by_id.get(concept_id).ok_or_else(|| {
+            format!(
+                "Tutorial chapter '{}' references unknown concept id '{}'",
+                chapter.id, concept_id
+            )
+        })?;
+        out.push_str("- **");
+        out.push_str(concept.name.trim());
+        out.push_str("** (`");
+        out.push_str(concept.id.trim());
+        out.push_str("`): ");
+        if concept.description.trim().is_empty() {
+            out.push_str("No description provided.");
+        } else {
+            out.push_str(concept.description.trim());
+        }
+        out.push('\n');
+        let positions = occurrences_by_concept.get(concept_id).ok_or_else(|| {
+            format!(
+                "No recurrence mapping found for concept id '{}'",
+                concept_id
+            )
+        })?;
+        let mut previous = vec![];
+        let mut upcoming = vec![];
+        for position in positions {
+            if *position < chapter_index {
+                previous.push(*position);
+            } else if *position > chapter_index {
+                upcoming.push(*position);
+            }
+        }
+        if previous.is_empty() {
+            out.push_str("  - Status: introduced in this chapter.\n");
+        } else {
+            out.push_str("  - Status: reinforced from ");
+            for (idx, prev_position) in previous.iter().enumerate() {
+                if idx > 0 {
+                    out.push_str(", ");
+                }
+                let prev = sorted_chapters.get(*prev_position).ok_or_else(|| {
+                    format!(
+                        "Invalid chapter index '{}' in recurrence map",
+                        prev_position
+                    )
+                })?;
+                out.push('[');
+                out.push_str(&chapter_link_label(prev));
+                out.push_str("](");
+                out.push_str(&chapter_link_target(prev, false));
+                out.push(')');
+            }
+            out.push_str(".\n");
+        }
+        if upcoming.is_empty() {
+            out.push_str("  - Reoccurs in: no later chapter.\n");
+        } else {
+            out.push_str("  - Reoccurs in: ");
+            for (idx, next_position) in upcoming.iter().enumerate() {
+                if idx > 0 {
+                    out.push_str(", ");
+                }
+                let next = sorted_chapters.get(*next_position).ok_or_else(|| {
+                    format!(
+                        "Invalid chapter index '{}' in recurrence map",
+                        next_position
+                    )
+                })?;
+                out.push('[');
+                out.push_str(&chapter_link_label(next));
+                out.push_str("](");
+                out.push_str(&chapter_link_target(next, false));
+                out.push(')');
+            }
+            out.push_str(".\n");
+        }
+    }
+    out.push_str("\n## GUI First\n\n");
+    if chapter.gui_steps.is_empty() {
+        out.push_str("- No GUI-first steps are required for this chapter.\n");
+    } else {
+        for (idx, step) in chapter.gui_steps.iter().enumerate() {
+            out.push_str(&format!("{}. ", idx + 1));
+            out.push_str(step.trim());
+            out.push('\n');
+        }
+    }
+    out.push_str("\n## Command Equivalent (After GUI)\n\n");
+    out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
     out.push_str("```bash\n");
     out.push_str("cargo run --bin gentle_cli -- workflow @");
     out.push_str(&source_path);
@@ -783,6 +1089,46 @@ fn render_tutorial_chapter_markdown(
     out.push_str(&source_path);
     out.push_str("'\n");
     out.push_str("```\n");
+    out.push_str("\n## Parameters That Matter\n\n");
+    if chapter.parameter_notes.is_empty() {
+        out.push_str("- This chapter intentionally avoids additional command options; run the canonical workflow unchanged.\n");
+    } else {
+        for note in &chapter.parameter_notes {
+            out.push_str("- `");
+            out.push_str(note.parameter.trim());
+            out.push_str("`");
+            if !note.where_used.trim().is_empty() {
+                out.push_str(" (where used: ");
+                out.push_str(note.where_used.trim());
+                out.push(')');
+            }
+            out.push('\n');
+            if !note.why_it_matters.trim().is_empty() {
+                out.push_str("  - Why it matters: ");
+                out.push_str(note.why_it_matters.trim());
+                out.push('\n');
+            }
+            if !note.how_to_derive.trim().is_empty() {
+                out.push_str("  - How to derive it: ");
+                out.push_str(note.how_to_derive.trim());
+                out.push('\n');
+            }
+            if !note.omit_when.trim().is_empty() {
+                out.push_str("  - Omit when: ");
+                out.push_str(note.omit_when.trim());
+                out.push('\n');
+            }
+        }
+    }
+    if !chapter.follow_up_commands.is_empty() {
+        out.push_str("\n## Follow-up Commands\n\n");
+        out.push_str("```bash\n");
+        for command in &chapter.follow_up_commands {
+            out.push_str(command.trim());
+            out.push('\n');
+        }
+        out.push_str("```\n");
+    }
     if !chapter.checkpoints.is_empty() {
         out.push_str("\n## Checkpoints\n\n");
         for checkpoint in &chapter.checkpoints {
@@ -803,10 +1149,11 @@ fn render_tutorial_chapter_markdown(
             out.push_str(")\n");
         }
     }
-    out.push_str("\n## Canonical Workflow JSON\n\n");
-    out.push_str("```json\n");
-    out.push_str(&workflow_json);
-    out.push_str("\n```\n");
+    out.push_str("\n## Canonical Source\n\n");
+    out.push_str("- Workflow file: `");
+    out.push_str(&source_path);
+    out.push_str("`\n");
+    out.push_str("- Inspect this JSON file directly when you need full option-level detail.\n");
     Ok(out)
 }
 
@@ -814,6 +1161,8 @@ fn render_tutorial_index(
     manifest: &TutorialManifest,
     chapters: &[TutorialGenerationChapter],
     online_enabled: bool,
+    sorted_chapters: &[TutorialChapter],
+    occurrences_by_concept: &HashMap<String, Vec<usize>>,
 ) -> String {
     let mut out = String::new();
     out.push_str("# GENtle Tutorial (Generated)\n\n");
@@ -828,6 +1177,11 @@ fn render_tutorial_index(
     out.push_str("```bash\n");
     out.push_str("cargo run --bin gentle_examples_docs -- tutorial-check\n");
     out.push_str("```\n\n");
+    out.push_str("Recommended progression:\n");
+    out.push_str(
+        "- Start chapters in the GUI to understand biological intent and visual context.\n",
+    );
+    out.push_str("- Then use the command equivalents for repeatable runs and automation.\n\n");
     out.push_str("Online execution was ");
     out.push_str(if online_enabled {
         "enabled"
@@ -855,6 +1209,36 @@ fn render_tutorial_index(
         out.push_str("` - executed `");
         out.push_str(if chapter.executed { "yes" } else { "no" });
         out.push_str("`\n");
+    }
+    out.push_str("\n## Concepts and Where They Recur\n\n");
+    for concept in &manifest.concepts {
+        out.push_str("- **");
+        out.push_str(concept.name.trim());
+        out.push_str("** (`");
+        out.push_str(concept.id.trim());
+        out.push_str("`): ");
+        if concept.description.trim().is_empty() {
+            out.push_str("No description provided.");
+        } else {
+            out.push_str(concept.description.trim());
+        }
+        out.push('\n');
+        if let Some(indices) = occurrences_by_concept.get(&concept.id) {
+            out.push_str("  - Appears in: ");
+            for (idx, chapter_index) in indices.iter().enumerate() {
+                if idx > 0 {
+                    out.push_str(", ");
+                }
+                if let Some(chapter) = sorted_chapters.get(*chapter_index) {
+                    out.push('[');
+                    out.push_str(&chapter_link_label(chapter));
+                    out.push_str("](");
+                    out.push_str(&chapter_link_target(chapter, true));
+                    out.push(')');
+                }
+            }
+            out.push_str(".\n");
+        }
     }
     out.push_str("\n## Source Summary\n\n");
     out.push_str("- Tutorial schema: `");
@@ -961,6 +1345,9 @@ pub fn generate_tutorial_docs(
     let example_by_id = example_lookup(&examples);
     let manifest = load_tutorial_manifest(manifest_path)?;
     validate_tutorial_manifest_against_examples(&manifest, &examples)?;
+    let concept_by_id = tutorial_concept_lookup(&manifest.concepts)?;
+    let sorted_chapters = sorted_manifest_chapters(&manifest);
+    let occurrences_by_concept = concept_occurrences(&sorted_chapters);
     if output_dir.exists() {
         fs::remove_dir_all(output_dir)
             .map_err(|e| format!("Could not clean '{}': {e}", display_path(output_dir)))?;
@@ -977,7 +1364,7 @@ pub fn generate_tutorial_docs(
     let online_enabled = online_example_tests_enabled();
     let mut chapter_reports: Vec<TutorialGenerationChapter> = vec![];
 
-    for chapter in sorted_manifest_chapters(&manifest) {
+    for (chapter_index, chapter) in sorted_chapters.iter().enumerate() {
         let loaded = example_by_id
             .get(&chapter.example_id)
             .ok_or_else(|| {
@@ -998,19 +1385,23 @@ pub fn generate_tutorial_docs(
         if executed {
             for retain_output in &chapter.retain_outputs {
                 let retained =
-                    copy_retained_output(&chapter, run_dir.path(), output_dir, retain_output)?;
+                    copy_retained_output(chapter, run_dir.path(), output_dir, retain_output)?;
                 retained_artifacts.push(retained);
             }
         }
         retained_artifacts.sort();
         let chapter_markdown = render_tutorial_chapter_markdown(
-            &chapter,
+            chapter,
             &loaded,
             executed,
             &retained_artifacts,
             online_enabled,
+            chapter_index,
+            &sorted_chapters,
+            &concept_by_id,
+            &occurrences_by_concept,
         )?;
-        let chapter_file = markdown_path_for_chapter(&chapter);
+        let chapter_file = markdown_path_for_chapter(chapter);
         let chapter_out_path = chapters_dir.join(&chapter_file);
         fs::write(&chapter_out_path, chapter_markdown)
             .map_err(|e| format!("Could not write '{}': {e}", display_path(&chapter_out_path)))?;
@@ -1021,12 +1412,19 @@ pub fn generate_tutorial_docs(
             tier: chapter.tier.as_str().to_string(),
             example_id: chapter.example_id.clone(),
             example_source: display_path(&loaded.path),
+            concepts: chapter.concepts.clone(),
             executed,
             retained_artifacts,
         });
     }
 
-    let readme = render_tutorial_index(&manifest, &chapter_reports, online_enabled);
+    let readme = render_tutorial_index(
+        &manifest,
+        &chapter_reports,
+        online_enabled,
+        &sorted_chapters,
+        &occurrences_by_concept,
+    );
     let readme_path = output_dir.join("README.md");
     fs::write(&readme_path, readme)
         .map_err(|e| format!("Could not write '{}': {e}", display_path(&readme_path)))?;
@@ -1370,6 +1768,23 @@ mod tests {
             first, second,
             "tutorial generation output should be deterministic"
         );
+    }
+
+    #[test]
+    fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
+        let source = example_dir();
+        let manifest = tutorial_manifest_path();
+        let repo_root = Path::new(".");
+        let out_dir = TempDir::new().expect("create temp dir");
+        let generated = out_dir.path().join("generated");
+        generate_tutorial_docs(&source, &manifest, &generated, repo_root)
+            .expect("tutorial generation should pass");
+        let chapter = generated.join("chapters/01_load_branch_reverse_complement_pgex_fasta.md");
+        let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
+        assert!(markdown.contains("## What You Learn"));
+        assert!(markdown.contains("## Concepts and Recurrence"));
+        assert!(markdown.contains("## GUI First"));
+        assert!(markdown.contains("## Parameters That Matter"));
     }
 
     #[test]

@@ -112,12 +112,17 @@ Interaction consistency rule:
   - default wheel/trackpad motion scrolls or pans content
   - zoom is reserved for `Shift + wheel` on zoom-capable canvases
   - `Option` (Alt) + drag enters hand-pan mode on zoom-capable canvases
+  - in linear DNA view, wheel/trackpad pan must support both axes:
+    horizontal movement pans bp viewport; vertical movement pans rendered lane stack
 - Cursor affordances must mirror mode intent:
   - `Option` hover uses hand (`Grab`)
   - `Option` drag uses grabbing hand (`Grabbing`)
   - `Shift` hover on zoom-capable canvases uses zoom cursor (`ZoomIn`/`ZoomOut`)
 - Arrow keys pan active scroll surfaces; `Shift + arrows` map to zoom intents
   on zoom-capable canvases.
+- Linear DNA toolbar `Fit` actions must be explicit and non-ambiguous:
+  - `Fit Seq`: full sequence horizontal fit
+  - `Fit Features`: vertical recenter for currently shown subsequence
 - Non-zoom scroll panes should expose keyboard navigation (`Arrow`,
   `PageUp/PageDown`, `Home/End`) when the pane is active and text fields do not
   hold keyboard focus.

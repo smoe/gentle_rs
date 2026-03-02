@@ -1,0 +1,5 @@
+{
+  "task": "blastn-short",
+  "max_hits": 25,
+  "thresholds": {}
+}

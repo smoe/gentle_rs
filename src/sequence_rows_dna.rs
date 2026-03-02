@@ -122,6 +122,11 @@ impl RowDna {
             );
         }
         let selection = self.display.read().ok().and_then(|d| d.selection());
+        let reverse_strand_opacity = self
+            .display
+            .read()
+            .map(|display| display.reverse_strand_visual_opacity())
+            .unwrap_or(0.55);
         let window_end_exclusive = window_start.saturating_add(window_span).min(self.seq_len());
         let seq_end_exclusive = (seq_offset + self.bases_per_line).min(window_end_exclusive);
         if seq_end_exclusive <= seq_offset {
@@ -170,7 +175,7 @@ impl RowDna {
                     base,
                     RenderSequence::font(),
                     if self.show_reverse_complement {
-                        Color32::DARK_GRAY
+                        Color32::DARK_GRAY.gamma_multiply(reverse_strand_opacity)
                     } else {
                         Color32::BLACK
                     },

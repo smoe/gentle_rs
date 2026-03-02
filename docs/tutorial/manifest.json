@@ -1,5 +1,47 @@
 {
   "schema": "gentle.tutorial_manifest.v1",
+  "concepts": [
+    {
+      "id": "shared_engine_contract",
+      "name": "Shared Engine Contract",
+      "description": "GUI, CLI, shell, and scripting interfaces execute the same operation semantics."
+    },
+    {
+      "id": "deterministic_workflows",
+      "name": "Deterministic Workflows",
+      "description": "Operation chains should produce stable IDs and comparable outputs across repeated runs."
+    },
+    {
+      "id": "sequence_lineage",
+      "name": "Sequence Lineage",
+      "description": "Derived sequences are explicit products linked to upstream inputs and operations."
+    },
+    {
+      "id": "guide_design_pipeline",
+      "name": "Guide Design Pipeline",
+      "description": "Guide sets can be created, filtered, expanded to oligos, and exported with protocol context."
+    },
+    {
+      "id": "artifact_exports",
+      "name": "Artifact Exports",
+      "description": "Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing."
+    },
+    {
+      "id": "tutorial_drift_checks",
+      "name": "Tutorial Drift Checks",
+      "description": "Tutorial content is generated from executable examples and verified in automated checks."
+    },
+    {
+      "id": "contribution_loop",
+      "name": "Contribution Loop",
+      "description": "Contributions should couple code edits with docs updates and deterministic tests."
+    },
+    {
+      "id": "online_opt_in",
+      "name": "Online Opt-in Execution",
+      "description": "Network-dependent chapters remain explicit opt-in and do not break offline default CI."
+    }
+  ],
   "chapters": [
     {
       "id": "load_branch_reverse_complement_pgex_fasta",
@@ -7,7 +49,44 @@
       "title": "Load FASTA, branch, and reverse-complement",
       "example_id": "load_branch_reverse_complement_pgex_fasta",
       "tier": "core",
-      "summary": "Start with a deterministic local sequence operation pipeline.",
+      "summary": "Start with a simple cloning-prep routine to learn product IDs and sequence lineage.",
+      "narrative": "In real cloning projects, the first question is often whether a sequence in hand is represented correctly and whether you can derive alternative views without losing provenance. This routine is the smallest possible example of that practice: load one sequence, create an explicit branch, and generate the reverse complement as a separate product.",
+      "use_cases": [
+        "You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.",
+        "You need a reverse-complemented working copy but want to preserve the original sequence identity.",
+        "You are onboarding to GENtle and need to understand how derived IDs are created and reused."
+      ],
+      "gui_steps": [
+        "Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.",
+        "In the DNA window, create a branch copy from the loaded sequence (Branch action).",
+        "Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views."
+      ],
+      "learning_objectives": [
+        "Run one canonical workflow from source JSON and interpret the result IDs.",
+        "Understand that branch and reverse-complement operations create explicit derivative sequences.",
+        "Recognize the shared-engine contract across GUI, CLI, and shell entry points."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "LoadFile.path",
+          "where_used": "operation 1",
+          "why_it_matters": "Defines the exact source sequence. Wrong file path means a different biological starting point.",
+          "how_to_derive": "Use the file you just loaded in the GUI for this routine (`test_files/pGEX_3X.fa`)."
+        },
+        {
+          "parameter": "Branch.output_id / ReverseComplement.output_id",
+          "where_used": "operations 2 and 3",
+          "why_it_matters": "Stable IDs make downstream commands unambiguous.",
+          "how_to_derive": "Pick short descriptive IDs tied to intent (e.g., branch copy vs reverse-complement product).",
+          "omit_when": "You can omit IDs only when you accept auto-generated names."
+        }
+      ],
+      "follow_up_commands": [],
       "retain_outputs": [],
       "checkpoints": [
         "Workflow executes without warnings or errors.",
@@ -20,7 +99,43 @@
       "title": "Load pGEX and digest with BamHI/EcoRI",
       "example_id": "load_and_digest_pgex",
       "tier": "core",
-      "summary": "Demonstrates deterministic restriction digest product generation.",
+      "summary": "Introduce restriction digest planning and deterministic fragment products.",
+      "narrative": "Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.",
+      "use_cases": [
+        "You want to verify expected restriction fragments before ordering primers or designing ligations.",
+        "You need a reproducible digest baseline to compare against wet-lab gel expectations.",
+        "You plan to reuse fragment IDs in later operations."
+      ],
+      "gui_steps": [
+        "Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.",
+        "Run Digest from the DNA window using enzymes `BamHI` and `EcoRI`.",
+        "Review created fragment entries and confirm they are stored as independent sequence products."
+      ],
+      "learning_objectives": [
+        "Execute digest operations and inspect created fragment IDs.",
+        "Reason about multi-product lineage from one parent sequence.",
+        "Identify why stable IDs matter for follow-up ligation/extraction steps."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "Digest.enzymes",
+          "where_used": "operation 2",
+          "why_it_matters": "The enzyme set determines cut positions and resulting fragment repertoire.",
+          "how_to_derive": "Choose enzymes based on cloning strategy (diagnostic digest vs insert release vs vector opening)."
+        },
+        {
+          "parameter": "Digest.output_prefix",
+          "where_used": "operation 2",
+          "why_it_matters": "Controls deterministic fragment ID namespace.",
+          "how_to_derive": "Use a short routine-specific prefix (e.g., `frag`, `d`, `eco_bam`).",
+          "omit_when": "Omit only if auto-generated IDs are acceptable for ad hoc inspection."
+        }
+      ],
+      "follow_up_commands": [],
       "retain_outputs": [],
       "checkpoints": [
         "Digest operation completes and creates fragment sequence IDs.",
@@ -33,7 +148,42 @@
       "title": "Guide practical filtering and oligo generation",
       "example_id": "guides_filter_and_generate_oligos",
       "tier": "core",
-      "summary": "Covers guide-set creation, practical filtering, and oligo generation.",
+      "summary": "Apply practical guide constraints and produce cloning-ready oligo candidates.",
+      "narrative": "For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.",
+      "use_cases": [
+        "You need a transparent guide filtering step before oligo ordering.",
+        "You want to document why specific guides were excluded.",
+        "You need deterministic oligo generation from a reusable guide set."
+      ],
+      "gui_steps": [
+        "Open the guides workflow controls in GENtle and create/import a guide set for a target region.",
+        "Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).",
+        "Generate oligos from passed guides and inspect the resulting oligo set IDs."
+      ],
+      "learning_objectives": [
+        "Create and filter guide sets through explicit engine operations.",
+        "Generate oligo records from filtered guide candidates.",
+        "Connect guide workflows to the same deterministic operation model used for cloning steps."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "guide_design_pipeline"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "FilterGuidesPractical.config.gc_min / gc_max",
+          "where_used": "operation 2",
+          "why_it_matters": "GC bounds trade off stability and synthesis/efficiency behavior.",
+          "how_to_derive": "Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints."
+        },
+        {
+          "parameter": "GenerateGuideOligos.template_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Template controls overhang/adaptor context for your cloning backbone.",
+          "how_to_derive": "Select the template matching your vector and cloning strategy."
+        }
+      ],
+      "follow_up_commands": [],
       "retain_outputs": [],
       "checkpoints": [
         "Guide set and passed guide set are present in metadata.",
@@ -46,7 +196,42 @@
       "title": "Digest -> Ligation -> ExtractRegion minimal slice",
       "example_id": "digest_ligation_extract_region_minimal",
       "tier": "core",
-      "summary": "Minimal end-to-end cloning operation chain used as a regression slice.",
+      "summary": "Run a full mini-loop from fragment production to assembled product extraction.",
+      "narrative": "This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.",
+      "use_cases": [
+        "You want to test whether your planned digest/ligation sequence is internally consistent.",
+        "You need a deterministic extracted segment for primer design or annotation checks.",
+        "You want a regression slice that exercises core cloning operations together."
+      ],
+      "gui_steps": [
+        "Start from the loaded FASTA/plasmid sequence in the GUI.",
+        "Run digest with selected enzymes and inspect available products.",
+        "Run ligation with the intended inputs, then extract a focused region from the ligation result."
+      ],
+      "learning_objectives": [
+        "Execute a minimal end-to-end cloning chain.",
+        "Track how intermediate IDs are consumed by downstream operations.",
+        "Use ExtractRegion output as a stable hand-off point for later analyses."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "Ligation.protocol",
+          "where_used": "operation 3",
+          "why_it_matters": "Protocol controls compatibility logic (e.g., blunt vs sticky behavior).",
+          "how_to_derive": "Choose based on end chemistry produced by upstream digest products."
+        },
+        {
+          "parameter": "ExtractRegion.from / to",
+          "where_used": "operation 4",
+          "why_it_matters": "Defines the exact segment handed to downstream interpretation.",
+          "how_to_derive": "Derive boundaries from feature coordinates or expected amplicon/design window."
+        }
+      ],
+      "follow_up_commands": [],
       "retain_outputs": [],
       "checkpoints": [
         "Digest creates at least two fragments for ligation input.",
@@ -60,7 +245,42 @@
       "title": "Guide oligo export (CSV + protocol)",
       "example_id": "guides_export_csv_and_protocol",
       "tier": "advanced",
-      "summary": "Retains one representative oligo CSV and one protocol text artifact for GitHub inspection.",
+      "summary": "Export representative machine-readable and human-readable artifacts.",
+      "narrative": "Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.",
+      "use_cases": [
+        "You need oligo tables for ordering and a protocol summary for bench execution.",
+        "You want reproducible artifacts tied to explicit operation history.",
+        "You need a concise output bundle for review without committing redundant files."
+      ],
+      "gui_steps": [
+        "Open the guide/oligo export controls after guide generation.",
+        "Export one CSV table and one protocol text file to verify both machine and human output forms.",
+        "Inspect the exported files and confirm they match current guide/oligo set IDs."
+      ],
+      "learning_objectives": [
+        "Export guide outputs in machine-readable and human-readable forms.",
+        "Understand selective artifact retention for tutorial readability.",
+        "Map retained artifacts back to the operation chain that produced them."
+      ],
+      "concepts": [
+        "guide_design_pipeline",
+        "artifact_exports"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ExportGuideOligos.format",
+          "where_used": "operation 3",
+          "why_it_matters": "Format must match the receiving workflow (spreadsheet import, plate workflow, or FASTA).",
+          "how_to_derive": "Pick `csv_table` for review/order sheets, `plate_csv` for plate automation, `fasta` for sequence-oriented tools."
+        },
+        {
+          "parameter": "ExportGuideProtocolText.include_qc_checklist",
+          "where_used": "operation 4",
+          "why_it_matters": "Controls whether QC reminders are embedded in the generated protocol text.",
+          "how_to_derive": "Enable for handoff to wet-lab execution; disable only for compact machine-only summaries."
+        }
+      ],
+      "follow_up_commands": [],
       "retain_outputs": [
         "exports/demo_guides.csv",
         "exports/demo_guides.protocol.txt"
@@ -71,12 +291,99 @@
       ]
     },
     {
-      "id": "prepare_reference_genome_online",
+      "id": "contribute_to_gentle_development",
       "order": 6,
+      "title": "Contribute to GENtle development",
+      "example_id": "contribute_gentle_development_baseline",
+      "tier": "advanced",
+      "summary": "Executable contributor onboarding from baseline run to test/documentation checks.",
+      "narrative": "Contributing effectively requires keeping biological behavior, command contracts, and docs in sync. This chapter provides a concrete contributor routine: run a baseline operation chain, then validate examples, tutorial generation, and tests before opening a change request.",
+      "use_cases": [
+        "You want to submit a feature or fix without breaking cross-interface behavior.",
+        "You need to verify that tutorial/docs stay synchronized with executable workflows.",
+        "You want a deterministic pre-PR checklist for local validation."
+      ],
+      "gui_steps": [
+        "Run the baseline sequence routine in the GUI and inspect resulting lineage entries.",
+        "Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.",
+        "Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface."
+      ],
+      "learning_objectives": [
+        "Understand the expected contributor loop from change to verification.",
+        "Use tutorial and example checks to prevent documentation drift.",
+        "Identify the minimum validation commands expected before handoff or PR."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "tutorial_drift_checks",
+        "contribution_loop"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "Workflow file path @docs/examples/workflows/...",
+          "where_used": "command equivalent",
+          "why_it_matters": "Ensures you are validating the same canonical routine used by docs/tests.",
+          "how_to_derive": "Select the chapter's `example_id` and open the matching JSON file under `docs/examples/workflows`."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo check -q",
+        "cargo test -q workflow_examples -- --test-threads=1",
+        "cargo run --bin gentle_examples_docs -- --check",
+        "cargo run --bin gentle_examples_docs -- tutorial-check",
+        "cargo run --bin gentle_cli -- capabilities"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "Baseline contribution workflow executes without failures.",
+        "Contributor validation commands pass in a clean environment.",
+        "Tutorial-generated content remains synchronized with source manifests/examples."
+      ]
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "order": 7,
       "title": "Prepare a reference genome cache (online)",
       "example_id": "prepare_reference_genome_online",
       "tier": "online",
-      "summary": "Network/tooling-dependent chapter, executed only with explicit online opt-in.",
+      "summary": "Document network-dependent preparation without destabilizing offline default checks.",
+      "narrative": "Reference-genome preparation is crucial for genome-anchored cloning interpretation, but it depends on online resources and local tool setup. This chapter keeps that path explicit and opt-in so default tutorial checks remain robust.",
+      "use_cases": [
+        "You need genome-anchored extraction around gene/promoter context.",
+        "You want to prepare local cache/index assets for repeated anchor operations.",
+        "You need to understand which routines are intentionally online-only in CI defaults."
+      ],
+      "gui_steps": [
+        "Open prepared-reference controls from the GUI menus.",
+        "Select the target genome and start preparation with explicit cache settings.",
+        "Confirm prepared status in the GUI before attempting extraction workflows."
+      ],
+      "learning_objectives": [
+        "Recognize which tutorial flows require network access and external tools.",
+        "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
+        "Preserve offline CI reliability while still documenting online capabilities."
+      ],
+      "concepts": [
+        "deterministic_workflows",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "PrepareGenome.genome_id",
+          "where_used": "operation 1",
+          "why_it_matters": "Selects the exact reference build and annotation set.",
+          "how_to_derive": "Choose the genome build matching your experimental system and downstream coordinate system."
+        },
+        {
+          "parameter": "PrepareGenome.catalog_path / cache_dir",
+          "where_used": "operation 1",
+          "why_it_matters": "Controls source catalog and local cache destination.",
+          "how_to_derive": "Use repository defaults unless your environment requires custom catalogs or cache locations."
+        }
+      ],
+      "follow_up_commands": [
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate"
+      ],
       "retain_outputs": [],
       "checkpoints": [
         "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",

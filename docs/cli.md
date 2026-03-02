@@ -258,6 +258,7 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 - `docs/examples/generated/guides_filter_and_generate_oligos.md`
 - `docs/examples/generated/digest_ligation_extract_region_minimal.md`
+- `docs/examples/generated/contribute_gentle_development_baseline.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
 
 ## `gentle_mcp` (MCP stdio server)
@@ -462,6 +463,7 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/load_branch_reverse_complement_pgex_fasta.md`
 - `docs/examples/generated/guides_filter_and_generate_oligos.md`
 - `docs/examples/generated/digest_ligation_extract_region_minimal.md`
+- `docs/examples/generated/contribute_gentle_development_baseline.md`
 - `docs/examples/generated/guides_export_csv_and_protocol.md`
 
 ## File format expectations
@@ -1330,6 +1332,7 @@ Set adaptive linear DNA-letter routing parameters (shared GUI/runtime semantics)
 {"SetParameter":{"name":"linear_sequence_helical_phase_offset_bp","value":3}}
 {"SetParameter":{"name":"linear_show_reverse_strand_bases","value":true}}
 {"SetParameter":{"name":"linear_helical_parallel_strands","value":true}}
+{"SetParameter":{"name":"reverse_strand_visual_opacity","value":0.55}}
 ```
 
 Supported `linear_sequence_letter_layout_mode` values:
@@ -1353,6 +1356,10 @@ Compatibility notes:
   - `linear_show_reverse_strand_bases`
 - `linear_helical_parallel_strands=true` keeps forward/reverse helical slant
   in parallel; `false` uses mirrored slant.
+- `reverse_strand_visual_opacity` (aliases:
+  `linear_reverse_strand_visual_opacity`,
+  `linear_reverse_strand_letter_opacity`) controls reverse-strand letter
+  emphasis across linear map and sequence panel (`0.2..1.0`).
 
 Set TFBS display filtering parameters shared by GUI and SVG export:
 

@@ -114,8 +114,15 @@ Linear map zoom detail:
 - In `HELICAL` mode, base letters now use a true oscillating phase path
   (sin/cos projection) with endpoint pinning, so the first/last visible bases
   remain anchored to viewport edges while interior overlap is distributed.
+- Helical X routing uses sub-column interpolation to keep adjacent base
+  positions evenly distributed and avoid local crowding plateaus that can
+  distort symmetry near curve extrema.
+- Helical mode also applies cycle-level arc-length compensation so consecutive
+  base positions stay visually more uniform along the curve.
 - When `Hide DNA backbone line when letters are shown` is enabled and bases are
   visible, the backbone line and bp tick marks are both suppressed.
+- `Reverse-strand letter opacity` controls reverse-strand emphasis in both the
+  linear map and the sequence-panel reverse-complement row.
 - In debug builds, the top-right DNA diagnostics additionally show the active
   tier thresholds (`standard/helical/condensed`) used by adaptive routing.
 
@@ -684,7 +691,9 @@ Across GUI panes, GENtle uses one interaction policy:
 
 When the sequence is in linear mode and your pointer is over the map:
 
-- wheel/trackpad scroll pans the viewport
+- wheel/trackpad scroll pans the map:
+  - horizontal motion pans the bp viewport left/right
+  - vertical motion pans the rendered map lanes up/down
 - `Shift + wheel` zooms around the current cursor position
 - `Option + drag` pans the map by hand
 
@@ -692,7 +701,8 @@ Toolbar alternatives (linear mode):
 
 - `-`: zoom out
 - `+`: zoom in
-- `Fit`: reset view to full sequence
+- `Fit Seq`: reset to full sequence span and recenter vertically
+- `Fit Features`: keep the current subsequence span and recenter the feature lanes vertically
 - `Pan` slider: move the current viewport left/right
 
 ### Lineage graph: zoom and pan (mouse/touchpad)

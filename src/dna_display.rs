@@ -197,6 +197,7 @@ pub struct DnaDisplay {
     selection: Option<Selection>,
     linear_view_start_bp: usize,
     linear_view_span_bp: usize,
+    linear_view_vertical_offset_px: f32,
     linear_sequence_base_text_max_view_span_bp: usize,
     linear_sequence_helical_letters_enabled: bool,
     linear_sequence_helical_max_view_span_bp: usize,
@@ -207,6 +208,7 @@ pub struct DnaDisplay {
     linear_helical_parallel_strands: bool,
     linear_hide_backbone_when_sequence_bases_visible: bool,
     linear_reverse_strand_use_upside_down_letters: bool,
+    reverse_strand_visual_opacity: f32,
     feature_details_font_size: f32,
     linear_external_feature_label_font_size: f32,
     linear_external_feature_label_background_opacity: f32,
@@ -225,6 +227,10 @@ impl DnaDisplay {
         value.clamp(0.0, 1.0)
     }
 
+    fn clamp_reverse_strand_visual_opacity(value: f32) -> f32 {
+        value.clamp(0.2, 1.0)
+    }
+
     fn clamp_linear_sequence_base_text_max_view_span_bp(value: usize) -> usize {
         value.min(5_000_000)
     }
@@ -239,6 +245,14 @@ impl DnaDisplay {
 
     fn clamp_linear_sequence_condensed_max_view_span_bp(value: usize) -> usize {
         value.min(5_000_000)
+    }
+
+    fn clamp_linear_view_vertical_offset_px(value: f32) -> f32 {
+        if value.is_finite() {
+            value.clamp(-10_000.0, 10_000.0)
+        } else {
+            0.0
+        }
     }
 
     fn clamp_linear_sequence_helical_phase_offset_bp(value: usize) -> usize {
@@ -600,6 +614,18 @@ impl DnaDisplay {
         }
     }
 
+    pub fn linear_view_vertical_offset_px(&self) -> f32 {
+        Self::clamp_linear_view_vertical_offset_px(self.linear_view_vertical_offset_px)
+    }
+
+    pub fn set_linear_view_vertical_offset_px(&mut self, value: f32) {
+        let value = Self::clamp_linear_view_vertical_offset_px(value);
+        if (self.linear_view_vertical_offset_px - value).abs() > f32::EPSILON {
+            self.linear_view_vertical_offset_px = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn linear_sequence_base_text_max_view_span_bp(&self) -> usize {
         Self::clamp_linear_sequence_base_text_max_view_span_bp(
             self.linear_sequence_base_text_max_view_span_bp,
@@ -725,6 +751,18 @@ impl DnaDisplay {
         }
     }
 
+    pub fn reverse_strand_visual_opacity(&self) -> f32 {
+        Self::clamp_reverse_strand_visual_opacity(self.reverse_strand_visual_opacity)
+    }
+
+    pub fn set_reverse_strand_visual_opacity(&mut self, value: f32) {
+        let value = Self::clamp_reverse_strand_visual_opacity(value);
+        if (self.reverse_strand_visual_opacity - value).abs() > f32::EPSILON {
+            self.reverse_strand_visual_opacity = value;
+            self.mark_layout_dirty();
+        }
+    }
+
     pub fn feature_details_font_size(&self) -> f32 {
         Self::clamp_feature_details_font_size(self.feature_details_font_size)
     }
@@ -796,6 +834,7 @@ impl Default for DnaDisplay {
             selection: None,
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
+            linear_view_vertical_offset_px: 0.0,
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: true,
             linear_sequence_helical_max_view_span_bp: 2000,
@@ -806,6 +845,7 @@ impl Default for DnaDisplay {
             linear_helical_parallel_strands: true,
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
+            reverse_strand_visual_opacity: 0.55,
             feature_details_font_size: 9.0,
             linear_external_feature_label_font_size: 11.0,
             linear_external_feature_label_background_opacity: 0.9,

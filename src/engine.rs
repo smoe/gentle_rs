@@ -178,6 +178,7 @@ pub struct DisplaySettings {
     pub show_methylation_sites: bool,
     pub linear_view_start_bp: usize,
     pub linear_view_span_bp: usize,
+    pub linear_view_vertical_offset_px: f32,
     pub linear_sequence_base_text_max_view_span_bp: usize,
     pub linear_sequence_helical_letters_enabled: bool,
     pub linear_sequence_helical_max_view_span_bp: usize,
@@ -191,6 +192,8 @@ pub struct DisplaySettings {
     pub linear_helical_parallel_strands: bool,
     pub linear_hide_backbone_when_sequence_bases_visible: bool,
     pub linear_reverse_strand_use_upside_down_letters: bool,
+    #[serde(default = "DisplaySettings::default_reverse_strand_visual_opacity")]
+    pub reverse_strand_visual_opacity: f32,
     pub feature_details_font_size: f32,
     pub linear_external_feature_label_font_size: f32,
     pub linear_external_feature_label_background_opacity: f32,
@@ -207,6 +210,10 @@ impl DisplaySettings {
 
     pub const fn default_linear_helical_parallel_strands() -> bool {
         true
+    }
+
+    pub const fn default_reverse_strand_visual_opacity() -> f32 {
+        0.55
     }
 }
 
@@ -249,6 +256,7 @@ impl Default for DisplaySettings {
             show_methylation_sites: false,
             linear_view_start_bp: 0,
             linear_view_span_bp: 0,
+            linear_view_vertical_offset_px: 0.0,
             linear_sequence_base_text_max_view_span_bp: 500,
             linear_sequence_helical_letters_enabled: true,
             linear_sequence_helical_max_view_span_bp: 2000,
@@ -260,6 +268,7 @@ impl Default for DisplaySettings {
             linear_helical_parallel_strands: Self::default_linear_helical_parallel_strands(),
             linear_hide_backbone_when_sequence_bases_visible: false,
             linear_reverse_strand_use_upside_down_letters: true,
+            reverse_strand_visual_opacity: Self::default_reverse_strand_visual_opacity(),
             feature_details_font_size: 9.0,
             linear_external_feature_label_font_size: 11.0,
             linear_external_feature_label_background_opacity: 0.9,
@@ -17552,6 +17561,34 @@ impl GentleEngine {
                             .linear_external_feature_label_background_opacity
                     ));
                 }
+                "reverse_strand_visual_opacity"
+                | "linear_reverse_strand_visual_opacity"
+                | "linear_reverse_strand_letter_opacity"
+                | "reverse_strand_letter_opacity" => {
+                    let raw = value.as_f64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a number"),
+                    })?;
+                    if !raw.is_finite() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "reverse_strand_visual_opacity must be a finite number"
+                                .to_string(),
+                        });
+                    }
+                    if !(0.2..=1.0).contains(&raw) {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: "reverse_strand_visual_opacity must be between 0.2 and 1.0"
+                                .to_string(),
+                        });
+                    }
+                    self.state.display.reverse_strand_visual_opacity = raw as f32;
+                    result.messages.push(format!(
+                        "Set parameter 'reverse_strand_visual_opacity' to {:.3}",
+                        self.state.display.reverse_strand_visual_opacity
+                    ));
+                }
                 "regulatory_feature_max_view_span_bp"
                 | "regulatory_max_view_span_bp"
                 | "regulatory_max_span_bp" => {
@@ -19036,6 +19073,12 @@ exit 2
                 value: serde_json::json!(false),
             })
             .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "reverse_strand_visual_opacity".to_string(),
+                value: serde_json::json!(0.45),
+            })
+            .unwrap();
         assert!(
             engine
                 .state()
@@ -19075,6 +19118,7 @@ exit 2
         );
         assert!(!engine.state().display.linear_helical_parallel_strands);
         assert!(!engine.state().display.linear_show_double_strand_bases);
+        assert!((engine.state().display.reverse_strand_visual_opacity - 0.45).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -21180,6 +21224,21 @@ ORIGIN
         assert!(err.message.contains(
             "linear_external_feature_label_background_opacity must be between 0.0 and 1.0"
         ));
+    }
+
+    #[test]
+    fn test_set_parameter_reverse_strand_visual_opacity_out_of_range_fails() {
+        let mut engine = GentleEngine::new();
+        let err = engine
+            .apply(Operation::SetParameter {
+                name: "reverse_strand_visual_opacity".to_string(),
+                value: serde_json::json!(0.05),
+            })
+            .unwrap_err();
+        assert!(
+            err.message
+                .contains("reverse_strand_visual_opacity must be between 0.2 and 1.0")
+        );
     }
 
     #[test]

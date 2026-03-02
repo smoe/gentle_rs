@@ -1,0 +1,58 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "digest_ligation_extract_region_minimal",
+  "title": "Digest, ligate, and extract a region",
+  "summary": "Runs a minimal end-to-end cloning slice with Digest -> Ligation -> ExtractRegion.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX_3X.fa"
+  ],
+  "tags": [
+    "dna",
+    "digest",
+    "ligation",
+    "extract_region",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_digest_ligation_extract_region_minimal",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX_3X.fa",
+          "as_id": "pgex_fasta"
+        }
+      },
+      {
+        "Digest": {
+          "input": "pgex_fasta",
+          "enzymes": [
+            "BamHI",
+            "EcoRI"
+          ],
+          "output_prefix": "d"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "pgex_fasta",
+            "pgex_fasta"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "lig",
+          "unique": false
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "lig_1",
+          "from": 0,
+          "to": 120,
+          "output_id": "lig_extract"
+        }
+      }
+    ]
+  }
+}

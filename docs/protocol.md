@@ -544,6 +544,8 @@ Current parameter support:
     - `linear_helical_parallel_strands` (default `true`)
       - `true`: forward/reverse helical slant stays parallel
       - `false`: forward/reverse helical slant is mirrored (cross-over look)
+    - `reverse_strand_visual_opacity` (range `0.2..1.0`, default `0.55`)
+      - shared reverse-strand emphasis in linear map and sequence panel
 - Legacy linear-letter threshold knobs are compatibility-only and return
   deterministic deprecated no-op messages (no routing effect):
   - `linear_sequence_base_text_max_view_span_bp`

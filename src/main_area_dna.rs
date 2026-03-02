@@ -839,6 +839,29 @@ mod tests {
     }
 
     #[test]
+    fn linear_vertical_pan_is_independent_from_horizontal_viewport() {
+        let dna = DNAsequence::from_sequence("A".repeat(5000).as_str()).expect("sequence");
+        let area = MainAreaDna::new(dna, None, None);
+        area.set_linear_viewport(120, 640);
+        area.pan_linear_vertical_viewport(72.0);
+
+        let (start, span, _) = area.current_linear_viewport();
+        assert_eq!(start, 120);
+        assert_eq!(span, 640);
+        assert!((area.current_linear_vertical_offset_px() - 72.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn linear_vertical_pan_offset_is_clamped() {
+        let dna = DNAsequence::from_sequence("A".repeat(400).as_str()).expect("sequence");
+        let area = MainAreaDna::new(dna, None, None);
+        area.set_linear_vertical_offset_px(50_000.0);
+        assert_eq!(area.current_linear_vertical_offset_px(), 10_000.0);
+        area.set_linear_vertical_offset_px(-50_000.0);
+        assert_eq!(area.current_linear_vertical_offset_px(), -10_000.0);
+    }
+
+    #[test]
     fn view_svg_export_profiles_scale_canvas_and_context() {
         let screen =
             MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::Screen, 1280.0, true, true);
@@ -1281,7 +1304,7 @@ pub struct MainAreaDna {
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<SplicingExpertView>,
     linear_drag_selection_anchor_bp: Option<usize>,
-    linear_pan_drag_origin_bp: Option<usize>,
+    linear_pan_drag_origin_bp: Option<(usize, f32)>,
     last_linear_map_width_px: f32,
 }
 
@@ -2294,11 +2317,21 @@ impl MainAreaDna {
                         );
                     }
                     if ui
-                        .small_button("Fit")
-                        .on_hover_text("Reset linear map to full sequence")
+                        .small_button("Fit Seq")
+                        .on_hover_text("Show the full sequence span and recenter the map vertically")
                         .clicked()
                     {
                         self.set_linear_viewport(0, sequence_length);
+                        self.set_linear_vertical_offset_px(0.0);
+                    }
+                    if ui
+                        .small_button("Fit Features")
+                        .on_hover_text(
+                            "Recenter the current subsequence vertically so all visible lanes are fitted",
+                        )
+                        .clicked()
+                    {
+                        self.set_linear_vertical_offset_px(0.0);
                     }
                     let mut pan_start = start_bp;
                     let max_start = sequence_length.saturating_sub(span_bp);
@@ -2399,6 +2432,7 @@ impl MainAreaDna {
                     let (
                         mut show_reverse_strand_letters,
                         mut helical_parallel_strands,
+                        mut reverse_strand_opacity,
                         mut hide_backbone_when_letters_visible,
                         mut reverse_upside_down,
                         mut helical_letters_enabled,
@@ -2415,6 +2449,7 @@ impl MainAreaDna {
                             (
                                 display.linear_show_double_strand_bases(),
                                 display.linear_helical_parallel_strands(),
+                                display.reverse_strand_visual_opacity(),
                                 display.linear_hide_backbone_when_sequence_bases_visible(),
                                 display.linear_reverse_strand_use_upside_down_letters(),
                                 display.linear_sequence_helical_letters_enabled(),
@@ -2429,6 +2464,7 @@ impl MainAreaDna {
                         .unwrap_or((
                             true,
                             true,
+                            0.55,
                             false,
                             true,
                             true,
@@ -2453,6 +2489,7 @@ impl MainAreaDna {
                         self.sync_linear_double_strand_settings_to_engine(
                             show_reverse_strand_letters,
                             helical_parallel_strands,
+                            reverse_strand_opacity,
                             reverse_upside_down,
                         );
                     }
@@ -2491,6 +2528,32 @@ impl MainAreaDna {
                             self.sync_linear_double_strand_settings_to_engine(
                                 show_reverse_strand_letters,
                                 helical_parallel_strands,
+                                reverse_strand_opacity,
+                                reverse_upside_down,
+                            );
+                        }
+                        if ui
+                            .horizontal(|ui| {
+                                ui.label("Reverse-strand letter opacity");
+                                ui.add(
+                                    egui::Slider::new(&mut reverse_strand_opacity, 0.2..=1.0)
+                                        .step_by(0.01),
+                                )
+                                .on_hover_text(
+                                    "Shared emphasis control for reverse-strand letters in linear map and sequence panel",
+                                )
+                            })
+                            .inner
+                            .changed()
+                        {
+                            self.dna_display
+                                .write()
+                                .expect("DNA display lock poisoned")
+                                .set_reverse_strand_visual_opacity(reverse_strand_opacity);
+                            self.sync_linear_double_strand_settings_to_engine(
+                                show_reverse_strand_letters,
+                                helical_parallel_strands,
+                                reverse_strand_opacity,
                                 reverse_upside_down,
                             );
                         }
@@ -2510,6 +2573,7 @@ impl MainAreaDna {
                             self.sync_linear_double_strand_settings_to_engine(
                                 show_reverse_strand_letters,
                                 helical_parallel_strands,
+                                reverse_strand_opacity,
                                 reverse_upside_down,
                             );
                         }
@@ -2648,12 +2712,13 @@ impl MainAreaDna {
                     let view_end_bp = view_start_bp.saturating_add(view_span_bp);
                     ui.colored_label(status_color, format!("Active render: {active_mode_label}"));
                     ui.monospace(format!(
-                        "route={} | setting={} | compressed={} | reverse={} | parallel={} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
+                        "route={} | setting={} | compressed={} | reverse={} | parallel={} | rev-opacity={:.2} | hide-backbone={} | backbone={} | span={} bp ({}..{} of {} bp) | map_w={:.0}px | density={:.2} | cols-fit={:.0} | glyph={:.2}px",
                         routing.route_policy.label(),
                         mode_setting_label(helical_layout_mode),
                         helical_letters_enabled,
                         show_reverse_strand_letters,
                         helical_parallel_strands,
+                        reverse_strand_opacity,
                         hide_backbone_when_letters_visible,
                         if effective_backbone_visible { "on" } else { "off" },
                         view_span_bp,
@@ -4701,6 +4766,7 @@ impl MainAreaDna {
         &self,
         show_double_strand: bool,
         helical_parallel_strands: bool,
+        reverse_strand_opacity: f32,
         reverse_upside_down: bool,
     ) {
         let Some(engine) = &self.engine else {
@@ -4710,6 +4776,7 @@ impl MainAreaDna {
         let display = &mut guard.state_mut().display;
         display.linear_show_double_strand_bases = show_double_strand;
         display.linear_helical_parallel_strands = helical_parallel_strands;
+        display.reverse_strand_visual_opacity = reverse_strand_opacity.clamp(0.2, 1.0);
         display.linear_reverse_strand_use_upside_down_letters = reverse_upside_down;
     }
 
@@ -4812,6 +4879,7 @@ impl MainAreaDna {
         display
             .set_regulatory_feature_max_view_span_bp(settings.regulatory_feature_max_view_span_bp);
         display.set_linear_viewport(settings.linear_view_start_bp, settings.linear_view_span_bp);
+        display.set_linear_view_vertical_offset_px(settings.linear_view_vertical_offset_px);
         display.set_linear_sequence_base_text_max_view_span_bp(
             settings.linear_sequence_base_text_max_view_span_bp,
         );
@@ -4836,6 +4904,7 @@ impl MainAreaDna {
         display.set_linear_reverse_strand_use_upside_down_letters(
             settings.linear_reverse_strand_use_upside_down_letters,
         );
+        display.set_reverse_strand_visual_opacity(settings.reverse_strand_visual_opacity);
         display.set_auto_hide_sequence_panel_when_linear_bases_visible(
             settings.auto_hide_sequence_panel_when_linear_bases_visible,
         );
@@ -4868,6 +4937,13 @@ impl MainAreaDna {
         let max_start = sequence_length.saturating_sub(span);
         let start = start_bp.min(max_start);
         (start, span, sequence_length)
+    }
+
+    fn current_linear_vertical_offset_px(&self) -> f32 {
+        self.dna_display
+            .read()
+            .map(|display| display.linear_view_vertical_offset_px())
+            .unwrap_or(0.0)
     }
 
     fn linear_base_routing_decision(&self) -> LinearBaseRoutingDecision {
@@ -5008,6 +5084,32 @@ impl MainAreaDna {
         let display = &mut guard.state_mut().display;
         display.linear_view_start_bp = start;
         display.linear_view_span_bp = span;
+    }
+
+    fn set_linear_vertical_offset_px(&self, offset_px: f32) {
+        let offset_px = if offset_px.is_finite() {
+            offset_px
+        } else {
+            0.0
+        };
+        let stored_offset = {
+            let mut display = self.dna_display.write().expect("DNA display lock poisoned");
+            display.set_linear_view_vertical_offset_px(offset_px);
+            display.linear_view_vertical_offset_px()
+        };
+        let Some(engine) = &self.engine else {
+            return;
+        };
+        let mut guard = engine.write().expect("Engine lock poisoned");
+        guard.state_mut().display.linear_view_vertical_offset_px = stored_offset;
+    }
+
+    fn pan_linear_vertical_viewport(&self, delta_px: f32) {
+        if !delta_px.is_finite() || delta_px.abs() <= f32::EPSILON {
+            return;
+        }
+        let current = self.current_linear_vertical_offset_px();
+        self.set_linear_vertical_offset_px(current + delta_px);
     }
 
     fn zoom_linear_viewport_around(&self, center_bp: usize, zoom_in: bool) {
@@ -10383,15 +10485,15 @@ impl MainAreaDna {
                         WheelIntent::None => {}
                         WheelIntent::Pan { delta } => {
                             let (_, span_bp, _) = self.current_linear_viewport();
-                            let dominant_delta = if delta.x.abs() >= delta.y.abs() {
-                                delta.x
-                            } else {
-                                delta.y
-                            };
-                            let delta_bp = ((-dominant_delta / response.rect.width().max(1.0))
-                                * span_bp as f32)
-                                .round() as isize;
-                            self.pan_linear_viewport(delta_bp);
+                            if delta.x.abs() > f32::EPSILON {
+                                let delta_bp =
+                                    ((-delta.x / response.rect.width().max(1.0)) * span_bp as f32)
+                                        .round() as isize;
+                                self.pan_linear_viewport(delta_bp);
+                            }
+                            if delta.y.abs() > f32::EPSILON {
+                                self.pan_linear_vertical_viewport(delta.y);
+                            }
                         }
                         WheelIntent::Zoom { direction, .. } => {
                             let (start_bp, span_bp, sequence_length) =
@@ -10422,16 +10524,16 @@ impl MainAreaDna {
                         });
                         if keyboard_pan_delta != Vec2::ZERO {
                             let (_, span_bp, _) = self.current_linear_viewport();
-                            let axis_delta =
-                                if keyboard_pan_delta.x.abs() >= keyboard_pan_delta.y.abs() {
-                                    keyboard_pan_delta.x
-                                } else {
-                                    keyboard_pan_delta.y
-                                };
-                            let delta_bp = ((axis_delta / response.rect.width().max(1.0))
-                                * span_bp as f32)
-                                .round() as isize;
-                            self.pan_linear_viewport(delta_bp);
+                            if keyboard_pan_delta.x.abs() > f32::EPSILON {
+                                let delta_bp =
+                                    ((keyboard_pan_delta.x / response.rect.width().max(1.0))
+                                        * span_bp as f32)
+                                        .round() as isize;
+                                self.pan_linear_viewport(delta_bp);
+                            }
+                            if keyboard_pan_delta.y.abs() > f32::EPSILON {
+                                self.pan_linear_vertical_viewport(keyboard_pan_delta.y);
+                            }
                         }
                         let zoom_steps = ctx.input(scroll_input_policy::canvas_keyboard_zoom_steps);
                         if zoom_steps != 0 {
@@ -10462,7 +10564,10 @@ impl MainAreaDna {
                     ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
                 if response.drag_started() {
                     if option_pan_modifier {
-                        self.linear_pan_drag_origin_bp = Some(self.current_linear_viewport().0);
+                        self.linear_pan_drag_origin_bp = Some((
+                            self.current_linear_viewport().0,
+                            self.current_linear_vertical_offset_px(),
+                        ));
                         self.linear_drag_selection_anchor_bp = None;
                     } else if let Some(pos) = response.interact_pointer_pos() {
                         if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
@@ -10474,7 +10579,9 @@ impl MainAreaDna {
                     }
                 }
                 if response.dragged() {
-                    if let Some(start_bp) = self.linear_pan_drag_origin_bp {
+                    if let Some((start_bp, start_vertical_offset_px)) =
+                        self.linear_pan_drag_origin_bp
+                    {
                         let (_, span_bp, sequence_length) = self.current_linear_viewport();
                         if sequence_length > span_bp {
                             let delta_bp = ((-response.drag_delta().x
@@ -10485,6 +10592,9 @@ impl MainAreaDna {
                             let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
                             self.set_linear_viewport(new_start as usize, span_bp);
                         }
+                        self.set_linear_vertical_offset_px(
+                            start_vertical_offset_px + response.drag_delta().y,
+                        );
                     } else if let (Some(anchor_bp), Some(pos)) = (
                         self.linear_drag_selection_anchor_bp,
                         response.interact_pointer_pos(),

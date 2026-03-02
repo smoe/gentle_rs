@@ -1480,6 +1480,14 @@ impl GENtleApp {
         }
     }
 
+    fn clamp_reverse_strand_visual_opacity(value: f32) -> f32 {
+        if value.is_finite() {
+            value.clamp(0.2, 1.0)
+        } else {
+            DisplaySettings::default_reverse_strand_visual_opacity()
+        }
+    }
+
     fn clamp_linear_helical_phase_offset_bp(value: usize) -> usize {
         value % 10
     }
@@ -1534,6 +1542,7 @@ impl GENtleApp {
             );
         target.linear_view_start_bp = source.linear_view_start_bp;
         target.linear_view_span_bp = source.linear_view_span_bp;
+        target.linear_view_vertical_offset_px = source.linear_view_vertical_offset_px;
         target.linear_sequence_base_text_max_view_span_bp =
             source.linear_sequence_base_text_max_view_span_bp;
         target.linear_sequence_helical_letters_enabled =
@@ -1552,6 +1561,8 @@ impl GENtleApp {
             source.linear_hide_backbone_when_sequence_bases_visible;
         target.linear_reverse_strand_use_upside_down_letters =
             source.linear_reverse_strand_use_upside_down_letters;
+        target.reverse_strand_visual_opacity =
+            Self::clamp_reverse_strand_visual_opacity(source.reverse_strand_visual_opacity);
     }
 
     fn apply_configuration_graphics_to_engine_state(&mut self) {
@@ -2915,6 +2926,10 @@ Error: `{err}`"
         display.linear_view_start_bp.hash(&mut hasher);
         display.linear_view_span_bp.hash(&mut hasher);
         display
+            .linear_view_vertical_offset_px
+            .to_bits()
+            .hash(&mut hasher);
+        display
             .linear_sequence_base_text_max_view_span_bp
             .hash(&mut hasher);
         display
@@ -2937,6 +2952,10 @@ Error: `{err}`"
             .hash(&mut hasher);
         display
             .linear_reverse_strand_use_upside_down_letters
+            .hash(&mut hasher);
+        display
+            .reverse_strand_visual_opacity
+            .to_bits()
             .hash(&mut hasher);
 
         hasher.finish()
@@ -14163,6 +14182,8 @@ Error: `{err}`"
             defaults.linear_external_feature_label_background_opacity;
         self.configuration_graphics.linear_view_start_bp = defaults.linear_view_start_bp;
         self.configuration_graphics.linear_view_span_bp = defaults.linear_view_span_bp;
+        self.configuration_graphics.linear_view_vertical_offset_px =
+            defaults.linear_view_vertical_offset_px;
         self.configuration_graphics
             .linear_sequence_base_text_max_view_span_bp =
             defaults.linear_sequence_base_text_max_view_span_bp;
@@ -14190,6 +14211,8 @@ Error: `{err}`"
         self.configuration_graphics
             .linear_reverse_strand_use_upside_down_letters =
             defaults.linear_reverse_strand_use_upside_down_letters;
+        self.configuration_graphics.reverse_strand_visual_opacity =
+            defaults.reverse_strand_visual_opacity;
         self.configuration_graphics_dirty = true;
     }
 
@@ -14606,6 +14629,16 @@ Error: `{err}`"
                 .linear_external_feature_label_background_opacity = normalized_external_label_bg;
             self.configuration_graphics_dirty = true;
         }
+        let normalized_reverse_opacity = Self::clamp_reverse_strand_visual_opacity(
+            self.configuration_graphics.reverse_strand_visual_opacity,
+        );
+        if (self.configuration_graphics.reverse_strand_visual_opacity - normalized_reverse_opacity)
+            .abs()
+            > f32::EPSILON
+        {
+            self.configuration_graphics.reverse_strand_visual_opacity = normalized_reverse_opacity;
+            self.configuration_graphics_dirty = true;
+        }
         let normalized_helical_phase_offset = Self::clamp_linear_helical_phase_offset_bp(
             self.configuration_graphics
                 .linear_sequence_helical_phase_offset_bp,
@@ -14753,6 +14786,24 @@ Error: `{err}`"
                 "Rotate reverse strand letters by 180°",
             )
             .changed();
+        ui.horizontal(|ui| {
+            ui.label("Reverse-strand letter opacity");
+            if ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.configuration_graphics.reverse_strand_visual_opacity,
+                        0.2..=1.0,
+                    )
+                    .step_by(0.01),
+                )
+                .on_hover_text(
+                    "Shared emphasis control for reverse-strand letters in linear map and sequence panel",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
         ui.horizontal(|ui| {
             ui.label("Helical phase offset (mod 10 seam shift)");
             if ui
@@ -16742,6 +16793,7 @@ mod tests {
         source.feature_details_font_size = 250.0;
         source.linear_external_feature_label_font_size = -50.0;
         source.linear_external_feature_label_background_opacity = 2.0;
+        source.reverse_strand_visual_opacity = 10.0;
         source.linear_sequence_helical_phase_offset_bp = 27;
 
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
@@ -16749,17 +16801,23 @@ mod tests {
         assert_eq!(target.feature_details_font_size, 24.0);
         assert_eq!(target.linear_external_feature_label_font_size, 8.0);
         assert_eq!(target.linear_external_feature_label_background_opacity, 1.0);
+        assert_eq!(target.reverse_strand_visual_opacity, 1.0);
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 7);
 
         source.feature_details_font_size = f32::NAN;
         source.linear_external_feature_label_font_size = f32::NAN;
         source.linear_external_feature_label_background_opacity = f32::NAN;
+        source.reverse_strand_visual_opacity = f32::NAN;
         source.linear_sequence_helical_phase_offset_bp = 10;
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
         assert_eq!(target.feature_details_font_size, 9.0);
         assert_eq!(target.linear_external_feature_label_font_size, 11.0);
         assert_eq!(target.linear_external_feature_label_background_opacity, 0.9);
+        assert_eq!(
+            target.reverse_strand_visual_opacity,
+            DisplaySettings::default_reverse_strand_visual_opacity()
+        );
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 0);
     }
 

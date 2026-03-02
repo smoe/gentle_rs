@@ -3399,6 +3399,13 @@ impl ShellCommand {
                         value_json
                     )
                 }
+                "reverse_strand_visual_opacity"
+                | "linear_reverse_strand_visual_opacity"
+                | "linear_reverse_strand_letter_opacity"
+                | "reverse_strand_letter_opacity" => format!(
+                    "set reverse-strand letter opacity to {} (0.2..1.0)",
+                    value_json
+                ),
                 "linear_sequence_base_text_max_view_span_bp"
                 | "linear_base_text_max_view_span_bp"
                 | "sequence_base_text_max_view_span_bp"

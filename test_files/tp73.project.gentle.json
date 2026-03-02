@@ -96501,6 +96501,45 @@
       "restriction_enzyme_groups": [
         [
           {
+            "pos": 11651,
+            "cut_size": 1,
+            "number_of_cuts": 2,
+            "from": 11650,
+            "to": 11656
+          },
+          [
+            "NruI"
+          ]
+        ],
+        [
+          {
+            "pos": 70820,
+            "cut_size": 0,
+            "number_of_cuts": 1,
+            "from": 70820,
+            "to": 70826
+          },
+          [
+            "HgiCIII",
+            "HgiDII",
+            "NopI",
+            "XciI"
+          ]
+        ],
+        [
+          {
+            "pos": 1340,
+            "cut_size": 1,
+            "number_of_cuts": 1,
+            "from": 1339,
+            "to": 1345
+          },
+          [
+            "SnaBI"
+          ]
+        ],
+        [
+          {
             "pos": 238,
             "cut_size": 2,
             "number_of_cuts": 1,
@@ -96517,6 +96556,18 @@
         ],
         [
           {
+            "pos": 75512,
+            "cut_size": 1,
+            "number_of_cuts": 1,
+            "from": 75511,
+            "to": 75517
+          },
+          [
+            "ClaI"
+          ]
+        ],
+        [
+          {
             "pos": 1339,
             "cut_size": 0,
             "number_of_cuts": 1,
@@ -96525,18 +96576,6 @@
           },
           [
             "Eco105"
-          ]
-        ],
-        [
-          {
-            "pos": 8390,
-            "cut_size": 1,
-            "number_of_cuts": 2,
-            "from": 8389,
-            "to": 8395
-          },
-          [
-            "XcaI"
           ]
         ],
         [
@@ -96553,14 +96592,86 @@
         ],
         [
           {
-            "pos": 75512,
+            "pos": 20704,
             "cut_size": 1,
-            "number_of_cuts": 1,
-            "from": 75511,
-            "to": 75517
+            "number_of_cuts": 2,
+            "from": 20703,
+            "to": 20709
           },
           [
-            "ClaI"
+            "MluI"
+          ]
+        ],
+        [
+          {
+            "pos": 8390,
+            "cut_size": 1,
+            "number_of_cuts": 2,
+            "from": 8389,
+            "to": 8395
+          },
+          [
+            "XcaI"
+          ]
+        ],
+        [
+          {
+            "pos": 75281,
+            "cut_size": 1,
+            "number_of_cuts": 2,
+            "from": 75280,
+            "to": 75286
+          },
+          [
+            "MluI"
+          ]
+        ],
+        [
+          {
+            "pos": 70821,
+            "cut_size": 1,
+            "number_of_cuts": 1,
+            "from": 70820,
+            "to": 70826
+          },
+          [
+            "SalI"
+          ]
+        ],
+        [
+          {
+            "pos": 309,
+            "cut_size": 0,
+            "number_of_cuts": 2,
+            "from": 309,
+            "to": 315
+          },
+          [
+            "Sbo13"
+          ]
+        ],
+        [
+          {
+            "pos": 13007,
+            "cut_size": 1,
+            "number_of_cuts": 2,
+            "from": 13006,
+            "to": 13012
+          },
+          [
+            "XcaI"
+          ]
+        ],
+        [
+          {
+            "pos": 310,
+            "cut_size": 1,
+            "number_of_cuts": 2,
+            "from": 309,
+            "to": 315
+          },
+          [
+            "NruI"
           ]
         ],
         [
@@ -96593,18 +96704,6 @@
         ],
         [
           {
-            "pos": 75281,
-            "cut_size": 1,
-            "number_of_cuts": 2,
-            "from": 75280,
-            "to": 75286
-          },
-          [
-            "MluI"
-          ]
-        ],
-        [
-          {
             "pos": 78189,
             "cut_size": 1,
             "number_of_cuts": 1,
@@ -96613,105 +96712,6 @@
           },
           [
             "SplI"
-          ]
-        ],
-        [
-          {
-            "pos": 1340,
-            "cut_size": 1,
-            "number_of_cuts": 1,
-            "from": 1339,
-            "to": 1345
-          },
-          [
-            "SnaBI"
-          ]
-        ],
-        [
-          {
-            "pos": 70820,
-            "cut_size": 0,
-            "number_of_cuts": 1,
-            "from": 70820,
-            "to": 70826
-          },
-          [
-            "HgiCIII",
-            "HgiDII",
-            "NopI",
-            "XciI"
-          ]
-        ],
-        [
-          {
-            "pos": 11651,
-            "cut_size": 1,
-            "number_of_cuts": 2,
-            "from": 11650,
-            "to": 11656
-          },
-          [
-            "NruI"
-          ]
-        ],
-        [
-          {
-            "pos": 309,
-            "cut_size": 0,
-            "number_of_cuts": 2,
-            "from": 309,
-            "to": 315
-          },
-          [
-            "Sbo13"
-          ]
-        ],
-        [
-          {
-            "pos": 310,
-            "cut_size": 1,
-            "number_of_cuts": 2,
-            "from": 309,
-            "to": 315
-          },
-          [
-            "NruI"
-          ]
-        ],
-        [
-          {
-            "pos": 13007,
-            "cut_size": 1,
-            "number_of_cuts": 2,
-            "from": 13006,
-            "to": 13012
-          },
-          [
-            "XcaI"
-          ]
-        ],
-        [
-          {
-            "pos": 70821,
-            "cut_size": 1,
-            "number_of_cuts": 1,
-            "from": 70820,
-            "to": 70826
-          },
-          [
-            "SalI"
-          ]
-        ],
-        [
-          {
-            "pos": 20704,
-            "cut_size": 1,
-            "number_of_cuts": 2,
-            "from": 20703,
-            "to": 20709
-          },
-          [
-            "MluI"
           ]
         ],
         [
@@ -103003,13 +103003,171 @@
         0.0
       ],
       "compact_labels": true,
-      "node_offsets": {}
+      "node_offsets": {},
+      "node_groups": []
+    },
+    "gui.engine_ops.tp73.ncbi": {
+      "show_engine_ops": false,
+      "show_shell": false,
+      "shell_command_text": "state-summary",
+      "digest_enzymes_text": "BamHI,EcoRI",
+      "digest_prefix_text": "digest",
+      "merge_inputs_text": "tp73.ncbi",
+      "ligation_inputs_text": "tp73.ncbi",
+      "ligation_output_prefix": "ligation",
+      "ligation_protocol_sticky": true,
+      "ligation_unique": false,
+      "mw_inputs_text": "tp73.ncbi",
+      "mw_min_bp": "100",
+      "mw_max_bp": "1000",
+      "mw_error": "0.10",
+      "mw_unique": false,
+      "sq_inputs_text": "tp73.ncbi",
+      "sq_gc_min": "0.30",
+      "sq_gc_max": "0.70",
+      "sq_max_homopolymer_run": "4",
+      "sq_reject_ambiguous_bases": true,
+      "sq_avoid_u6_tttt": true,
+      "sq_forbidden_motifs": "",
+      "sq_unique": false,
+      "sq_output_prefix": "design",
+      "pcr_forward": "",
+      "pcr_reverse": "",
+      "pcr_unique": false,
+      "pcr_adv_forward": "",
+      "pcr_adv_reverse": "",
+      "pcr_adv_anneal_len": "18",
+      "pcr_adv_max_mismatch": "1",
+      "pcr_adv_3prime_exact": "8",
+      "pcr_mut_position": "0",
+      "pcr_mut_ref": "A",
+      "pcr_mut_alt": "G",
+      "extract_from": "0",
+      "extract_to": "0",
+      "extract_output_id": "",
+      "parameter_name": "max_fragments_per_container",
+      "parameter_value_json": "80000",
+      "anchored_mode_feature": true,
+      "anchored_position": "0",
+      "anchored_feature_kind": "CDS",
+      "anchored_feature_label": "",
+      "anchored_feature_boundary_start": true,
+      "anchored_feature_occurrence": "0",
+      "anchored_direction_upstream": true,
+      "anchored_target_len": "500",
+      "anchored_tolerance": "100",
+      "anchored_required_re_sites": "",
+      "anchored_required_tf_motifs": "",
+      "anchored_forward_primer": "",
+      "anchored_reverse_primer": "",
+      "anchored_output_prefix": "anchored",
+      "anchored_unique": false,
+      "anchored_max_candidates": "20",
+      "candidate_set_name": "candidates",
+      "candidate_source_seq_id": "tp73.ncbi",
+      "candidate_length_bp": "20",
+      "candidate_step_bp": "1",
+      "candidate_feature_kinds": "",
+      "candidate_feature_label_regex": "",
+      "candidate_feature_strand_relation": "any",
+      "candidate_max_distance_bp": "",
+      "candidate_limit": "5000",
+      "candidate_between_set_name": "between_anchors",
+      "candidate_between_seq_id": "tp73.ncbi",
+      "candidate_between_length_bp": "20",
+      "candidate_between_step_bp": "1",
+      "candidate_between_limit": "5000",
+      "candidate_between_anchor_a_mode_position": true,
+      "candidate_between_anchor_a_position": "0",
+      "candidate_between_anchor_a_feature_kind": "gene",
+      "candidate_between_anchor_a_feature_label": "",
+      "candidate_between_anchor_a_boundary": "Start",
+      "candidate_between_anchor_a_occurrence": "0",
+      "candidate_between_anchor_b_mode_position": true,
+      "candidate_between_anchor_b_position": "100",
+      "candidate_between_anchor_b_feature_kind": "gene",
+      "candidate_between_anchor_b_feature_label": "",
+      "candidate_between_anchor_b_boundary": "End",
+      "candidate_between_anchor_b_occurrence": "0",
+      "candidate_selected_set": "",
+      "candidate_page_limit": "50",
+      "candidate_page_offset": "0",
+      "candidate_sort_key": "start",
+      "candidate_sort_desc": false,
+      "candidate_score_metric": "score",
+      "candidate_score_expression": "gc_fraction",
+      "candidate_distance_metric": "distance_to_gene_bp",
+      "candidate_distance_feature_kinds": "gene",
+      "candidate_distance_feature_label_regex": "",
+      "candidate_distance_feature_strand_relation": "any",
+      "candidate_filter_input_set": "",
+      "candidate_filter_output_set": "filtered",
+      "candidate_filter_metric": "gc_fraction",
+      "candidate_filter_min": "",
+      "candidate_filter_max": "",
+      "candidate_filter_min_quantile": "",
+      "candidate_filter_max_quantile": "",
+      "candidate_setop_mode": "intersect",
+      "candidate_setop_left": "",
+      "candidate_setop_right": "",
+      "candidate_setop_output": "set_op",
+      "candidate_macro_script": "generate my_set seq_1 --length 20 --step 1 --limit 1000",
+      "tfbs_motifs": "",
+      "tfbs_use_all_motifs": false,
+      "tfbs_catalog_filter": "",
+      "tfbs_min_llr_bits": "0.0",
+      "tfbs_min_llr_quantile": "0.95",
+      "tfbs_per_tf_min_llr_bits": "",
+      "tfbs_per_tf_min_llr_quantile": "",
+      "tfbs_clear_existing": true,
+      "tfbs_display_use_llr_bits": true,
+      "tfbs_display_min_llr_bits": 0.0,
+      "tfbs_display_use_llr_quantile": true,
+      "tfbs_display_min_llr_quantile": 0.95,
+      "tfbs_display_use_true_log_odds_bits": false,
+      "tfbs_display_min_true_log_odds_bits": 0.0,
+      "tfbs_display_use_true_log_odds_quantile": false,
+      "tfbs_display_min_true_log_odds_quantile": 0.95,
+      "vcf_display_show_snp": true,
+      "vcf_display_show_ins": true,
+      "vcf_display_show_del": true,
+      "vcf_display_show_sv": true,
+      "vcf_display_show_other": true,
+      "vcf_display_pass_only": false,
+      "vcf_display_use_min_qual": false,
+      "vcf_display_min_qual": 0.0,
+      "vcf_display_use_max_qual": false,
+      "vcf_display_max_qual": 0.0,
+      "vcf_display_required_info_keys": "",
+      "container_digest_id": "container-1",
+      "container_merge_ids": "",
+      "container_ligation_id": "container-1",
+      "container_ligation_output_prefix": "ligation_container",
+      "container_ligation_protocol_sticky": true,
+      "container_ligation_circularize": false,
+      "container_ligation_unique": false,
+      "container_mw_id": "container-1",
+      "container_mw_min_bp": "100",
+      "container_mw_max_bp": "1000",
+      "container_mw_error": "0.10",
+      "container_mw_unique": false,
+      "container_mw_output_prefix": "mw_container",
+      "workflow_run_id": "gui-workflow",
+      "workflow_ops_json": "[]",
+      "export_pool_inputs_text": "tp73.ncbi",
+      "export_pool_id": "",
+      "export_pool_human_id": "",
+      "pool_gel_ladders": "",
+      "feature_tree_grouping_mode": "off",
+      "feature_tree_filter": "",
+      "feature_tree_panel_width": 180.0,
+      "feature_tree_second_level_grouping": false
     },
     "provenance": {
       "genome_extractions": [
         {
           "seq_id": "tp73.ncbi",
-          "recorded_at_unix_ms": 1772012602139,
+          "recorded_at_unix_ms": 1772406859920,
           "operation": "LoadFileGenBankRegion",
           "genome_id": "GRCh38.p14",
           "catalog_path": "/Users/u005069/GitHub/gentle_rs/test_files/tp73.ncbi.gb",
@@ -103031,7 +103189,7 @@
           "annotation_sha1": null
         }
       ],
-      "updated_at_unix_ms": 1772012602139
+      "updated_at_unix_ms": 1772406859920
     }
   },
   "display": {
@@ -103069,15 +103227,19 @@
     "gc_content_bin_size_bp": 100,
     "show_open_reading_frames": false,
     "show_methylation_sites": false,
-    "linear_view_start_bp": 0,
-    "linear_view_span_bp": 0,
+    "linear_view_start_bp": 41680,
+    "linear_view_span_bp": 326,
     "linear_sequence_base_text_max_view_span_bp": 500,
-    "linear_sequence_helical_letters_enabled": false,
+    "linear_sequence_helical_letters_enabled": true,
     "linear_sequence_helical_max_view_span_bp": 2000,
+    "linear_sequence_condensed_max_view_span_bp": 1500,
+    "linear_sequence_letter_layout_mode": "auto_adaptive",
+    "linear_sequence_helical_phase_offset_bp": 0,
     "linear_show_double_strand_bases": true,
+    "linear_helical_parallel_strands": true,
     "linear_hide_backbone_when_sequence_bases_visible": false,
     "linear_reverse_strand_use_upside_down_letters": true,
-    "feature_details_font_size": 11.0,
+    "feature_details_font_size": 9.0,
     "linear_external_feature_label_font_size": 11.0,
     "linear_external_feature_label_background_opacity": 0.9
   },
@@ -103088,14 +103250,16 @@
         "seq_id": "tp73.ncbi",
         "created_by_op": "op-1",
         "origin": "ImportedGenomic",
-        "created_at_unix_ms": 1772012602139
+        "created_at_unix_ms": 1772406859919
       }
     },
     "seq_to_node": {
       "tp73.ncbi": "n-1"
     },
     "edges": [],
-    "next_node_counter": 1
+    "macro_instances": [],
+    "next_node_counter": 1,
+    "next_macro_instance_counter": 0
   },
   "parameters": {
     "max_fragments_per_container": 80000
@@ -103110,7 +103274,7 @@
           "tp73.ncbi"
         ],
         "created_by_op": "op-1",
-        "created_at_unix_ms": 1772012602139
+        "created_at_unix_ms": 1772406859920
       }
     },
     "arrangements": {},

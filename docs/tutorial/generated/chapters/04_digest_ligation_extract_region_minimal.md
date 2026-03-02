@@ -7,14 +7,54 @@
 - Example test_mode: `always`
 - Executed during generation: `yes`
 
-Minimal end-to-end cloning operation chain used as a regression slice.
+Run a full mini-loop from fragment production to assembled product extraction.
 
-## Run Commands
+This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.
+
+## When This Routine Is Useful
+
+- You want to test whether your planned digest/ligation sequence is internally consistent.
+- You need a deterministic extracted segment for primer design or annotation checks.
+- You want a regression slice that exercises core cloning operations together.
+
+## What You Learn
+
+- Execute a minimal end-to-end cloning chain.
+- Track how intermediate IDs are consumed by downstream operations.
+- Use ExtractRegion output as a stable hand-off point for later analyses.
+
+## Concepts and Recurrence
+
+- **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
+  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Load pGEX and digest with BamHI/EcoRI](./02_load_and_digest_pgex.md), [Chapter 3: Guide practical filtering and oligo generation](./03_guides_filter_and_generate_oligos.md).
+  - Reoccurs in: [Chapter 7: Prepare a reference genome cache (online)](./07_prepare_reference_genome_online.md).
+- **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
+  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Load pGEX and digest with BamHI/EcoRI](./02_load_and_digest_pgex.md).
+  - Reoccurs in: no later chapter.
+
+## GUI First
+
+1. Start from the loaded FASTA/plasmid sequence in the GUI.
+2. Run digest with selected enzymes and inspect available products.
+3. Run ligation with the intended inputs, then extract a focused region from the ligation result.
+
+## Command Equivalent (After GUI)
+
+Run the same routine non-interactively once the GUI flow is clear:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json'
 ```
+
+## Parameters That Matter
+
+- `Ligation.protocol` (where used: operation 3)
+  - Why it matters: Protocol controls compatibility logic (e.g., blunt vs sticky behavior).
+  - How to derive it: Choose based on end chemistry produced by upstream digest products.
+- `ExtractRegion.from / to` (where used: operation 4)
+  - Why it matters: Defines the exact segment handed to downstream interpretation.
+  - How to derive it: Derive boundaries from feature coordinates or expected amplicon/design window.
 
 ## Checkpoints
 
@@ -26,49 +66,7 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/digest_li
 
 - None for this chapter.
 
-## Canonical Workflow JSON
+## Canonical Source
 
-```json
-{
-  "run_id": "example_digest_ligation_extract_region_minimal",
-  "ops": [
-    {
-      "LoadFile": {
-        "path": "test_files/pGEX_3X.fa",
-        "as_id": "pgex_fasta"
-      }
-    },
-    {
-      "Digest": {
-        "input": "pgex_fasta",
-        "enzymes": [
-          "BamHI",
-          "EcoRI"
-        ],
-        "output_prefix": "d"
-      }
-    },
-    {
-      "Ligation": {
-        "inputs": [
-          "pgex_fasta",
-          "pgex_fasta"
-        ],
-        "circularize_if_possible": false,
-        "output_id": null,
-        "protocol": "Blunt",
-        "output_prefix": "lig",
-        "unique": false
-      }
-    },
-    {
-      "ExtractRegion": {
-        "input": "lig_1",
-        "from": 0,
-        "to": 120,
-        "output_id": "lig_extract"
-      }
-    }
-  ]
-}
-```
+- Workflow file: `docs/examples/workflows/digest_ligation_extract_region_minimal.json`
+- Inspect this JSON file directly when you need full option-level detail.

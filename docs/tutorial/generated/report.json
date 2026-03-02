@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 6,
+  "chapter_count": 7,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -13,19 +13,21 @@
     "chapters/03_guides_filter_and_generate_oligos.md",
     "chapters/04_digest_ligation_extract_region_minimal.md",
     "chapters/05_guides_export_csv_and_protocol.md",
-    "chapters/06_prepare_reference_genome_online.md",
+    "chapters/06_contribute_to_gentle_development.md",
+    "chapters/07_prepare_reference_genome_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "16604b9dbe8280e73a89ea3ba733429abb92b5f7",
+    "README.md": "23989d52cbb81178936d68b220ddca500c30fcd5",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "68f5a3f2e9e4469abe2a622a904f8a8653b0e77b",
-    "chapters/02_load_and_digest_pgex.md": "ce5b3888871b9d488ac7ba831c7b7fc1971980ce",
-    "chapters/03_guides_filter_and_generate_oligos.md": "b85169adc991f18eb47f12f8a04bcb7224fa07af",
-    "chapters/04_digest_ligation_extract_region_minimal.md": "64c54810e10957323121246c70897758b2fe6dda",
-    "chapters/05_guides_export_csv_and_protocol.md": "f41a09f71398b434c8ae085700bac429c8582af1",
-    "chapters/06_prepare_reference_genome_online.md": "6bc4da4cf499b5b76a6f3f81ca23b6d4a2f0b205"
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "1a37b5dc28bd3e5caa9855ab399b91cbaa2cf28f",
+    "chapters/02_load_and_digest_pgex.md": "fd7439141aa5d0235385373501d44cbabedef65b",
+    "chapters/03_guides_filter_and_generate_oligos.md": "c65c47c58abb76f90bacc20f5a3e545cd208c9a9",
+    "chapters/04_digest_ligation_extract_region_minimal.md": "8c80c0880c930534ac920e63c6ced99c4c922138",
+    "chapters/05_guides_export_csv_and_protocol.md": "170386fcd3d987b87f2de1df5f8d6f0687ad8c07",
+    "chapters/06_contribute_to_gentle_development.md": "7e5cc409db83530978bb758ade5f0dfc15512b0d",
+    "chapters/07_prepare_reference_genome_online.md": "30332102ca24d0070212c3a715ee19a114f4d56e"
   },
   "chapters": [
     {
@@ -35,6 +37,11 @@
       "tier": "core",
       "example_id": "load_branch_reverse_complement_pgex_fasta",
       "example_source": "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
       "executed": true,
       "retained_artifacts": []
     },
@@ -45,6 +52,10 @@
       "tier": "core",
       "example_id": "load_and_digest_pgex",
       "example_source": "docs/examples/workflows/load_and_digest_pgex.json",
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
       "executed": true,
       "retained_artifacts": []
     },
@@ -55,6 +66,10 @@
       "tier": "core",
       "example_id": "guides_filter_and_generate_oligos",
       "example_source": "docs/examples/workflows/guides_filter_and_generate_oligos.json",
+      "concepts": [
+        "deterministic_workflows",
+        "guide_design_pipeline"
+      ],
       "executed": true,
       "retained_artifacts": []
     },
@@ -65,6 +80,10 @@
       "tier": "core",
       "example_id": "digest_ligation_extract_region_minimal",
       "example_source": "docs/examples/workflows/digest_ligation_extract_region_minimal.json",
+      "concepts": [
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
       "executed": true,
       "retained_artifacts": []
     },
@@ -75,6 +94,10 @@
       "tier": "advanced",
       "example_id": "guides_export_csv_and_protocol",
       "example_source": "docs/examples/workflows/guides_export_csv_and_protocol.json",
+      "concepts": [
+        "guide_design_pipeline",
+        "artifact_exports"
+      ],
       "executed": true,
       "retained_artifacts": [
         "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
@@ -82,12 +105,31 @@
       ]
     },
     {
-      "id": "prepare_reference_genome_online",
+      "id": "contribute_to_gentle_development",
       "order": 6,
+      "title": "Contribute to GENtle development",
+      "tier": "advanced",
+      "example_id": "contribute_gentle_development_baseline",
+      "example_source": "docs/examples/workflows/contribute_gentle_development_baseline.json",
+      "concepts": [
+        "shared_engine_contract",
+        "tutorial_drift_checks",
+        "contribution_loop"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "prepare_reference_genome_online",
+      "order": 7,
       "title": "Prepare a reference genome cache (online)",
       "tier": "online",
       "example_id": "prepare_reference_genome_online",
       "example_source": "docs/examples/workflows/prepare_reference_genome_online.json",
+      "concepts": [
+        "deterministic_workflows",
+        "online_opt_in"
+      ],
       "executed": false,
       "retained_artifacts": []
     }

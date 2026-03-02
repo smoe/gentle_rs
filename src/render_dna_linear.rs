@@ -55,10 +55,12 @@ const MIN_REGULATORY_FEATURE_HEIGHT: f32 = 4.0;
 const FEATURE_LANE_PADDING: f32 = 5.0;
 const REGULATORY_LANE_PADDING: f32 = 2.0;
 const HELICAL_MIN_COLUMN_RATIO: f32 = 0.5;
+const HELICAL_MIN_INTRA_COLUMN_SPREAD: f32 = 0.35;
 const HELICAL_MAX_Y_PHASE_SCALE: f32 = 0.8;
 const HELICAL_MIN_Y_PHASE_SCALE: f32 = 0.35;
 const HELICAL_MIN_VISUAL_PROGRESS: f32 = 0.35;
 const HELICAL_TWO_ROW_BLEND_START: f32 = 0.72;
+const HELICAL_MIN_ARC_DX_RATIO: f32 = 0.15;
 const CONDENSED_HELICAL_ROW_SPACING_SCALE: f32 = 1.05;
 const CONDENSED_HELICAL_ROW_COUNT: usize = 10;
 const CONDENSED_HELICAL_SINGLE_ROW_MIN_STEP: f32 = 12.0;
@@ -127,6 +129,7 @@ struct SequenceBaseRenderStatus {
     mode_setting: LinearSequenceLetterLayoutMode,
     helical_enabled: bool,
     helical_parallel_strands: bool,
+    reverse_strand_opacity: f32,
     hide_backbone_when_letters_visible: bool,
     routing: LinearBaseRoutingDecision,
 }
@@ -218,6 +221,7 @@ impl RenderDnaLinear {
             mode_setting,
             helical_enabled,
             helical_parallel_strands,
+            reverse_strand_opacity,
             hide_backbone_when_letters_visible,
         ) = self
             .display
@@ -227,10 +231,17 @@ impl RenderDnaLinear {
                     display.linear_sequence_letter_layout_mode(),
                     display.linear_sequence_helical_letters_enabled(),
                     display.linear_helical_parallel_strands(),
+                    display.reverse_strand_visual_opacity(),
                     display.linear_hide_backbone_when_sequence_bases_visible(),
                 )
             })
-            .unwrap_or((LinearSequenceLetterLayoutMode::AutoAdaptive, true, true, false));
+            .unwrap_or((
+                LinearSequenceLetterLayoutMode::AutoAdaptive,
+                true,
+                true,
+                0.55,
+                false,
+            ));
         let routing = decide_linear_base_routing(LinearBaseRoutingInput {
             span_bp: viewport.span,
             viewport_width_px: self.area.width(),
@@ -246,6 +257,7 @@ impl RenderDnaLinear {
             mode_setting,
             helical_enabled,
             helical_parallel_strands,
+            reverse_strand_opacity,
             hide_backbone_when_letters_visible,
             routing,
         }
@@ -301,6 +313,13 @@ impl RenderDnaLinear {
         } else {
             self.area.center().y
         }
+    }
+
+    fn linear_view_vertical_offset_px(&self) -> f32 {
+        self.display
+            .read()
+            .map(|display| display.linear_view_vertical_offset_px())
+            .unwrap_or(0.0)
     }
 
     fn viewport(&self) -> LinearViewport {
@@ -569,6 +588,7 @@ impl RenderDnaLinear {
         if self.sequence_length == 0 {
             return;
         }
+        let vertical_offset_px = self.linear_view_vertical_offset_px();
         let bp_per_px = self.bp_per_px(viewport);
         let low_value_feature_min_width_px = Self::low_value_feature_min_width_px(bp_per_px);
 
@@ -880,7 +900,7 @@ impl RenderDnaLinear {
             baseline.clamp(baseline_min, baseline_max)
         } else {
             self.area.center().y
-        };
+        } + vertical_offset_px;
 
         let top_scale = if top_natural_extent > 0.0 {
             (top_target_extent / top_natural_extent).clamp(0.1, 1.0)
@@ -1166,8 +1186,7 @@ impl RenderDnaLinear {
             return;
         }
         let show_sequence_bases = self.should_draw_sequence_bases(viewport);
-        let draw_tick_marks =
-            !show_sequence_bases || self.should_draw_backbone(viewport);
+        let draw_tick_marks = !show_sequence_bases || self.should_draw_backbone(viewport);
         let y = self.baseline_y();
         let tick = Self::tick_step(viewport.span);
         let font = FontId {
@@ -1247,17 +1266,23 @@ impl RenderDnaLinear {
             .read()
             .ok()
             .and_then(|display| display.selection());
-        let (show_double_strand, helical_parallel_strands, reverse_strand_upside_down) = self
+        let (
+            show_double_strand,
+            helical_parallel_strands,
+            reverse_strand_opacity,
+            reverse_strand_upside_down,
+        ) = self
             .display
             .read()
             .map(|display| {
                 (
                     display.linear_show_double_strand_bases(),
                     display.linear_helical_parallel_strands(),
+                    display.reverse_strand_visual_opacity(),
                     display.linear_reverse_strand_use_upside_down_letters(),
                 )
             })
-            .unwrap_or((true, true, true));
+            .unwrap_or((true, true, 0.55, true));
         let helical_phase_offset_bp = self
             .display
             .read()
@@ -1292,6 +1317,29 @@ impl RenderDnaLinear {
         let condensed_row_step = Self::condensed_row_step(font_size, show_double_strand);
         let condensed_row_top_index = CONDENSED_HELICAL_ROW_COUNT.saturating_sub(1);
         let helical_phase_scale = Self::helical_projection_y_phase_scale(helical_visual_t);
+        let continuous_arc_x_offsets = if helical_visual_t > 0.0 && !use_condensed_helical {
+            let phase_y_offsets =
+                Self::continuous_helical_phase_offsets(font_size, helical_t, helical_phase_scale);
+            let representative_bp = viewport.start + viewport.span.saturating_sub(1) / 2;
+            let left = Self::sequence_base_boundary_x(
+                &self.area,
+                viewport,
+                representative_bp,
+                render_status.active_mode,
+                helical_t,
+            );
+            let right = Self::sequence_base_boundary_x(
+                &self.area,
+                viewport,
+                representative_bp.saturating_add(1),
+                render_status.active_mode,
+                helical_t,
+            );
+            let nominal_step = (right - left).abs().max(0.01);
+            Self::continuous_helical_arc_x_offsets(nominal_step, &phase_y_offsets)
+        } else {
+            [0.0; CONDENSED_HELICAL_ROW_COUNT]
+        };
         for (offset, base) in seq.iter().enumerate() {
             let bp = viewport.start + offset;
             let x1_projected = Self::sequence_base_boundary_x(
@@ -1316,17 +1364,12 @@ impl RenderDnaLinear {
                 let row_offset = row_from_top as f32 * condensed_row_step;
                 (forward_y - row_offset, reverse_y + row_offset)
             } else if helical_visual_t > 0.0 {
-                let phase_index =
-                    Self::continuous_helical_phase_index(bp, helical_phase_offset_bp);
+                let phase_index = Self::continuous_helical_phase_index(bp, helical_phase_offset_bp);
                 let phase_angle = Self::continuous_helical_phase_angle(phase_index);
-                x_center += Self::continuous_helical_x_phase_offset(
-                    phase_angle,
-                    font_size,
-                    helical_t,
-                    x1_projected,
-                    x2_projected,
-                    bp == viewport.start || bp.saturating_add(1) >= viewport.end,
-                );
+                let pin_endpoint = bp == viewport.start || bp.saturating_add(1) >= viewport.end;
+                if !pin_endpoint {
+                    x_center += continuous_arc_x_offsets[phase_index];
+                }
                 let helical_phase = Self::continuous_helical_phase(
                     phase_index,
                     phase_angle,
@@ -1374,7 +1417,8 @@ impl RenderDnaLinear {
             if show_double_strand {
                 let complemented_byte = IupacCode::letter_complement(*base).to_ascii_uppercase();
                 let complemented = complemented_byte as char;
-                let reverse_color = Self::sequence_base_color(complemented_byte);
+                let reverse_color = Self::sequence_base_color(complemented_byte)
+                    .gamma_multiply(reverse_strand_opacity.clamp(0.2, 1.0));
                 if reverse_strand_upside_down {
                     Self::draw_rotated_base_char(
                         painter,
@@ -1409,6 +1453,10 @@ impl RenderDnaLinear {
             .min(span_bp as f32) as usize
     }
 
+    fn continuous_helical_intra_column_spread(progress: f32) -> f32 {
+        (1.0 - 0.65 * progress.clamp(0.0, 1.0)).clamp(HELICAL_MIN_INTRA_COLUMN_SPREAD, 1.0)
+    }
+
     fn sequence_base_boundary_x(
         area: &Rect,
         viewport: LinearViewport,
@@ -1430,10 +1478,17 @@ impl RenderDnaLinear {
         if columns == 0 {
             return area.left();
         }
-        // Endpoint-anchored compression: boundary 0 and boundary span are fixed at
-        // viewport edges, while interior boundaries quantize onto compressed columns.
-        let column_boundary = (bp_offset * columns) / viewport.span;
-        let frac = column_boundary as f32 / columns as f32;
+        // Endpoint-anchored compression with sub-column interpolation:
+        // avoids hard plateaus where several consecutive bases collapse into the
+        // same x-position (which looks crowded and breaks curve smoothness).
+        let scaled = bp_offset.saturating_mul(columns);
+        let column_boundary = (scaled / viewport.span).min(columns);
+        let column_remainder = scaled % viewport.span;
+        let remainder_norm = column_remainder as f32 / viewport.span as f32;
+        let intra_column_spread = Self::continuous_helical_intra_column_spread(helical_t);
+        let smoothed_boundary =
+            (column_boundary as f32 + remainder_norm * intra_column_spread).min(columns as f32);
+        let frac = smoothed_boundary / columns as f32;
         area.left() + frac * area.width()
     }
 
@@ -1453,22 +1508,61 @@ impl RenderDnaLinear {
         progress.clamp(0.0, 1.0) * HELICAL_MAX_Y_PHASE_SCALE
     }
 
-    fn continuous_helical_x_phase_offset(
-        phase_angle: f32,
+    fn continuous_helical_phase_offsets(
         font_size: f32,
         helical_t: f32,
-        left_boundary: f32,
-        right_boundary: f32,
-        pin_endpoint: bool,
-    ) -> f32 {
-        if pin_endpoint {
-            return 0.0;
+        phase_scale: f32,
+    ) -> [f32; CONDENSED_HELICAL_ROW_COUNT] {
+        let mut ret = [0.0; CONDENSED_HELICAL_ROW_COUNT];
+        for (phase_index, slot) in ret.iter_mut().enumerate() {
+            let phase_angle = Self::continuous_helical_phase_angle(phase_index);
+            *slot = Self::continuous_helical_phase(
+                phase_index,
+                phase_angle,
+                font_size,
+                helical_t,
+                phase_scale,
+            );
         }
-        let cell_width = (right_boundary - left_boundary).abs();
-        let base_amp = font_size * (0.18 + 0.32 * helical_t.clamp(0.0, 1.0));
-        let width_bound_amp = (cell_width * 0.45).max(font_size * 0.18);
-        let amp = base_amp.min(width_bound_amp + font_size * 0.22);
-        phase_angle.cos() * amp
+        ret
+    }
+
+    fn continuous_helical_arc_x_offsets(
+        nominal_step: f32,
+        phase_y_offsets: &[f32; CONDENSED_HELICAL_ROW_COUNT],
+    ) -> [f32; CONDENSED_HELICAL_ROW_COUNT] {
+        let mut cumulative = [0.0; CONDENSED_HELICAL_ROW_COUNT + 1];
+        let min_dx = (nominal_step * HELICAL_MIN_ARC_DX_RATIO).max(0.01);
+        let mut target_distance: f32 = 0.0;
+        let mut max_abs_dy: f32 = 0.0;
+        for phase_index in 0..CONDENSED_HELICAL_ROW_COUNT {
+            let next = (phase_index + 1) % CONDENSED_HELICAL_ROW_COUNT;
+            let dy = (phase_y_offsets[next] - phase_y_offsets[phase_index]).abs();
+            max_abs_dy = max_abs_dy.max(dy);
+            target_distance += (nominal_step * nominal_step + dy * dy).sqrt();
+        }
+        target_distance /= CONDENSED_HELICAL_ROW_COUNT as f32;
+        target_distance = target_distance.max(max_abs_dy + 0.001);
+
+        for phase_index in 0..CONDENSED_HELICAL_ROW_COUNT {
+            let next = (phase_index + 1) % CONDENSED_HELICAL_ROW_COUNT;
+            let dy = phase_y_offsets[next] - phase_y_offsets[phase_index];
+            let dx_sq = (target_distance * target_distance - dy * dy).max(min_dx * min_dx);
+            let dx = dx_sq.sqrt();
+            cumulative[phase_index + 1] = cumulative[phase_index] + (dx - nominal_step);
+        }
+
+        let total_drift = cumulative[CONDENSED_HELICAL_ROW_COUNT];
+        let mut offsets = [0.0; CONDENSED_HELICAL_ROW_COUNT];
+        for phase_index in 0..CONDENSED_HELICAL_ROW_COUNT {
+            let trend = total_drift * (phase_index as f32 / CONDENSED_HELICAL_ROW_COUNT as f32);
+            offsets[phase_index] = cumulative[phase_index] - trend;
+        }
+        let mean = offsets.iter().sum::<f32>() / CONDENSED_HELICAL_ROW_COUNT as f32;
+        for offset in offsets.iter_mut() {
+            *offset -= mean;
+        }
+        offsets
     }
 
     fn continuous_helical_phase_pair(
@@ -1567,11 +1661,12 @@ impl RenderDnaLinear {
             Pos2::new(self.area.right() - 6.0, self.area.top() + 34.0),
             Align2::RIGHT_TOP,
             format!(
-                "route: {} | setting: {} | compressed={} | parallel={} | hide-pref={} | backbone={}",
+                "route: {} | setting: {} | compressed={} | parallel={} | rev-alpha={:.2} | hide-pref={} | backbone={}",
                 status.route_policy_label(),
                 status.mode_setting_label(),
                 status.helical_enabled,
                 status.helical_parallel_strands,
+                status.reverse_strand_opacity,
                 status.hide_backbone_when_letters_visible,
                 if self.should_draw_backbone(viewport) {
                     "on"
@@ -2202,6 +2297,25 @@ mod tests {
     }
 
     #[test]
+    fn baseline_respects_linear_vertical_offset() {
+        let mut base_renderer = test_renderer(1200);
+        let mut shifted_renderer = test_renderer(1200);
+        {
+            let mut display = shifted_renderer.display.write().expect("display");
+            display.set_linear_view_vertical_offset_px(48.0);
+        }
+        let viewport = LinearViewport {
+            start: 0,
+            end: 1200,
+            span: 1200,
+        };
+        base_renderer.layout_features(viewport);
+        shifted_renderer.layout_features(viewport);
+        let delta = shifted_renderer.baseline_y() - base_renderer.baseline_y();
+        assert!((delta - 48.0).abs() < 0.01);
+    }
+
+    #[test]
     fn multipart_join_creates_exon_rects_and_intron_connectors() {
         let feature = make_test_feature(Location::Join(vec![
             Location::simple_range(100, 160),
@@ -2372,7 +2486,10 @@ mod tests {
 
     #[test]
     fn helical_projection_column_capacity_scales_to_two_row_target() {
-        assert_eq!(RenderDnaLinear::helical_projection_column_count(10, 0.0), 10);
+        assert_eq!(
+            RenderDnaLinear::helical_projection_column_count(10, 0.0),
+            10
+        );
         assert_eq!(RenderDnaLinear::helical_projection_column_count(10, 0.5), 8);
         assert_eq!(RenderDnaLinear::helical_projection_column_count(10, 1.0), 5);
         assert!((RenderDnaLinear::helical_projection_y_phase_scale(0.0) - 0.0).abs() < 0.001);
@@ -2446,6 +2563,38 @@ mod tests {
     }
 
     #[test]
+    fn continuous_helical_projection_avoids_zero_width_plateaus() {
+        let area = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1200.0, 300.0));
+        let viewport = LinearViewport {
+            start: 0,
+            end: 326,
+            span: 326,
+        };
+        let helical_t = 0.24;
+        let mut zero_or_negative_steps = 0usize;
+        for bp in 0..viewport.span {
+            let left = RenderDnaLinear::sequence_base_boundary_x(
+                &area,
+                viewport,
+                bp,
+                SequenceBaseRenderMode::ContinuousHelical,
+                helical_t,
+            );
+            let right = RenderDnaLinear::sequence_base_boundary_x(
+                &area,
+                viewport,
+                bp + 1,
+                SequenceBaseRenderMode::ContinuousHelical,
+                helical_t,
+            );
+            if right <= left {
+                zero_or_negative_steps += 1;
+            }
+        }
+        assert_eq!(zero_or_negative_steps, 0);
+    }
+
+    #[test]
     fn continuous_helical_phase_pair_supports_parallel_or_mirrored_strands() {
         let (f_parallel, r_parallel) =
             RenderDnaLinear::continuous_helical_phase_pair(10.0, 20.0, 2.5, true);
@@ -2462,8 +2611,7 @@ mod tests {
     fn continuous_helical_phase_oscillates_and_grows_with_density() {
         let low_index = RenderDnaLinear::continuous_helical_phase_index(0, 0);
         let low_angle = RenderDnaLinear::continuous_helical_phase_angle(low_index);
-        let low =
-            RenderDnaLinear::continuous_helical_phase(low_index, low_angle, 12.0, 0.1, 0.3);
+        let low = RenderDnaLinear::continuous_helical_phase(low_index, low_angle, 12.0, 0.1, 0.3);
         let high_index = RenderDnaLinear::continuous_helical_phase_index(1, 0);
         let high_angle = RenderDnaLinear::continuous_helical_phase_angle(high_index);
         let high =
@@ -2498,34 +2646,30 @@ mod tests {
     }
 
     #[test]
-    fn continuous_helical_x_phase_offset_spreads_overlapping_columns() {
-        let spread = RenderDnaLinear::continuous_helical_x_phase_offset(
-            0.0,
-            12.0,
-            1.0,
-            100.0,
-            100.0,
-            false,
-        );
-        assert!(spread.abs() > 1.0);
-        let opposite = RenderDnaLinear::continuous_helical_x_phase_offset(
-            std::f32::consts::PI,
-            12.0,
-            1.0,
-            100.0,
-            100.0,
-            false,
-        );
-        assert!(spread.signum() != opposite.signum());
-        let endpoint = RenderDnaLinear::continuous_helical_x_phase_offset(
-            0.0,
-            12.0,
-            1.0,
-            100.0,
-            100.0,
-            true,
-        );
-        assert!(endpoint.abs() < 0.001);
+    fn continuous_helical_arc_offsets_reduce_per_step_distance_variation() {
+        let y_offsets = RenderDnaLinear::continuous_helical_phase_offsets(12.0, 0.35, 0.45);
+        let nominal_step = 3.2;
+        let arc_offsets =
+            RenderDnaLinear::continuous_helical_arc_x_offsets(nominal_step, &y_offsets);
+        let mut uncorrected_min = f32::MAX;
+        let mut uncorrected_max = f32::MIN;
+        let mut corrected_min = f32::MAX;
+        let mut corrected_max = f32::MIN;
+        for phase_index in 0..CONDENSED_HELICAL_ROW_COUNT {
+            let next = (phase_index + 1) % CONDENSED_HELICAL_ROW_COUNT;
+            let dy = y_offsets[next] - y_offsets[phase_index];
+            let dist_uncorrected = (nominal_step * nominal_step + dy * dy).sqrt();
+            uncorrected_min = uncorrected_min.min(dist_uncorrected);
+            uncorrected_max = uncorrected_max.max(dist_uncorrected);
+            let corrected_dx = nominal_step + arc_offsets[next] - arc_offsets[phase_index];
+            let dist_corrected = (corrected_dx * corrected_dx + dy * dy).sqrt();
+            corrected_min = corrected_min.min(dist_corrected);
+            corrected_max = corrected_max.max(dist_corrected);
+        }
+        let uncorrected_spread = uncorrected_max - uncorrected_min;
+        let corrected_spread = corrected_max - corrected_min;
+        assert!(corrected_spread < uncorrected_spread * 0.8);
+        assert!(arc_offsets.iter().all(|offset| offset.is_finite()));
     }
 
     #[test]

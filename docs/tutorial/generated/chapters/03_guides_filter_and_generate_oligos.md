@@ -7,14 +7,54 @@
 - Example test_mode: `always`
 - Executed during generation: `yes`
 
-Covers guide-set creation, practical filtering, and oligo generation.
+Apply practical guide constraints and produce cloning-ready oligo candidates.
 
-## Run Commands
+For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.
+
+## When This Routine Is Useful
+
+- You need a transparent guide filtering step before oligo ordering.
+- You want to document why specific guides were excluded.
+- You need deterministic oligo generation from a reusable guide set.
+
+## What You Learn
+
+- Create and filter guide sets through explicit engine operations.
+- Generate oligo records from filtered guide candidates.
+- Connect guide workflows to the same deterministic operation model used for cloning steps.
+
+## Concepts and Recurrence
+
+- **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
+  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Load pGEX and digest with BamHI/EcoRI](./02_load_and_digest_pgex.md).
+  - Reoccurs in: [Chapter 4: Digest -> Ligation -> ExtractRegion minimal slice](./04_digest_ligation_extract_region_minimal.md), [Chapter 7: Prepare a reference genome cache (online)](./07_prepare_reference_genome_online.md).
+- **Guide Design Pipeline** (`guide_design_pipeline`): Guide sets can be created, filtered, expanded to oligos, and exported with protocol context.
+  - Status: introduced in this chapter.
+  - Reoccurs in: [Chapter 5: Guide oligo export (CSV + protocol)](./05_guides_export_csv_and_protocol.md).
+
+## GUI First
+
+1. Open the guides workflow controls in GENtle and create/import a guide set for a target region.
+2. Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).
+3. Generate oligos from passed guides and inspect the resulting oligo set IDs.
+
+## Command Equivalent (After GUI)
+
+Run the same routine non-interactively once the GUI flow is clear:
 
 ```bash
 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
 cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json'
 ```
+
+## Parameters That Matter
+
+- `FilterGuidesPractical.config.gc_min / gc_max` (where used: operation 2)
+  - Why it matters: GC bounds trade off stability and synthesis/efficiency behavior.
+  - How to derive it: Start with literature-typical bounds (e.g., 0.3-0.7) and tighten per assay constraints.
+- `GenerateGuideOligos.template_id` (where used: operation 3)
+  - Why it matters: Template controls overhang/adaptor context for your cloning backbone.
+  - How to derive it: Select the template matching your vector and cloning strategy.
 
 ## Checkpoints
 
@@ -25,83 +65,7 @@ cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/guides_fi
 
 - None for this chapter.
 
-## Canonical Workflow JSON
+## Canonical Source
 
-```json
-{
-  "run_id": "example_guides_filter_and_generate_oligos",
-  "ops": [
-    {
-      "UpsertGuideSet": {
-        "guide_set_id": "tp73_guides",
-        "guides": [
-          {
-            "guide_id": "g1",
-            "seq_id": "tp73",
-            "start_0based": 100,
-            "end_0based_exclusive": 120,
-            "strand": "+",
-            "protospacer": "GACCTGTTGACGATGTTCCA",
-            "pam": "AGG",
-            "nuclease": "SpCas9",
-            "cut_offset_from_protospacer_start": 17,
-            "rank": 1
-          },
-          {
-            "guide_id": "g2",
-            "seq_id": "tp73",
-            "start_0based": 220,
-            "end_0based_exclusive": 240,
-            "strand": "+",
-            "protospacer": "TTTTGCCATGTTGACCTGAA",
-            "pam": "TGG",
-            "nuclease": "SpCas9",
-            "cut_offset_from_protospacer_start": 17,
-            "rank": 2
-          },
-          {
-            "guide_id": "g3",
-            "seq_id": "tp73",
-            "start_0based": 340,
-            "end_0based_exclusive": 360,
-            "strand": "-",
-            "protospacer": "GGTACCGATGTTGCCAGTAA",
-            "pam": "CGG",
-            "nuclease": "SpCas9",
-            "cut_offset_from_protospacer_start": 17,
-            "rank": 3
-          }
-        ]
-      }
-    },
-    {
-      "FilterGuidesPractical": {
-        "guide_set_id": "tp73_guides",
-        "config": {
-          "gc_min": 0.3,
-          "gc_max": 0.7,
-          "max_homopolymer_run": 4,
-          "max_homopolymer_run_per_base": {},
-          "reject_ambiguous_bases": true,
-          "avoid_u6_terminator_tttt": true,
-          "u6_terminator_window": "spacer_plus_tail",
-          "max_dinucleotide_repeat_units": null,
-          "forbidden_motifs": [],
-          "required_5prime_base": "G",
-          "allow_5prime_g_extension": true
-        },
-        "output_guide_set_id": "tp73_guides_pass"
-      }
-    },
-    {
-      "GenerateGuideOligos": {
-        "guide_set_id": "tp73_guides",
-        "template_id": "lenti_bsmbi_u6_default",
-        "apply_5prime_g_extension": true,
-        "output_oligo_set_id": "tp73_lenti",
-        "passed_only": true
-      }
-    }
-  ]
-}
-```
+- Workflow file: `docs/examples/workflows/guides_filter_and_generate_oligos.json`
+- Inspect this JSON file directly when you need full option-level detail.

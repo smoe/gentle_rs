@@ -100,8 +100,14 @@ order. Durable architecture constraints and decisions remain in
   examples:
   - tutorial manifest source:
     `docs/tutorial/manifest.json` (`gentle.tutorial_manifest.v1`)
+  - tutorial chapters now include explicit narrative learning objectives and
+    concept tags, with generated recurrence mapping ("where this concept
+    reappears") in chapter pages and tutorial index
   - committed generated tutorial output:
     `docs/tutorial/generated/` (chapters + retained artifacts + report)
+  - dedicated contributor onboarding tutorial chapter added:
+    `contribute_to_gentle_development` (backed by executable
+    `contribute_gentle_development_baseline` workflow example)
   - `gentle_examples_docs` now supports:
     `tutorial-generate` and `tutorial-check`
   - CI now gates tutorial drift and workflow runtime coverage through
@@ -148,6 +154,12 @@ order. Durable architecture constraints and decisions remain in
   - continuous-helical rendering now uses oscillating phase geometry with
     endpoint-anchored width projection (full viewport span retained while
     avoiding monotonic "ramp" artifacts in 1.5x..2.0x density range)
+  - helical projection smoothing now interpolates inside compressed columns to
+    avoid local x-plateaus/crowding at curve extrema and improve symmetry
+  - continuous-helical rendering now applies cycle-level arc-length
+    compensation for more uniform bp-to-bp spacing along the helical curve
+  - configurable reverse-strand letter opacity now de-emphasizes reverse rows
+    consistently across linear map and sequence panel views
   - when backbone hiding is active and letters are visible, baseline tick marks
     are suppressed alongside the backbone line for clearer dense views
   - optional sequence-panel auto-hide when map letters are visible
@@ -172,6 +184,12 @@ order. Durable architecture constraints and decisions remain in
   - keyboard pane scrolling (`Arrow`, `PageUp/PageDown`, `Home/End`) is enabled
     for major scroll panes (help, lineage tables/lists, jobs/history,
     configuration, and sequence-window feature/detail panes)
+  - linear DNA map now supports two-axis pan:
+    - horizontal pan for bp viewport
+    - vertical pan for rendered feature-lane stack
+  - linear DNA toolbar fit actions are split:
+    - `Fit Seq` for full-sequence horizontal fit
+    - `Fit Features` for vertical recenter of current subsequence
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
 - BLAST UX/provenance hardening baseline:
