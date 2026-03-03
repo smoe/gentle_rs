@@ -2100,6 +2100,47 @@ fn run() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn execute_forwarded_like_cli(
+        state: ProjectState,
+        args: Vec<String>,
+    ) -> (bool, serde_json::Value, ProjectState) {
+        let parsed = parse_forwarded_shell_command(&args, 1)
+            .expect("parse forwarded command")
+            .expect("expected forwarded shell command");
+        let mut engine = GentleEngine::from_state(state);
+        let run = execute_shell_command_with_options(
+            &mut engine,
+            &parsed,
+            &ShellExecutionOptions {
+                allow_screenshots: false,
+                allow_agent_commands: true,
+            },
+        )
+        .expect("execute forwarded command");
+        (run.state_changed, run.output, engine.state().clone())
+    }
+
+    fn execute_shared_shell_tokens(
+        state: ProjectState,
+        tokens: Vec<String>,
+    ) -> (bool, serde_json::Value, ProjectState) {
+        let parsed = parse_shell_tokens(&tokens).expect("parse shared shell tokens");
+        let mut engine = GentleEngine::from_state(state);
+        let run = execute_shell_command_with_options(
+            &mut engine,
+            &parsed,
+            &ShellExecutionOptions {
+                allow_screenshots: false,
+                allow_agent_commands: true,
+            },
+        )
+        .expect("execute shared shell command");
+        (run.state_changed, run.output, engine.state().clone())
+    }
 
     #[test]
     fn test_parse_rebase_site_with_slash_notation() {
@@ -2347,6 +2388,151 @@ T [ 0 0 0 10 ]
         ];
         let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
         assert!(matches!(parsed, Some(ShellCommand::ImportPool { .. })));
+    }
+
+    #[test]
+    fn test_forwarded_resources_sync_rebase_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("rebase.withrefm");
+        let output_path = td.path().join("rebase.json");
+        fs::write(
+            &input_path,
+            "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n",
+        )
+        .expect("write rebase input");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "sync-rebase".to_string(),
+            input_path.to_string_lossy().to_string(),
+            output_path.to_string_lossy().to_string(),
+            "--commercial-only".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_resources_sync_jaspar_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("motifs.pfm");
+        let output_path = td.path().join("motifs.json");
+        fs::write(
+            &input_path,
+            ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n",
+        )
+        .expect("write jaspar input");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "resources".to_string(),
+            "sync-jaspar".to_string(),
+            input_path.to_string_lossy().to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_import_pool_dispatch_matches_shared_shell_execution() {
+        let td = tempdir().expect("tempdir");
+        let pool_path = td.path().join("demo.pool.gentle.json");
+        let pool_json = json!({
+            "schema": "gentle.pool.v1",
+            "pool_id": "demo_pool",
+            "human_id": "demo",
+            "member_count": 1,
+            "members": [
+                {
+                    "seq_id": "member_1",
+                    "human_id": "member_1",
+                    "name": "Member One",
+                    "sequence": "ATGCATGC",
+                    "length_bp": 8,
+                    "topology": "linear",
+                    "ends": {
+                        "end_type": "blunt",
+                        "forward_5": "",
+                        "forward_3": "",
+                        "reverse_5": "",
+                        "reverse_3": ""
+                    }
+                }
+            ]
+        });
+        fs::write(
+            &pool_path,
+            serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
+        )
+        .expect("write pool json");
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "import-pool".to_string(),
+            pool_path.to_string_lossy().to_string(),
+            "pref".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
     }
 
     #[test]

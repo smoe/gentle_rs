@@ -745,6 +745,11 @@ Phase 3 (async specificity tier + agent/MCP parity): baseline started
 Goal: unify BLAST execution semantics for standalone BLAST, single-primer
 design, and primer-pair design through one engine-owned service contract.
 
+Detailed execution plan: `docs/primer_design_specialist_plan.md`.
+
+- Primer specialist window + persisted alternative-filter views are tracked in
+  `docs/primer_design_specialist_plan.md`.
+
 Phase 1 (engine abstraction + options layering):
 
 - Add shared BLAST service/request/response/progress abstractions in engine,
@@ -963,10 +968,16 @@ Planned upgrades:
 - Done (2026-02-27): MCP UI-intent parity tests now compare MCP tool outputs
   against direct shared-shell `ui ...` outputs for discovery, prepared-query,
   latest-selection, and open-intent resolution.
-- Add JS adapter tests for `import_pool(...)` and resource-sync wrapper paths.
-- Add Lua adapter tests for `import_pool(...)` and resource-sync wrapper paths.
-- Add CLI integration tests that confirm `import-pool` / `resources` top-level
-  dispatch uses the shared shell parser/executor path.
+- Done (2026-03-03): JS adapter parity tests now compare `import_pool(...)`,
+  `sync_rebase_resource(...)`, and `sync_jaspar_resource(...)` wrapper outcomes
+  against direct shared-shell execution.
+- Done (2026-03-03): Lua adapter parity tests now compare `import_pool(...)`,
+  `sync_rebase(...)`, and `sync_jaspar(...)` wrapper outcomes against direct
+  shared-shell execution.
+- Done (2026-03-03): CLI forwarded-dispatch parity tests now verify
+  `import-pool` / `resources sync-rebase` / `resources sync-jaspar` top-level
+  routes produce adapter-equivalent outputs and state deltas to direct shared
+  shell execution.
 
 ## 3. Recommended execution order
 

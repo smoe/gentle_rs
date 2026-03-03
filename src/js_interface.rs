@@ -821,6 +821,7 @@ impl Default for JavaScriptInterface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine_shell::execute_shell_command;
     use serde_json::json;
     use std::fs;
     use tempfile::tempdir;
@@ -912,6 +913,149 @@ mod tests {
         assert_eq!(imported_ids.len(), 1);
         let imported_id = imported_ids[0].as_str().expect("imported id string");
         assert!(out.state.sequences.contains_key(imported_id));
+    }
+
+    #[test]
+    fn js_sync_rebase_wrapper_matches_shared_shell_report() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("rebase.withrefm");
+        let output_path = td.path().join("rebase.json");
+        fs::write(
+            &input_path,
+            "<1>EcoRI\n<2>EcoRI\n<3>GAATTC (1/5)\n<7>N\n//\n",
+        )
+        .expect("write rebase input");
+
+        let wrapper_report = sync_rebase_resource_impl(
+            input_path.to_string_lossy().as_ref(),
+            output_path.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("wrapper sync rebase");
+
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let shell_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ResourcesSyncRebase {
+                input: input_path.to_string_lossy().to_string(),
+                output: Some(output_path.to_string_lossy().to_string()),
+                commercial_only: true,
+            },
+        )
+        .expect("shell sync rebase");
+        let shell_report =
+            sync_report_from_shell_output(shell_run.output, "resources sync-rebase shell")
+                .expect("shell report");
+
+        assert_eq!(
+            serde_json::to_value(wrapper_report).expect("serialize wrapper report"),
+            serde_json::to_value(shell_report).expect("serialize shell report")
+        );
+    }
+
+    #[test]
+    fn js_sync_jaspar_wrapper_matches_shared_shell_report() {
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("motifs.pfm");
+        let output_path = td.path().join("motifs.json");
+        fs::write(
+            &input_path,
+            ">MA0001.1 TEST\nA [ 10 0 0 0 ]\nC [ 0 10 0 0 ]\nG [ 0 0 10 0 ]\nT [ 0 0 0 10 ]\n",
+        )
+        .expect("write jaspar input");
+
+        let wrapper_report = sync_jaspar_resource_impl(
+            input_path.to_string_lossy().as_ref(),
+            output_path.to_string_lossy().as_ref(),
+        )
+        .expect("wrapper sync jaspar");
+
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let shell_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ResourcesSyncJaspar {
+                input: input_path.to_string_lossy().to_string(),
+                output: Some(output_path.to_string_lossy().to_string()),
+            },
+        )
+        .expect("shell sync jaspar");
+        let shell_report =
+            sync_report_from_shell_output(shell_run.output, "resources sync-jaspar shell")
+                .expect("shell report");
+
+        assert_eq!(
+            serde_json::to_value(wrapper_report).expect("serialize wrapper report"),
+            serde_json::to_value(shell_report).expect("serialize shell report")
+        );
+    }
+
+    #[test]
+    fn js_import_pool_wrapper_matches_shared_shell_output_and_state() {
+        let td = tempdir().expect("tempdir");
+        let pool_path = td.path().join("demo.pool.gentle.json");
+        let pool_json = json!({
+            "schema": "gentle.pool.v1",
+            "pool_id": "demo_pool",
+            "human_id": "demo",
+            "member_count": 1,
+            "members": [
+                {
+                    "seq_id": "member_1",
+                    "human_id": "member_1",
+                    "name": "Member One",
+                    "sequence": "ATGCATGC",
+                    "length_bp": 8,
+                    "topology": "linear",
+                    "ends": {
+                        "end_type": "blunt",
+                        "forward_5": "",
+                        "forward_3": "",
+                        "reverse_5": "",
+                        "reverse_3": ""
+                    }
+                }
+            ]
+        });
+        fs::write(
+            &pool_path,
+            serde_json::to_string_pretty(&pool_json).expect("serialize pool json"),
+        )
+        .expect("write pool json");
+
+        let wrapper = import_pool_impl(
+            ProjectState::default(),
+            pool_path.to_string_lossy().as_ref(),
+            "js_pool",
+        )
+        .expect("wrapper import pool");
+
+        let mut shell_engine = GentleEngine::from_state(ProjectState::default());
+        let shell_run = execute_shell_command(
+            &mut shell_engine,
+            &ShellCommand::ImportPool {
+                input: pool_path.to_string_lossy().to_string(),
+                prefix: "js_pool".to_string(),
+            },
+        )
+        .expect("shell import pool");
+
+        assert_eq!(wrapper.state_changed, shell_run.state_changed);
+        assert_eq!(wrapper.output, shell_run.output);
+        assert_eq!(
+            wrapper
+                .state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shell_engine
+                .state()
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            "wrapper and shared-shell import_pool should yield same sequence ids"
+        );
     }
 
     #[test]

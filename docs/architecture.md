@@ -704,6 +704,8 @@ Goal: present coherent user interfaces for single-primer design, primer-pair
 design, and BLAST, while enforcing one engine-owned BLAST abstraction reused by
 all three pathways.
 
+Detailed implementation plan: `docs/primer_design_specialist_plan.md`.
+
 Current status (2026-03-01):
 
 - Engine now implements layered BLAST option resolution and validation, with
