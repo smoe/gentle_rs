@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-installers:
-    name: Build Installer (${{ matrix.os }})
+    name: Build Package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,14 +24,14 @@ jobs:
         include:
           - os: macos-latest
             platform: macos
-            bundle_format: dmg
+            bundle_format: osx
             extension: dmg
             artifact_name: gentle-macos-installer
           - os: windows-latest
             platform: windows
-            bundle_format: msi
-            extension: msi
-            artifact_name: gentle-windows-installer
+            bundle_format: zip
+            extension: zip
+            artifact_name: gentle-windows-zip
 
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
@@ -65,11 +65,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
-      - name: Install WiX Toolset (Windows only)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: choco install wixtoolset --no-progress -y
-
       - name: Install ImageMagick (Windows only)
         if: runner.os == 'Windows'
         shell: powershell
@@ -85,17 +80,76 @@ jobs:
           }
 
       - name: Install cargo-bundle
+        if: runner.os == 'macOS'
         run: cargo install cargo-bundle --locked
 
-      - name: Build installer
+      - name: Build macOS bundle
+        if: runner.os == 'macOS'
         run: cargo bundle --release --bin gentle --format ${{ matrix.bundle_format }}
+
+      - name: Build Windows binary
+        if: runner.os == 'Windows'
+        run: cargo build --release --bin gentle
 
       - name: Collect installer path
         id: collect
         shell: bash
         run: |
           set -euo pipefail
-          installer="$(ls target/release/bundle/${{ matrix.bundle_format }}/*.${{ matrix.extension }} | head -n 1)"
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            bundle_dir="target/release/bundle/osx"
+            echo "runner.os=${{ runner.os }}"
+            echo "RELEASE_TAG=${RELEASE_TAG}"
+            echo "bundle_dir=${bundle_dir}"
+            if [[ ! -d "$bundle_dir" ]]; then
+              echo "Bundle directory not found: $bundle_dir"
+              exit 1
+            fi
+            echo "bundle_dir contents:"
+            ls -la "$bundle_dir"
+
+            echo "app bundle candidates:"
+            find "$bundle_dir" -type d -name "*.app" -prune -print || true
+
+            app_bundle="$(find "$bundle_dir" -type d -name "*.app" -prune -print | head -n 1)"
+            if [[ -z "$app_bundle" ]]; then
+              echo "No .app bundle found under $bundle_dir"
+              exit 1
+            fi
+            echo "app_bundle=${app_bundle}"
+
+            stage_dir="$RUNNER_TEMP/gentle_dmg_stage"
+            echo "stage_dir=${stage_dir}"
+            rm -rf "$stage_dir"
+            mkdir -p "$stage_dir"
+            cp -R "$app_bundle" "$stage_dir/"
+            installer="target/release/bundle/osx/gentle-${RELEASE_TAG#refs/tags/}.dmg"
+            echo "installer=${installer}"
+            hdiutil create \
+              -volname "GENtle" \
+              -srcfolder "$stage_dir" \
+              -ov \
+              -format UDZO \
+              "$installer"
+            echo "created installer:"
+            ls -la "$installer"
+          else
+            exe_path="target/release/gentle.exe"
+            echo "runner.os=${{ runner.os }}"
+            echo "RELEASE_TAG=${RELEASE_TAG}"
+            echo "exe_path=${exe_path}"
+            if [[ ! -f "$exe_path" ]]; then
+              echo "Windows binary not found: $exe_path"
+              exit 1
+            fi
+            out_dir="target/release/bundle/zip"
+            mkdir -p "$out_dir"
+            installer="$out_dir/gentle-${RELEASE_TAG#refs/tags/}.zip"
+            echo "installer=${installer}"
+            powershell -NoProfile -Command "Compress-Archive -Path 'target/release/gentle.exe' -DestinationPath '$installer' -Force"
+            echo "created installer:"
+            ls -la "$installer"
+          fi
           echo "installer_path=$installer" >> "$GITHUB_OUTPUT"
           echo "Installer: $installer"
 
@@ -116,21 +170,37 @@ jobs:
           test -f "$app_path/Contents/Info.plist"
           hdiutil detach "$mount_point" -quiet
 
-      - name: Smoke test Windows installer
+      - name: Smoke test Windows package
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           $installer = "${{ steps.collect.outputs.installer_path }}"
-          $extract = Join-Path $env:RUNNER_TEMP "gentle_msi_extract"
+          $resolvedInstaller = (Resolve-Path $installer).Path
+          if (-not $resolvedInstaller) {
+            throw "Could not resolve installer path: $installer"
+          }
+          $installerItem = Get-Item $resolvedInstaller
+          Write-Host "installer=$resolvedInstaller"
+          Write-Host "installer_size_bytes=$($installerItem.Length)"
+          $hash = (Get-FileHash -Path $resolvedInstaller -Algorithm SHA256).Hash
+          Write-Host "installer_sha256=$hash"
+
+          $extract = Join-Path $env:RUNNER_TEMP "gentle_zip_extract"
+          if (Test-Path $extract) {
+            Remove-Item -Recurse -Force $extract
+          }
           New-Item -ItemType Directory -Path $extract -Force | Out-Null
-          Start-Process msiexec.exe -ArgumentList @("/a", "`"$installer`"", "/qn", "TARGETDIR=$extract") -Wait -NoNewWindow
+          Expand-Archive -Path $resolvedInstaller -DestinationPath $extract -Force
+
           $exe = Get-ChildItem -Path $extract -Filter gentle.exe -Recurse | Select-Object -First 1
           if (-not $exe) {
-            throw "No gentle.exe found after MSI administrative extract"
+            throw "No gentle.exe found after ZIP extraction"
           }
           if ($exe.Length -le 0) {
             throw "Extracted gentle.exe is empty"
           }
+          Write-Host "zip_extracted_exe=$($exe.FullName)"
+          Write-Host "zip_extracted_exe_size_bytes=$($exe.Length)"
 
       - name: Normalize installer filename
         id: normalize
@@ -174,6 +244,6 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist/**/*.dmg
-            dist/**/*.msi
+            dist/**/*.zip
           fail_on_unmatched_files: true
           generate_release_notes: true

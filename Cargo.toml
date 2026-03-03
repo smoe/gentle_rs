@@ -6,7 +6,7 @@ keywords = ["plasmid", "vector", "primer", "biology", "pcr", "cloning"]
 categories = ["science", "science::bioinformatics"]
 repository = "https://github.com/magnusmanske/gentle_rs/"
 readme = "README.md"
-version = "0.1.0~internal.1"
+version = "0.1.0-internal.1"
 edition = "2024"
 default-run = "gentle"
 build = "build.rs"
@@ -85,7 +85,6 @@ image = { version = "*", features = ["jpeg", "png"] }
 rfd = "*"
 reqwest = { version = "*", features = ["blocking", "json"] }
 tempfile = "*"
-winres = "0.1"
 flate2 = "1.0"
 regex = "^1"
 pulldown-cmark = "0.12.2"
@@ -101,8 +100,8 @@ objc2 = "0.5.2"
 objc2-foundation = "0.2.2"
 objc2-app-kit = { version = "0.2.2", features = ["NSApplication", "NSMenu", "NSMenuItem", "NSResponder", "NSWindow"] }
 
-#[build-dependencies]
-#winresource = "*" # For Windows app icon
+[build-dependencies]
+winres = "0.1"
 
 [profile.release]
 opt-level = 3
