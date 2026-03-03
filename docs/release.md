@@ -16,7 +16,9 @@ Tutorial runtime-generated files are committed for GitHub browsing under:
 
 They are excluded from `git archive` source bundles via:
 
-- `.gitattributes`: `docs/tutorial/generated/** export-ignore`
+- `.gitattributes`:
+  - `docs/tutorial/generated export-ignore`
+  - `docs/tutorial/generated/** export-ignore`
 
 Local guard check:
 

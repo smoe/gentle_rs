@@ -1,1 +1,4 @@
+# Keep committed tutorial outputs visible in GitHub browsing, but exclude them
+# from source tarballs produced by `git archive`.
+docs/tutorial/generated export-ignore
 docs/tutorial/generated/** export-ignore
