@@ -365,6 +365,105 @@ fn tool_list() -> Value {
                 "required": ["species"],
                 "additionalProperties": false
             }
+        },
+        {
+            "name": "blast_async_start",
+            "title": "BLAST Async Start",
+            "description": "Start one async BLAST job through the shared shell contract (`genomes/helpers blast-start`).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "state_path": {
+                        "type": "string",
+                        "description": "Optional project state path. Defaults to server startup state path."
+                    },
+                    "genome_id": {
+                        "type": "string"
+                    },
+                    "query_sequence": {
+                        "type": "string"
+                    },
+                    "helpers": {
+                        "type": "boolean"
+                    },
+                    "max_hits": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "task": {
+                        "type": "string",
+                        "enum": ["blastn-short", "blastn"]
+                    },
+                    "options_json": {
+                        "description": "Optional BLAST options JSON object override.",
+                        "oneOf": [
+                            { "type": "object" },
+                            { "type": "string" }
+                        ]
+                    },
+                    "catalog_path": {
+                        "type": "string"
+                    },
+                    "cache_dir": {
+                        "type": "string"
+                    }
+                },
+                "required": ["genome_id", "query_sequence"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "blast_async_status",
+            "title": "BLAST Async Status",
+            "description": "Inspect one async BLAST job status and optional report payload.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string"
+                    },
+                    "with_report": {
+                        "type": "boolean"
+                    },
+                    "helpers": {
+                        "type": "boolean"
+                    }
+                },
+                "required": ["job_id"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "blast_async_cancel",
+            "title": "BLAST Async Cancel",
+            "description": "Request cancellation for one async BLAST job.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "job_id": {
+                        "type": "string"
+                    },
+                    "helpers": {
+                        "type": "boolean"
+                    }
+                },
+                "required": ["job_id"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "blast_async_list",
+            "title": "BLAST Async List",
+            "description": "List known async BLAST jobs for genome/helper scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "helpers": {
+                        "type": "boolean"
+                    }
+                },
+                "additionalProperties": false
+            }
         }
     ])
 }
@@ -562,6 +661,42 @@ fn optional_bool_arg(args: &Map<String, Value>, key: &str) -> Result<Option<bool
     }
 }
 
+fn optional_usize_arg(args: &Map<String, Value>, key: &str) -> Result<Option<usize>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(value)) => {
+            if let Some(parsed) = value.as_u64() {
+                usize::try_from(parsed)
+                    .map(Some)
+                    .map_err(|_| format!("MCP argument '{key}' is out of usize range"))
+            } else {
+                Err(format!("MCP argument '{key}' must be a non-negative integer"))
+            }
+        }
+        Some(_) => Err(format!("MCP argument '{key}' must be a non-negative integer")),
+    }
+}
+
+fn optional_json_string_arg(args: &Map<String, Value>, key: &str) -> Result<Option<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed.to_string()))
+            }
+        }
+        Some(value @ Value::Object(_)) | Some(value @ Value::Array(_)) => serde_json::to_string(value)
+            .map(Some)
+            .map_err(|e| format!("Could not serialize MCP argument '{key}' as JSON: {e}")),
+        Some(_) => Err(format!(
+            "MCP argument '{key}' must be a JSON object/array or string"
+        )),
+    }
+}
+
 fn append_string_flag(tokens: &mut Vec<String>, flag: &str, value: Option<String>) {
     if let Some(value) = value {
         tokens.push(flag.to_string());
@@ -679,6 +814,163 @@ fn ui_latest_prepared_tool_result(default_state_path: &str, arguments: &Value) -
     append_string_flag(&mut tokens, "--catalog", catalog_path);
     append_string_flag(&mut tokens, "--cache-dir", cache_dir);
     match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_latest_prepared") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn blast_async_start_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let genome_id = match required_string_arg(&args, "genome_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let query_sequence = match required_string_arg(&args, "query_sequence") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let max_hits = match optional_usize_arg(&args, "max_hits") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    if matches!(max_hits, Some(0)) {
+        return tool_result_text("MCP argument 'max_hits' must be >= 1".to_string(), "text", true);
+    }
+    let task = match optional_string_arg(&args, "task") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    if let Some(task_value) = task.as_deref() {
+        if !matches!(task_value, "blastn-short" | "blastn") {
+            return tool_result_text(
+                format!(
+                    "MCP argument 'task' must be 'blastn-short' or 'blastn' (got '{}')",
+                    task_value
+                ),
+                "text",
+                true,
+            );
+        }
+    }
+    let options_json = match optional_json_string_arg(&args, "options_json") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let catalog_path = match optional_string_arg(&args, "catalog_path") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let cache_dir = match optional_string_arg(&args, "cache_dir") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+
+    let mut tokens = vec![
+        if helper_mode {
+            "helpers".to_string()
+        } else {
+            "genomes".to_string()
+        },
+        "blast-start".to_string(),
+        genome_id,
+        query_sequence,
+    ];
+    if let Some(max_hits) = max_hits {
+        tokens.push("--max-hits".to_string());
+        tokens.push(max_hits.to_string());
+    }
+    if let Some(task) = task {
+        tokens.push("--task".to_string());
+        tokens.push(task);
+    }
+    if let Some(options_json) = options_json {
+        tokens.push("--options-json".to_string());
+        tokens.push(options_json);
+    }
+    append_string_flag(&mut tokens, "--catalog", catalog_path);
+    append_string_flag(&mut tokens, "--cache-dir", cache_dir);
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_start") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn blast_async_status_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let job_id = match required_string_arg(&args, "job_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let with_report = match optional_bool_arg(&args, "with_report") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let mut tokens = vec![
+        if helper_mode {
+            "helpers".to_string()
+        } else {
+            "genomes".to_string()
+        },
+        "blast-status".to_string(),
+        job_id,
+    ];
+    if with_report {
+        tokens.push("--with-report".to_string());
+    }
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_status") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn blast_async_cancel_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let job_id = match required_string_arg(&args, "job_id") {
+        Ok(value) => value,
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let tokens = vec![
+        if helper_mode {
+            "helpers".to_string()
+        } else {
+            "genomes".to_string()
+        },
+        "blast-cancel".to_string(),
+        job_id,
+    ];
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_cancel") {
+        Ok(output) => tool_result_json(output, false),
+        Err(err) => tool_result_text(err, "text", true),
+    }
+}
+
+fn blast_async_list_tool_result(default_state_path: &str, arguments: &Value) -> Value {
+    let args = arguments.as_object().cloned().unwrap_or_default();
+    let helper_mode = match optional_bool_arg(&args, "helpers") {
+        Ok(value) => value.unwrap_or(false),
+        Err(err) => return tool_result_text(err, "text", true),
+    };
+    let tokens = vec![
+        if helper_mode {
+            "helpers".to_string()
+        } else {
+            "genomes".to_string()
+        },
+        "blast-list".to_string(),
+    ];
+    match run_non_mutating_shell_tool(default_state_path, &args, tokens, "blast_async_list") {
         Ok(output) => tool_result_json(output, false),
         Err(err) => tool_result_text(err, "text", true),
     }
@@ -884,6 +1176,14 @@ fn tool_call_result(default_state_path: &str, params: ToolCallParams) -> Value {
         "ui_latest_prepared" => {
             ui_latest_prepared_tool_result(default_state_path, &params.arguments)
         }
+        "blast_async_start" => blast_async_start_tool_result(default_state_path, &params.arguments),
+        "blast_async_status" => {
+            blast_async_status_tool_result(default_state_path, &params.arguments)
+        }
+        "blast_async_cancel" => {
+            blast_async_cancel_tool_result(default_state_path, &params.arguments)
+        }
+        "blast_async_list" => blast_async_list_tool_result(default_state_path, &params.arguments),
         other => tool_result_text(format!("Unknown MCP tool '{other}'"), "text", true),
     }
 }
@@ -1056,6 +1356,17 @@ mod tests {
         let mut engine = GentleEngine::new();
         let run = execute_shell_command(&mut engine, &command).expect("execute shared ui command");
         assert!(!run.state_changed, "ui commands must be non-mutating");
+        run.output
+    }
+
+    fn run_shared_shell_command(tokens: Vec<String>) -> Value {
+        let command = parse_shell_tokens(&tokens).expect("parse shared shell command");
+        let mut engine = GentleEngine::new();
+        let run = execute_shell_command(&mut engine, &command).expect("execute shared shell command");
+        assert!(
+            !run.state_changed,
+            "expected non-mutating shared shell command"
+        );
         run.output
     }
 
@@ -1460,5 +1771,47 @@ mod tests {
             text.contains("only supports --helpers/--catalog/--cache-dir/--filter/--species/--latest when TARGET is prepared-references"),
             "unexpected error text: {text}"
         );
+    }
+
+    #[test]
+    fn mcp_blast_async_status_matches_shared_shell_contract() {
+        let started = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "blast_async_start",
+            json!({
+                "helpers": true,
+                "genome_id": "missing_helper",
+                "query_sequence": "ACGTACGT"
+            }),
+        );
+        assert_eq!(
+            started.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let job_id = started
+            .pointer("/result/structuredContent/job/job_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        assert!(!job_id.is_empty());
+
+        let mcp_status = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "blast_async_status",
+            json!({
+                "helpers": true,
+                "job_id": job_id.clone()
+            }),
+        );
+        assert_eq!(
+            mcp_status.pointer("/result/isError").and_then(Value::as_bool),
+            Some(false)
+        );
+        let expected_status = run_shared_shell_command(vec![
+            "helpers".to_string(),
+            "blast-status".to_string(),
+            job_id,
+        ]);
+        assert_eq!(mcp_status["result"]["structuredContent"], expected_status);
     }
 }

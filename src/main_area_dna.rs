@@ -6,9 +6,9 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode,
-        ExportFormat, GentleEngine, LigationProtocol, LinearSequenceLetterLayoutMode, OpResult,
-        Operation, OperationProgress, PcrPrimerSpec, RenderSvgMode, SnpMutationSpec,
-        TfThresholdOverride, TfbsProgress, Workflow,
+        ExportFormat, GenomeAnchorSide, GentleEngine, LigationProtocol,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PcrPrimerSpec,
+        RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -105,6 +105,10 @@ struct EngineOpsUiState {
     extract_to: String,
     #[serde(default)]
     extract_output_id: String,
+    #[serde(default)]
+    genome_anchor_extend_length_bp: String,
+    #[serde(default)]
+    genome_anchor_extend_output_id: String,
     #[serde(default)]
     parameter_name: String,
     #[serde(default)]
@@ -399,6 +403,28 @@ mod tests {
                 (None, "tp73".to_string()),
                 (Some("range".to_string()), "1..10".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn parse_positive_usize_text_accepts_positive_integer() {
+        assert_eq!(
+            MainAreaDna::parse_positive_usize_text("250", "extension length").unwrap(),
+            250
+        );
+    }
+
+    #[test]
+    fn parse_positive_usize_text_rejects_zero_and_non_integer() {
+        assert!(
+            MainAreaDna::parse_positive_usize_text("0", "extension length")
+                .unwrap_err()
+                .contains(">= 1")
+        );
+        assert!(
+            MainAreaDna::parse_positive_usize_text("abc", "extension length")
+                .unwrap_err()
+                .contains("expected an integer")
         );
     }
 
@@ -1182,6 +1208,8 @@ pub struct MainAreaDna {
     extract_from: String,
     extract_to: String,
     extract_output_id: String,
+    genome_anchor_extend_length_bp: String,
+    genome_anchor_extend_output_id: String,
     parameter_name: String,
     parameter_value_json: String,
     anchored_mode_feature: bool,
@@ -1412,6 +1440,8 @@ impl MainAreaDna {
             extract_from: "0".to_string(),
             extract_to: "0".to_string(),
             extract_output_id: String::new(),
+            genome_anchor_extend_length_bp: "2000".to_string(),
+            genome_anchor_extend_output_id: String::new(),
             parameter_name: "max_fragments_per_container".to_string(),
             parameter_value_json: "80000".to_string(),
             anchored_mode_feature: true,
@@ -3243,6 +3273,55 @@ impl MainAreaDna {
             .on_hover_text(
                 "Genome anchor provenance for this sequence. Anchored sequences keep chromosome/genome coordinates through supported operations.",
             );
+            if is_anchored {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Extend anchored span by");
+                    let length_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_length_bp)
+                                .desired_width(70.0),
+                        )
+                        .on_hover_text(
+                            "Number of additional genomic bases to include on the selected anchor side.",
+                        )
+                        .changed();
+                    ui.label("bp");
+                    ui.label("output_id");
+                    let output_changed = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut self.genome_anchor_extend_output_id)
+                                .desired_width(180.0),
+                        )
+                        .on_hover_text(
+                            "Optional explicit ID for the derived sequence (leave empty for auto-generated ID).",
+                        )
+                        .changed();
+                    if length_changed || output_changed {
+                        self.save_engine_ops_state();
+                    }
+                    if ui
+                        .small_button("Extend 5'")
+                        .on_hover_text(
+                            "Create a new sequence extended on the contextual 5' side of this anchored sequence.",
+                        )
+                        .clicked()
+                    {
+                        self.extend_active_genome_anchor(GenomeAnchorSide::FivePrime);
+                    }
+                    if ui
+                        .small_button("Extend 3'")
+                        .on_hover_text(
+                            "Create a new sequence extended on the contextual 3' side of this anchored sequence.",
+                        )
+                        .clicked()
+                    {
+                        self.extend_active_genome_anchor(GenomeAnchorSide::ThreePrime);
+                    }
+                });
+                ui.small(
+                    "5'/3' follows anchor strand orientation (for strand '-', 5' extends toward increasing genomic coordinates).",
+                );
+            }
         }
         if !self.op_status.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(&self.op_status).monospace()).wrap());
@@ -6007,6 +6086,37 @@ impl MainAreaDna {
         }
     }
 
+    fn extend_active_genome_anchor(&mut self, side: GenomeAnchorSide) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected".to_string();
+            return;
+        };
+        let length_bp = match Self::parse_positive_usize_text(
+            &self.genome_anchor_extend_length_bp,
+            "extension length (bp)",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let output_id = if self.genome_anchor_extend_output_id.trim().is_empty() {
+            None
+        } else {
+            Some(self.genome_anchor_extend_output_id.trim().to_string())
+        };
+        self.apply_operation_with_feedback(Operation::ExtendGenomeAnchor {
+            seq_id,
+            side,
+            length_bp,
+            output_id,
+            catalog_path: None,
+            cache_dir: None,
+        });
+    }
+
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
         if !result.created_seq_ids.is_empty() {
             self.last_created_seq_ids = result.created_seq_ids.clone();
@@ -7139,6 +7249,17 @@ impl MainAreaDna {
                 .map(Some)
                 .map_err(|_| format!("Invalid {field_name}: expected an integer"))
         }
+    }
+
+    fn parse_positive_usize_text(raw: &str, field_name: &str) -> Result<usize, String> {
+        let trimmed = raw.trim();
+        let parsed = trimmed
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid {field_name}: expected an integer"))?;
+        if parsed == 0 {
+            return Err(format!("Invalid {field_name}: expected >= 1"));
+        }
+        Ok(parsed)
     }
 
     fn parse_optional_f64_text(raw: &str, field_name: &str) -> Result<Option<f64>, String> {
@@ -8313,6 +8434,8 @@ impl MainAreaDna {
             extract_from: self.extract_from.clone(),
             extract_to: self.extract_to.clone(),
             extract_output_id: self.extract_output_id.clone(),
+            genome_anchor_extend_length_bp: self.genome_anchor_extend_length_bp.clone(),
+            genome_anchor_extend_output_id: self.genome_anchor_extend_output_id.clone(),
             parameter_name: self.parameter_name.clone(),
             parameter_value_json: self.parameter_value_json.clone(),
             anchored_mode_feature: self.anchored_mode_feature,
@@ -8490,6 +8613,13 @@ impl MainAreaDna {
         self.extract_from = s.extract_from;
         self.extract_to = s.extract_to;
         self.extract_output_id = s.extract_output_id;
+        self.genome_anchor_extend_length_bp = if s.genome_anchor_extend_length_bp.trim().is_empty()
+        {
+            "2000".to_string()
+        } else {
+            s.genome_anchor_extend_length_bp
+        };
+        self.genome_anchor_extend_output_id = s.genome_anchor_extend_output_id;
         self.parameter_name = s.parameter_name;
         self.parameter_value_json = s.parameter_value_json;
         self.anchored_mode_feature = s.anchored_mode_feature;

@@ -514,6 +514,14 @@ Current parameter support:
 - `max_fragments_per_container` (default `80000`)
   - limits digest fragment output per operation
   - also serves as ligation product-count limit guard
+- primer-design backend controls:
+  - `primer_design_backend` (default `auto`)
+    - accepted values: `auto`, `internal`, `primer3`
+    - `auto` tries Primer3 and falls back deterministically to internal scoring
+      with explicit warning + fallback reason in report metadata
+  - `primer3_executable` (default `"primer3_core"`)
+    - executable path/name used when backend is `primer3` or `auto`
+    - alias parameters accepted: `primer3_backend_executable`, `primer3_path`
 - `feature_details_font_size` (default `9.0`, range `8.0..24.0`)
   - controls GUI font size for the feature tree entries and feature range details
 - `regulatory_feature_max_view_span_bp` (default `50000`, range `>= 0`)
@@ -913,6 +921,12 @@ Operation progress/cancellation semantics:
 - Report schema:
   - `gentle.primer_design_report.v1`
   - deterministic ordering by score then tie-break fields
+  - backend metadata block:
+    - `backend.requested` (`auto|internal|primer3`)
+    - `backend.used` (`internal|primer3`)
+    - optional `backend.fallback_reason`
+    - optional `backend.primer3_executable`
+    - optional `backend.primer3_version`
   - each pair includes:
     - forward/reverse primer sequence and genomic binding window
     - estimated Tm and GC fraction
@@ -928,7 +942,7 @@ Operation progress/cancellation semantics:
 Primer-design shell command family (implemented):
 
 - Shared-shell family:
-  - `primers design REQUEST_JSON_OR_@FILE`
+  - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
@@ -937,6 +951,28 @@ Primer-design shell command family (implemented):
 - Response schemas:
   - `gentle.primer_design_report.v1`
   - `gentle.primer_design_report_list.v1`
+
+Async BLAST shell contract (agent/MCP-ready baseline):
+
+- Shared-shell families (both `genomes` and `helpers` scopes):
+  - `blast-start GENOME_ID QUERY_SEQUENCE ...`
+  - `blast-status JOB_ID [--with-report]`
+  - `blast-cancel JOB_ID`
+  - `blast-list`
+- Deterministic job payload schemas:
+  - `gentle.blast_async_start.v1`
+  - `gentle.blast_async_status.v1`
+  - `gentle.blast_async_cancel.v1`
+  - `gentle.blast_async_list.v1`
+- Job status contract:
+  - `job_id` stable per process
+  - terminal states: `completed | failed | cancelled`
+  - optional final `report` on `blast-status --with-report`
+- `gentle_mcp` exposes equivalent tool routes:
+  - `blast_async_start`
+  - `blast_async_status`
+  - `blast_async_cancel`
+  - `blast_async_list`
 
 ### Workflow
 

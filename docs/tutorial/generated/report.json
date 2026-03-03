@@ -2,32 +2,34 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 7,
+  "chapter_count": 8,
   "online_enabled": false,
   "generated_files": [
     "README.md",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt",
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md",
-    "chapters/02_load_and_digest_pgex.md",
-    "chapters/03_guides_filter_and_generate_oligos.md",
-    "chapters/04_digest_ligation_extract_region_minimal.md",
-    "chapters/05_guides_export_csv_and_protocol.md",
-    "chapters/06_contribute_to_gentle_development.md",
-    "chapters/07_prepare_reference_genome_online.md",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md",
+    "chapters/03_load_and_digest_pgex.md",
+    "chapters/04_guides_filter_and_generate_oligos.md",
+    "chapters/05_digest_ligation_extract_region_minimal.md",
+    "chapters/06_guides_export_csv_and_protocol.md",
+    "chapters/07_contribute_to_gentle_development.md",
+    "chapters/08_prepare_reference_genome_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "23989d52cbb81178936d68b220ddca500c30fcd5",
+    "README.md": "0e5f74cd2f6f75de58020372c4ef522005db2896",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "1a37b5dc28bd3e5caa9855ab399b91cbaa2cf28f",
-    "chapters/02_load_and_digest_pgex.md": "fd7439141aa5d0235385373501d44cbabedef65b",
-    "chapters/03_guides_filter_and_generate_oligos.md": "c65c47c58abb76f90bacc20f5a3e545cd208c9a9",
-    "chapters/04_digest_ligation_extract_region_minimal.md": "8c80c0880c930534ac920e63c6ced99c4c922138",
-    "chapters/05_guides_export_csv_and_protocol.md": "170386fcd3d987b87f2de1df5f8d6f0687ad8c07",
-    "chapters/06_contribute_to_gentle_development.md": "7e5cc409db83530978bb758ade5f0dfc15512b0d",
-    "chapters/07_prepare_reference_genome_online.md": "30332102ca24d0070212c3a715ee19a114f4d56e"
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "d5c2003bff186548a6cea5e3d0f63ad4a0ad5bf2",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "bb99a2bd67f36f6eb4ceec709fd90b8674e3c085",
+    "chapters/03_load_and_digest_pgex.md": "aff04e20fc7c17244a8227aa2d0409b393b232f6",
+    "chapters/04_guides_filter_and_generate_oligos.md": "26755dace6e2f702aa6a37e977f8fbcdd22beaf0",
+    "chapters/05_digest_ligation_extract_region_minimal.md": "a45b745b695369309c58ae618c59602159d6fba3",
+    "chapters/06_guides_export_csv_and_protocol.md": "0a34366d4c38ca85dbb911f64224ab69af93ef2a",
+    "chapters/07_contribute_to_gentle_development.md": "e610c2c2eb2e0c752d248c9920990969c3f75821",
+    "chapters/08_prepare_reference_genome_online.md": "6afb4c501988f48e3c05bd7c6992ff996b7b5c91"
   },
   "chapters": [
     {
@@ -46,8 +48,24 @@
       "retained_artifacts": []
     },
     {
-      "id": "load_and_digest_pgex",
+      "id": "find_and_extend_genomic_target_local_catalog",
       "order": 2,
+      "title": "Find and extend the right genomic target (local catalog)",
+      "tier": "core",
+      "example_id": "prepare_extract_extend_localproject_gene",
+      "example_source": "docs/examples/workflows/prepare_extract_extend_localproject_gene.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "order": 3,
       "title": "Load pGEX and digest with BamHI/EcoRI",
       "tier": "core",
       "example_id": "load_and_digest_pgex",
@@ -61,7 +79,7 @@
     },
     {
       "id": "guides_filter_and_generate_oligos",
-      "order": 3,
+      "order": 4,
       "title": "Guide practical filtering and oligo generation",
       "tier": "core",
       "example_id": "guides_filter_and_generate_oligos",
@@ -75,7 +93,7 @@
     },
     {
       "id": "digest_ligation_extract_region_minimal",
-      "order": 4,
+      "order": 5,
       "title": "Digest -> Ligation -> ExtractRegion minimal slice",
       "tier": "core",
       "example_id": "digest_ligation_extract_region_minimal",
@@ -89,7 +107,7 @@
     },
     {
       "id": "guides_export_csv_and_protocol",
-      "order": 5,
+      "order": 6,
       "title": "Guide oligo export (CSV + protocol)",
       "tier": "advanced",
       "example_id": "guides_export_csv_and_protocol",
@@ -106,7 +124,7 @@
     },
     {
       "id": "contribute_to_gentle_development",
-      "order": 6,
+      "order": 7,
       "title": "Contribute to GENtle development",
       "tier": "advanced",
       "example_id": "contribute_gentle_development_baseline",
@@ -121,14 +139,15 @@
     },
     {
       "id": "prepare_reference_genome_online",
-      "order": 7,
+      "order": 8,
       "title": "Prepare a reference genome cache (online)",
       "tier": "online",
       "example_id": "prepare_reference_genome_online",
       "example_source": "docs/examples/workflows/prepare_reference_genome_online.json",
       "concepts": [
         "deterministic_workflows",
-        "online_opt_in"
+        "online_opt_in",
+        "genome_catalog_targeting"
       ],
       "executed": false,
       "retained_artifacts": []

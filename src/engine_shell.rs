@@ -34,13 +34,14 @@ use crate::{
         GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, ProjectState, RenderSvgMode, SequenceAnchor,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend, ProjectState, RenderSvgMode,
+        SequenceAnchor,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     genomes::{
-        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeCatalog,
-        GenomeGeneRecord,
+        DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
+        GenomeCatalog, GenomeGeneRecord,
     },
     resource_sync,
     shell_docs::{
@@ -53,6 +54,7 @@ use crate::{
     },
     tf_motifs,
 };
+use lazy_static::lazy_static;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
@@ -68,6 +70,13 @@ use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc,
+    },
+    thread,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
@@ -75,6 +84,48 @@ const CLONING_PATTERN_TEMPLATE_FILE_SCHEMA: &str = "gentle.cloning_pattern_templ
 const CLONING_ROUTINE_CATALOG_SCHEMA: &str = "gentle.cloning_routines.v1";
 const CLONING_ROUTINE_LIST_SCHEMA: &str = "gentle.cloning_routines_list.v1";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
+const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
+const BLAST_ASYNC_JOB_HISTORY_LIMIT: usize = 200;
+static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Debug)]
+enum BlastAsyncWorkerMessage {
+    Done(Result<GenomeBlastReport, String>),
+}
+
+#[derive(Debug)]
+struct BlastAsyncJobRecord {
+    status: BlastAsyncJobStatus,
+    cancel_requested: Arc<AtomicBool>,
+    receiver: Option<mpsc::Receiver<BlastAsyncWorkerMessage>>,
+    report: Option<GenomeBlastReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct BlastAsyncJobStatus {
+    schema: String,
+    job_id: String,
+    state: String,
+    helper_mode: bool,
+    genome_id: String,
+    query_length: usize,
+    task: String,
+    max_hits: usize,
+    created_at_unix_ms: u128,
+    started_at_unix_ms: Option<u128>,
+    finished_at_unix_ms: Option<u128>,
+    cancel_requested: bool,
+    done_queries: usize,
+    total_queries: usize,
+    result_available: bool,
+    error: Option<String>,
+}
+
+lazy_static! {
+    static ref BLAST_ASYNC_JOBS: Mutex<HashMap<String, BlastAsyncJobRecord>> =
+        Mutex::new(HashMap::new());
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -507,6 +558,29 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
+    ReferenceBlastAsyncStart {
+        helper_mode: bool,
+        genome_id: String,
+        query_sequence: String,
+        max_hits: usize,
+        max_hits_explicit: bool,
+        task: Option<String>,
+        request_options_json: Option<Value>,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+    },
+    ReferenceBlastAsyncStatus {
+        helper_mode: bool,
+        job_id: String,
+        include_report: bool,
+    },
+    ReferenceBlastAsyncCancel {
+        helper_mode: bool,
+        job_id: String,
+    },
+    ReferenceBlastAsyncList {
+        helper_mode: bool,
+    },
     ReferenceBlastTrack {
         helper_mode: bool,
         genome_id: String,
@@ -746,6 +820,8 @@ pub enum ShellCommand {
     },
     PrimersDesign {
         request_json: String,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
     },
     PrimersListReports,
     PrimersShowReport {
@@ -2772,6 +2848,64 @@ impl ShellCommand {
                     cache
                 )
             }
+            Self::ReferenceBlastAsyncStart {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let task = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+                let max_hits_label = if *max_hits_explicit {
+                    max_hits.to_string()
+                } else {
+                    "layered-default".to_string()
+                };
+                format!(
+                    "start async blast query (len={}) against {label} '{genome_id}' (max_hits={}, task='{}', request_options={}, catalog='{}', cache='{}')",
+                    query_sequence.len(),
+                    max_hits_label,
+                    task,
+                    if request_options_json.is_some() {
+                        "yes"
+                    } else {
+                        "no"
+                    },
+                    catalog,
+                    cache
+                )
+            }
+            Self::ReferenceBlastAsyncStatus {
+                helper_mode,
+                job_id,
+                include_report,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                format!(
+                    "inspect async {label} blast job '{}' (include_report={})",
+                    job_id, include_report
+                )
+            }
+            Self::ReferenceBlastAsyncCancel {
+                helper_mode,
+                job_id,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                format!("cancel async {label} blast job '{}'", job_id)
+            }
+            Self::ReferenceBlastAsyncList { helper_mode } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                format!("list async {label} blast jobs")
+            }
             Self::ReferenceBlastTrack {
                 helper_mode,
                 genome_id,
@@ -3361,9 +3495,21 @@ impl ShellCommand {
                     .unwrap_or("-"),
                 include_qc_checklist
             ),
-            Self::PrimersDesign { request_json } => format!(
-                "design primer pairs from JSON request payload (len={})",
-                request_json.len()
+            Self::PrimersDesign {
+                request_json,
+                backend,
+                primer3_executable,
+            } => format!(
+                "design primer pairs from JSON request payload (len={}, backend='{}', primer3_executable='{}')",
+                request_json.len(),
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("default"),
             ),
             Self::PrimersListReports => "list stored primer-design reports".to_string(),
             Self::PrimersShowReport { report_id } => {
@@ -3374,6 +3520,13 @@ impl ShellCommand {
                 report_id, path
             ),
             Self::SetParameter { name, value_json } => match name.as_str() {
+                "primer_design_backend" | "primers_design_backend" => format!(
+                    "set primer design backend to {} (auto|internal|primer3)",
+                    value_json
+                ),
+                "primer3_executable" | "primer3_backend_executable" | "primer3_path" => {
+                    format!("set primer3 executable path to {}", value_json)
+                }
                 "linear_sequence_letter_layout_mode" | "linear_helical_letter_layout_mode" => {
                     format!(
                         "set adaptive linear DNA letter mode '{}' (auto|standard|helical|condensed_10_row)",
@@ -3567,6 +3720,253 @@ fn effective_catalog_path(catalog_path: &Option<String>, helper_mode: bool) -> S
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string())
         .unwrap_or_else(|| default_catalog_path(helper_mode).to_string())
+}
+
+fn shell_now_unix_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+fn next_blast_async_job_id() -> String {
+    let next = BLAST_ASYNC_JOB_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("blast-job-{}", next.max(1))
+}
+
+fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
+    let Some(receiver) = &record.receiver else {
+        return;
+    };
+    loop {
+        match receiver.try_recv() {
+            Ok(BlastAsyncWorkerMessage::Done(result)) => {
+                record.status.done_queries = 1;
+                record.status.total_queries = 1;
+                record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+                match result {
+                    Ok(report) => {
+                        record.status.state = "completed".to_string();
+                        record.status.error = None;
+                        record.status.result_available = true;
+                        record.report = Some(report);
+                    }
+                    Err(err) => {
+                        record.status.state = if record.cancel_requested.load(Ordering::Relaxed) {
+                            "cancelled".to_string()
+                        } else {
+                            "failed".to_string()
+                        };
+                        record.status.error = Some(err);
+                        record.status.result_available = false;
+                        record.report = None;
+                    }
+                }
+                record.receiver = None;
+                break;
+            }
+            Err(mpsc::TryRecvError::Empty) => break,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                record.status.state = "failed".to_string();
+                record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+                record.status.error = Some("BLAST async worker disconnected".to_string());
+                record.status.result_available = false;
+                record.receiver = None;
+                break;
+            }
+        }
+    }
+}
+
+fn prune_blast_async_jobs_locked(jobs: &mut HashMap<String, BlastAsyncJobRecord>) {
+    if jobs.len() <= BLAST_ASYNC_JOB_HISTORY_LIMIT {
+        return;
+    }
+    let mut removable: Vec<(u128, String)> = jobs
+        .iter_mut()
+        .filter_map(|(job_id, record)| {
+            refresh_blast_async_job_record(record);
+            match record.status.state.as_str() {
+                "completed" | "failed" | "cancelled" => {
+                    Some((record.status.created_at_unix_ms, job_id.clone()))
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    removable.sort_by_key(|(created_at, _)| *created_at);
+    let excess = jobs.len().saturating_sub(BLAST_ASYNC_JOB_HISTORY_LIMIT);
+    for (_, job_id) in removable.into_iter().take(excess) {
+        jobs.remove(&job_id);
+    }
+}
+
+fn collect_blast_async_job_snapshots(
+    helper_mode_filter: Option<bool>,
+) -> Result<Vec<BlastAsyncJobStatus>, String> {
+    let mut jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "Could not lock BLAST async job registry".to_string())?;
+    let mut statuses: Vec<BlastAsyncJobStatus> = vec![];
+    for record in jobs.values_mut() {
+        refresh_blast_async_job_record(record);
+        if let Some(helper_mode) = helper_mode_filter {
+            if record.status.helper_mode != helper_mode {
+                continue;
+            }
+        }
+        statuses.push(record.status.clone());
+    }
+    statuses.sort_by(|a, b| {
+        a.created_at_unix_ms
+            .cmp(&b.created_at_unix_ms)
+            .then(a.job_id.cmp(&b.job_id))
+    });
+    Ok(statuses)
+}
+
+fn get_blast_async_job_snapshot(
+    job_id: &str,
+    include_report: bool,
+) -> Result<(BlastAsyncJobStatus, Option<GenomeBlastReport>), String> {
+    let mut jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "Could not lock BLAST async job registry".to_string())?;
+    let record = jobs
+        .get_mut(job_id)
+        .ok_or_else(|| format!("BLAST async job '{}' not found", job_id))?;
+    refresh_blast_async_job_record(record);
+    Ok((
+        record.status.clone(),
+        if include_report {
+            record.report.clone()
+        } else {
+            None
+        },
+    ))
+}
+
+fn cancel_blast_async_job(job_id: &str) -> Result<BlastAsyncJobStatus, String> {
+    let mut jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "Could not lock BLAST async job registry".to_string())?;
+    let record = jobs
+        .get_mut(job_id)
+        .ok_or_else(|| format!("BLAST async job '{}' not found", job_id))?;
+    record.cancel_requested.store(true, Ordering::Relaxed);
+    record.status.cancel_requested = true;
+    if record.status.started_at_unix_ms.is_none() {
+        record.status.started_at_unix_ms = Some(shell_now_unix_ms());
+    }
+    if record.receiver.is_none() {
+        record.status.finished_at_unix_ms.get_or_insert(shell_now_unix_ms());
+        if record.status.state == "queued" || record.status.state == "running" {
+            record.status.state = "cancelled".to_string();
+        }
+    } else if record.status.state == "queued" {
+        record.status.state = "running".to_string();
+    }
+    refresh_blast_async_job_record(record);
+    Ok(record.status.clone())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_blast_async_job(
+    engine: &GentleEngine,
+    helper_mode: bool,
+    genome_id: &str,
+    query_sequence: &str,
+    max_hits: usize,
+    max_hits_explicit: bool,
+    task: Option<String>,
+    request_options_json: Option<Value>,
+    catalog_path: Option<String>,
+    cache_dir: Option<String>,
+) -> Result<BlastAsyncJobStatus, String> {
+    if genome_id.trim().is_empty() {
+        return Err("BLAST async start requires a non-empty genome_id".to_string());
+    }
+    if query_sequence.trim().is_empty() {
+        return Err("BLAST async start requires a non-empty query_sequence".to_string());
+    }
+    if max_hits == 0 {
+        return Err("BLAST async start requires max_hits >= 1".to_string());
+    }
+
+    let resolved_catalog = resolved_catalog_path(&catalog_path, helper_mode).map(str::to_string);
+    let engine_snapshot = engine.clone();
+    let job_id = next_blast_async_job_id();
+    let created_at = shell_now_unix_ms();
+    let cancel_requested = Arc::new(AtomicBool::new(false));
+    let cancel_for_thread = Arc::clone(&cancel_requested);
+    let task_name = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+    let (tx, rx) = mpsc::channel::<BlastAsyncWorkerMessage>();
+    let genome_id_owned = genome_id.to_string();
+    let query_owned = query_sequence.to_string();
+    let request_options_for_thread = request_options_json.clone();
+    let cache_dir_for_thread = cache_dir.clone();
+    let task_for_thread = task.clone();
+
+    thread::spawn(move || {
+        let mut should_cancel = || cancel_for_thread.load(Ordering::Relaxed);
+        let result = if helper_mode {
+            engine_snapshot.blast_helper_genome_with_project_and_request_options_and_cancel(
+                &genome_id_owned,
+                &query_owned,
+                request_options_for_thread.as_ref(),
+                task_for_thread.as_deref(),
+                if max_hits_explicit { Some(max_hits) } else { None },
+                resolved_catalog.as_deref(),
+                cache_dir_for_thread.as_deref(),
+                &mut should_cancel,
+            )
+        } else {
+            engine_snapshot.blast_reference_genome_with_project_and_request_options_and_cancel(
+                resolved_catalog.as_deref(),
+                &genome_id_owned,
+                &query_owned,
+                request_options_for_thread.as_ref(),
+                task_for_thread.as_deref(),
+                if max_hits_explicit { Some(max_hits) } else { None },
+                cache_dir_for_thread.as_deref(),
+                &mut should_cancel,
+            )
+        };
+        let _ = tx.send(BlastAsyncWorkerMessage::Done(result.map_err(|e| e.to_string())));
+    });
+
+    let status = BlastAsyncJobStatus {
+        schema: BLAST_ASYNC_JOB_SCHEMA.to_string(),
+        job_id: job_id.clone(),
+        state: "running".to_string(),
+        helper_mode,
+        genome_id: genome_id.to_string(),
+        query_length: query_sequence.len(),
+        task: task_name,
+        max_hits,
+        created_at_unix_ms: created_at,
+        started_at_unix_ms: Some(created_at),
+        finished_at_unix_ms: None,
+        cancel_requested: false,
+        done_queries: 0,
+        total_queries: 1,
+        result_available: false,
+        error: None,
+    };
+    let mut jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "Could not lock BLAST async job registry".to_string())?;
+    jobs.insert(
+        job_id,
+        BlastAsyncJobRecord {
+            status: status.clone(),
+            cancel_requested,
+            receiver: Some(rx),
+            report: None,
+        },
+    );
+    prune_blast_async_jobs_locked(&mut jobs);
+    Ok(status)
 }
 
 fn compile_gene_filter_regex(filter: &str) -> Result<Option<Regex>, String> {
@@ -3773,6 +4173,20 @@ fn parse_guide_plate_format(value: &str) -> Result<GuideOligoPlateFormat, String
         "384" | "plate384" | "p384" => Ok(GuideOligoPlateFormat::Plate384),
         other => Err(format!(
             "Unsupported plate format '{other}' (expected 96|384)"
+        )),
+    }
+}
+
+fn parse_primer_design_backend(value: &str) -> Result<PrimerDesignBackend, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "auto" => Ok(PrimerDesignBackend::Auto),
+        "internal" | "baseline" => Ok(PrimerDesignBackend::Internal),
+        "primer3" | "primer3_core" | "external-primer3" | "external_primer3" => {
+            Ok(PrimerDesignBackend::Primer3)
+        }
+        other => Err(format!(
+            "Unsupported primer backend '{}' (expected auto|internal|primer3)",
+            other
         )),
     }
 }
@@ -4214,6 +4628,146 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 cache_dir,
             })
         }
+        "blast-start" => {
+            if tokens.len() < 4 {
+                return Err(format!(
+                    "{label} blast-start requires GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]"
+                ));
+            }
+            let genome_id = tokens[2].clone();
+            let query_sequence = tokens[3].clone();
+            let mut max_hits: usize = 25;
+            let mut max_hits_explicit = false;
+            let mut task: Option<String> = None;
+            let mut request_options_json: Option<Value> = None;
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--max-hits" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--max-hits", label)?;
+                        max_hits = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid --max-hits value '{raw}': {e}"))?;
+                        if max_hits == 0 {
+                            return Err("--max-hits must be >= 1".to_string());
+                        }
+                        max_hits_explicit = true;
+                    }
+                    "--task" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--task", label)?;
+                        let normalized = raw.trim().to_ascii_lowercase();
+                        match normalized.as_str() {
+                            "blastn-short" | "blastn" => task = Some(normalized),
+                            _ => {
+                                return Err(format!(
+                                    "Unsupported --task value '{}'; expected blastn-short or blastn",
+                                    raw
+                                ));
+                            }
+                        }
+                    }
+                    "--options-json" => {
+                        if request_options_json.is_some() {
+                            return Err(format!(
+                                "Only one of --options-json/--options-file may be provided for {label} blast-start"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, "--options-json", label)?;
+                        request_options_json =
+                            Some(parse_blast_options_override(&raw, label, "--options-json")?);
+                    }
+                    "--options-file" => {
+                        if request_options_json.is_some() {
+                            return Err(format!(
+                                "Only one of --options-json/--options-file may be provided for {label} blast-start"
+                            ));
+                        }
+                        let raw = parse_option_path(tokens, &mut idx, "--options-file", label)?;
+                        let file_ref = format!("@{raw}");
+                        request_options_json = Some(parse_blast_options_override(
+                            &file_ref,
+                            label,
+                            "--options-file",
+                        )?);
+                    }
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} blast-start"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceBlastAsyncStart {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            })
+        }
+        "blast-status" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} blast-status requires JOB_ID [--with-report]"
+                ));
+            }
+            let job_id = tokens[2].trim().to_string();
+            if job_id.is_empty() {
+                return Err(format!("{label} blast-status requires non-empty JOB_ID"));
+            }
+            let mut include_report = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--with-report" => {
+                        include_report = true;
+                        idx += 1;
+                    }
+                    "--no-report" => {
+                        include_report = false;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for {label} blast-status"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceBlastAsyncStatus {
+                helper_mode,
+                job_id,
+                include_report,
+            })
+        }
+        "blast-cancel" => {
+            if tokens.len() != 3 {
+                return Err(format!("{label} blast-cancel requires JOB_ID"));
+            }
+            let job_id = tokens[2].trim().to_string();
+            if job_id.is_empty() {
+                return Err(format!("{label} blast-cancel requires non-empty JOB_ID"));
+            }
+            Ok(ShellCommand::ReferenceBlastAsyncCancel {
+                helper_mode,
+                job_id,
+            })
+        }
+        "blast-list" => {
+            if tokens.len() != 2 {
+                return Err(format!("{label} blast-list takes no options"));
+            }
+            Ok(ShellCommand::ReferenceBlastAsyncList { helper_mode })
+        }
         "blast-track" => {
             if tokens.len() < 5 {
                 return Err(format!(
@@ -4462,7 +5016,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-track, extract-region, extract-gene, extend-anchor)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor)"
         )),
     }
 }
@@ -5768,11 +6322,41 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
     match tokens[1].as_str() {
         "design" => {
-            if tokens.len() != 3 {
-                return Err("primers design requires REQUEST_JSON_OR_@FILE".to_string());
+            if tokens.len() < 3 {
+                return Err(
+                    "primers design requires REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+                        .to_string(),
+                );
+            }
+            let request_json = tokens[2].clone();
+            let mut backend: Option<PrimerDesignBackend> = None;
+            let mut primer3_executable: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--backend" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--backend", "primers design")?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers design",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers design"));
+                    }
+                }
             }
             Ok(ShellCommand::PrimersDesign {
-                request_json: tokens[2].clone(),
+                request_json,
+                backend,
+                primer3_executable,
             })
         }
         "list-reports" => {
@@ -9062,6 +9646,77 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::ReferenceBlastAsyncStart {
+            helper_mode,
+            genome_id,
+            query_sequence,
+            max_hits,
+            max_hits_explicit,
+            task,
+            request_options_json,
+            catalog_path,
+            cache_dir,
+        } => {
+            let status = start_blast_async_job(
+                engine,
+                *helper_mode,
+                genome_id,
+                query_sequence,
+                *max_hits,
+                *max_hits_explicit,
+                task.clone(),
+                request_options_json.clone(),
+                catalog_path.clone(),
+                cache_dir.clone(),
+            )?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.blast_async_start.v1",
+                    "job": status,
+                }),
+            }
+        }
+        ShellCommand::ReferenceBlastAsyncStatus {
+            helper_mode: _,
+            job_id,
+            include_report,
+        } => {
+            let (status, report) = get_blast_async_job_snapshot(job_id, *include_report)?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.blast_async_status.v1",
+                    "job": status,
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::ReferenceBlastAsyncCancel {
+            helper_mode: _,
+            job_id,
+        } => {
+            let status = cancel_blast_async_job(job_id)?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.blast_async_cancel.v1",
+                    "job": status,
+                }),
+            }
+        }
+        ShellCommand::ReferenceBlastAsyncList { helper_mode } => {
+            let jobs = collect_blast_async_job_snapshots(Some(*helper_mode))?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.blast_async_list.v1",
+                    "helper_mode": helper_mode,
+                    "job_count": jobs.len(),
+                    "jobs": jobs,
+                }),
+            }
+        }
         ShellCommand::ReferenceBlastTrack {
             helper_mode,
             genome_id,
@@ -10482,7 +11137,11 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
-        ShellCommand::PrimersDesign { request_json } => {
+        ShellCommand::PrimersDesign {
+            request_json,
+            backend,
+            primer3_executable,
+        } => {
             let json_text = parse_json_payload(request_json)?;
             let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
                 format!(
@@ -10508,7 +11167,22 @@ pub fn execute_shell_command_with_options(
                 .metadata
                 .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
                 .cloned();
-            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+            let previous_backend = engine.state().parameters.primer_design_backend;
+            let previous_executable = engine.state().parameters.primer3_executable.clone();
+            if let Some(override_backend) = backend {
+                engine.state_mut().parameters.primer_design_backend = *override_backend;
+            }
+            if let Some(override_exec) = primer3_executable
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+            }
+            let op_result = engine.apply(op).map_err(|e| e.to_string());
+            engine.state_mut().parameters.primer_design_backend = previous_backend;
+            engine.state_mut().parameters.primer3_executable = previous_executable;
+            let op_result = op_result?;
             let after = engine
                 .state()
                 .metadata
@@ -10524,11 +11198,13 @@ pub fn execute_shell_command_with_options(
                     .max_by_key(|summary| summary.generated_at_unix_ms)
                     .and_then(|summary| engine.get_primer_design_report(&summary.report_id).ok())
             };
+            let effective_backend = selected_report.as_ref().map(|report| report.backend.clone());
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
                     "result": op_result,
                     "report": selected_report,
+                    "effective_backend": effective_backend,
                 }),
             }
         }
@@ -10951,6 +11627,72 @@ mod tests {
     }
 
     #[test]
+    fn parse_genomes_blast_start_with_options() {
+        let cmd = parse_shell_line(
+            "genomes blast-start ToyGenome ACGTACGT --max-hits 12 --task blastn --catalog c.json --cache-dir cache",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::ReferenceBlastAsyncStart {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome");
+                assert_eq!(query_sequence, "ACGTACGT");
+                assert_eq!(max_hits, 12);
+                assert!(max_hits_explicit);
+                assert_eq!(task.as_deref(), Some("blastn"));
+                assert!(request_options_json.is_none());
+                assert_eq!(catalog_path.as_deref(), Some("c.json"));
+                assert_eq!(cache_dir.as_deref(), Some("cache"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_blast_status_and_cancel() {
+        let status = parse_shell_line("genomes blast-status blast-job-42 --with-report")
+            .expect("parse status command");
+        match status {
+            ShellCommand::ReferenceBlastAsyncStatus {
+                helper_mode,
+                job_id,
+                include_report,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(job_id, "blast-job-42");
+                assert!(include_report);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let cancel =
+            parse_shell_line("helpers blast-cancel blast-job-42").expect("parse cancel command");
+        match cancel {
+            ShellCommand::ReferenceBlastAsyncCancel { helper_mode, job_id } => {
+                assert!(helper_mode);
+                assert_eq!(job_id, "blast-job-42");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let listed = parse_shell_line("helpers blast-list").expect("parse list command");
+        match listed {
+            ShellCommand::ReferenceBlastAsyncList { helper_mode } => {
+                assert!(helper_mode);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_genomes_blast_with_options_json_override() {
         let cmd = parse_shell_line(
             "genomes blast ToyGenome ACGTACGT --options-json '{\"max_hits\":7,\"thresholds\":{\"min_identity_percent\":97.5}}'",
@@ -11084,6 +11826,29 @@ mod tests {
                 assert!(request_options_json.is_none());
                 assert!(track_name.is_none());
                 assert!(!clear_existing);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_primers_design_with_backend_overrides() {
+        let cmd = parse_shell_line(
+            "primers design @request.json --backend primer3 --primer3-exec /opt/primer3/primer3_core",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::PrimersDesign {
+                request_json,
+                backend,
+                primer3_executable,
+            } => {
+                assert_eq!(request_json, "@request.json");
+                assert_eq!(backend, Some(PrimerDesignBackend::Primer3));
+                assert_eq!(
+                    primer3_executable.as_deref(),
+                    Some("/opt/primer3/primer3_core")
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -13224,6 +13989,8 @@ filter set1 set2 --metric score --min 10
             &mut engine,
             &ShellCommand::PrimersDesign {
                 request_json: request,
+                backend: Some(PrimerDesignBackend::Internal),
+                primer3_executable: None,
             },
         )
         .expect("primers design");
@@ -13271,6 +14038,64 @@ filter set1 set2 --metric score --min 10
         );
         let text = fs::read_to_string(&export_path).expect("read export");
         assert!(text.contains("gentle.primer_design_report.v1"));
+    }
+
+    #[test]
+    fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
+        let mut engine = GentleEngine::new();
+        let start = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceBlastAsyncStart {
+                helper_mode: true,
+                genome_id: "missing_helper".to_string(),
+                query_sequence: "ACGTACGT".to_string(),
+                max_hits: 5,
+                max_hits_explicit: true,
+                task: Some("blastn-short".to_string()),
+                request_options_json: None,
+                catalog_path: None,
+                cache_dir: None,
+            },
+        )
+        .expect("start async blast");
+        assert!(!start.state_changed);
+        let job_id = start
+            .output
+            .get("job")
+            .and_then(|job| job.get("job_id"))
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        assert!(!job_id.is_empty());
+
+        let mut terminal_state = String::new();
+        for _ in 0..40 {
+            let status = execute_shell_command(
+                &mut engine,
+                &ShellCommand::ReferenceBlastAsyncStatus {
+                    helper_mode: true,
+                    job_id: job_id.clone(),
+                    include_report: true,
+                },
+            )
+            .expect("status");
+            terminal_state = status
+                .output
+                .get("job")
+                .and_then(|job| job.get("state"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string();
+            if matches!(terminal_state.as_str(), "completed" | "failed" | "cancelled") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            matches!(terminal_state.as_str(), "failed" | "cancelled"),
+            "unexpected async blast terminal state: {}",
+            terminal_state
+        );
     }
 
     #[test]

@@ -27,10 +27,13 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 ## Concepts and Recurrence
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Load pGEX and digest with BamHI/EcoRI](./02_load_and_digest_pgex.md), [Chapter 3: Guide practical filtering and oligo generation](./03_guides_filter_and_generate_oligos.md), [Chapter 4: Digest -> Ligation -> ExtractRegion minimal slice](./04_digest_ligation_extract_region_minimal.md).
+  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Guide practical filtering and oligo generation](./04_guides_filter_and_generate_oligos.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md).
   - Reoccurs in: no later chapter.
 - **Online Opt-in Execution** (`online_opt_in`): Network-dependent chapters remain explicit opt-in and do not break offline default CI.
   - Status: introduced in this chapter.
+  - Reoccurs in: no later chapter.
+- **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
+  - Status: reinforced from [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md).
   - Reoccurs in: no later chapter.
 
 ## GUI First

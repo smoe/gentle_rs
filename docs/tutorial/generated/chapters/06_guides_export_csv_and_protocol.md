@@ -26,7 +26,7 @@ Operational work is only useful if outputs can be shared with collaborators and 
 ## Concepts and Recurrence
 
 - **Guide Design Pipeline** (`guide_design_pipeline`): Guide sets can be created, filtered, expanded to oligos, and exported with protocol context.
-  - Status: reinforced from [Chapter 3: Guide practical filtering and oligo generation](./03_guides_filter_and_generate_oligos.md).
+  - Status: reinforced from [Chapter 4: Guide practical filtering and oligo generation](./04_guides_filter_and_generate_oligos.md).
   - Reoccurs in: no later chapter.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
   - Status: introduced in this chapter.

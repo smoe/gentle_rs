@@ -276,6 +276,10 @@ Current tools:
 - `ui_intent` (run deterministic `ui open|focus` intent resolution path)
 - `ui_prepared_genomes` (run deterministic prepared-genome query path)
 - `ui_latest_prepared` (resolve latest prepared genome for one species)
+- `blast_async_start` (start async BLAST job through shared shell route)
+- `blast_async_status` (poll async BLAST job status and optional report)
+- `blast_async_cancel` (request cancellation for async BLAST job)
+- `blast_async_list` (list known async BLAST jobs in scope)
 
 Tool-parity rule:
 
@@ -358,6 +362,26 @@ Minimum MCP JSON-RPC flow:
 
 - required: `species`
 - optional: `state_path`, `helpers`, `catalog_path`, `cache_dir`
+
+`blast_async_start` arguments:
+
+- required: `genome_id`, `query_sequence`
+- optional: `state_path`, `helpers`, `max_hits`, `task`, `options_json`,
+  `catalog_path`, `cache_dir`
+
+`blast_async_status` arguments:
+
+- required: `job_id`
+- optional: `helpers`, `with_report`
+
+`blast_async_cancel` arguments:
+
+- required: `job_id`
+- optional: `helpers`
+
+`blast_async_list` arguments:
+
+- optional: `helpers`
 
 `ui_intents` arguments:
 
@@ -647,6 +671,10 @@ Shared shell command:
     - `genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
     - `genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes blast-status JOB_ID [--with-report]`
+    - `genomes blast-cancel JOB_ID`
+    - `genomes blast-list`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
@@ -655,6 +683,10 @@ Shared shell command:
     - `helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter REGEX] [--biotype NAME] [--limit N] [--offset N]`
     - `helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]`
     - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers blast-start HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers blast-status JOB_ID [--with-report]`
+    - `helpers blast-cancel JOB_ID`
+    - `helpers blast-list`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -700,7 +732,7 @@ Shared shell command:
     - `guides oligos-show OLIGO_SET_ID`
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
-    - `primers design REQUEST_JSON_OR_@FILE`
+    - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
     - `primers export-report REPORT_ID OUTPUT.json`
@@ -892,6 +924,14 @@ Genome convenience commands:
   - Runs `blastn` against prepared genome cache/index.
   - `--task` defaults to `blastn-short`; accepted values: `blastn-short`, `blastn`.
   - `--options-json` / `--options-file` accept a JSON object that can override quick options and include thresholds (`max_evalue`, `min_identity_percent`, `min_query_coverage_percent`, `min_alignment_length_bp`, `min_bit_score`, `unique_best_hit`).
+- `genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
+  - Starts one async BLAST job and returns a stable `job_id`.
+- `genomes blast-status JOB_ID [--with-report]`
+  - Polls async BLAST job status; `--with-report` includes final report payload when available.
+- `genomes blast-cancel JOB_ID`
+  - Requests cooperative cancellation for one async BLAST job.
+- `genomes blast-list`
+  - Lists known async genome-BLAST jobs in the current process.
 - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeRegion`.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -916,6 +956,14 @@ Helper convenience commands:
   - `--timeout-secs N`: optional prepare-job timebox.
 - `helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes blast`, with helper-catalog default.
+- `helpers blast-start HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
+  - Same behavior as `genomes blast-start`, with helper-catalog default.
+- `helpers blast-status JOB_ID [--with-report]`
+  - Same behavior as `genomes blast-status`, scoped to helper jobs.
+- `helpers blast-cancel JOB_ID`
+  - Same behavior as `genomes blast-cancel`, scoped to helper jobs.
+- `helpers blast-list`
+  - Same behavior as `genomes blast-list`, scoped to helper jobs.
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -1322,6 +1370,13 @@ Set regulatory-overlay max linear view span threshold (`50000` recommended for a
 
 ```json
 {"SetParameter":{"name":"regulatory_feature_max_view_span_bp","value":50000}}
+```
+
+Set primer-design backend controls (internal baseline + optional Primer3 backend):
+
+```json
+{"SetParameter":{"name":"primer_design_backend","value":"auto"}}
+{"SetParameter":{"name":"primer3_executable","value":"primer3_core"}}
 ```
 
 Set adaptive linear DNA-letter routing parameters (shared GUI/runtime semantics):

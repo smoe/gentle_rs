@@ -560,10 +560,18 @@ Execution safety model:
   used by GUI shell and `gentle_cli shell`.
 - This includes BLAST shell routes (`genomes blast`, `helpers blast`,
   `genomes blast-track`, `helpers blast-track`) when agents suggest them.
-- Current limitation: suggested-command execution is synchronous/inline for
-  long-running shell commands. A dedicated async job contract for agent-driven
-  long-running commands (especially BLAST and upcoming primer-pair multi-BLAST
-  selection workflows) remains a planned follow-up.
+- Async BLAST job contract baseline is now available through shared shell:
+  - `genomes/helpers blast-start`
+  - `genomes/helpers blast-status`
+  - `genomes/helpers blast-cancel`
+  - `genomes/helpers blast-list`
+- The same async BLAST surface is exposed through MCP tools
+  (`blast_async_start|status|cancel|list`) with shared parser/executor parity.
+- Remaining limitation:
+  - agent auto-execution currently runs one suggested command at a time and does
+    not yet orchestrate multi-step poll/wait loops automatically for async jobs.
+  - planned primer-pair multi-BLAST specificity fan-out still needs dedicated
+    workflow-level async orchestration on top of the baseline job primitives.
 - Protocol-level JSON shapes and exact command contract are specified in
   `docs/protocol.md` (agent catalog/request/response schemas and execution
   intent semantics).
@@ -653,7 +661,7 @@ report inspection/export path:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
   - report payload schema: `gentle.primer_design_report.v1`
 - Shared-shell commands:
-  - `primers design REQUEST_JSON_OR_@FILE`
+  - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
@@ -666,31 +674,29 @@ Adapter contract:
   and can use the same shared-shell routes for report inspection/export.
 - No adapter-specific primer-design business logic is permitted.
 
-Primer3 wrapper integration direction (planned):
+Primer3 wrapper integration status (baseline implemented):
 
 - `DesignPrimerPairs` remains the canonical external contract for
   GUI/CLI/JS/Lua/agent/MCP entry points; Primer3 integration is an engine
-  backend implementation detail, not a new adapter contract family.
-- Backend dispatch should be explicit and deterministic:
-  - maintain current internal baseline backend for deterministic fallback/tests
-  - add an optional Primer3-backed backend (`primer3_core`) selected through
-    engine-owned configuration/operation semantics.
-- A shared request-normalization layer should map `DesignPrimerPairs` payloads
-  to Primer3 input records deterministically (template, ROI/window constraints,
-  side constraints, amplicon bounds, pair caps).
-- Primer3 output should be normalized back into the existing
-  `gentle.primer_design_report.v1` schema with stable ranking/tie-break
-  semantics so downstream automation does not fork by backend.
-- Every Primer3-backed report should carry deterministic provenance metadata
-  (backend id, executable path/version, normalized config hash, invocation
-  summary, runtime diagnostics/warnings) for replay and audit parity.
-- External-tool checks for Primer3 availability/configuration should follow the
-  same explicit preflight pattern used for BLAST tooling (found/missing/version
-  diagnostics before long-running work starts).
-- Planned off-target/specificity tiers for primer-pair selection may fan out
-  into multiple BLAST checks per candidate pair; this stage should bind to the
-  same planned async job-handle/progress/cancel contract used for agent-driven
-  long-running BLAST routes.
+  backend implementation detail.
+- Engine backend selection is now explicit and deterministic via parameters:
+  - `primer_design_backend = auto|internal|primer3`
+  - `primer3_executable` (default `primer3_core`)
+- `auto` mode attempts Primer3 and deterministically falls back to the internal
+  backend with explicit warning text when Primer3 is unavailable.
+- Primer3 outputs are normalized into the existing
+  `gentle.primer_design_report.v1` pair schema with shared deterministic
+  ranking/tie-break behavior.
+- Reports now carry backend provenance metadata:
+  - requested backend
+  - used backend
+  - optional fallback reason
+  - optional Primer3 executable/version details
+- Remaining work:
+  - deeper Primer3 constraint mapping parity for edge-case constraints
+  - broader fixture-backed equivalence matrix between internal and Primer3
+  - dedicated preflight/status views in GUI configuration panels
+  - multi-BLAST specificity tiers integrated into primer-pair post-filtering
 
 ### Primer/PCR/BLAST UI and internal BLAST abstraction plan (new)
 

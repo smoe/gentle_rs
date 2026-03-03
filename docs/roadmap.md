@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-01
+Last updated: 2026-03-03
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -94,8 +94,15 @@ order. Durable architecture constraints and decisions remain in
   - shared-shell/CLI inspection/export commands are available:
     `primers design`, `primers list-reports`, `primers show-report`,
     `primers export-report`
-  - current implementation is internal-baseline scoring; Primer3 wrapper
-    backend integration remains pending
+  - backend selection is now available through engine parameters and shell
+    command options:
+    - `primer_design_backend=auto|internal|primer3`
+    - `primer3_executable` path override
+    - `primers design ... --backend ... --primer3-exec ...`
+  - report metadata now records backend provenance
+    (`requested`, `used`, optional fallback reason + Primer3 executable/version)
+  - `auto` mode now falls back deterministically to internal scoring when
+    Primer3 is unavailable
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - tutorial manifest source:
@@ -174,6 +181,9 @@ order. Durable architecture constraints and decisions remain in
     sequence text capacity
   - debug builds include routing-tier diagnostics in the SVG header block
 - Scrollable/resizable Engine Ops area and shared-shell panel.
+- DNA sequence windows now expose direct genome-anchor extension controls
+  (`Extend 5'` / `Extend 3'` with bp + optional output ID) next to anchor
+  status, using shared `ExtendGenomeAnchor` engine semantics (same as shell/CLI).
 - Context-sensitive hover descriptions on actionable controls.
 - Unified interaction policy baseline is implemented across primary canvases and panes:
   - default wheel/trackpad scroll pans/scrolls
@@ -273,9 +283,11 @@ Notes:
      primer design/validation workflows, auto-annotation library scans,
      sequencing-confirmation workflows, and interactive cloning clipboard/model
    - primer design backend parity is still incomplete:
-     - no first-class Primer3 wrapper (`primer3_core`) behind
-       `DesignPrimerPairs` yet
-     - no backend preflight/version diagnostics for Primer3
+     - Primer3 backend baseline is now available behind `DesignPrimerPairs`
+       (with deterministic auto-fallback to internal backend), but deeper
+       constraint-mapping parity still needs hardening
+     - backend preflight/version diagnostics are now captured per report, but
+       dedicated GUI preflight/status UX is still pending
      - no adapter-equivalence test matrix comparing internal vs Primer3-backed
        report normalization/provenance behavior
 2. MCP route now has guarded mutating execution (`op`/`workflow`) and
@@ -286,12 +298,16 @@ Notes:
    coverage).
 3. Mutating-intent safety policy is not yet fully hardened across agent, voice,
    and MCP invocation paths.
-4. Agent-facing execution of long-running shell commands is still synchronous:
-   - BLAST can be triggered by agent suggestions through shared shell routes,
-     but there is no dedicated async job-handle/progress/cancel contract yet for
-     agent-driven BLAST execution.
+4. Async long-running command orchestration is still incomplete:
+   - BLAST async job-handle/progress/cancel baseline is now available through
+     shared shell (`genomes/helpers blast-start|status|cancel|list`) and MCP
+     (`blast_async_start|status|cancel|list`)
+   - agent auto-execution still needs higher-level orchestration for polling and
+     multi-step async flows (it currently executes one suggested command at a
+     time)
    - upcoming primer-pair selection workflows are expected to fan out into
-     multiple BLAST searches; this requires the same async execution contract.
+     multiple BLAST searches; this still needs workflow-level async orchestration
+     on top of the baseline job primitives
 5. Core architecture parity gaps remain:
    - some utilities are still adapter-level rather than engine operations
      (notably `import-pool` and resource-sync utilities)
@@ -321,6 +337,12 @@ Notes:
      engine-owned transcript/CDS-aware translation contracts are implemented
      (explicit codon-table resolution plus frame/phase context); current dormant
      AA-row path is maintained as safe no-op
+   - publication/release visual-polish mode is still pending:
+     - add a dedicated `Publication mode` preset for GUI + SVG export paths
+     - include deterministic readability-focused defaults (backdrop strength,
+       debug overlay visibility, reverse-strand emphasis, typography/spacing)
+     - treat exact figure-style tuning as intentionally iterative while core
+       functionality and workflows continue to evolve
 9. Cross-application clipboard interoperability for sequence + feature transfer
    is not yet implemented (current baseline is deterministic in-app extraction).
 10. Screenshot bridge execution remains disabled by security policy.
@@ -344,11 +366,15 @@ Current baseline:
   - `ui_intent`
   - `ui_prepared_genomes`
   - `ui_latest_prepared`
+  - `blast_async_start`
+  - `blast_async_status`
+  - `blast_async_cancel`
+  - `blast_async_list`
 - successful mutating calls persist state to the resolved `state_path`.
 - UI-intent MCP tools now route through shared shell parser/executor paths and
   are enforced as non-mutating.
 - deterministic adapter-equivalence tests now assert MCP-vs-shared-shell parity
-  for all current UI-intent tools.
+  for all current UI-intent tools plus async BLAST status routing.
 
 Planned work:
 
@@ -632,14 +658,13 @@ Repeated multi-tool gaps to prioritize:
    - baseline now implemented:
      - first-class `DesignPrimerPairs` operation
      - persisted report contract + shell/CLI inspect/export routes
+     - optional Primer3 backend selection (`auto|internal|primer3`) with
+       deterministic fallback and backend provenance in reports
    - next:
-     - integrate optional Primer3 backend (`primer3_core`) through shared
-       engine execution while keeping `DesignPrimerPairs` as the canonical
-       external contract
-     - normalize Primer3 outputs into `gentle.primer_design_report.v1` with
-       deterministic ranking/tie-break behavior identical to internal backend
-     - add Primer3 preflight diagnostics (binary/version/config-path checks)
-       and deterministic provenance payload fields in reports
+     - expand Primer3 constraint-mapping parity and fixture-backed equivalence
+       coverage versus internal backend normalization
+     - add richer Primer3 preflight diagnostics/UI surfacing
+       (binary/version/config-path checks + environment guidance)
      - pair interaction checks and richer thermodynamic scoring
      - saved/reusable primer sets with explicit versioning
      - async-capable batch off-target/specificity checks so primer-pair
@@ -668,33 +693,43 @@ Notes:
 Goal: add Primer3 tooling support without fragmenting GENtle's shared engine
 contracts or adapter parity guarantees.
 
-Phase 1 (wrapper + normalization baseline):
+Phase 1 (wrapper + normalization baseline): implemented baseline
 
-- Add an engine-owned Primer3 adapter layer for `DesignPrimerPairs` that
-  translates request constraints to Primer3 input and parses results.
-- Keep shared report schema unchanged (`gentle.primer_design_report.v1`) and
-  enforce deterministic ordering/tie-break behavior independent of backend.
-- Capture backend provenance fields in report metadata
-  (backend id, executable path/version, config hash, invocation summary).
+- Engine-owned Primer3 adapter is now wired behind `DesignPrimerPairs`.
+- Shared report schema remains unchanged (`gentle.primer_design_report.v1`) and
+  deterministic tie-break ordering remains backend-independent.
+- Reports now include backend provenance fields
+  (`requested`, `used`, optional fallback reason, executable/version).
+- Shell/CLI backend override controls are now available:
+  - `primers design ... --backend auto|internal|primer3`
+  - `primers design ... --primer3-exec PATH`
+  - `set-param primer_design_backend ...`
+  - `set-param primer3_executable ...`
 
-Phase 2 (tooling diagnostics + compatibility hardening):
+Phase 2 (tooling diagnostics + compatibility hardening): in progress
 
-- Add explicit Primer3 preflight diagnostics in shell/CLI/GUI pathways:
-  found/missing executable, resolved version, and config-path checks.
+- Shell/CLI report payload now captures executable/version diagnostics when
+  Primer3 is used (or fallback metadata in auto mode).
+- Remaining:
+  - dedicated GUI preflight/status views for Primer3 availability
+  - additional config-path diagnostics for complex installations
 - Keep failure modes deterministic and machine-readable
   (`Unsupported`/`Io`/`InvalidInput` with stable message contracts).
 - Add fixture-backed adapter-equivalence tests that assert matching normalized
   report semantics between internal and Primer3 backends for representative
   inputs.
 
-Phase 3 (async specificity tier + agent/MCP parity):
+Phase 3 (async specificity tier + agent/MCP parity): baseline started
 
-- Add async job-handle/progress/cancel contract for Primer3-driven validation
-  stages that fan out into multiple BLAST checks.
-- Expose the same async contract through GUI background jobs, shared shell/CLI,
-  agent suggested-command execution, and MCP tool routes.
-- Add deterministic integration tests for cancellation/progress/result-shape
-  parity across the above entry points.
+- Shared shell/CLI + MCP now expose async BLAST primitives:
+  - `genomes/helpers blast-start|status|cancel|list`
+  - MCP `blast_async_start|status|cancel|list`
+- Deterministic parity test baseline now covers MCP-vs-shared-shell async
+  BLAST status routing.
+- Remaining:
+  - primer-pair-specific multi-BLAST orchestration on top of these primitives
+  - richer progress granularity and GUI binding for agent-triggered async jobs
+  - broader cross-adapter integration tests for cancellation/progress semantics
 
 ### Unified BLAST abstraction + primer UI track (new)
 

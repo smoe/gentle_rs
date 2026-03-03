@@ -3,3 +3,4 @@ assets/data/
 docs/examples/generated/
 target/
 *.gz
+assets/cache/

@@ -17,6 +17,11 @@
       "description": "Derived sequences are explicit products linked to upstream inputs and operations."
     },
     {
+      "id": "genome_catalog_targeting",
+      "name": "Genome Catalog Targeting",
+      "description": "Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context."
+    },
+    {
       "id": "guide_design_pipeline",
       "name": "Guide Design Pipeline",
       "description": "Guide sets can be created, filtered, expanded to oligos, and exported with protocol context."
@@ -94,8 +99,70 @@
       ]
     },
     {
-      "id": "load_and_digest_pgex",
+      "id": "find_and_extend_genomic_target_local_catalog",
       "order": 2,
+      "title": "Find and extend the right genomic target (local catalog)",
+      "example_id": "prepare_extract_extend_localproject_gene",
+      "tier": "core",
+      "summary": "Use assets/genomes.json + annotation-driven gene targeting, then extend the anchored sequence directly in the DNA window.",
+      "narrative": "Many investigations start with \"which exact genomic interval should I look at\" rather than \"which cloning operation should I run\". This chapter introduces the practical sequence-selection loop: choose a prepared genome from `assets/genomes.json`, narrow candidates with annotation-backed gene filtering, extract the target interval, and then widen context with 5'/3' anchor extension as needed for promoter/splice/regulatory interpretation. The same workflow also clarifies where GenBank/EMBL imports fit: exported GenBank/EMBL records are loadable directly, and GenBank entries carrying NCBI `ACCESSION ... REGION:` metadata can be mapped to genome coordinates and extended by the same anchor controls.",
+      "use_cases": [
+        "You need to start from a biologically relevant gene locus instead of an arbitrary coordinate slice.",
+        "You imported a GenBank/EMBL record and want to recover surrounding genomic context around that entry.",
+        "You need to add upstream/downstream bases iteratively while preserving deterministic provenance."
+      ],
+      "gui_steps": [
+        "Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.",
+        "Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.",
+        "In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context."
+      ],
+      "learning_objectives": [
+        "Understand that `assets/genomes.json` defines selectable genome sources for preparation/retrieval.",
+        "Use annotation-backed gene filtering to find target regions reproducibly.",
+        "Extend anchored sequences in GUI/CLI without losing provenance or sequence lineage."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage",
+        "genome_catalog_targeting"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "PrepareGenome.genome_id / catalog_path / cache_dir",
+          "where_used": "operation 1",
+          "why_it_matters": "These fields define which reference source is prepared and where deterministic cache/index files are written.",
+          "how_to_derive": "Start with `assets/genomes.json`; use `LocalProject` for offline walkthroughs, then switch to your organism/build."
+        },
+        {
+          "parameter": "Retrieve dialog Gene filter (regex) and Top matches",
+          "where_used": "GUI extraction step",
+          "why_it_matters": "Filtering keeps candidate lists interpretable on large annotations and avoids selecting the wrong locus.",
+          "how_to_derive": "Use exact regex (`^GENE$`) when known; broaden (`^GENE_PREFIX`) when exploring families.",
+          "omit_when": "Only omit filtering for tiny local annotations where the candidate list is already small."
+        },
+        {
+          "parameter": "ExtendGenomeAnchor.side / length_bp / output_id",
+          "where_used": "operation 3 and DNA-window anchor controls",
+          "why_it_matters": "Defines which biological flank is added and by how much; output IDs keep downstream comparisons clear.",
+          "how_to_derive": "Choose `5p` for upstream-context questions and `3p` for downstream-context questions; start with 200-2000 bp and iterate."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json",
+        "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir data/genomes --filter '^etp' --limit 20",
+        "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 500 --output-id local_etpc_ext5_more --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "PrepareGenome succeeds for `LocalProject` without network access.",
+        "ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.",
+        "ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance."
+      ]
+    },
+    {
+      "id": "load_and_digest_pgex",
+      "order": 3,
       "title": "Load pGEX and digest with BamHI/EcoRI",
       "example_id": "load_and_digest_pgex",
       "tier": "core",
@@ -144,7 +211,7 @@
     },
     {
       "id": "guides_filter_and_generate_oligos",
-      "order": 3,
+      "order": 4,
       "title": "Guide practical filtering and oligo generation",
       "example_id": "guides_filter_and_generate_oligos",
       "tier": "core",
@@ -192,7 +259,7 @@
     },
     {
       "id": "digest_ligation_extract_region_minimal",
-      "order": 4,
+      "order": 5,
       "title": "Digest -> Ligation -> ExtractRegion minimal slice",
       "example_id": "digest_ligation_extract_region_minimal",
       "tier": "core",
@@ -241,7 +308,7 @@
     },
     {
       "id": "guides_export_csv_and_protocol",
-      "order": 5,
+      "order": 6,
       "title": "Guide oligo export (CSV + protocol)",
       "example_id": "guides_export_csv_and_protocol",
       "tier": "advanced",
@@ -292,7 +359,7 @@
     },
     {
       "id": "contribute_to_gentle_development",
-      "order": 6,
+      "order": 7,
       "title": "Contribute to GENtle development",
       "example_id": "contribute_gentle_development_baseline",
       "tier": "advanced",
@@ -342,7 +409,7 @@
     },
     {
       "id": "prepare_reference_genome_online",
-      "order": 7,
+      "order": 8,
       "title": "Prepare a reference genome cache (online)",
       "example_id": "prepare_reference_genome_online",
       "tier": "online",
@@ -365,7 +432,8 @@
       ],
       "concepts": [
         "deterministic_workflows",
-        "online_opt_in"
+        "online_opt_in",
+        "genome_catalog_targeting"
       ],
       "parameter_notes": [
         {

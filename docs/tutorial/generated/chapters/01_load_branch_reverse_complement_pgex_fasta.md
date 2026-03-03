@@ -27,13 +27,13 @@ In real cloning projects, the first question is often whether a sequence in hand
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
   - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 6: Contribute to GENtle development](./06_contribute_to_gentle_development.md).
+  - Reoccurs in: [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 7: Contribute to GENtle development](./07_contribute_to_gentle_development.md).
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
   - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 2: Load pGEX and digest with BamHI/EcoRI](./02_load_and_digest_pgex.md), [Chapter 3: Guide practical filtering and oligo generation](./03_guides_filter_and_generate_oligos.md), [Chapter 4: Digest -> Ligation -> ExtractRegion minimal slice](./04_digest_ligation_extract_region_minimal.md), [Chapter 7: Prepare a reference genome cache (online)](./07_prepare_reference_genome_online.md).
+  - Reoccurs in: [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Guide practical filtering and oligo generation](./04_guides_filter_and_generate_oligos.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md), [Chapter 8: Prepare a reference genome cache (online)](./08_prepare_reference_genome_online.md).
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
   - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 2: Load pGEX and digest with BamHI/EcoRI](./02_load_and_digest_pgex.md), [Chapter 4: Digest -> Ligation -> ExtractRegion minimal slice](./04_digest_ligation_extract_region_minimal.md).
+  - Reoccurs in: [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md).
 
 ## GUI First
 

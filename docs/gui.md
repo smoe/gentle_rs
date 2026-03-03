@@ -1135,8 +1135,12 @@ How to enlarge the genomic span after extraction:
 - Zoom/pan controls only change visual magnification of the current sequence map.
 - To actually include additional genomic bases, run an anchor-extension command
   (creates a new sequence with a wider genomic interval).
-- Current GUI path for this operation:
-  - open the extracted sequence window
+- Primary GUI path for this operation:
+  - open the extracted (anchored) sequence window
+  - next to `Genome anchor: ...`, set extension length in bp
+  - optionally set `output_id`
+  - click `Extend 5'` or `Extend 3'`
+- Shell fallback path (same engine operation):
   - click `Shell` in the sequence toolbar
   - run one of these commands:
     - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
@@ -1147,6 +1151,7 @@ How to enlarge the genomic span after extraction:
   - original sequence remains unchanged
   - a new derived sequence is created and opened
   - lineage/provenance records include the extended genomic interval
+  - 5'/3' direction is contextual to anchor strand (`strand -` flips physical genomic direction)
 
 Equivalent workflow JSON (still supported via workflow runner):
 

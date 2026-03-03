@@ -26,11 +26,11 @@ Restriction digest is a core molecular cloning routine used for vector lineariza
 ## Concepts and Recurrence
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md).
-  - Reoccurs in: [Chapter 3: Guide practical filtering and oligo generation](./03_guides_filter_and_generate_oligos.md), [Chapter 4: Digest -> Ligation -> ExtractRegion minimal slice](./04_digest_ligation_extract_region_minimal.md), [Chapter 7: Prepare a reference genome cache (online)](./07_prepare_reference_genome_online.md).
+  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md).
+  - Reoccurs in: [Chapter 4: Guide practical filtering and oligo generation](./04_guides_filter_and_generate_oligos.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md), [Chapter 8: Prepare a reference genome cache (online)](./08_prepare_reference_genome_online.md).
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md).
-  - Reoccurs in: [Chapter 4: Digest -> Ligation -> ExtractRegion minimal slice](./04_digest_ligation_extract_region_minimal.md).
+  - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md).
+  - Reoccurs in: [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md).
 
 ## GUI First
 

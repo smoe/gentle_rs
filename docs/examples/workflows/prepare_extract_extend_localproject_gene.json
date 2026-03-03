@@ -1,0 +1,48 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "prepare_extract_extend_localproject_gene",
+  "title": "Prepare LocalProject, extract a gene, and extend the anchor",
+  "summary": "Offline-safe genome-targeting routine using assets/genomes.json and local test fixtures.",
+  "test_mode": "always",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "genome",
+    "catalog",
+    "anchor",
+    "tutorial"
+  ],
+  "workflow": {
+    "run_id": "example_prepare_extract_extend_localproject_gene",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "LocalProject",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "cache/localproject"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "LocalProject",
+          "gene_query": "etpC",
+          "occurrence": 1,
+          "output_id": "local_etpc",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "cache/localproject"
+        }
+      },
+      {
+        "ExtendGenomeAnchor": {
+          "seq_id": "local_etpc",
+          "side": "five_prime",
+          "length_bp": 250,
+          "output_id": "local_etpc_ext5",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "cache/localproject"
+        }
+      }
+    ]
+  }
+}

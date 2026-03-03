@@ -58,7 +58,7 @@ use std::{
     hash::{Hash, Hasher},
     io::{BufRead, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 use tempfile::NamedTempFile;
@@ -401,12 +401,16 @@ pub struct ContainerState {
 #[serde(default)]
 pub struct EngineParameters {
     pub max_fragments_per_container: usize,
+    pub primer_design_backend: PrimerDesignBackend,
+    pub primer3_executable: String,
 }
 
 impl Default for EngineParameters {
     fn default() -> Self {
         Self {
             max_fragments_per_container: 80_000,
+            primer_design_backend: PrimerDesignBackend::Auto,
+            primer3_executable: "primer3_core".to_string(),
         }
     }
 }
@@ -1144,6 +1148,25 @@ pub enum PrimerLibraryMode {
     Sample,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PrimerDesignBackend {
+    #[default]
+    Auto,
+    Internal,
+    Primer3,
+}
+
+impl PrimerDesignBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Internal => "internal",
+            Self::Primer3 => "primer3",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PcrPrimerSpec {
     pub sequence: String,
@@ -1256,6 +1279,18 @@ pub struct PrimerDesignReport {
     pub pairs: Vec<PrimerDesignPairRecord>,
     #[serde(default)]
     pub rejection_summary: PrimerDesignRejectionSummary,
+    #[serde(default)]
+    pub backend: PrimerDesignBackendInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PrimerDesignBackendInfo {
+    pub requested: String,
+    pub used: String,
+    pub fallback_reason: Option<String>,
+    pub primer3_executable: Option<String>,
+    pub primer3_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -13763,6 +13798,446 @@ impl GentleEngine {
         })
     }
 
+    fn sort_and_rank_primer_design_pairs(
+        pairs: &mut Vec<PrimerDesignPairRecord>,
+        max_pairs: usize,
+    ) {
+        pairs.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then(a.forward.start_0based.cmp(&b.forward.start_0based))
+                .then(a.reverse.start_0based.cmp(&b.reverse.start_0based))
+                .then(a.amplicon_length_bp.cmp(&b.amplicon_length_bp))
+                .then(a.forward.sequence.cmp(&b.forward.sequence))
+                .then(a.reverse.sequence.cmp(&b.reverse.sequence))
+        });
+        if pairs.len() > max_pairs {
+            pairs.truncate(max_pairs);
+        }
+        for (idx, pair) in pairs.iter_mut().enumerate() {
+            pair.rank = idx + 1;
+        }
+    }
+
+    fn build_primer_design_pair_record(
+        forward: PrimerDesignPrimerRecord,
+        reverse: PrimerDesignPrimerRecord,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        target_amplicon_bp: usize,
+    ) -> Option<PrimerDesignPairRecord> {
+        if reverse.end_0based_exclusive <= forward.start_0based {
+            return None;
+        }
+        let amplicon_start = forward.start_0based;
+        let amplicon_end = reverse.end_0based_exclusive;
+        let amplicon_length_bp = amplicon_end.saturating_sub(amplicon_start);
+        let roi_covered = amplicon_start <= roi_start_0based && amplicon_end >= roi_end_0based;
+        let amplicon_size_ok =
+            amplicon_length_bp >= min_amplicon_bp && amplicon_length_bp <= max_amplicon_bp;
+        let tm_delta_c = (forward.tm_c - reverse.tm_c).abs();
+        let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
+        let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
+        let hit_penalty =
+            (forward.anneal_hits.saturating_sub(1) + reverse.anneal_hits.saturating_sub(1)) as f64;
+        let score = 1000.0 - (tm_delta_c * 20.0) - (length_penalty * 0.1) - (hit_penalty * 10.0);
+        Some(PrimerDesignPairRecord {
+            rank: 0,
+            score,
+            forward,
+            reverse,
+            amplicon_start_0based: amplicon_start,
+            amplicon_end_0based_exclusive: amplicon_end,
+            amplicon_length_bp,
+            tm_delta_c,
+            rule_flags: PrimerDesignPairRuleFlags {
+                roi_covered,
+                amplicon_size_in_range: amplicon_size_ok,
+                tm_delta_in_range: tm_delta_ok,
+            },
+        })
+    }
+
+    fn design_primer_pairs_internal(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        reverse: &PrimerDesignSideConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+    ) -> (Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary) {
+        let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let forward_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            forward,
+            false,
+            &mut rejection_summary,
+        );
+        let reverse_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            reverse,
+            true,
+            &mut rejection_summary,
+        );
+        let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
+        let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
+        for fwd in &forward_candidates {
+            for rev in &reverse_candidates {
+                let Some(pair) = Self::build_primer_design_pair_record(
+                    PrimerDesignPrimerRecord {
+                        sequence: fwd.sequence.clone(),
+                        start_0based: fwd.start_0based,
+                        end_0based_exclusive: fwd.end_0based_exclusive,
+                        tm_c: fwd.tm_c,
+                        gc_fraction: fwd.gc_fraction,
+                        anneal_hits: fwd.anneal_hits,
+                    },
+                    PrimerDesignPrimerRecord {
+                        sequence: rev.sequence.clone(),
+                        start_0based: rev.start_0based,
+                        end_0based_exclusive: rev.end_0based_exclusive,
+                        tm_c: rev.tm_c,
+                        gc_fraction: rev.gc_fraction,
+                        anneal_hits: rev.anneal_hits,
+                    },
+                    roi_start_0based,
+                    roi_end_0based,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    target_amplicon_bp,
+                ) else {
+                    rejection_summary.amplicon_or_roi_failure =
+                        rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    continue;
+                };
+                if !(pair.rule_flags.amplicon_size_in_range
+                    && pair.rule_flags.roi_covered
+                    && pair.rule_flags.tm_delta_in_range)
+                {
+                    rejection_summary.amplicon_or_roi_failure =
+                        rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                    continue;
+                }
+                pairs.push(pair);
+            }
+        }
+        Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
+        (pairs, rejection_summary)
+    }
+
+    fn parse_primer3_coord_pair(
+        raw: &str,
+        key: &str,
+    ) -> Result<(usize, usize), EngineError> {
+        let (left, right) = raw.split_once(',').ok_or_else(|| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Primer3 output key '{key}' is not in start,len form"),
+        })?;
+        let start = left.trim().parse::<usize>().map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Primer3 output key '{key}' has invalid start '{}': {e}", left),
+        })?;
+        let len = right.trim().parse::<usize>().map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: format!("Primer3 output key '{key}' has invalid len '{}': {e}", right),
+        })?;
+        Ok((start, len))
+    }
+
+    fn parse_primer3_kv_output(text: &str) -> HashMap<String, String> {
+        let mut map: HashMap<String, String> = HashMap::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if line == "=" {
+                break;
+            }
+            if let Some((key, value)) = line.split_once('=') {
+                map.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+        map
+    }
+
+    fn probe_primer3_version(executable: &str) -> Option<String> {
+        let output = Command::new(executable).arg("--version").output().ok()?;
+        let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+        if text.trim().is_empty() {
+            text = String::from_utf8_lossy(&output.stderr).to_string();
+        }
+        text.lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(|line| line.to_string())
+    }
+
+    fn design_primer_pairs_primer3(
+        template_seq: &str,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        forward: &PrimerDesignSideConstraint,
+        reverse: &PrimerDesignSideConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: f64,
+        max_pairs: usize,
+        primer3_executable: &str,
+    ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary, Option<String>), EngineError>
+    {
+        let template_bytes = template_seq.as_bytes();
+        let template_len = template_bytes.len();
+        let target_len = roi_end_0based.saturating_sub(roi_start_0based);
+        let min_size = forward.min_length.min(reverse.min_length);
+        let max_size = forward.max_length.max(reverse.max_length);
+        let min_tm = forward.min_tm_c.min(reverse.min_tm_c);
+        let max_tm = forward.max_tm_c.max(reverse.max_tm_c);
+        let min_gc_percent = forward.min_gc_fraction.min(reverse.min_gc_fraction) * 100.0;
+        let max_gc_percent = forward.max_gc_fraction.max(reverse.max_gc_fraction) * 100.0;
+        let num_return = max_pairs.saturating_mul(5).clamp(50, 1000);
+
+        let input = format!(
+            "SEQUENCE_ID=gentle_primer_design\nSEQUENCE_TEMPLATE={template_seq}\nSEQUENCE_TARGET={roi_start_0based},{target_len}\nPRIMER_TASK=generic\nPRIMER_PICK_LEFT_PRIMER=1\nPRIMER_PICK_RIGHT_PRIMER=1\nPRIMER_PICK_INTERNAL_OLIGO=0\nPRIMER_MIN_SIZE={min_size}\nPRIMER_MAX_SIZE={max_size}\nPRIMER_MIN_TM={min_tm:.3}\nPRIMER_MAX_TM={max_tm:.3}\nPRIMER_MIN_GC={min_gc_percent:.3}\nPRIMER_MAX_GC={max_gc_percent:.3}\nPRIMER_PRODUCT_SIZE_RANGE={min_amplicon_bp}-{max_amplicon_bp}\nPRIMER_NUM_RETURN={num_return}\nPRIMER_EXPLAIN_FLAG=1\n=\n"
+        );
+        let mut child = Command::new(primer3_executable)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| EngineError {
+                code: if e.kind() == std::io::ErrorKind::NotFound {
+                    ErrorCode::Unsupported
+                } else {
+                    ErrorCode::Io
+                },
+                message: format!(
+                    "Primer3 backend executable '{}' is not available: {e}",
+                    primer3_executable
+                ),
+            })?;
+        if let Some(stdin) = child.stdin.as_mut() {
+            stdin.write_all(input.as_bytes()).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write Primer3 request to stdin: {e}"),
+            })?;
+        }
+        let output = child.wait_with_output().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read Primer3 response from '{}': {e}",
+                primer3_executable
+            ),
+        })?;
+        let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr_text = String::from_utf8_lossy(&output.stderr).to_string();
+        let map = Self::parse_primer3_kv_output(&stdout_text);
+
+        if let Some(primer_error) = map.get("PRIMER_ERROR") {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Primer3 backend rejected request: {primer_error}"),
+            });
+        }
+        if !output.status.success() {
+            let detail = stderr_text
+                .lines()
+                .map(str::trim)
+                .find(|line| !line.is_empty())
+                .unwrap_or("no stderr detail");
+            return Err(EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Primer3 backend '{}' failed (status={}): {}",
+                    primer3_executable,
+                    output
+                        .status
+                        .code()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "signal".to_string()),
+                    detail
+                ),
+            });
+        }
+
+        let pair_count = map
+            .get("PRIMER_PAIR_NUM_RETURNED")
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .unwrap_or(0);
+        let mut rejection_summary = PrimerDesignRejectionSummary::default();
+        let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
+        let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
+
+        for idx in 0..pair_count {
+            let left_key = format!("PRIMER_LEFT_{idx}");
+            let right_key = format!("PRIMER_RIGHT_{idx}");
+            let left_seq_key = format!("PRIMER_LEFT_{idx}_SEQUENCE");
+            let right_seq_key = format!("PRIMER_RIGHT_{idx}_SEQUENCE");
+            let left_tm_key = format!("PRIMER_LEFT_{idx}_TM");
+            let right_tm_key = format!("PRIMER_RIGHT_{idx}_TM");
+            let left_gc_key = format!("PRIMER_LEFT_{idx}_GC_PERCENT");
+            let right_gc_key = format!("PRIMER_RIGHT_{idx}_GC_PERCENT");
+
+            let (left_start, left_len) = match map.get(&left_key) {
+                Some(raw) => Self::parse_primer3_coord_pair(raw, &left_key)?,
+                None => continue,
+            };
+            let (right_3prime_0based, right_len) = match map.get(&right_key) {
+                Some(raw) => Self::parse_primer3_coord_pair(raw, &right_key)?,
+                None => continue,
+            };
+            if left_len == 0 || right_len == 0 {
+                rejection_summary.out_of_window = rejection_summary.out_of_window.saturating_add(1);
+                continue;
+            }
+            let Some(left_end) = left_start.checked_add(left_len) else {
+                rejection_summary.out_of_window = rejection_summary.out_of_window.saturating_add(1);
+                continue;
+            };
+            if left_end > template_len
+                || right_3prime_0based >= template_len
+                || right_3prime_0based + 1 < right_len
+            {
+                rejection_summary.out_of_window = rejection_summary.out_of_window.saturating_add(1);
+                continue;
+            }
+            let right_start = right_3prime_0based + 1 - right_len;
+            let right_end_exclusive = right_3prime_0based + 1;
+            if right_end_exclusive <= left_start || right_end_exclusive > template_len {
+                rejection_summary.amplicon_or_roi_failure =
+                    rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                continue;
+            }
+
+            let forward_sequence = map
+                .get(&left_seq_key)
+                .cloned()
+                .unwrap_or_else(|| template_seq[left_start..left_end].to_string())
+                .to_ascii_uppercase();
+            let reverse_sequence = map
+                .get(&right_seq_key)
+                .cloned()
+                .unwrap_or_else(|| Self::reverse_complement(&template_seq[right_start..right_end_exclusive]))
+                .to_ascii_uppercase();
+            let forward_tm = map
+                .get(&left_tm_key)
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .unwrap_or_else(|| Self::estimate_primer_tm_c(forward_sequence.as_bytes()));
+            let reverse_tm = map
+                .get(&right_tm_key)
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .unwrap_or_else(|| Self::estimate_primer_tm_c(reverse_sequence.as_bytes()));
+            let forward_gc = map
+                .get(&left_gc_key)
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .map(|value| (value / 100.0).clamp(0.0, 1.0))
+                .unwrap_or_else(|| {
+                    Self::sequence_gc_fraction(forward_sequence.as_bytes()).unwrap_or(0.0)
+                });
+            let reverse_gc = map
+                .get(&right_gc_key)
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .map(|value| (value / 100.0).clamp(0.0, 1.0))
+                .unwrap_or_else(|| {
+                    Self::sequence_gc_fraction(reverse_sequence.as_bytes()).unwrap_or(0.0)
+                });
+
+            let left_window = &template_bytes[left_start..left_end];
+            let right_window = &template_bytes[right_start..right_end_exclusive];
+            let forward_anneal_hits = Self::find_all_subsequences(template_bytes, left_window).len();
+            let reverse_anneal_hits =
+                Self::find_all_subsequences(template_bytes, right_window).len();
+
+            let forward_window_ok = forward
+                .location_0based
+                .is_none_or(|value| value == left_start)
+                && forward.start_0based.is_none_or(|value| left_start >= value)
+                && forward.end_0based.is_none_or(|value| left_end <= value)
+                && left_len >= forward.min_length
+                && left_len <= forward.max_length;
+            let reverse_window_ok = reverse
+                .location_0based
+                .is_none_or(|value| value == right_start)
+                && reverse.start_0based.is_none_or(|value| right_start >= value)
+                && reverse.end_0based.is_none_or(|value| right_end_exclusive <= value)
+                && right_len >= reverse.min_length
+                && right_len <= reverse.max_length;
+            if !(forward_window_ok && reverse_window_ok) {
+                rejection_summary.out_of_window = rejection_summary.out_of_window.saturating_add(1);
+                continue;
+            }
+            let forward_gc_tm_ok = forward_tm >= forward.min_tm_c
+                && forward_tm <= forward.max_tm_c
+                && forward_gc >= forward.min_gc_fraction
+                && forward_gc <= forward.max_gc_fraction;
+            let reverse_gc_tm_ok = reverse_tm >= reverse.min_tm_c
+                && reverse_tm <= reverse.max_tm_c
+                && reverse_gc >= reverse.min_gc_fraction
+                && reverse_gc <= reverse.max_gc_fraction;
+            if !(forward_gc_tm_ok && reverse_gc_tm_ok) {
+                rejection_summary.gc_or_tm_out_of_bounds =
+                    rejection_summary.gc_or_tm_out_of_bounds.saturating_add(1);
+                continue;
+            }
+            let forward_anneal_ok =
+                forward_anneal_hits >= 1 && forward_anneal_hits <= forward.max_anneal_hits;
+            let reverse_anneal_ok =
+                reverse_anneal_hits >= 1 && reverse_anneal_hits <= reverse.max_anneal_hits;
+            if !(forward_anneal_ok && reverse_anneal_ok) {
+                rejection_summary.non_unique_anneal =
+                    rejection_summary.non_unique_anneal.saturating_add(1);
+                continue;
+            }
+
+            let Some(pair) = Self::build_primer_design_pair_record(
+                PrimerDesignPrimerRecord {
+                    sequence: forward_sequence,
+                    start_0based: left_start,
+                    end_0based_exclusive: left_end,
+                    tm_c: forward_tm,
+                    gc_fraction: forward_gc,
+                    anneal_hits: forward_anneal_hits,
+                },
+                PrimerDesignPrimerRecord {
+                    sequence: reverse_sequence,
+                    start_0based: right_start,
+                    end_0based_exclusive: right_end_exclusive,
+                    tm_c: reverse_tm,
+                    gc_fraction: reverse_gc,
+                    anneal_hits: reverse_anneal_hits,
+                },
+                roi_start_0based,
+                roi_end_0based,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                target_amplicon_bp,
+            ) else {
+                rejection_summary.amplicon_or_roi_failure =
+                    rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                continue;
+            };
+            if !(pair.rule_flags.amplicon_size_in_range
+                && pair.rule_flags.roi_covered
+                && pair.rule_flags.tm_delta_in_range)
+            {
+                rejection_summary.amplicon_or_roi_failure =
+                    rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                continue;
+            }
+            pairs.push(pair);
+        }
+        Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
+        Ok((pairs, rejection_summary, Self::probe_primer3_version(primer3_executable)))
+    }
+
     fn right_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
         let mut ret = Vec::new();
         if !dna.overhang().forward_3.is_empty() {
@@ -16061,97 +16536,96 @@ impl GentleEngine {
                     }
                 }
 
-                let mut rejection_summary = PrimerDesignRejectionSummary::default();
-                let forward_candidates = Self::generate_primer_side_candidates(
-                    template_bytes,
-                    &forward,
-                    false,
-                    &mut rejection_summary,
-                );
-                let reverse_candidates = Self::generate_primer_side_candidates(
-                    template_bytes,
-                    &reverse,
-                    true,
-                    &mut rejection_summary,
-                );
-
-                let mut pairs: Vec<PrimerDesignPairRecord> = vec![];
-                let target_amplicon_bp = (min_amplicon_bp + max_amplicon_bp) / 2;
-                for fwd in &forward_candidates {
-                    for rev in &reverse_candidates {
-                        if rev.end_0based_exclusive <= fwd.start_0based {
-                            rejection_summary.amplicon_or_roi_failure =
-                                rejection_summary.amplicon_or_roi_failure.saturating_add(1);
-                            continue;
-                        }
-                        let amplicon_start = fwd.start_0based;
-                        let amplicon_end = rev.end_0based_exclusive;
-                        let amplicon_length_bp = amplicon_end.saturating_sub(amplicon_start);
-                        let amplicon_size_ok = amplicon_length_bp >= min_amplicon_bp
-                            && amplicon_length_bp <= max_amplicon_bp;
-                        let roi_covered =
-                            amplicon_start <= roi_start_0based && amplicon_end >= roi_end_0based;
-                        let tm_delta_c = (fwd.tm_c - rev.tm_c).abs();
-                        let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
-                        if !(amplicon_size_ok && roi_covered && tm_delta_ok) {
-                            rejection_summary.amplicon_or_roi_failure =
-                                rejection_summary.amplicon_or_roi_failure.saturating_add(1);
-                            continue;
-                        }
-                        let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
-                        let hit_penalty = (fwd.anneal_hits.saturating_sub(1)
-                            + rev.anneal_hits.saturating_sub(1))
-                            as f64;
-                        let score = 1000.0
-                            - (tm_delta_c * 20.0)
-                            - (length_penalty * 0.1)
-                            - (hit_penalty * 10.0);
-                        pairs.push(PrimerDesignPairRecord {
-                            rank: 0,
-                            score,
-                            forward: PrimerDesignPrimerRecord {
-                                sequence: fwd.sequence.clone(),
-                                start_0based: fwd.start_0based,
-                                end_0based_exclusive: fwd.end_0based_exclusive,
-                                tm_c: fwd.tm_c,
-                                gc_fraction: fwd.gc_fraction,
-                                anneal_hits: fwd.anneal_hits,
-                            },
-                            reverse: PrimerDesignPrimerRecord {
-                                sequence: rev.sequence.clone(),
-                                start_0based: rev.start_0based,
-                                end_0based_exclusive: rev.end_0based_exclusive,
-                                tm_c: rev.tm_c,
-                                gc_fraction: rev.gc_fraction,
-                                anneal_hits: rev.anneal_hits,
-                            },
-                            amplicon_start_0based: amplicon_start,
-                            amplicon_end_0based_exclusive: amplicon_end,
-                            amplicon_length_bp,
-                            tm_delta_c,
-                            rule_flags: PrimerDesignPairRuleFlags {
-                                roi_covered,
-                                amplicon_size_in_range: amplicon_size_ok,
-                                tm_delta_in_range: tm_delta_ok,
-                            },
-                        });
+                let requested_backend = self.state.parameters.primer_design_backend;
+                let primer3_executable = {
+                    let raw = self.state.parameters.primer3_executable.trim();
+                    if raw.is_empty() {
+                        "primer3_core"
+                    } else {
+                        raw
                     }
-                }
-                pairs.sort_by(|a, b| {
-                    b.score
-                        .total_cmp(&a.score)
-                        .then(a.forward.start_0based.cmp(&b.forward.start_0based))
-                        .then(a.reverse.start_0based.cmp(&b.reverse.start_0based))
-                        .then(a.amplicon_length_bp.cmp(&b.amplicon_length_bp))
-                        .then(a.forward.sequence.cmp(&b.forward.sequence))
-                        .then(a.reverse.sequence.cmp(&b.reverse.sequence))
-                });
-                if pairs.len() > max_pairs {
-                    pairs.truncate(max_pairs);
-                }
-                for (idx, pair) in pairs.iter_mut().enumerate() {
-                    pair.rank = idx + 1;
-                }
+                };
+                let mut backend = PrimerDesignBackendInfo {
+                    requested: requested_backend.as_str().to_string(),
+                    ..PrimerDesignBackendInfo::default()
+                };
+                let (pairs, rejection_summary) = match requested_backend {
+                    PrimerDesignBackend::Internal => {
+                        backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                        Self::design_primer_pairs_internal(
+                            template_bytes,
+                            roi_start_0based,
+                            roi_end_0based,
+                            &forward,
+                            &reverse,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            max_pairs,
+                        )
+                    }
+                    PrimerDesignBackend::Primer3 => {
+                        let (pairs, rejection_summary, version) = Self::design_primer_pairs_primer3(
+                            &template_seq,
+                            roi_start_0based,
+                            roi_end_0based,
+                            &forward,
+                            &reverse,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            max_pairs,
+                            primer3_executable,
+                        )?;
+                        backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                        backend.primer3_executable = Some(primer3_executable.to_string());
+                        backend.primer3_version = version;
+                        (pairs, rejection_summary)
+                    }
+                    PrimerDesignBackend::Auto => {
+                        match Self::design_primer_pairs_primer3(
+                            &template_seq,
+                            roi_start_0based,
+                            roi_end_0based,
+                            &forward,
+                            &reverse,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            max_pairs,
+                            primer3_executable,
+                        ) {
+                            Ok((pairs, rejection_summary, version)) => {
+                                backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                                backend.primer3_executable =
+                                    Some(primer3_executable.to_string());
+                                backend.primer3_version = version;
+                                (pairs, rejection_summary)
+                            }
+                            Err(err) => {
+                                backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                                backend.primer3_executable =
+                                    Some(primer3_executable.to_string());
+                                backend.fallback_reason = Some(err.message.clone());
+                                result.warnings.push(format!(
+                                    "Primer3 backend unavailable in auto mode: {}. Falling back to internal primer design backend.",
+                                    err.message
+                                ));
+                                Self::design_primer_pairs_internal(
+                                    template_bytes,
+                                    roi_start_0based,
+                                    roi_end_0based,
+                                    &forward,
+                                    &reverse,
+                                    min_amplicon_bp,
+                                    max_amplicon_bp,
+                                    max_tm_delta_c,
+                                    max_pairs,
+                                )
+                            }
+                        }
+                    }
+                };
 
                 let report_id = Self::render_primer_design_report_id(report_id, &template);
                 let report = PrimerDesignReport {
@@ -16170,6 +16644,7 @@ impl GentleEngine {
                     pair_count: pairs.len(),
                     pairs,
                     rejection_summary,
+                    backend,
                 };
                 let mut store = self.read_primer_design_store();
                 let replaced = store
@@ -17479,6 +17954,63 @@ impl GentleEngine {
                         name, self.state.parameters.max_fragments_per_container
                     ));
                 }
+                "primer_design_backend" | "primers_design_backend" => {
+                    let raw = value.as_str().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a string value"),
+                    })?;
+                    let normalized = raw.trim().to_ascii_lowercase();
+                    let backend = match normalized.as_str() {
+                        "auto" => PrimerDesignBackend::Auto,
+                        "internal" | "baseline" => PrimerDesignBackend::Internal,
+                        "primer3" | "primer3_core" | "external_primer3" | "external-primer3" => {
+                            PrimerDesignBackend::Primer3
+                        }
+                        other => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Unsupported primer_design_backend '{other}' (expected auto|internal|primer3)"
+                                ),
+                            });
+                        }
+                    };
+                    self.state.parameters.primer_design_backend = backend;
+                    result.messages.push(format!(
+                        "Set parameter 'primer_design_backend' to {}",
+                        backend.as_str()
+                    ));
+                }
+                "primer3_executable" | "primer3_backend_executable" | "primer3_path" => {
+                    if value.is_null() {
+                        self.state.parameters.primer3_executable = "primer3_core".to_string();
+                        result.messages.push(
+                            "Reset parameter 'primer3_executable' to default 'primer3_core'"
+                                .to_string(),
+                        );
+                    } else {
+                        let raw = value.as_str().ok_or_else(|| EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "SetParameter {name} requires a string or null value"
+                            ),
+                        })?;
+                        let trimmed = raw.trim();
+                        if trimmed.is_empty() {
+                            self.state.parameters.primer3_executable = "primer3_core".to_string();
+                            result.messages.push(
+                                "Reset parameter 'primer3_executable' to default 'primer3_core'"
+                                    .to_string(),
+                            );
+                        } else {
+                            self.state.parameters.primer3_executable = trimmed.to_string();
+                            result.messages.push(format!(
+                                "Set parameter 'primer3_executable' to '{}'",
+                                trimmed
+                            ));
+                        }
+                    }
+                }
                 "feature_details_font_size" | "feature_detail_font_size" => {
                     let raw = value.as_f64().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
@@ -18638,6 +19170,7 @@ exit 2
             ),
         );
         let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
         let result = engine
             .apply(Operation::DesignPrimerPairs {
                 template: "tpl".to_string(),
@@ -18686,8 +19219,97 @@ exit 2
         assert_eq!(report.report_id, "tp73_roi");
         assert_eq!(report.template, "tpl");
         assert!(!report.pairs.is_empty());
+        assert_eq!(report.backend.requested, "internal");
+        assert_eq!(report.backend.used, "internal");
         let listed = engine.list_primer_design_reports();
         assert!(listed.iter().any(|row| row.report_id == "tp73_roi"));
+    }
+
+    #[test]
+    fn test_design_primer_pairs_auto_backend_falls_back_to_internal() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            seq(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            ),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Auto;
+        engine.state_mut().parameters.primer3_executable =
+            "/definitely/missing/primer3_core".to_string();
+        let result = engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                },
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_pairs: Some(10),
+                report_id: Some("tp73_roi_auto".to_string()),
+            })
+            .expect("design primer pairs");
+        assert!(result.warnings.iter().any(|line| line.contains("Primer3 backend unavailable")));
+        let report = engine
+            .get_primer_design_report("tp73_roi_auto")
+            .expect("report by id");
+        assert_eq!(report.backend.requested, "auto");
+        assert_eq!(report.backend.used, "internal");
+        assert!(report.backend.fallback_reason.is_some());
+        assert!(!report.pairs.is_empty());
+    }
+
+    #[test]
+    fn test_design_primer_pairs_primer3_backend_requires_executable() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            seq("ATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCGATGCGTACGATCGTAGCTAGCTAGCTAGCATCGATCG"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+        engine.state_mut().parameters.primer3_executable =
+            "/definitely/missing/primer3_core".to_string();
+        let err = engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 10,
+                roi_end_0based: 30,
+                forward: PrimerDesignSideConstraint::default(),
+                reverse: PrimerDesignSideConstraint::default(),
+                min_amplicon_bp: 20,
+                max_amplicon_bp: 80,
+                max_tm_delta_c: Some(10.0),
+                max_pairs: Some(10),
+                report_id: Some("tp73_roi_primer3".to_string()),
+            })
+            .expect_err("missing primer3 executable should fail");
+        assert!(err.message.contains("Primer3 backend executable"));
     }
 
     #[test]
@@ -18912,6 +19534,38 @@ exit 2
                 .any(|m| m.contains("max_fragments_per_container"))
         );
         assert_eq!(engine.state().parameters.max_fragments_per_container, 1234);
+    }
+
+    #[test]
+    fn test_set_parameter_primer_backend_controls() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::SetParameter {
+                name: "primer_design_backend".to_string(),
+                value: serde_json::json!("primer3"),
+            })
+            .expect("set primer backend");
+        assert_eq!(
+            engine.state().parameters.primer_design_backend,
+            PrimerDesignBackend::Primer3
+        );
+        engine
+            .apply(Operation::SetParameter {
+                name: "primer3_executable".to_string(),
+                value: serde_json::json!("/opt/primer3/primer3_core"),
+            })
+            .expect("set primer3 executable");
+        assert_eq!(
+            engine.state().parameters.primer3_executable,
+            "/opt/primer3/primer3_core"
+        );
+        engine
+            .apply(Operation::SetParameter {
+                name: "primer3_executable".to_string(),
+                value: serde_json::Value::Null,
+            })
+            .expect("reset primer3 executable");
+        assert_eq!(engine.state().parameters.primer3_executable, "primer3_core");
     }
 
     #[test]
