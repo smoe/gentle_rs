@@ -119,6 +119,12 @@ order. Durable architecture constraints and decisions remain in
     `tutorial-generate` and `tutorial-check`
   - CI now gates tutorial drift and workflow runtime coverage through
     `tutorial-check` and `cargo test workflow_examples`
+  - CI now includes a deterministic internal-preview smoke route that exercises:
+    - workflow examples (`load_branch_reverse_complement_pgex_fasta`,
+      `digest_ligation_extract_region_minimal`)
+    - fast primer-pair report generation + persisted report inspection
+  - CI now also runs the full Rust test suite (`cargo test -q`) to catch
+    cross-module regressions that may not be covered by targeted smoke steps.
 
 ### GUI baseline in place
 
@@ -202,6 +208,9 @@ order. Durable architecture constraints and decisions remain in
     - `Fit Features` for vertical recenter of current subsequence
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
+- Help menu now includes a dedicated `Reviewer Quickstart` guide with internal
+  preview warnings, known limitations, and deterministic colleague walkthrough
+  steps.
 - BLAST UX/provenance hardening baseline:
   - BLAST dialog now emits live query heartbeat status (elapsed runtime while
     `blastn` is running) in addition to query-count progress.
@@ -934,7 +943,7 @@ Planned upgrades:
 ### Current branch blockers (must clear first)
 
 - None currently blocking on this branch. Latest local run: `cargo test -q`
-  passed (`335 passed, 1 ignored` in main suite; additional suites green).
+  passed (`528 passed, 1 ignored` in main suite; additional suites green).
 
 ### Stability TODO (queued, items 5-7)
 

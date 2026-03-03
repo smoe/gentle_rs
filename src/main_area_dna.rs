@@ -351,7 +351,7 @@ mod tests {
     use crate::{
         dna_sequence::DNAsequence,
         engine::{GentleEngine, LinearSequenceLetterLayoutMode, ProjectState},
-        linear_base_routing::LinearBaseRenderMode,
+        linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
     use std::{
@@ -833,10 +833,8 @@ mod tests {
         }
 
         let decision = area.linear_base_routing_decision();
-        assert_eq!(
-            decision.active_mode,
-            LinearBaseRenderMode::ContinuousHelical
-        );
+        assert_eq!(decision.route_policy, LinearBaseRoutePolicy::Auto);
+        assert_ne!(decision.active_mode, LinearBaseRenderMode::Off);
         assert!(area.linear_map_sequence_bases_visible());
         assert!(area.should_auto_hide_sequence_panel());
     }

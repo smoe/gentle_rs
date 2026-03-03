@@ -13932,21 +13932,24 @@ impl GentleEngine {
         (pairs, rejection_summary)
     }
 
-    fn parse_primer3_coord_pair(
-        raw: &str,
-        key: &str,
-    ) -> Result<(usize, usize), EngineError> {
+    fn parse_primer3_coord_pair(raw: &str, key: &str) -> Result<(usize, usize), EngineError> {
         let (left, right) = raw.split_once(',').ok_or_else(|| EngineError {
             code: ErrorCode::InvalidInput,
             message: format!("Primer3 output key '{key}' is not in start,len form"),
         })?;
         let start = left.trim().parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
-            message: format!("Primer3 output key '{key}' has invalid start '{}': {e}", left),
+            message: format!(
+                "Primer3 output key '{key}' has invalid start '{}': {e}",
+                left
+            ),
         })?;
         let len = right.trim().parse::<usize>().map_err(|e| EngineError {
             code: ErrorCode::InvalidInput,
-            message: format!("Primer3 output key '{key}' has invalid len '{}': {e}", right),
+            message: format!(
+                "Primer3 output key '{key}' has invalid len '{}': {e}",
+                right
+            ),
         })?;
         Ok((start, len))
     }
@@ -13991,8 +13994,14 @@ impl GentleEngine {
         max_tm_delta_c: f64,
         max_pairs: usize,
         primer3_executable: &str,
-    ) -> Result<(Vec<PrimerDesignPairRecord>, PrimerDesignRejectionSummary, Option<String>), EngineError>
-    {
+    ) -> Result<
+        (
+            Vec<PrimerDesignPairRecord>,
+            PrimerDesignRejectionSummary,
+            Option<String>,
+        ),
+        EngineError,
+    > {
         let template_bytes = template_seq.as_bytes();
         let template_len = template_bytes.len();
         let target_len = roi_end_0based.saturating_sub(roi_start_0based);
@@ -14124,7 +14133,9 @@ impl GentleEngine {
             let reverse_sequence = map
                 .get(&right_seq_key)
                 .cloned()
-                .unwrap_or_else(|| Self::reverse_complement(&template_seq[right_start..right_end_exclusive]))
+                .unwrap_or_else(|| {
+                    Self::reverse_complement(&template_seq[right_start..right_end_exclusive])
+                })
                 .to_ascii_uppercase();
             let forward_tm = map
                 .get(&left_tm_key)
@@ -14151,7 +14162,8 @@ impl GentleEngine {
 
             let left_window = &template_bytes[left_start..left_end];
             let right_window = &template_bytes[right_start..right_end_exclusive];
-            let forward_anneal_hits = Self::find_all_subsequences(template_bytes, left_window).len();
+            let forward_anneal_hits =
+                Self::find_all_subsequences(template_bytes, left_window).len();
             let reverse_anneal_hits =
                 Self::find_all_subsequences(template_bytes, right_window).len();
 
@@ -14165,8 +14177,12 @@ impl GentleEngine {
             let reverse_window_ok = reverse
                 .location_0based
                 .is_none_or(|value| value == right_start)
-                && reverse.start_0based.is_none_or(|value| right_start >= value)
-                && reverse.end_0based.is_none_or(|value| right_end_exclusive <= value)
+                && reverse
+                    .start_0based
+                    .is_none_or(|value| right_start >= value)
+                && reverse
+                    .end_0based
+                    .is_none_or(|value| right_end_exclusive <= value)
                 && right_len >= reverse.min_length
                 && right_len <= reverse.max_length;
             if !(forward_window_ok && reverse_window_ok) {
@@ -14235,7 +14251,11 @@ impl GentleEngine {
             pairs.push(pair);
         }
         Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
-        Ok((pairs, rejection_summary, Self::probe_primer3_version(primer3_executable)))
+        Ok((
+            pairs,
+            rejection_summary,
+            Self::probe_primer3_version(primer3_executable),
+        ))
     }
 
     fn right_end_overhangs(dna: &DNAsequence) -> Vec<Vec<u8>> {
@@ -16539,11 +16559,7 @@ impl GentleEngine {
                 let requested_backend = self.state.parameters.primer_design_backend;
                 let primer3_executable = {
                     let raw = self.state.parameters.primer3_executable.trim();
-                    if raw.is_empty() {
-                        "primer3_core"
-                    } else {
-                        raw
-                    }
+                    if raw.is_empty() { "primer3_core" } else { raw }
                 };
                 let mut backend = PrimerDesignBackendInfo {
                     requested: requested_backend.as_str().to_string(),
@@ -16565,18 +16581,19 @@ impl GentleEngine {
                         )
                     }
                     PrimerDesignBackend::Primer3 => {
-                        let (pairs, rejection_summary, version) = Self::design_primer_pairs_primer3(
-                            &template_seq,
-                            roi_start_0based,
-                            roi_end_0based,
-                            &forward,
-                            &reverse,
-                            min_amplicon_bp,
-                            max_amplicon_bp,
-                            max_tm_delta_c,
-                            max_pairs,
-                            primer3_executable,
-                        )?;
+                        let (pairs, rejection_summary, version) =
+                            Self::design_primer_pairs_primer3(
+                                &template_seq,
+                                roi_start_0based,
+                                roi_end_0based,
+                                &forward,
+                                &reverse,
+                                min_amplicon_bp,
+                                max_amplicon_bp,
+                                max_tm_delta_c,
+                                max_pairs,
+                                primer3_executable,
+                            )?;
                         backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
                         backend.primer3_executable = Some(primer3_executable.to_string());
                         backend.primer3_version = version;
@@ -16597,15 +16614,13 @@ impl GentleEngine {
                         ) {
                             Ok((pairs, rejection_summary, version)) => {
                                 backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
-                                backend.primer3_executable =
-                                    Some(primer3_executable.to_string());
+                                backend.primer3_executable = Some(primer3_executable.to_string());
                                 backend.primer3_version = version;
                                 (pairs, rejection_summary)
                             }
                             Err(err) => {
                                 backend.used = PrimerDesignBackend::Internal.as_str().to_string();
-                                backend.primer3_executable =
-                                    Some(primer3_executable.to_string());
+                                backend.primer3_executable = Some(primer3_executable.to_string());
                                 backend.fallback_reason = Some(err.message.clone());
                                 result.warnings.push(format!(
                                     "Primer3 backend unavailable in auto mode: {}. Falling back to internal primer design backend.",
@@ -17991,9 +18006,7 @@ impl GentleEngine {
                     } else {
                         let raw = value.as_str().ok_or_else(|| EngineError {
                             code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "SetParameter {name} requires a string or null value"
-                            ),
+                            message: format!("SetParameter {name} requires a string or null value"),
                         })?;
                         let trimmed = raw.trim();
                         if trimmed.is_empty() {
@@ -19274,7 +19287,12 @@ exit 2
                 report_id: Some("tp73_roi_auto".to_string()),
             })
             .expect("design primer pairs");
-        assert!(result.warnings.iter().any(|line| line.contains("Primer3 backend unavailable")));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|line| line.contains("Primer3 backend unavailable"))
+        );
         let report = engine
             .get_primer_design_report("tp73_roi_auto")
             .expect("report by id");
@@ -19655,6 +19673,21 @@ exit 2
                 .any(|m| m.contains("gc_content_bin_size_bp"))
         );
         assert_eq!(engine.state().display.gc_content_bin_size_bp, 250);
+    }
+
+    #[test]
+    fn test_linear_letter_defaults_are_auto_adaptive_and_compressed_enabled() {
+        let engine = GentleEngine::new();
+        assert_eq!(
+            engine.state().display.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::AutoAdaptive
+        );
+        assert!(
+            engine
+                .state()
+                .display
+                .linear_sequence_helical_letters_enabled
+        );
     }
 
     #[test]

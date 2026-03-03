@@ -50,6 +50,9 @@ jobs:
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1
 
+      - name: Full test suite
+        run: cargo test -q
+
       - name: Tutorial core CLI runtime smoke
         run: |
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
@@ -57,8 +60,22 @@ jobs:
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/guides_filter_and_generate_oligos.json
           cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
 
+      - name: Internal preview reviewer smoke
+        run: |
+          STATE="$RUNNER_TEMP/gentle_preview_state.json"
+          rm -f "$STATE"
+          cargo run --bin gentle_cli -- --state "$STATE" workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
+          cargo run --bin gentle_cli -- --state "$STATE" workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
+          cargo run --bin gentle_cli -- --state "$STATE" primers design '{"DesignPrimerPairs":{"template":"pgex_fasta","roi_start_0based":100,"roi_end_0based":300,"forward":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":80,"end_0based":130,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"reverse":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":280,"end_0based":340,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"min_amplicon_bp":120,"max_amplicon_bp":400,"max_pairs":5,"report_id":"preview_pgex_fast"}}' --backend internal
+          cargo run --bin gentle_cli -- --state "$STATE" primers show-report preview_pgex_fast
+
       - name: Engine tests
         run: cargo test -q "engine::tests::"
+
+      - name: Graphics adaptive-default regression tests
+        run: |
+          cargo test -q default_configuration_graphics_prefers_adaptive_linear_letters
+          cargo test -q apply_configuration_graphics_to_engine_state_keeps_adaptive_linear_defaults
 
       - name: Glossary coverage guard
         run: cargo test -q --bin gentle_cli test_shell_forwarded_commands_are_documented_in_glossary

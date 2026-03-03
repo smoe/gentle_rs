@@ -670,14 +670,21 @@ fn optional_usize_arg(args: &Map<String, Value>, key: &str) -> Result<Option<usi
                     .map(Some)
                     .map_err(|_| format!("MCP argument '{key}' is out of usize range"))
             } else {
-                Err(format!("MCP argument '{key}' must be a non-negative integer"))
+                Err(format!(
+                    "MCP argument '{key}' must be a non-negative integer"
+                ))
             }
         }
-        Some(_) => Err(format!("MCP argument '{key}' must be a non-negative integer")),
+        Some(_) => Err(format!(
+            "MCP argument '{key}' must be a non-negative integer"
+        )),
     }
 }
 
-fn optional_json_string_arg(args: &Map<String, Value>, key: &str) -> Result<Option<String>, String> {
+fn optional_json_string_arg(
+    args: &Map<String, Value>,
+    key: &str,
+) -> Result<Option<String>, String> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => {
@@ -688,9 +695,11 @@ fn optional_json_string_arg(args: &Map<String, Value>, key: &str) -> Result<Opti
                 Ok(Some(trimmed.to_string()))
             }
         }
-        Some(value @ Value::Object(_)) | Some(value @ Value::Array(_)) => serde_json::to_string(value)
-            .map(Some)
-            .map_err(|e| format!("Could not serialize MCP argument '{key}' as JSON: {e}")),
+        Some(value @ Value::Object(_)) | Some(value @ Value::Array(_)) => {
+            serde_json::to_string(value)
+                .map(Some)
+                .map_err(|e| format!("Could not serialize MCP argument '{key}' as JSON: {e}"))
+        }
         Some(_) => Err(format!(
             "MCP argument '{key}' must be a JSON object/array or string"
         )),
@@ -838,7 +847,11 @@ fn blast_async_start_tool_result(default_state_path: &str, arguments: &Value) ->
         Err(err) => return tool_result_text(err, "text", true),
     };
     if matches!(max_hits, Some(0)) {
-        return tool_result_text("MCP argument 'max_hits' must be >= 1".to_string(), "text", true);
+        return tool_result_text(
+            "MCP argument 'max_hits' must be >= 1".to_string(),
+            "text",
+            true,
+        );
     }
     let task = match optional_string_arg(&args, "task") {
         Ok(value) => value,
@@ -1362,7 +1375,8 @@ mod tests {
     fn run_shared_shell_command(tokens: Vec<String>) -> Value {
         let command = parse_shell_tokens(&tokens).expect("parse shared shell command");
         let mut engine = GentleEngine::new();
-        let run = execute_shell_command(&mut engine, &command).expect("execute shared shell command");
+        let run =
+            execute_shell_command(&mut engine, &command).expect("execute shared shell command");
         assert!(
             !run.state_changed,
             "expected non-mutating shared shell command"
@@ -1795,6 +1809,34 @@ mod tests {
             .to_string();
         assert!(!job_id.is_empty());
 
+        // Wait until the async job reaches a terminal state to avoid racey
+        // running->failed transitions between MCP and shared-shell snapshots.
+        let mut expected_status: Option<Value> = None;
+        for _ in 0..50 {
+            let status = run_shared_shell_command(vec![
+                "helpers".to_string(),
+                "blast-status".to_string(),
+                job_id.clone(),
+            ]);
+            let state = status
+                .pointer("/job/state")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            if state != "running" {
+                expected_status = Some(status);
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let expected_status = expected_status.unwrap_or_else(|| {
+            run_shared_shell_command(vec![
+                "helpers".to_string(),
+                "blast-status".to_string(),
+                job_id.clone(),
+            ])
+        });
+
         let mcp_status = run_tool(
             DEFAULT_MCP_STATE_PATH,
             "blast_async_status",
@@ -1804,14 +1846,11 @@ mod tests {
             }),
         );
         assert_eq!(
-            mcp_status.pointer("/result/isError").and_then(Value::as_bool),
+            mcp_status
+                .pointer("/result/isError")
+                .and_then(Value::as_bool),
             Some(false)
         );
-        let expected_status = run_shared_shell_command(vec![
-            "helpers".to_string(),
-            "blast-status".to_string(),
-            job_id,
-        ]);
         assert_eq!(mcp_status["result"]["structuredContent"], expected_status);
     }
 }

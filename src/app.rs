@@ -69,6 +69,7 @@ use serde::{Deserialize, Serialize};
 const GUI_MANUAL_MD: &str = include_str!("../docs/gui.md");
 const CLI_MANUAL_MD: &str = include_str!("../docs/cli.md");
 const AGENT_INTERFACE_MD: &str = include_str!("../docs/agent_interface.md");
+const REVIEWER_PREVIEW_MD: &str = include_str!("../docs/reviewer_preview.md");
 const APP_CONFIGURATION_FILE_NAME: &str = ".gentle_gui_settings.json";
 const APP_CONFIGURATION_SCHEMA_VERSION: u32 = 2;
 const MAX_RECENT_PROJECTS: usize = 12;
@@ -396,6 +397,7 @@ pub struct GENtleApp {
     help_gui_markdown: String,
     help_cli_markdown: String,
     help_agent_interface_markdown: String,
+    help_reviewer_preview_markdown: String,
     help_shell_markdown: String,
     help_shell_interface: ShellHelpInterface,
     help_search_query: String,
@@ -579,6 +581,7 @@ enum HelpDoc {
     Gui,
     Cli,
     AgentInterface,
+    ReviewerPreview,
     Shell,
 }
 
@@ -1026,6 +1029,7 @@ enum CommandPaletteAction {
     OpenGuiManual,
     OpenCliManual,
     OpenAgentInterfaceManual,
+    OpenReviewerPreviewManual,
     OpenShellManual,
     ExportLineageSvg,
     ToggleJobsPanel,
@@ -1086,6 +1090,7 @@ impl Default for GENtleApp {
             help_gui_markdown: GUI_MANUAL_MD.to_string(),
             help_cli_markdown: CLI_MANUAL_MD.to_string(),
             help_agent_interface_markdown: AGENT_INTERFACE_MD.to_string(),
+            help_reviewer_preview_markdown: REVIEWER_PREVIEW_MD.to_string(),
             help_shell_markdown: Self::generate_shell_help_markdown(),
             help_shell_interface: ShellHelpInterface::GuiShell,
             help_search_query: String::new(),
@@ -1855,6 +1860,8 @@ Error: `{err}`"
         self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
         self.help_agent_interface_markdown =
             Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
+        self.help_reviewer_preview_markdown =
+            Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
         self.help_shell_markdown =
             Self::generate_shell_help_markdown_for(self.help_shell_interface);
     }
@@ -2477,6 +2484,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenAgentInterfaceManual,
             },
             CommandPaletteEntry {
+                title: "Reviewer Quickstart".to_string(),
+                detail: "Open internal preview quickstart and known limitations".to_string(),
+                keywords: "help reviewer quickstart preview internal limitations".to_string(),
+                action: CommandPaletteAction::OpenReviewerPreviewManual,
+            },
+            CommandPaletteEntry {
                 title: "Shell Commands".to_string(),
                 detail: "Open in-app shell command reference".to_string(),
                 keywords: "help shell commands glossary docs".to_string(),
@@ -2540,6 +2553,9 @@ Error: `{err}`"
             CommandPaletteAction::OpenAgentInterfaceManual => {
                 self.open_help_doc(HelpDoc::AgentInterface)
             }
+            CommandPaletteAction::OpenReviewerPreviewManual => {
+                self.open_help_doc(HelpDoc::ReviewerPreview)
+            }
             CommandPaletteAction::OpenShellManual => self.open_help_doc(HelpDoc::Shell),
             CommandPaletteAction::ExportLineageSvg => self.prompt_export_lineage_svg(),
             CommandPaletteAction::ToggleJobsPanel => {
@@ -2569,6 +2585,7 @@ Error: `{err}`"
             HelpDoc::Gui => "GUI Manual",
             HelpDoc::Cli => "CLI Manual",
             HelpDoc::AgentInterface => "Agent Interface",
+            HelpDoc::ReviewerPreview => "Reviewer Quickstart",
             HelpDoc::Shell => "Shell Commands",
         }
     }
@@ -2578,6 +2595,7 @@ Error: `{err}`"
             HelpDoc::Gui => &self.help_gui_markdown,
             HelpDoc::Cli => &self.help_cli_markdown,
             HelpDoc::AgentInterface => &self.help_agent_interface_markdown,
+            HelpDoc::ReviewerPreview => &self.help_reviewer_preview_markdown,
             HelpDoc::Shell => &self.help_shell_markdown,
         }
     }
@@ -10490,6 +10508,14 @@ Error: `{err}`"
                     ui.close_menu();
                 }
                 if ui
+                    .button("Reviewer Quickstart")
+                    .on_hover_text("Open internal preview guide with known limitations and reviewer walkthrough")
+                    .clicked()
+                {
+                    self.open_help_doc(HelpDoc::ReviewerPreview);
+                    ui.close_menu();
+                }
+                if ui
                     .button("Shell Commands")
                     .on_hover_text("Open shell command reference generated from the glossary")
                     .clicked()
@@ -15838,6 +15864,16 @@ Error: `{err}`"
                 active_doc_changed = true;
             }
             if ui
+                .selectable_label(
+                    self.help_doc == HelpDoc::ReviewerPreview,
+                    "Reviewer Quickstart",
+                )
+                .clicked()
+            {
+                self.help_doc = HelpDoc::ReviewerPreview;
+                active_doc_changed = true;
+            }
+            if ui
                 .selectable_label(self.help_doc == HelpDoc::Shell, "Shell Commands")
                 .on_hover_text("Generated from docs/glossary.json")
                 .clicked()
@@ -16819,6 +16855,42 @@ mod tests {
             DisplaySettings::default_reverse_strand_visual_opacity()
         );
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 0);
+    }
+
+    #[test]
+    fn default_configuration_graphics_prefers_adaptive_linear_letters() {
+        let app = GENtleApp::default();
+        assert_eq!(
+            app.configuration_graphics
+                .linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::AutoAdaptive
+        );
+        assert!(
+            app.configuration_graphics
+                .linear_sequence_helical_letters_enabled
+        );
+    }
+
+    #[test]
+    fn apply_configuration_graphics_to_engine_state_keeps_adaptive_linear_defaults() {
+        let mut app = GENtleApp::default();
+        app.configuration_graphics = DisplaySettings::default();
+        app.configuration_graphics_dirty = true;
+
+        app.apply_configuration_graphics_to_engine_state();
+
+        let guard = app.engine.read().expect("engine lock");
+        assert_eq!(
+            guard.state().display.linear_sequence_letter_layout_mode,
+            LinearSequenceLetterLayoutMode::AutoAdaptive
+        );
+        assert!(
+            guard
+                .state()
+                .display
+                .linear_sequence_helical_letters_enabled
+        );
+        assert!(!app.configuration_graphics_dirty);
     }
 
     #[test]

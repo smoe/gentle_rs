@@ -35,8 +35,7 @@ use crate::{
         GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
         LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
         PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend, ProjectState, RenderSvgMode,
-        SequenceAnchor,
-        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     genomes::{
@@ -3859,7 +3858,10 @@ fn cancel_blast_async_job(job_id: &str) -> Result<BlastAsyncJobStatus, String> {
         record.status.started_at_unix_ms = Some(shell_now_unix_ms());
     }
     if record.receiver.is_none() {
-        record.status.finished_at_unix_ms.get_or_insert(shell_now_unix_ms());
+        record
+            .status
+            .finished_at_unix_ms
+            .get_or_insert(shell_now_unix_ms());
         if record.status.state == "queued" || record.status.state == "running" {
             record.status.state = "cancelled".to_string();
         }
@@ -3915,7 +3917,11 @@ fn start_blast_async_job(
                 &query_owned,
                 request_options_for_thread.as_ref(),
                 task_for_thread.as_deref(),
-                if max_hits_explicit { Some(max_hits) } else { None },
+                if max_hits_explicit {
+                    Some(max_hits)
+                } else {
+                    None
+                },
                 resolved_catalog.as_deref(),
                 cache_dir_for_thread.as_deref(),
                 &mut should_cancel,
@@ -3927,12 +3933,18 @@ fn start_blast_async_job(
                 &query_owned,
                 request_options_for_thread.as_ref(),
                 task_for_thread.as_deref(),
-                if max_hits_explicit { Some(max_hits) } else { None },
+                if max_hits_explicit {
+                    Some(max_hits)
+                } else {
+                    None
+                },
                 cache_dir_for_thread.as_deref(),
                 &mut should_cancel,
             )
         };
-        let _ = tx.send(BlastAsyncWorkerMessage::Done(result.map_err(|e| e.to_string())));
+        let _ = tx.send(BlastAsyncWorkerMessage::Done(
+            result.map_err(|e| e.to_string()),
+        ));
     });
 
     let status = BlastAsyncJobStatus {
@@ -11219,7 +11231,9 @@ pub fn execute_shell_command_with_options(
                     .max_by_key(|summary| summary.generated_at_unix_ms)
                     .and_then(|summary| engine.get_primer_design_report(&summary.report_id).ok())
             };
-            let effective_backend = selected_report.as_ref().map(|report| report.backend.clone());
+            let effective_backend = selected_report
+                .as_ref()
+                .map(|report| report.backend.clone());
             ShellRunResult {
                 state_changed: before != after,
                 output: json!({
@@ -11721,7 +11735,10 @@ mod tests {
         let cancel =
             parse_shell_line("helpers blast-cancel blast-job-42").expect("parse cancel command");
         match cancel {
-            ShellCommand::ReferenceBlastAsyncCancel { helper_mode, job_id } => {
+            ShellCommand::ReferenceBlastAsyncCancel {
+                helper_mode,
+                job_id,
+            } => {
                 assert!(helper_mode);
                 assert_eq!(job_id, "blast-job-42");
             }
@@ -14130,7 +14147,10 @@ filter set1 set2 --metric score --min 10
                 .and_then(|value| value.as_str())
                 .unwrap_or_default()
                 .to_string();
-            if matches!(terminal_state.as_str(), "completed" | "failed" | "cancelled") {
+            if matches!(
+                terminal_state.as_str(),
+                "completed" | "failed" | "cancelled"
+            ) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
