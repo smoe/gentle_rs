@@ -4310,6 +4310,27 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct WorkflowPayloadWrapper {
+    workflow: Workflow,
+}
+
+/// Parse workflow payload JSON accepted by direct and shell adapters.
+///
+/// Accepted shapes:
+/// - Raw workflow object: `{ "run_id": "...", "ops": [...] }`
+/// - Wrapped example object: `{ ..., "workflow": { "run_id": "...", "ops": [...] } }`
+pub fn parse_workflow_json_payload(raw_json: &str) -> Result<Workflow, String> {
+    match serde_json::from_str::<Workflow>(raw_json) {
+        Ok(workflow) => Ok(workflow),
+        Err(primary_error) => {
+            let wrapped: WorkflowPayloadWrapper = serde_json::from_str(raw_json)
+                .map_err(|_| format!("Invalid workflow JSON: {primary_error}"))?;
+            Ok(wrapped.workflow)
+        }
+    }
+}
+
 fn parse_blast_options_override(raw: &str, label: &str, flag: &str) -> Result<Value, String> {
     let loaded = parse_json_payload(raw)?;
     let parsed: Value = serde_json::from_str(&loaded)
@@ -11282,8 +11303,7 @@ pub fn execute_shell_command_with_options(
         }
         ShellCommand::Workflow { payload } => {
             let json_text = parse_json_payload(payload)?;
-            let workflow: Workflow = serde_json::from_str(&json_text)
-                .map_err(|e| format!("Invalid workflow JSON: {e}"))?;
+            let workflow = parse_workflow_json_payload(&json_text)?;
             let before_state = serde_json::to_value(engine.snapshot()).ok();
             let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
             let state_changed = if let Some(before) = before_state {
@@ -11377,6 +11397,30 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_workflow_json_payload_accepts_raw_workflow() {
+        let payload = r#"{ "run_id": "raw", "ops": [] }"#;
+        let workflow = parse_workflow_json_payload(payload).expect("parse raw workflow");
+        assert_eq!(workflow.run_id, "raw");
+        assert!(workflow.ops.is_empty());
+    }
+
+    #[test]
+    fn parse_workflow_json_payload_accepts_wrapped_example() {
+        let payload = r#"{
+            "schema": "gentle.workflow_example.v1",
+            "id": "demo",
+            "title": "Demo",
+            "workflow": {
+                "run_id": "wrapped",
+                "ops": []
+            }
+        }"#;
+        let workflow = parse_workflow_json_payload(payload).expect("parse wrapped workflow");
+        assert_eq!(workflow.run_id, "wrapped");
+        assert!(workflow.ops.is_empty());
     }
 
     #[test]

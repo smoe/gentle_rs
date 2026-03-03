@@ -534,6 +534,7 @@ cargo run --bin gentle_cli -- help candidates generate
 cargo run --bin gentle_cli -- help --format json
 cargo run --bin gentle_cli -- op '<operation-json>'
 cargo run --bin gentle_cli -- workflow '<workflow-json>'
+cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json
 cargo run --bin gentle_cli -- --progress op '<operation-json>'
 cargo run --bin gentle_cli -- --progress-stdout workflow '<workflow-json>'
 cargo run --bin gentle_cli -- export-state state.json
@@ -616,6 +617,8 @@ cargo run --bin gentle_cli -- shell 'set-param tfbs_display_min_llr_quantile 0.9
 ```
 
 You can pass JSON from a file with `@file.json`.
+`workflow` accepts both raw workflow payloads (`{"run_id":"...","ops":[...]}`)
+and wrapped protocol example payloads (`{"workflow":{...}}`).
 
 Global CLI options:
 

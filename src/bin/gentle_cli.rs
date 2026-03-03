@@ -4,11 +4,11 @@ use gentle::{
     about,
     engine::{
         Engine, EngineStateSummary, GenomeTrackImportProgress, GentleEngine, Operation,
-        OperationProgress, ProjectState, RenderSvgMode, TfbsProgress, Workflow,
+        OperationProgress, ProjectState, RenderSvgMode, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
-        parse_shell_tokens, shell_help_text,
+        parse_shell_tokens, parse_workflow_json_payload, shell_help_text,
     },
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeGeneRecord,
@@ -2070,8 +2070,7 @@ fn run() -> Result<(), String> {
                 return Err("Missing workflow JSON".to_string());
             }
             let json = load_json_arg(&args[cmd_idx + 1])?;
-            let workflow: Workflow =
-                serde_json::from_str(&json).map_err(|e| format!("Invalid workflow JSON: {e}"))?;
+            let workflow = parse_workflow_json_payload(&json)?;
 
             let mut engine = GentleEngine::from_state(load_state(&state_path)?);
             let results = if let Some(sink) = global.progress_sink {
