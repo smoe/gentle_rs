@@ -533,9 +533,13 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
   gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
   gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE\n  \
+  gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE\n  \
   gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-report REPORT_ID\n  \
-  gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n\n  \
+  gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n  \
+  gentle_cli [--state PATH|--project PATH] primers list-qpcr-reports\n  \
+  gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
+  gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \

@@ -1615,7 +1615,10 @@ mod tests {
             }
         });
         let response = run_single(DEFAULT_MCP_STATE_PATH, request);
-        assert_eq!(response.pointer("/error/code").and_then(Value::as_i64), Some(-32602));
+        assert_eq!(
+            response.pointer("/error/code").and_then(Value::as_i64),
+            Some(-32602)
+        );
         let details = response
             .pointer("/error/data/details")
             .and_then(Value::as_str)
@@ -1635,7 +1638,10 @@ mod tests {
             }
         });
         let response = run_single(DEFAULT_MCP_STATE_PATH, request);
-        assert_eq!(response.pointer("/error/code").and_then(Value::as_i64), Some(-32602));
+        assert_eq!(
+            response.pointer("/error/code").and_then(Value::as_i64),
+            Some(-32602)
+        );
         let details = response
             .pointer("/error/data/details")
             .and_then(Value::as_str)

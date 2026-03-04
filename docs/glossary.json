@@ -1,5 +1,5 @@
 {
-   "command_count": 174,
+   "command_count": 181,
    "commands": [
       {
          "aliases": [
@@ -370,6 +370,89 @@
          "path": "ui latest-prepared",
          "summary": "Resolve latest prepared genome/helper candidate by species query.",
          "usage": "ui latest-prepared SPECIES [--helpers] [--catalog PATH] [--cache-dir PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "FetchUniprotSwissProt"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot fetch",
+         "summary": "Fetch one UniProt SWISS-PROT text entry by accession or ID.",
+         "usage": "uniprot fetch QUERY [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ImportUniprotSwissProt"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot import-swissprot",
+         "summary": "Import one local SWISS-PROT text record into project metadata.",
+         "usage": "uniprot import-swissprot PATH [--entry-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot list",
+         "summary": "List stored UniProt entries in project metadata.",
+         "usage": "uniprot list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot show",
+         "summary": "Show one stored UniProt entry as structured JSON.",
+         "usage": "uniprot show ENTRY_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ProjectUniprotToGenome"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot map",
+         "summary": "Project UniProt feature intervals onto transcript/CDS coordinates in one sequence.",
+         "usage": "uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot projection-list",
+         "summary": "List stored UniProt-to-genome projection records.",
+         "usage": "uniprot projection-list [--seq SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "uniprot projection-show",
+         "summary": "Show one stored UniProt-to-genome projection record.",
+         "usage": "uniprot projection-show PROJECTION_ID"
       },
       {
          "aliases": [],

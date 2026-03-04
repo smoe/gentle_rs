@@ -285,6 +285,77 @@ impl RenderDnaLinear {
         &self.area
     }
 
+    pub fn visible_feature_bounds_y(&self) -> Option<(f32, f32)> {
+        if !Self::is_rect_usable(self.area) {
+            return None;
+        }
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+        let mut include_span = |top: f32, bottom: f32| {
+            if top.is_finite() && bottom.is_finite() {
+                min_y = min_y.min(top);
+                max_y = max_y.max(bottom);
+            }
+        };
+
+        include_span(self.baseline_y() - 1.0, self.baseline_y() + 1.0);
+        for feature in &self.features {
+            include_span(feature.rect.top(), feature.rect.bottom());
+            for exon_rect in &feature.exon_rects {
+                include_span(exon_rect.top(), exon_rect.bottom());
+            }
+            for connector in &feature.intron_connectors {
+                include_span(connector[0].y, connector[0].y);
+                include_span(connector[1].y, connector[1].y);
+                include_span(connector[2].y, connector[2].y);
+            }
+        }
+        for restriction_site in &self.restriction_enzyme_sites {
+            include_span(restriction_site.area.top(), restriction_site.area.bottom());
+        }
+
+        let viewport = self.viewport();
+        let detail = self.detail_level(viewport);
+        let show_orfs = self
+            .display
+            .read()
+            .map(|display| display.show_open_reading_frames_effective())
+            .unwrap_or(false);
+        if show_orfs && detail.show_open_reading_frames {
+            let orfs = self
+                .dna
+                .read()
+                .map(|dna| dna.open_reading_frames().clone())
+                .unwrap_or_default();
+            for orf in &orfs {
+                let from = self.normalize_pos(orf.from() as isize);
+                let to = self.normalize_pos(orf.to() as isize);
+                let start = from.min(to);
+                let end_exclusive = from.max(to).saturating_add(1).min(self.sequence_length);
+                if start >= end_exclusive {
+                    continue;
+                }
+                if Self::range_overlap(start, end_exclusive, viewport.start, viewport.end).is_none()
+                {
+                    continue;
+                }
+                let frame_abs = orf.frame().unsigned_abs() as f32;
+                let y = if orf.is_reverse() {
+                    self.baseline_y() + 10.0 + frame_abs * 7.0
+                } else {
+                    self.baseline_y() - 10.0 - frame_abs * 7.0
+                };
+                include_span(y - ORF_HEIGHT * 0.5, y + ORF_HEIGHT * 0.5);
+            }
+        }
+
+        if min_y.is_finite() && max_y.is_finite() && min_y <= max_y {
+            Some((min_y, max_y))
+        } else {
+            None
+        }
+    }
+
     fn is_rect_usable(rect: Rect) -> bool {
         rect.min.x.is_finite()
             && rect.min.y.is_finite()
@@ -2313,6 +2384,23 @@ mod tests {
         shifted_renderer.layout_features(viewport);
         let delta = shifted_renderer.baseline_y() - base_renderer.baseline_y();
         assert!((delta - 48.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn visible_feature_bounds_are_available_after_layout() {
+        let feature = make_test_feature(Location::simple_range(150, 280));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1000,
+            span: 1000,
+        });
+        let bounds = renderer.visible_feature_bounds_y();
+        assert!(bounds.is_some());
+        let (top, bottom) = bounds.expect("bounds");
+        assert!(top < bottom);
+        assert!(top.is_finite());
+        assert!(bottom.is_finite());
     }
 
     #[test]

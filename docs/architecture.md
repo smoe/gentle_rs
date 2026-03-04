@@ -123,7 +123,7 @@ Interaction consistency rule:
   on zoom-capable canvases.
 - Linear DNA toolbar `Fit` actions must be explicit and non-ambiguous:
   - `Fit Seq`: full sequence horizontal fit
-  - `Fit Features`: vertical recenter for currently shown subsequence
+  - `Fit Features`: geometry-based vertical fit for currently shown subsequence
 - Non-zoom scroll panes should expose keyboard navigation (`Arrow`,
   `PageUp/PageDown`, `Home/End`) when the pane is active and text fields do not
   hold keyboard focus.
@@ -661,7 +661,10 @@ Primer-pair design is now a first-class engine operation plus shared-shell
 report inspection/export path:
 
 - Engine operation:
-  - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+  - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+  - `forward`/`reverse` side constraints now include optional sequence-level filters:
+    `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
+    and `locked_positions[]` (offset/base locks, IUPAC-aware).
 - Persisted metadata:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
   - report payload schema: `gentle.primer_design_report.v1`

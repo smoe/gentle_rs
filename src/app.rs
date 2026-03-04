@@ -58,6 +58,12 @@ use crate::{
     tf_motifs, tool_overrides,
     window::Window,
     window_backdrop::{self, WindowBackdropKind, WindowBackdropSettings},
+    workflow_examples::{
+        DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode,
+        TutorialTier, WorkflowExample, load_tutorial_manifest, load_workflow_examples,
+        run_example_workflow_for_project_state, validate_example_required_files,
+        validate_tutorial_manifest_against_examples,
+    },
 };
 use anyhow::{Result, anyhow};
 use eframe::egui::{self, Key, KeyboardShortcut, Modifiers, Pos2, Ui, Vec2, ViewportId, menu};
@@ -464,6 +470,7 @@ pub struct GENtleApp {
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
+    show_uniprot_dialog: bool,
     genome_catalog_path: String,
     genome_cache_dir: String,
     genome_id: String,
@@ -486,6 +493,13 @@ pub struct GENtleApp {
     genome_end_1based: String,
     genome_output_id: String,
     genome_retrieve_status: String,
+    uniprot_query: String,
+    uniprot_entry_id: String,
+    uniprot_swiss_path: String,
+    uniprot_map_seq_id: String,
+    uniprot_map_projection_id: String,
+    uniprot_map_transcript_id: String,
+    uniprot_status: String,
     genome_blast_source_mode: GenomeBlastSourceMode,
     genome_blast_query_manual: String,
     genome_blast_query_seq_id: String,
@@ -573,7 +587,19 @@ enum ProjectAction {
     New,
     Open,
     OpenPath(String),
+    OpenTutorialChapter(String),
     Close,
+}
+
+#[derive(Clone)]
+struct TutorialProjectEntry {
+    chapter_id: String,
+    chapter_order: usize,
+    chapter_title: String,
+    chapter_summary: String,
+    tier: TutorialTier,
+    example: WorkflowExample,
+    repo_root: PathBuf,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1019,6 +1045,7 @@ enum CommandPaletteAction {
     OpenProject,
     SaveProject,
     OpenSequence,
+    OpenUniprot,
     OpenConfiguration,
     OpenPrepareGenome,
     OpenRetrieveGenome,
@@ -1158,6 +1185,7 @@ impl Default for GENtleApp {
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
+            show_uniprot_dialog: false,
             genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
             genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
             genome_id: "Human GRCh38 Ensembl 113".to_string(),
@@ -1180,6 +1208,13 @@ impl Default for GENtleApp {
             genome_end_1based: "1000".to_string(),
             genome_output_id: String::new(),
             genome_retrieve_status: String::new(),
+            uniprot_query: String::new(),
+            uniprot_entry_id: String::new(),
+            uniprot_swiss_path: String::new(),
+            uniprot_map_seq_id: String::new(),
+            uniprot_map_projection_id: String::new(),
+            uniprot_map_transcript_id: String::new(),
+            uniprot_status: String::new(),
             genome_blast_source_mode: GenomeBlastSourceMode::Manual,
             genome_blast_query_manual: String::new(),
             genome_blast_query_seq_id: String::new(),
@@ -1295,6 +1330,10 @@ impl GENtleApp {
 
     fn history_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle Operation History Viewport")
+    }
+
+    fn uniprot_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle UniProt Viewport")
     }
 
     fn native_menu_key_for_viewport(viewport_id: ViewportId) -> u64 {
@@ -2412,6 +2451,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenSequence,
             },
             CommandPaletteEntry {
+                title: "UniProt Mapping".to_string(),
+                detail: "Fetch/import UniProt entry and map features onto sequence".to_string(),
+                keywords: "uniprot swiss-prot accession protein map".to_string(),
+                action: CommandPaletteAction::OpenUniprot,
+            },
+            CommandPaletteEntry {
                 title: "Undo Last Operation".to_string(),
                 detail: "Restore previous project state".to_string(),
                 keywords: "undo history edit".to_string(),
@@ -2537,6 +2582,7 @@ Error: `{err}`"
                 let _ = self.save_current_project();
             }
             CommandPaletteAction::OpenSequence => self.prompt_open_sequence(),
+            CommandPaletteAction::OpenUniprot => self.open_uniprot_dialog(),
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
             CommandPaletteAction::OpenPrepareGenome => self.open_reference_genome_prepare_dialog(),
             CommandPaletteAction::OpenRetrieveGenome => {
@@ -3080,6 +3126,7 @@ Error: `{err}`"
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
         self.show_agent_assistant_dialog = false;
+        self.show_uniprot_dialog = false;
         self.genome_track_status.clear();
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
@@ -3094,19 +3141,26 @@ Error: `{err}`"
         self.agent_discovered_model_pick.clear();
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
+        self.uniprot_status.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.mark_clean_snapshot();
     }
 
-    fn set_current_project_path_and_track_recent(&mut self, path: &str) {
+    fn set_current_project_path(&mut self, path: &str, track_recent: bool) {
         let normalized = Self::normalize_project_path(path);
         if normalized.is_empty() {
             self.current_project_path = None;
             return;
         }
         self.current_project_path = Some(normalized.clone());
-        self.record_recent_project_path(&normalized);
+        if track_recent {
+            self.record_recent_project_path(&normalized);
+        }
+    }
+
+    fn set_current_project_path_and_track_recent(&mut self, path: &str) {
+        self.set_current_project_path(path, true);
     }
 
     fn open_project_path(&mut self, path: &str) {
@@ -3114,6 +3168,148 @@ Error: `{err}`"
             eprintln!("Could not open project '{}': {err}", path);
             self.remove_recent_project_path(path);
         }
+    }
+
+    fn tutorial_cache_root_dir() -> PathBuf {
+        env::temp_dir().join("gentle_tutorial_projects")
+    }
+
+    fn detect_tutorial_repo_root() -> Option<PathBuf> {
+        let mut candidates: Vec<PathBuf> = vec![];
+        if let Ok(cwd) = env::current_dir() {
+            candidates.push(cwd);
+        }
+        if let Ok(exe) = env::current_exe() {
+            let mut cursor = exe.parent().map(|p| p.to_path_buf());
+            while let Some(path) = cursor {
+                candidates.push(path.clone());
+                cursor = path.parent().map(|p| p.to_path_buf());
+            }
+        }
+        for candidate in candidates {
+            let manifest = candidate.join(DEFAULT_TUTORIAL_MANIFEST_PATH);
+            let examples = candidate.join(DEFAULT_WORKFLOW_EXAMPLE_DIR);
+            if manifest.is_file() && examples.is_dir() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
+    fn load_tutorial_project_entries() -> std::result::Result<Vec<TutorialProjectEntry>, String> {
+        let repo_root = Self::detect_tutorial_repo_root().ok_or_else(|| {
+            format!(
+                "Could not locate '{}' and '{}' from current runtime paths",
+                DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_WORKFLOW_EXAMPLE_DIR
+            )
+        })?;
+        let manifest_path = repo_root.join(DEFAULT_TUTORIAL_MANIFEST_PATH);
+        let examples_dir = repo_root.join(DEFAULT_WORKFLOW_EXAMPLE_DIR);
+        let manifest = load_tutorial_manifest(&manifest_path)?;
+        let loaded_examples = load_workflow_examples(&examples_dir)?;
+        validate_tutorial_manifest_against_examples(&manifest, &loaded_examples)?;
+        let mut by_id: HashMap<String, WorkflowExample> = HashMap::new();
+        for loaded in loaded_examples {
+            by_id.insert(loaded.example.id.clone(), loaded.example);
+        }
+        let mut entries = vec![];
+        for chapter in manifest.chapters {
+            let example = by_id.get(&chapter.example_id).cloned().ok_or_else(|| {
+                format!(
+                    "Tutorial chapter '{}' references missing example id '{}'",
+                    chapter.id, chapter.example_id
+                )
+            })?;
+            entries.push(TutorialProjectEntry {
+                chapter_id: chapter.id,
+                chapter_order: chapter.order,
+                chapter_title: chapter.title,
+                chapter_summary: chapter.summary,
+                tier: chapter.tier,
+                example,
+                repo_root: repo_root.clone(),
+            });
+        }
+        entries.sort_by(|left, right| left.chapter_order.cmp(&right.chapter_order));
+        Ok(entries)
+    }
+
+    fn open_tutorial_project_chapter(&mut self, chapter_id: &str) {
+        let entries = match Self::load_tutorial_project_entries() {
+            Ok(entries) => entries,
+            Err(err) => {
+                self.app_status = format!("Tutorial catalog unavailable: {err}");
+                return;
+            }
+        };
+        let entry = match entries
+            .into_iter()
+            .find(|entry| entry.chapter_id == chapter_id)
+        {
+            Some(entry) => entry,
+            None => {
+                self.app_status = format!("Unknown tutorial chapter id '{chapter_id}'");
+                return;
+            }
+        };
+        if let Err(err) = validate_example_required_files(&entry.example, &entry.repo_root) {
+            self.app_status = format!(
+                "Tutorial '{}' missing required files: {err}",
+                entry.chapter_id
+            );
+            return;
+        }
+        let slug = format!(
+            "{:02}_{}",
+            entry.chapter_order,
+            Self::sanitize_file_stem(&entry.chapter_id, "tutorial")
+        );
+        let cache_root = Self::tutorial_cache_root_dir();
+        let run_dir = cache_root.join(&slug).join("run");
+        if run_dir.exists() {
+            let _ = fs::remove_dir_all(&run_dir);
+        }
+        if let Err(err) = fs::create_dir_all(&run_dir) {
+            self.app_status = format!(
+                "Could not create tutorial run directory '{}': {err}",
+                run_dir.display()
+            );
+            return;
+        }
+        let state = match run_example_workflow_for_project_state(
+            &entry.example,
+            &entry.repo_root,
+            &run_dir,
+        ) {
+            Ok(state) => state,
+            Err(err) => {
+                self.app_status = format!(
+                    "Could not build tutorial project '{}': {err}",
+                    entry.chapter_id
+                );
+                return;
+            }
+        };
+        let project_path = cache_root.join(format!("{slug}.project.gentle.json"));
+        if let Err(err) = state.save_to_path(project_path.to_string_lossy().as_ref()) {
+            self.app_status = format!(
+                "Could not persist tutorial project '{}': {err}",
+                project_path.display()
+            );
+            return;
+        }
+        let project_path_str = project_path.to_string_lossy().to_string();
+        if let Err(err) = self.load_project_from_file_with_recent(&project_path_str, false) {
+            self.app_status = format!(
+                "Could not open tutorial project '{}': {err}",
+                project_path.display()
+            );
+            return;
+        }
+        self.app_status = format!(
+            "Opened tutorial project: {} ({})",
+            entry.chapter_title, entry.chapter_id
+        );
     }
 
     fn prompt_open_project(&mut self) {
@@ -3271,6 +3467,18 @@ Error: `{err}`"
     fn open_agent_assistant_dialog(&mut self) {
         self.refresh_agent_system_catalog();
         self.show_agent_assistant_dialog = true;
+    }
+
+    fn open_uniprot_dialog(&mut self) {
+        if self.show_uniprot_dialog {
+            self.queue_focus_viewport(Self::uniprot_viewport_id());
+        }
+        if self.uniprot_map_seq_id.trim().is_empty() {
+            if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
+                self.uniprot_map_seq_id = seq_id.clone();
+            }
+        }
+        self.show_uniprot_dialog = true;
     }
 
     fn track_name_default_from_path(path: &Path) -> String {
@@ -6747,6 +6955,231 @@ Error: `{err}`"
         }
     }
 
+    fn uniprot_optional_trimmed(value: &str) -> Option<String> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+
+    fn fetch_uniprot_entry_from_dialog(&mut self) {
+        let query = self.uniprot_query.trim().to_string();
+        if query.is_empty() {
+            self.uniprot_status = "UniProt query cannot be empty".to_string();
+            return;
+        }
+        let op = Operation::FetchUniprotSwissProt {
+            query: query.clone(),
+            entry_id: Self::uniprot_optional_trimmed(&self.uniprot_entry_id),
+        };
+        match self.engine.write().unwrap().apply(op) {
+            Ok(result) => {
+                if self.uniprot_entry_id.trim().is_empty() {
+                    self.uniprot_entry_id = query;
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt fetch: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("UniProt fetch failed: {}", err.message);
+            }
+        }
+    }
+
+    fn import_uniprot_swiss_prot_from_dialog(&mut self) {
+        let path = self.uniprot_swiss_path.trim().to_string();
+        if path.is_empty() {
+            self.uniprot_status = "SWISS-PROT file path cannot be empty".to_string();
+            return;
+        }
+        let op = Operation::ImportUniprotSwissProt {
+            path,
+            entry_id: Self::uniprot_optional_trimmed(&self.uniprot_entry_id),
+        };
+        match self.engine.write().unwrap().apply(op) {
+            Ok(result) => {
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt import: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("UniProt import failed: {}", err.message);
+            }
+        }
+    }
+
+    fn project_uniprot_entry_from_dialog(&mut self) {
+        let entry_id = self.uniprot_entry_id.trim().to_string();
+        if entry_id.is_empty() {
+            self.uniprot_status = "entry_id is required for projection".to_string();
+            return;
+        }
+        let seq_ids = self.project_sequence_ids_for_blast();
+        if seq_ids.is_empty() {
+            self.uniprot_status =
+                "No sequence is loaded. Load/import sequence data before mapping.".to_string();
+            return;
+        }
+        let seq_id = if self.uniprot_map_seq_id.trim().is_empty() {
+            seq_ids[0].clone()
+        } else {
+            self.uniprot_map_seq_id.trim().to_string()
+        };
+        if !seq_ids.iter().any(|candidate| candidate == &seq_id) {
+            self.uniprot_status = format!(
+                "Sequence '{}' is not available anymore; pick an existing sequence",
+                seq_id
+            );
+            return;
+        }
+        self.uniprot_map_seq_id = seq_id.clone();
+        let op = Operation::ProjectUniprotToGenome {
+            seq_id,
+            entry_id,
+            projection_id: Self::uniprot_optional_trimmed(&self.uniprot_map_projection_id),
+            transcript_id: Self::uniprot_optional_trimmed(&self.uniprot_map_transcript_id),
+        };
+        match self.engine.write().unwrap().apply(op) {
+            Ok(result) => {
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt projection: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("UniProt projection failed: {}", err.message);
+            }
+        }
+    }
+
+    fn render_uniprot_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_uniprot_dialog {
+            return;
+        }
+        let seq_ids = self.project_sequence_ids_for_blast();
+        if !seq_ids.is_empty() {
+            let selected = self.uniprot_map_seq_id.trim();
+            if selected.is_empty() || !seq_ids.iter().any(|candidate| candidate == selected) {
+                self.uniprot_map_seq_id = seq_ids[0].clone();
+            }
+        }
+        let mut open = self.show_uniprot_dialog;
+        egui::Window::new("UniProt Mapping")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(940.0, 520.0))
+            .min_size(Vec2::new(780.0, 420.0))
+            .show(ctx, |ui| {
+                self.render_specialist_window_nav(ui);
+                ui.label(
+                    "Fetch/import UniProt SWISS-PROT entries and project annotated features onto transcript/CDS coordinates.",
+                );
+                ui.horizontal(|ui| {
+                    ui.label("entry_id");
+                    ui.text_edit_singleline(&mut self.uniprot_entry_id);
+                });
+                ui.small(
+                    "Optional override for fetch/import. Required for projection; if empty after fetch, query is used.",
+                );
+                ui.separator();
+                ui.label("Online fetch");
+                ui.horizontal(|ui| {
+                    ui.label("query");
+                    ui.text_edit_singleline(&mut self.uniprot_query);
+                    if ui
+                        .button("Fetch")
+                        .on_hover_text("Fetch UniProt SWISS-PROT text by accession or UniProt ID")
+                        .clicked()
+                    {
+                        self.fetch_uniprot_entry_from_dialog();
+                    }
+                });
+                ui.small("Examples: P04637, TP53_HUMAN");
+                ui.separator();
+                ui.label("Offline import (SWISS-PROT text)");
+                ui.horizontal(|ui| {
+                    ui.label("path");
+                    ui.text_edit_singleline(&mut self.uniprot_swiss_path);
+                    if ui
+                        .button("Browse...")
+                        .on_hover_text("Pick a local SWISS-PROT text file")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("SWISS-PROT text", &["txt", "dat"])
+                            .add_filter("Text", &["txt"])
+                            .pick_file()
+                        {
+                            self.uniprot_swiss_path = path.display().to_string();
+                        }
+                    }
+                    if ui
+                        .button("Import")
+                        .on_hover_text("Import local SWISS-PROT text into project metadata")
+                        .clicked()
+                    {
+                        self.import_uniprot_swiss_prot_from_dialog();
+                    }
+                });
+                ui.separator();
+                ui.label("Project entry to sequence");
+                if seq_ids.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "No project sequence available. Load/import one first.",
+                    );
+                    ui.horizontal(|ui| {
+                        ui.label("seq_id");
+                        ui.text_edit_singleline(&mut self.uniprot_map_seq_id);
+                    });
+                } else {
+                    egui::ComboBox::from_label("seq_id")
+                        .selected_text(self.uniprot_map_seq_id.clone())
+                        .show_ui(ui, |ui| {
+                            for seq_id in &seq_ids {
+                                ui.selectable_value(
+                                    &mut self.uniprot_map_seq_id,
+                                    seq_id.clone(),
+                                    seq_id,
+                                );
+                            }
+                        });
+                }
+                ui.horizontal(|ui| {
+                    ui.label("projection_id");
+                    ui.text_edit_singleline(&mut self.uniprot_map_projection_id);
+                    ui.label("transcript");
+                    ui.text_edit_singleline(&mut self.uniprot_map_transcript_id);
+                });
+                if ui
+                    .button("Project To Sequence")
+                    .on_hover_text(
+                        "Map UniProt feature intervals through transcript/CDS onto genomic coordinates",
+                    )
+                    .clicked()
+                {
+                    self.project_uniprot_entry_from_dialog();
+                }
+                if !self.uniprot_status.trim().is_empty() {
+                    ui.separator();
+                    ui.monospace(self.uniprot_status.clone());
+                }
+            });
+        self.show_uniprot_dialog = open;
+    }
+
     fn render_reference_genome_prepare_contents(&mut self, ui: &mut Ui) {
         self.refresh_genome_catalog_list();
         self.render_specialist_window_nav(ui);
@@ -9562,6 +9995,9 @@ Error: `{err}`"
             ProjectAction::New => self.new_project(),
             ProjectAction::Open => self.prompt_open_project(),
             ProjectAction::OpenPath(path) => self.open_project_path(&path),
+            ProjectAction::OpenTutorialChapter(chapter_id) => {
+                self.open_tutorial_project_chapter(&chapter_id)
+            }
             ProjectAction::Close => self.close_project(),
         }
     }
@@ -9582,11 +10018,11 @@ Error: `{err}`"
         self.reset_to_empty_project();
     }
 
-    fn load_project_from_file(&mut self, path: &str) -> Result<()> {
+    fn load_project_from_file_with_recent(&mut self, path: &str, track_recent: bool) -> Result<()> {
         let state = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()))?;
 
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
-        self.set_current_project_path_and_track_recent(path);
+        self.set_current_project_path(path, track_recent);
         self.lineage_cache_valid = false;
         self.lineage_rows.clear();
         self.lineage_edges.clear();
@@ -9622,6 +10058,10 @@ Error: `{err}`"
 
         self.mark_clean_snapshot();
         Ok(())
+    }
+
+    fn load_project_from_file(&mut self, path: &str) -> Result<()> {
+        self.load_project_from_file_with_recent(path, true)
     }
 
     fn current_project_name(&self) -> String {
@@ -9858,6 +10298,14 @@ Error: `{err}`"
                 detail: "Agent chat and per-reply command execution".to_string(),
             });
         }
+        if self.show_uniprot_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::uniprot_viewport_id()),
+                viewport_id: Self::uniprot_viewport_id(),
+                title: "UniProt Mapping".to_string(),
+                detail: "UniProt entry fetch/import/projection tools".to_string(),
+            });
+        }
 
         let mut sequence_windows = self
             .windows
@@ -9898,6 +10346,8 @@ Error: `{err}`"
             self.show_genome_bed_track_dialog = true;
         } else if viewport_id == Self::agent_assistant_viewport_id() {
             self.show_agent_assistant_dialog = true;
+        } else if viewport_id == Self::uniprot_viewport_id() {
+            self.show_uniprot_dialog = true;
         }
 
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
@@ -10007,6 +10457,68 @@ Error: `{err}`"
                         ui.close_menu();
                     }
                 });
+                ui.menu_button("Open Tutorial Project...", |ui| {
+                    let entries = match Self::load_tutorial_project_entries() {
+                        Ok(entries) => entries,
+                        Err(err) => {
+                            ui.label("Tutorial catalog unavailable");
+                            ui.small(err);
+                            return;
+                        }
+                    };
+                    if entries.is_empty() {
+                        ui.add_enabled(false, egui::Button::new("No tutorial chapters"));
+                        return;
+                    }
+
+                    let mut selected_chapter_id: Option<String> = None;
+                    for tier in [
+                        TutorialTier::Core,
+                        TutorialTier::Advanced,
+                        TutorialTier::Online,
+                    ] {
+                        let tier_entries = entries
+                            .iter()
+                            .filter(|entry| entry.tier == tier)
+                            .collect::<Vec<_>>();
+                        if tier_entries.is_empty() {
+                            continue;
+                        }
+                        let tier_label = match tier {
+                            TutorialTier::Core => "Core",
+                            TutorialTier::Advanced => "Advanced",
+                            TutorialTier::Online => "Online",
+                        };
+                        ui.menu_button(format!("{tier_label} ({})", tier_entries.len()), |ui| {
+                            for entry in tier_entries {
+                                let mut label =
+                                    format!("{:02}. {}", entry.chapter_order, entry.chapter_title);
+                                if entry.example.test_mode == ExampleTestMode::Online {
+                                    label.push_str(" [online]");
+                                }
+                                let hover = format!(
+                                    "chapter_id: {}\nexample_id: {}\ntier: {}\n{}",
+                                    entry.chapter_id,
+                                    entry.example.id,
+                                    tier.as_str(),
+                                    if entry.chapter_summary.trim().is_empty() {
+                                        "No summary provided."
+                                    } else {
+                                        entry.chapter_summary.trim()
+                                    }
+                                );
+                                if ui.button(label).on_hover_text(hover).clicked() {
+                                    selected_chapter_id = Some(entry.chapter_id.clone());
+                                }
+                            }
+                        });
+                    }
+
+                    if let Some(chapter_id) = selected_chapter_id {
+                        self.request_project_action(ProjectAction::OpenTutorialChapter(chapter_id));
+                        ui.close_menu();
+                    }
+                });
                 if ui
                     .button("Close Project")
                     .on_hover_text("Close the current project from the workspace")
@@ -10022,6 +10534,16 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.prompt_open_sequence();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("UniProt Mapping...")
+                    .on_hover_text(
+                        "Fetch/import UniProt SWISS-PROT entries and map them onto sequences",
+                    )
+                    .clicked()
+                {
+                    self.open_uniprot_dialog();
                     ui.close_menu();
                 }
                 ui.separator();
@@ -16666,6 +17188,7 @@ impl eframe::App for GENtleApp {
             });
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
+            self.render_uniprot_dialog(ctx);
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
@@ -17023,6 +17546,22 @@ mod tests {
         let project_path = temp.path().join("my_project.gentle.json");
         let label = GENtleApp::recent_project_menu_label(project_path.to_string_lossy().as_ref());
         assert!(label.starts_with("my_project.gentle.json ("));
+    }
+
+    #[test]
+    fn tutorial_project_catalog_loads_chapters() {
+        let entries =
+            GENtleApp::load_tutorial_project_entries().expect("tutorial catalog should load");
+        assert!(
+            !entries.is_empty(),
+            "Expected tutorial project entries to be available"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.chapter_id == "tp63_anchor_extension_online"),
+            "Expected TP63 tutorial chapter to be present"
+        );
     }
 
     #[test]

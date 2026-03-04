@@ -173,7 +173,7 @@ Feature tree grouping:
     - `track:chip`
     - `path:peaks.bed` or `file:peaks.bed`
     - `note:enhancer`
-  - one-click preset chips are available below the filter box
+  - preset terms below the filter box are on/off toggle buttons
 - Selecting an `mRNA`/`exon` feature opens the splicing expert view in a
   dedicated, resizable window instead of the inline description pane.
 - The splicing expert window is a free-standing top-level window and can be
@@ -627,7 +627,7 @@ GENtle tracks open native windows and can raise a selected one to front.
   - `GENtle -> GENtle Windows… -> <window name>`
 - `Windows` includes project, sequence/pool, and auxiliary windows
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
-  Agent Assistant, Operation History)
+  Agent Assistant, UniProt Mapping, Operation History)
 - Shortcut: `Cmd+Backtick` focuses the main project window
 - Specialist windows (including DNA sequence windows) include a top-left nav
   strip with:
@@ -723,6 +723,8 @@ Toolbar alternatives (linear mode):
 - `Fit Seq`: reset to full sequence span and recenter vertically
 - `Fit Features`: keep the current subsequence span and recenter the feature lanes vertically
 - `Pan` slider: move the current viewport left/right
+- Right-side vertical slider (`V pan`) in the map panel: move feature lanes up/down
+  directly; `0` applies vertical feature fit for the current subsequence
 
 ### Lineage graph: zoom and pan (mouse/touchpad)
 
@@ -1300,7 +1302,7 @@ How to identify `SEQ_ID` and verify anchor context:
 
 - `SEQ_ID` is the sequence ID shown in the sequence window title / lineage table.
 - Genome-anchor status is shown in Engine Ops as:
-  - `Genome anchor: <genome_id>:<chromosome>:<start>..<end> (strand +/-)`
+  - `Genome anchor: <chromosome>:<start>..<end> (<genome_id>, strand +/-, verified|unverified|verification n/a)`
 - You can also inspect anchors in `Genome -> Import Genome Tracks...` preflight
   (`selected anchor:` and `anchor: ... strand ...` lines).
 
@@ -1323,8 +1325,10 @@ Metadata key format:
 Use the top application menu:
 
 - `File -> Open Sequence...`
+- `File -> UniProt Mapping...`
 - `File -> Open Project...`
 - `File -> Open Recent Project...`
+- `File -> Open Tutorial Project...`
 - `File -> Prepare Reference Genome...`
 - `File -> Prepared References...`
 - `File -> Retrieve Genome Sequence...`
@@ -1337,11 +1341,29 @@ Use the top application menu:
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
 
+Tutorial projects:
+
+- `Open Tutorial Project...` builds a project from canonical tutorial workflow
+  examples (`docs/examples/workflows`) and opens it immediately for inspection.
+- Chapters are grouped by tier (`Core`, `Advanced`, `Online`) and keep the
+  chapter order from `docs/tutorial/manifest.json`.
+- Generated tutorial project files are written under the system temp directory
+  (`.../gentle_tutorial_projects`) and opened without adding those temp files
+  to the `Open Recent Project...` list.
+
 Shortcut:
 
 - `Cmd+Shift+G` opens `Retrieve Genome Sequence...`.
 - `Cmd+Shift+P` opens `Prepare Reference Genome...`.
 - `Cmd+Shift+L` opens `BLAST Genome Sequence...`.
+
+UniProt mapping behavior:
+
+- `UniProt Mapping...` opens a specialist window for:
+  - online fetch by accession/ID (`FetchUniprotSwissProt`)
+  - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
+  - projection to selected sequence/transcript (`ProjectUniprotToGenome`)
+- Use one stable `entry_id` in that window when you plan to project repeatedly.
 
 Resource import behavior:
 

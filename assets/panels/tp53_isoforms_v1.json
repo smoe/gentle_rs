@@ -1,0 +1,121 @@
+{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp53_isoforms_v1",
+  "gene_symbol": "TP53",
+  "transcript_geometry_mode": "cds",
+  "assembly": "GRCh38",
+  "source": "Curated TP53 isoform panel inspired by DCD Figure-1 style transcript/protein architecture",
+  "notes": "Transcript identifiers are curated mapping candidates against local Ensembl GRCh38 annotation. Labels follow two-axis TP53 nomenclature: N-terminal class (TA, Δ40, Δ133, Δ160) plus C-terminal splice class (α, β, γ). α/β/γ reflect C-terminal differences from intron-9 alternative splicing; Δ classes reflect N-terminal truncation classes. For Δ133/Δ160 classes, transcript architecture can be shared while protein start differs by translation-initiation context.",
+  "isoforms": [
+    {
+      "isoform_id": "p53alpha",
+      "label": "TAp53α",
+      "transcript_ids": ["ENST00000269305.9"],
+      "transactivation_class": "full",
+      "expected_length_aa": 393,
+      "reference_start_aa": 1,
+      "reference_end_aa": 393,
+      "domains": [
+        {"name": "TAD1", "start_aa": 1, "end_aa": 40, "color_hex": "#ef4444"},
+        {"name": "TAD2", "start_aa": 41, "end_aa": 61, "color_hex": "#f97316"},
+        {"name": "PRR", "start_aa": 63, "end_aa": 97, "color_hex": "#f59e0b"},
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "NLS", "start_aa": 316, "end_aa": 325, "color_hex": "#16a34a"},
+        {"name": "OD", "start_aa": 324, "end_aa": 355, "color_hex": "#0f766e"},
+        {"name": "CTD", "start_aa": 356, "end_aa": 393, "color_hex": "#6b7280"}
+      ]
+    },
+    {
+      "isoform_id": "p53beta",
+      "label": "TAp53β",
+      "transcript_ids": ["ENST00000420246.7"],
+      "transactivation_class": "full",
+      "expected_length_aa": 341,
+      "reference_start_aa": 1,
+      "reference_end_aa": 341,
+      "domains": [
+        {"name": "TAD1", "start_aa": 1, "end_aa": 40, "color_hex": "#ef4444"},
+        {"name": "TAD2", "start_aa": 41, "end_aa": 61, "color_hex": "#f97316"},
+        {"name": "PRR", "start_aa": 63, "end_aa": 97, "color_hex": "#f59e0b"},
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "β-tail", "start_aa": 293, "end_aa": 341, "color_hex": "#6b7280"}
+      ]
+    },
+    {
+      "isoform_id": "p53gamma",
+      "label": "TAp53γ",
+      "transcript_ids": ["ENST00000455263.7"],
+      "transactivation_class": "full",
+      "expected_length_aa": 346,
+      "reference_start_aa": 1,
+      "reference_end_aa": 346,
+      "domains": [
+        {"name": "TAD1", "start_aa": 1, "end_aa": 40, "color_hex": "#ef4444"},
+        {"name": "TAD2", "start_aa": 41, "end_aa": 61, "color_hex": "#f97316"},
+        {"name": "PRR", "start_aa": 63, "end_aa": 97, "color_hex": "#f59e0b"},
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "γ-tail", "start_aa": 293, "end_aa": 346, "color_hex": "#6b7280"}
+      ]
+    },
+    {
+      "isoform_id": "delta40",
+      "label": "Δ40p53α",
+      "transcript_ids": ["ENST00000610292.4"],
+      "transactivation_class": "partial",
+      "expected_length_aa": 354,
+      "reference_start_aa": 40,
+      "reference_end_aa": 393,
+      "domains": [
+        {"name": "TAD2", "start_aa": 41, "end_aa": 61, "color_hex": "#f97316"},
+        {"name": "PRR", "start_aa": 63, "end_aa": 97, "color_hex": "#f59e0b"},
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "NLS", "start_aa": 316, "end_aa": 325, "color_hex": "#16a34a"},
+        {"name": "OD", "start_aa": 324, "end_aa": 355, "color_hex": "#0f766e"},
+        {"name": "CTD", "start_aa": 356, "end_aa": 393, "color_hex": "#6b7280"}
+      ]
+    },
+    {
+      "isoform_id": "delta133",
+      "label": "Δ133p53α",
+      "transcript_ids": ["ENST00000504937.5"],
+      "transactivation_class": "none",
+      "expected_length_aa": 261,
+      "reference_start_aa": 133,
+      "reference_end_aa": 393,
+      "domains": [
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "NLS", "start_aa": 316, "end_aa": 325, "color_hex": "#16a34a"},
+        {"name": "OD", "start_aa": 324, "end_aa": 355, "color_hex": "#0f766e"},
+        {"name": "CTD", "start_aa": 356, "end_aa": 393, "color_hex": "#6b7280"}
+      ]
+    },
+    {
+      "isoform_id": "delta133beta",
+      "label": "Δ133p53β",
+      "transcript_ids": ["ENST00000510385.5"],
+      "transactivation_class": "none",
+      "expected_length_aa": 209,
+      "reference_start_aa": 133,
+      "reference_end_aa": 341,
+      "domains": [
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "β-tail", "start_aa": 293, "end_aa": 341, "color_hex": "#6b7280"}
+      ]
+    },
+    {
+      "isoform_id": "delta160",
+      "label": "Δ160p53α",
+      "transcript_ids": ["ENST00000619186.4"],
+      "transactivation_class": "none",
+      "expected_length_aa": 234,
+      "reference_start_aa": 160,
+      "reference_end_aa": 393,
+      "domains": [
+        {"name": "DBD", "start_aa": 102, "end_aa": 292, "color_hex": "#2563eb"},
+        {"name": "NLS", "start_aa": 316, "end_aa": 325, "color_hex": "#16a34a"},
+        {"name": "OD", "start_aa": 324, "end_aa": 355, "color_hex": "#0f766e"},
+        {"name": "CTD", "start_aa": 356, "end_aa": 393, "color_hex": "#6b7280"}
+      ]
+    }
+  ]
+}

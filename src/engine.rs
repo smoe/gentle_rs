@@ -43,6 +43,11 @@ use crate::{
     restriction_enzyme::{RestrictionEnzyme, RestrictionEnzymeKey},
     rna_structure::{self, RnaStructureError, RnaStructureSvgReport, RnaStructureTextReport},
     tf_motifs,
+    uniprot::{
+        UniprotAaGenomicSegment, UniprotEntry, UniprotEntrySummary, UniprotFeatureProjection,
+        UniprotGenomeProjection, UniprotGenomeProjectionSummary, UniprotTranscriptProjection,
+        normalize_entry_id as normalize_uniprot_entry_id, parse_swiss_prot_text,
+    },
 };
 use flate2::read::GzDecoder;
 use regex::{Regex, RegexBuilder};
@@ -93,6 +98,7 @@ const GUIDE_DESIGN_SCHEMA: &str = "gentle.guide_design.v1";
 pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
+const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
 pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
@@ -109,6 +115,11 @@ const ISOFORM_PANELS_METADATA_KEY: &str = "isoform_panels";
 const ISOFORM_PANELS_SCHEMA: &str = "gentle.isoform_panels.v1";
 const ISOFORM_PANEL_RESOURCE_SCHEMA: &str = "gentle.isoform_panel_resource.v1";
 const ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA: &str = "gentle.isoform_panel_validation_report.v1";
+const UNIPROT_ENTRIES_METADATA_KEY: &str = "uniprot_entries";
+const UNIPROT_ENTRIES_SCHEMA: &str = "gentle.uniprot_entries.v1";
+const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projections";
+const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
+const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
@@ -408,6 +419,7 @@ pub struct ContainerState {
 #[serde(default)]
 pub struct EngineParameters {
     pub max_fragments_per_container: usize,
+    pub require_verified_genome_anchor_for_extension: bool,
     pub primer_design_backend: PrimerDesignBackend,
     pub primer3_executable: String,
 }
@@ -416,6 +428,7 @@ impl Default for EngineParameters {
     fn default() -> Self {
         Self {
             max_fragments_per_container: 80_000,
+            require_verified_genome_anchor_for_extension: false,
             primer_design_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
         }
@@ -1192,6 +1205,37 @@ pub struct SnpMutationSpec {
     pub alternate: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerDesignBaseLock {
+    pub offset_0based: usize,
+    pub base: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PrimerDesignPairConstraint {
+    pub require_roi_flanking: bool,
+    #[serde(default)]
+    pub required_amplicon_motifs: Vec<String>,
+    #[serde(default)]
+    pub forbidden_amplicon_motifs: Vec<String>,
+    pub fixed_amplicon_start_0based: Option<usize>,
+    pub fixed_amplicon_end_0based_exclusive: Option<usize>,
+}
+
+impl Default for PrimerDesignPairConstraint {
+    fn default() -> Self {
+        Self {
+            require_roi_flanking: false,
+            required_amplicon_motifs: vec![],
+            forbidden_amplicon_motifs: vec![],
+            fixed_amplicon_start_0based: None,
+            fixed_amplicon_end_0based_exclusive: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PrimerDesignSideConstraint {
@@ -1205,6 +1249,14 @@ pub struct PrimerDesignSideConstraint {
     pub min_gc_fraction: f64,
     pub max_gc_fraction: f64,
     pub max_anneal_hits: usize,
+    pub fixed_5prime: Option<String>,
+    pub fixed_3prime: Option<String>,
+    #[serde(default)]
+    pub required_motifs: Vec<String>,
+    #[serde(default)]
+    pub forbidden_motifs: Vec<String>,
+    #[serde(default)]
+    pub locked_positions: Vec<PrimerDesignBaseLock>,
 }
 
 impl Default for PrimerDesignSideConstraint {
@@ -1220,6 +1272,11 @@ impl Default for PrimerDesignSideConstraint {
             min_gc_fraction: 0.35,
             max_gc_fraction: 0.70,
             max_anneal_hits: 1,
+            fixed_5prime: None,
+            fixed_3prime: None,
+            required_motifs: vec![],
+            forbidden_motifs: vec![],
+            locked_positions: vec![],
         }
     }
 }
@@ -1264,6 +1321,8 @@ pub struct PrimerDesignRejectionSummary {
     pub gc_or_tm_out_of_bounds: usize,
     pub non_unique_anneal: usize,
     pub amplicon_or_roi_failure: usize,
+    pub primer_constraint_failure: usize,
+    pub pair_constraint_failure: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1277,6 +1336,8 @@ pub struct PrimerDesignReport {
     pub roi_end_0based: usize,
     pub forward: PrimerDesignSideConstraint,
     pub reverse: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub pair_constraints: PrimerDesignPairConstraint,
     pub min_amplicon_bp: usize,
     pub max_amplicon_bp: usize,
     pub max_tm_delta_c: f64,
@@ -1309,6 +1370,81 @@ pub struct PrimerDesignReportSummary {
     pub roi_start_0based: usize,
     pub roi_end_0based: usize,
     pub pair_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrAssayRuleFlags {
+    pub roi_covered: bool,
+    pub amplicon_size_in_range: bool,
+    pub primer_tm_delta_in_range: bool,
+    pub probe_inside_amplicon: bool,
+    pub probe_tm_delta_in_range: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrAssayRecord {
+    pub rank: usize,
+    pub score: f64,
+    pub forward: PrimerDesignPrimerRecord,
+    pub reverse: PrimerDesignPrimerRecord,
+    pub probe: PrimerDesignPrimerRecord,
+    pub amplicon_start_0based: usize,
+    pub amplicon_end_0based_exclusive: usize,
+    pub amplicon_length_bp: usize,
+    pub primer_tm_delta_c: f64,
+    pub probe_tm_delta_c: f64,
+    pub rule_flags: QpcrAssayRuleFlags,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrDesignRejectionSummary {
+    pub primer_pair: PrimerDesignRejectionSummary,
+    pub probe_out_of_window: usize,
+    pub probe_gc_or_tm_out_of_bounds: usize,
+    pub probe_non_unique_anneal: usize,
+    pub probe_or_assay_failure: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrDesignReport {
+    pub schema: String,
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub forward: PrimerDesignSideConstraint,
+    pub reverse: PrimerDesignSideConstraint,
+    pub probe: PrimerDesignSideConstraint,
+    #[serde(default)]
+    pub pair_constraints: PrimerDesignPairConstraint,
+    pub min_amplicon_bp: usize,
+    pub max_amplicon_bp: usize,
+    pub max_tm_delta_c: f64,
+    pub max_probe_tm_delta_c: f64,
+    pub max_assays: usize,
+    pub assay_count: usize,
+    #[serde(default)]
+    pub assays: Vec<QpcrAssayRecord>,
+    #[serde(default)]
+    pub rejection_summary: QpcrDesignRejectionSummary,
+    #[serde(default)]
+    pub backend: PrimerDesignBackendInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct QpcrDesignReportSummary {
+    pub report_id: String,
+    pub template: String,
+    pub generated_at_unix_ms: u128,
+    pub roi_start_0based: usize,
+    pub roi_end_0based: usize,
+    pub assay_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1701,6 +1837,7 @@ struct PrimerDesignStore {
     schema: String,
     updated_at_unix_ms: u128,
     reports: HashMap<String, PrimerDesignReport>,
+    qpcr_reports: HashMap<String, QpcrDesignReport>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1838,6 +1975,22 @@ struct IsoformPanelStore {
     schema: String,
     updated_at_unix_ms: u128,
     records: Vec<IsoformPanelRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct UniprotEntryStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    entries: HashMap<String, UniprotEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct UniprotGenomeProjectionStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    projections: HashMap<String, UniprotGenomeProjection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2340,6 +2493,20 @@ pub enum Operation {
         #[serde(default)]
         strict: bool,
     },
+    ImportUniprotSwissProt {
+        path: String,
+        entry_id: Option<String>,
+    },
+    FetchUniprotSwissProt {
+        query: String,
+        entry_id: Option<String>,
+    },
+    ProjectUniprotToGenome {
+        seq_id: SeqId,
+        entry_id: String,
+        projection_id: Option<String>,
+        transcript_id: Option<String>,
+    },
     ImportBlastHitsTrack {
         seq_id: SeqId,
         hits: Vec<BlastHitFeatureInput>,
@@ -2421,10 +2588,31 @@ pub enum Operation {
         forward: PrimerDesignSideConstraint,
         #[serde(default)]
         reverse: PrimerDesignSideConstraint,
+        #[serde(default)]
+        pair_constraints: PrimerDesignPairConstraint,
         min_amplicon_bp: usize,
         max_amplicon_bp: usize,
         max_tm_delta_c: Option<f64>,
         max_pairs: Option<usize>,
+        report_id: Option<String>,
+    },
+    DesignQpcrAssays {
+        template: SeqId,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        #[serde(default)]
+        forward: PrimerDesignSideConstraint,
+        #[serde(default)]
+        reverse: PrimerDesignSideConstraint,
+        #[serde(default)]
+        probe: PrimerDesignSideConstraint,
+        #[serde(default)]
+        pair_constraints: PrimerDesignPairConstraint,
+        min_amplicon_bp: usize,
+        max_amplicon_bp: usize,
+        max_tm_delta_c: Option<f64>,
+        max_probe_tm_delta_c: Option<f64>,
+        max_assays: Option<usize>,
         report_id: Option<String>,
     },
     ExtractRegion {
@@ -2792,6 +2980,8 @@ pub struct GenomeExtractionProvenance {
     pub gene_name: Option<String>,
     pub strand: Option<char>,
     pub anchor_strand: Option<char>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_verified: Option<bool>,
     pub sequence_source_type: Option<String>,
     pub annotation_source_type: Option<String>,
     pub sequence_source: Option<String>,
@@ -2817,6 +3007,7 @@ struct GenomeSequenceAnchor {
     start_1based: usize,
     end_1based: usize,
     strand: Option<char>,
+    anchor_verified: Option<bool>,
     catalog_path: Option<String>,
     cache_dir: Option<String>,
 }
@@ -2927,6 +3118,24 @@ struct PrimerDesignCandidate {
     tm_c: f64,
     gc_fraction: f64,
     anneal_hits: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct NormalizedPrimerSideSequenceConstraints {
+    fixed_5prime: Option<String>,
+    fixed_3prime: Option<String>,
+    required_motifs: Vec<String>,
+    forbidden_motifs: Vec<String>,
+    locked_positions: Vec<(usize, String)>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct NormalizedPrimerPairConstraints {
+    require_roi_flanking: bool,
+    required_amplicon_motifs: Vec<String>,
+    forbidden_amplicon_motifs: Vec<String>,
+    fixed_amplicon_start_0based: Option<usize>,
+    fixed_amplicon_end_0based_exclusive: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3263,9 +3472,19 @@ impl GentleEngine {
     pub fn describe_sequence_genome_anchor(&self, seq_id: &str) -> Result<String, EngineError> {
         let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
         let strand = anchor.strand.unwrap_or('+');
+        let verification = match anchor.anchor_verified {
+            Some(true) => "verified",
+            Some(false) => "unverified",
+            None => "verification n/a",
+        };
         Ok(format!(
-            "{}:{}-{} ({}, strand {})",
-            anchor.chromosome, anchor.start_1based, anchor.end_1based, anchor.genome_id, strand
+            "{}:{}-{} ({}, strand {}, {})",
+            anchor.chromosome,
+            anchor.start_1based,
+            anchor.end_1based,
+            anchor.genome_id,
+            strand,
+            verification
         ))
     }
 
@@ -3482,6 +3701,9 @@ impl GentleEngine {
                 "ImportGenomeBigWigTrack".to_string(),
                 "ImportGenomeVcfTrack".to_string(),
                 "ImportIsoformPanel".to_string(),
+                "ImportUniprotSwissProt".to_string(),
+                "FetchUniprotSwissProt".to_string(),
+                "ProjectUniprotToGenome".to_string(),
                 "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
@@ -3494,6 +3716,7 @@ impl GentleEngine {
                 "PcrAdvanced".to_string(),
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
+                "DesignQpcrAssays".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -4349,6 +4572,547 @@ impl GentleEngine {
             keys.insert(fallback_id);
         }
         keys.into_iter().collect()
+    }
+
+    fn normalize_uniprot_projection_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "projection_id cannot be empty".to_string(),
+            });
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '@') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        let normalized = out.trim_matches('_').to_string();
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "projection_id must contain at least one ASCII letter, digit, '.', '-', '_' or '@'"
+                        .to_string(),
+            });
+        }
+        Ok(normalized)
+    }
+
+    fn load_uniprot_entry_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> UniprotEntryStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<UniprotEntryStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = UNIPROT_ENTRIES_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn load_uniprot_projection_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> UniprotGenomeProjectionStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<UniprotGenomeProjectionStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = UNIPROT_GENOME_PROJECTIONS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_uniprot_entry_store(&self) -> UniprotEntryStore {
+        Self::load_uniprot_entry_store_from_metadata(
+            self.state.metadata.get(UNIPROT_ENTRIES_METADATA_KEY),
+        )
+    }
+
+    fn write_uniprot_entry_store(
+        &mut self,
+        mut store: UniprotEntryStore,
+    ) -> Result<(), EngineError> {
+        if store.entries.is_empty() {
+            self.state.metadata.remove(UNIPROT_ENTRIES_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = UNIPROT_ENTRIES_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize UniProt entry metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(UNIPROT_ENTRIES_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn read_uniprot_projection_store(&self) -> UniprotGenomeProjectionStore {
+        Self::load_uniprot_projection_store_from_metadata(
+            self.state
+                .metadata
+                .get(UNIPROT_GENOME_PROJECTIONS_METADATA_KEY),
+        )
+    }
+
+    fn write_uniprot_projection_store(
+        &mut self,
+        mut store: UniprotGenomeProjectionStore,
+    ) -> Result<(), EngineError> {
+        if store.projections.is_empty() {
+            self.state
+                .metadata
+                .remove(UNIPROT_GENOME_PROJECTIONS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = UNIPROT_GENOME_PROJECTIONS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize UniProt projection metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(UNIPROT_GENOME_PROJECTIONS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn upsert_uniprot_entry(&mut self, mut entry: UniprotEntry) -> Result<(), EngineError> {
+        let normalized = normalize_uniprot_entry_id(&entry.entry_id);
+        if normalized.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "UniProt entry_id cannot be empty".to_string(),
+            });
+        }
+        entry.entry_id = normalized.clone();
+        if entry.schema.trim().is_empty() {
+            entry.schema = "gentle.uniprot_entry.v1".to_string();
+        }
+        entry.imported_at_unix_ms = Self::now_unix_ms();
+        let mut aliases = BTreeSet::new();
+        for value in std::iter::once(entry.entry_id.clone())
+            .chain(entry.aliases.clone().into_iter())
+            .chain(std::iter::once(entry.accession.clone()))
+            .chain(std::iter::once(entry.primary_id.clone()))
+        {
+            let normalized_alias = normalize_uniprot_entry_id(&value);
+            if !normalized_alias.is_empty() {
+                aliases.insert(normalized_alias);
+            }
+        }
+        entry.aliases = aliases.into_iter().collect::<Vec<_>>();
+
+        let mut store = self.read_uniprot_entry_store();
+        store.entries.insert(entry.entry_id.clone(), entry);
+        self.write_uniprot_entry_store(store)
+    }
+
+    fn get_uniprot_entry_from_store(
+        store: &UniprotEntryStore,
+        entry_id: &str,
+    ) -> Option<UniprotEntry> {
+        let probe = normalize_uniprot_entry_id(entry_id);
+        if probe.is_empty() {
+            return None;
+        }
+        if let Some(entry) = store.entries.get(&probe) {
+            return Some(entry.clone());
+        }
+        store
+            .entries
+            .values()
+            .find(|entry| {
+                entry
+                    .aliases
+                    .iter()
+                    .any(|alias| normalize_uniprot_entry_id(alias) == probe)
+            })
+            .cloned()
+    }
+
+    pub fn get_uniprot_entry(&self, entry_id: &str) -> Result<UniprotEntry, EngineError> {
+        let store = self.read_uniprot_entry_store();
+        Self::get_uniprot_entry_from_store(&store, entry_id).ok_or_else(|| EngineError {
+            code: ErrorCode::NotFound,
+            message: format!(
+                "UniProt entry '{}' not found in project metadata",
+                entry_id.trim()
+            ),
+        })
+    }
+
+    pub fn list_uniprot_entries(&self) -> Vec<UniprotEntrySummary> {
+        let store = self.read_uniprot_entry_store();
+        let mut rows = store
+            .entries
+            .values()
+            .map(|entry| UniprotEntrySummary {
+                entry_id: entry.entry_id.clone(),
+                accession: entry.accession.clone(),
+                primary_id: entry.primary_id.clone(),
+                sequence_length: entry.sequence_length,
+                feature_count: entry.features.len(),
+                ensembl_xref_count: entry.ensembl_xrefs.len(),
+                imported_at_unix_ms: entry.imported_at_unix_ms,
+                source: entry.source.clone(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|a, b| a.entry_id.cmp(&b.entry_id));
+        rows
+    }
+
+    pub fn get_uniprot_genome_projection(
+        &self,
+        projection_id: &str,
+    ) -> Result<UniprotGenomeProjection, EngineError> {
+        let projection_id = Self::normalize_uniprot_projection_id(projection_id)?;
+        let store = self.read_uniprot_projection_store();
+        store
+            .projections
+            .get(&projection_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "UniProt genome projection '{}' was not found",
+                    projection_id
+                ),
+            })
+    }
+
+    pub fn list_uniprot_genome_projections(
+        &self,
+        seq_filter: Option<&str>,
+    ) -> Vec<UniprotGenomeProjectionSummary> {
+        let seq_filter = seq_filter
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string());
+        let store = self.read_uniprot_projection_store();
+        let mut rows = store
+            .projections
+            .values()
+            .filter(|record| {
+                seq_filter
+                    .as_deref()
+                    .map(|seq_id| record.seq_id == seq_id)
+                    .unwrap_or(true)
+            })
+            .map(|record| UniprotGenomeProjectionSummary {
+                projection_id: record.projection_id.clone(),
+                entry_id: record.entry_id.clone(),
+                seq_id: record.seq_id.clone(),
+                created_at_unix_ms: record.created_at_unix_ms,
+                transcript_projection_count: record.transcript_projections.len(),
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|a, b| a.projection_id.cmp(&b.projection_id));
+        rows
+    }
+
+    fn fetch_uniprot_swiss_prot_text(query: &str) -> Result<(String, String), EngineError> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "UniProt query cannot be empty".to_string(),
+            });
+        }
+        let query_url = query.replace(' ', "%20");
+        let url = format!("https://rest.uniprot.org/uniprotkb/{query_url}.txt");
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(45))
+            .build()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not create UniProt HTTP client: {e}"),
+            })?;
+        let response = client.get(&url).send().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not fetch UniProt entry '{query}': {e}"),
+        })?;
+        if !response.status().is_success() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "UniProt query '{}' returned HTTP status {}",
+                    query,
+                    response.status()
+                ),
+            });
+        }
+        let text = response.text().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read UniProt response body for '{query}': {e}"),
+        })?;
+        Ok((url, text))
+    }
+
+    fn parse_uniprot_entry_text(
+        text: &str,
+        source: &str,
+        source_query: Option<&str>,
+        entry_id_override: Option<&str>,
+    ) -> Result<UniprotEntry, EngineError> {
+        parse_swiss_prot_text(text, source, source_query, entry_id_override).map_err(|e| {
+            EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not parse SWISS-PROT text: {e}"),
+            }
+        })
+    }
+
+    fn aa_interval_to_genomic_segments(
+        aa_start: usize,
+        aa_end: usize,
+        aa_segments: &[UniprotAaGenomicSegment],
+        is_reverse: bool,
+    ) -> Vec<UniprotAaGenomicSegment> {
+        let mut out = vec![];
+        for segment in aa_segments {
+            if segment.aa_end < aa_start || segment.aa_start > aa_end {
+                continue;
+            }
+            let overlap_start = aa_start.max(segment.aa_start);
+            let overlap_end = aa_end.min(segment.aa_end);
+            if overlap_end < overlap_start {
+                continue;
+            }
+            let seg_nt_start = segment.genomic_start_1based.min(segment.genomic_end_1based);
+            let seg_nt_end = segment.genomic_start_1based.max(segment.genomic_end_1based);
+            let seg_nt_len = seg_nt_end.saturating_sub(seg_nt_start).saturating_add(1);
+            let seg_aa_len = segment
+                .aa_end
+                .saturating_sub(segment.aa_start)
+                .saturating_add(1);
+            if seg_nt_len == 0 || seg_aa_len == 0 {
+                continue;
+            }
+            let nt_start_offset = overlap_start
+                .saturating_sub(segment.aa_start)
+                .saturating_mul(3);
+            let nt_end_offset_exclusive = overlap_end
+                .saturating_sub(segment.aa_start)
+                .saturating_add(1)
+                .saturating_mul(3);
+            let nt_start_offset = nt_start_offset.min(seg_nt_len.saturating_sub(1));
+            let nt_end_offset_exclusive = nt_end_offset_exclusive.min(seg_nt_len);
+            if nt_end_offset_exclusive <= nt_start_offset {
+                continue;
+            }
+            let (genomic_start_1based, genomic_end_1based) = if is_reverse {
+                let end = seg_nt_end.saturating_sub(nt_start_offset);
+                let start = seg_nt_end.saturating_sub(nt_end_offset_exclusive.saturating_sub(1));
+                (start.min(end), start.max(end))
+            } else {
+                let start = seg_nt_start.saturating_add(nt_start_offset);
+                let end = seg_nt_start.saturating_add(nt_end_offset_exclusive.saturating_sub(1));
+                (start.min(end), start.max(end))
+            };
+            out.push(UniprotAaGenomicSegment {
+                aa_start: overlap_start,
+                aa_end: overlap_end,
+                genomic_start_1based,
+                genomic_end_1based,
+                strand: segment.strand.clone(),
+            });
+        }
+        out
+    }
+
+    pub fn project_uniprot_to_genome(
+        &self,
+        seq_id: &str,
+        entry_id: &str,
+        projection_id: Option<&str>,
+        transcript_id_filter: Option<&str>,
+    ) -> Result<UniprotGenomeProjection, EngineError> {
+        let seq = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{}' not found", seq_id),
+            })?;
+        let entry = self.get_uniprot_entry(entry_id)?;
+        let mut warnings: Vec<String> = vec![];
+        let mut transcripts_requested: Vec<String> = vec![];
+        if let Some(filter) = transcript_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            transcripts_requested.push(filter.to_string());
+        } else {
+            for xref in &entry.ensembl_xrefs {
+                if let Some(transcript_id) = xref
+                    .transcript_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    transcripts_requested.push(transcript_id.to_string());
+                }
+            }
+        }
+
+        let mut transcript_feature_keys: HashMap<String, usize> = HashMap::new();
+        let features = seq.features();
+        for (idx, feature) in features.iter().enumerate() {
+            if !Self::is_mrna_feature(feature) {
+                continue;
+            }
+            for key in Self::feature_transcript_match_keys(feature, idx) {
+                transcript_feature_keys.entry(key).or_insert(idx);
+            }
+        }
+
+        if transcripts_requested.is_empty() {
+            warnings.push(
+                "UniProt entry has no transcript xref; falling back to all mRNA features in sequence"
+                    .to_string(),
+            );
+            for (idx, feature) in features.iter().enumerate() {
+                if !Self::is_mrna_feature(feature) {
+                    continue;
+                }
+                transcripts_requested.push(Self::feature_transcript_id(feature, idx));
+            }
+        }
+
+        let mut transcript_projections: Vec<UniprotTranscriptProjection> = vec![];
+        let mut seen_transcripts = BTreeSet::new();
+        for transcript_probe in transcripts_requested {
+            let normalized_probe = Self::normalize_transcript_probe(&transcript_probe);
+            if normalized_probe.is_empty() || !seen_transcripts.insert(normalized_probe.clone()) {
+                continue;
+            }
+            let Some(feature_index) = transcript_feature_keys.get(&normalized_probe).copied()
+            else {
+                warnings.push(format!(
+                    "Transcript '{}' from UniProt entry '{}' was not found in sequence '{}'",
+                    transcript_probe, entry.entry_id, seq_id
+                ));
+                continue;
+            };
+            let feature = &features[feature_index];
+            let transcript_id = Self::feature_transcript_id(feature, feature_index);
+            let is_reverse = feature_is_reverse(feature);
+            let mut transcript_warnings: Vec<String> = vec![];
+            let mut cds_ranges =
+                Self::feature_qualifier_ranges_0based(feature, "cds_ranges_1based");
+            if cds_ranges.is_empty() {
+                let mut fallback = vec![];
+                collect_location_ranges_usize(&feature.location, &mut fallback);
+                fallback.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                fallback.retain(|(start, end)| end > start);
+                cds_ranges = fallback;
+                transcript_warnings.push(format!(
+                    "Transcript '{}' has no cds_ranges_1based qualifier; fell back to feature exon spans",
+                    transcript_id
+                ));
+            }
+            let aa_reference_segments =
+                Self::cds_ranges_to_reference_aa_segments(cds_ranges.clone(), is_reverse, Some(1))
+                    .into_iter()
+                    .map(|segment| UniprotAaGenomicSegment {
+                        aa_start: segment.aa_start,
+                        aa_end: segment.aa_end,
+                        genomic_start_1based: segment.genomic_start_1based,
+                        genomic_end_1based: segment.genomic_end_1based,
+                        strand: if is_reverse {
+                            "-".to_string()
+                        } else {
+                            "+".to_string()
+                        },
+                    })
+                    .collect::<Vec<_>>();
+            if aa_reference_segments.is_empty() {
+                transcript_warnings.push(format!(
+                    "Transcript '{}' has no mappable CDS amino-acid segments",
+                    transcript_id
+                ));
+            }
+
+            let mut feature_projections: Vec<UniprotFeatureProjection> = vec![];
+            for feature in &entry.features {
+                let (Some(aa_start), Some(aa_end)) =
+                    (feature.interval.start_aa, feature.interval.end_aa)
+                else {
+                    continue;
+                };
+                if aa_end < aa_start {
+                    continue;
+                }
+                let genomic_segments = Self::aa_interval_to_genomic_segments(
+                    aa_start,
+                    aa_end,
+                    &aa_reference_segments,
+                    is_reverse,
+                );
+                if genomic_segments.is_empty() {
+                    continue;
+                }
+                feature_projections.push(UniprotFeatureProjection {
+                    feature_key: feature.key.clone(),
+                    feature_note: feature.note.clone(),
+                    aa_start,
+                    aa_end,
+                    genomic_segments,
+                });
+            }
+            transcript_projections.push(UniprotTranscriptProjection {
+                transcript_id,
+                transcript_feature_id: Some(feature_index),
+                strand: if is_reverse {
+                    "-".to_string()
+                } else {
+                    "+".to_string()
+                },
+                aa_segments: aa_reference_segments,
+                feature_projections,
+                warnings: transcript_warnings,
+            });
+        }
+
+        let projection_id = projection_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| format!("{}@{}", entry.entry_id, seq_id));
+        let projection_id = Self::normalize_uniprot_projection_id(&projection_id)?;
+        Ok(UniprotGenomeProjection {
+            schema: UNIPROT_GENOME_PROJECTION_SCHEMA.to_string(),
+            projection_id,
+            entry_id: entry.entry_id.clone(),
+            seq_id: seq_id.to_string(),
+            created_at_unix_ms: Self::now_unix_ms(),
+            transcript_id_filter: transcript_id_filter
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string()),
+            transcript_projections,
+            warnings,
+        })
+    }
+
+    fn upsert_uniprot_projection(
+        &mut self,
+        projection: UniprotGenomeProjection,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_uniprot_projection_store();
+        store
+            .projections
+            .insert(projection.projection_id.clone(), projection);
+        self.write_uniprot_projection_store(store)
     }
 
     fn load_isoform_panel_resource(
@@ -7157,7 +7921,7 @@ impl GentleEngine {
         &mut self,
         mut store: PrimerDesignStore,
     ) -> Result<(), EngineError> {
-        if store.reports.is_empty() {
+        if store.reports.is_empty() && store.qpcr_reports.is_empty() {
             self.state
                 .metadata
                 .remove(PRIMER_DESIGN_REPORTS_METADATA_KEY);
@@ -7250,6 +8014,56 @@ impl GentleEngine {
         std::fs::write(path, text).map_err(|e| EngineError {
             code: ErrorCode::Io,
             message: format!("Could not write primer-design report to '{path}': {e}"),
+        })?;
+        Ok(report)
+    }
+
+    pub fn list_qpcr_design_reports(&self) -> Vec<QpcrDesignReportSummary> {
+        let store = self.read_primer_design_store();
+        let mut ids = store.qpcr_reports.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids.into_iter()
+            .filter_map(|id| store.qpcr_reports.get(&id))
+            .map(|report| QpcrDesignReportSummary {
+                report_id: report.report_id.clone(),
+                template: report.template.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                roi_start_0based: report.roi_start_0based,
+                roi_end_0based: report.roi_end_0based,
+                assay_count: report.assay_count,
+            })
+            .collect()
+    }
+
+    pub fn get_qpcr_design_report(&self, report_id: &str) -> Result<QpcrDesignReport, EngineError> {
+        let report_id = Self::normalize_primer_design_report_id(report_id)?;
+        let store = self.read_primer_design_store();
+        store
+            .qpcr_reports
+            .get(&report_id)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("qPCR design report '{}' not found", report_id),
+            })
+    }
+
+    pub fn export_qpcr_design_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<QpcrDesignReport, EngineError> {
+        let report = self.get_qpcr_design_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize qPCR design report '{}': {e}",
+                report.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write qPCR design report to '{path}': {e}"),
         })?;
         Ok(report)
     }
@@ -11573,6 +12387,7 @@ impl GentleEngine {
                 .and_then(|v| v.as_str())
                 .and_then(|v| v.trim().chars().next())
                 .filter(|c| matches!(c, '+' | '-'));
+            let anchor_verified = entry.get("anchor_verified").and_then(|v| v.as_bool());
             let catalog_path = entry
                 .get("catalog_path")
                 .and_then(|v| v.as_str())
@@ -11602,6 +12417,7 @@ impl GentleEngine {
                     start_1based: start_1based as usize,
                     end_1based: end_1based as usize,
                     strand: anchor_strand,
+                    anchor_verified,
                     catalog_path,
                     cache_dir,
                 });
@@ -13111,9 +13927,30 @@ impl GentleEngine {
             start_1based,
             end_1based,
             strand: Some(anchor_strand),
+            anchor_verified: None,
             catalog_path: None,
             cache_dir: None,
         })
+    }
+
+    fn verify_anchor_sequence_against_catalog(
+        dna: &DNAsequence,
+        anchor: &GenomeSequenceAnchor,
+        catalog_path: &str,
+        cache_dir: Option<&str>,
+    ) -> Result<bool, String> {
+        let catalog = GenomeCatalog::from_json_file(catalog_path)?;
+        let mut reference = catalog.get_sequence_region_with_cache(
+            &anchor.genome_id,
+            &anchor.chromosome,
+            anchor.start_1based,
+            anchor.end_1based,
+            cache_dir,
+        )?;
+        if anchor.strand == Some('-') {
+            reference = Self::reverse_complement(&reference);
+        }
+        Ok(reference.eq_ignore_ascii_case(&dna.get_forward_string()))
     }
 
     fn classify_import_origin(path: &str, dna: &DNAsequence) -> SequenceOrigin {
@@ -14913,6 +15750,93 @@ impl GentleEngine {
                 message: format!("{label}.max_anneal_hits must be >= 1"),
             });
         }
+        if let Some(raw) = &side.fixed_5prime {
+            let norm = Self::normalize_iupac_text(raw)?;
+            if norm.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("{label}.fixed_5prime must not be empty"),
+                });
+            }
+            if norm.len() > side.max_length {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.fixed_5prime length ({}) must be <= {label}.max_length ({})",
+                        norm.len(),
+                        side.max_length
+                    ),
+                });
+            }
+        }
+        if let Some(raw) = &side.fixed_3prime {
+            let norm = Self::normalize_iupac_text(raw)?;
+            if norm.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("{label}.fixed_3prime must not be empty"),
+                });
+            }
+            if norm.len() > side.max_length {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.fixed_3prime length ({}) must be <= {label}.max_length ({})",
+                        norm.len(),
+                        side.max_length
+                    ),
+                });
+            }
+        }
+        for motif in &side.required_motifs {
+            let norm = Self::normalize_iupac_text(motif)?;
+            if norm.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("{label}.required_motifs contains an empty motif"),
+                });
+            }
+        }
+        for motif in &side.forbidden_motifs {
+            let norm = Self::normalize_iupac_text(motif)?;
+            if norm.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("{label}.forbidden_motifs contains an empty motif"),
+                });
+            }
+        }
+        let mut seen_locks: HashSet<usize> = HashSet::new();
+        for lock in &side.locked_positions {
+            if lock.offset_0based >= side.max_length {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.locked_positions offset {} must be < {label}.max_length ({})",
+                        lock.offset_0based, side.max_length
+                    ),
+                });
+            }
+            let norm = Self::normalize_iupac_text(&lock.base)?;
+            if norm.len() != 1 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.locked_positions base '{}' must be a single IUPAC letter",
+                        lock.base
+                    ),
+                });
+            }
+            if !seen_locks.insert(lock.offset_0based) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "{label}.locked_positions has duplicate offset {}",
+                        lock.offset_0based
+                    ),
+                });
+            }
+        }
         if let (Some(start), Some(end)) = (side.start_0based, side.end_0based) {
             if start >= end {
                 return Err(EngineError {
@@ -14926,9 +15850,100 @@ impl GentleEngine {
         Ok(())
     }
 
+    fn normalize_primer_side_sequence_constraints(
+        side: &PrimerDesignSideConstraint,
+    ) -> Result<NormalizedPrimerSideSequenceConstraints, EngineError> {
+        let fixed_5prime = side
+            .fixed_5prime
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(Self::normalize_iupac_text)
+            .transpose()?;
+        let fixed_3prime = side
+            .fixed_3prime
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(Self::normalize_iupac_text)
+            .transpose()?;
+        let mut required_motifs = Vec::with_capacity(side.required_motifs.len());
+        for motif in &side.required_motifs {
+            let norm = Self::normalize_iupac_text(motif)?;
+            if !norm.is_empty() {
+                required_motifs.push(norm);
+            }
+        }
+        let mut forbidden_motifs = Vec::with_capacity(side.forbidden_motifs.len());
+        for motif in &side.forbidden_motifs {
+            let norm = Self::normalize_iupac_text(motif)?;
+            if !norm.is_empty() {
+                forbidden_motifs.push(norm);
+            }
+        }
+        let mut locked_positions = side
+            .locked_positions
+            .iter()
+            .map(|lock| {
+                let base = Self::normalize_iupac_text(&lock.base)?;
+                Ok((lock.offset_0based, base))
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
+        locked_positions.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        Ok(NormalizedPrimerSideSequenceConstraints {
+            fixed_5prime,
+            fixed_3prime,
+            required_motifs,
+            forbidden_motifs,
+            locked_positions,
+        })
+    }
+
+    fn normalize_primer_pair_constraints(
+        constraints: &PrimerDesignPairConstraint,
+    ) -> Result<NormalizedPrimerPairConstraints, EngineError> {
+        if let (Some(start), Some(end)) = (
+            constraints.fixed_amplicon_start_0based,
+            constraints.fixed_amplicon_end_0based_exclusive,
+        ) {
+            if start >= end {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "pair_constraints.fixed_amplicon_start_0based ({start}) must be < pair_constraints.fixed_amplicon_end_0based_exclusive ({end})"
+                    ),
+                });
+            }
+        }
+        let mut required_amplicon_motifs =
+            Vec::with_capacity(constraints.required_amplicon_motifs.len());
+        for motif in &constraints.required_amplicon_motifs {
+            let norm = Self::normalize_iupac_text(motif)?;
+            if !norm.is_empty() {
+                required_amplicon_motifs.push(norm);
+            }
+        }
+        let mut forbidden_amplicon_motifs =
+            Vec::with_capacity(constraints.forbidden_amplicon_motifs.len());
+        for motif in &constraints.forbidden_amplicon_motifs {
+            let norm = Self::normalize_iupac_text(motif)?;
+            if !norm.is_empty() {
+                forbidden_amplicon_motifs.push(norm);
+            }
+        }
+        Ok(NormalizedPrimerPairConstraints {
+            require_roi_flanking: constraints.require_roi_flanking,
+            required_amplicon_motifs,
+            forbidden_amplicon_motifs,
+            fixed_amplicon_start_0based: constraints.fixed_amplicon_start_0based,
+            fixed_amplicon_end_0based_exclusive: constraints.fixed_amplicon_end_0based_exclusive,
+        })
+    }
+
     fn generate_primer_side_candidates(
         template: &[u8],
         side: &PrimerDesignSideConstraint,
+        sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
         reverse_orientation: bool,
         rejections: &mut PrimerDesignRejectionSummary,
     ) -> Vec<PrimerDesignCandidate> {
@@ -14983,6 +15998,14 @@ impl GentleEngine {
                     rejections.non_unique_anneal = rejections.non_unique_anneal.saturating_add(1);
                     continue;
                 }
+                if !Self::primer_sequence_matches_side_constraints(
+                    &primer_bytes,
+                    sequence_constraints,
+                ) {
+                    rejections.primer_constraint_failure =
+                        rejections.primer_constraint_failure.saturating_add(1);
+                    continue;
+                }
                 ret.push(PrimerDesignCandidate {
                     sequence: String::from_utf8(primer_bytes).unwrap_or_default(),
                     start_0based: start,
@@ -15000,6 +16023,48 @@ impl GentleEngine {
                 .then(a.sequence.cmp(&b.sequence))
         });
         ret
+    }
+
+    fn primer_sequence_matches_side_constraints(
+        primer_sequence: &[u8],
+        constraints: &NormalizedPrimerSideSequenceConstraints,
+    ) -> bool {
+        if let Some(prefix) = &constraints.fixed_5prime {
+            if primer_sequence.len() < prefix.len()
+                || !Self::iupac_match_at(primer_sequence, prefix.as_bytes(), 0)
+            {
+                return false;
+            }
+        }
+        if let Some(suffix) = &constraints.fixed_3prime {
+            if primer_sequence.len() < suffix.len()
+                || !Self::iupac_match_at(
+                    primer_sequence,
+                    suffix.as_bytes(),
+                    primer_sequence.len().saturating_sub(suffix.len()),
+                )
+            {
+                return false;
+            }
+        }
+        for motif in &constraints.required_motifs {
+            if !Self::contains_iupac_pattern(primer_sequence, motif.as_bytes()) {
+                return false;
+            }
+        }
+        for motif in &constraints.forbidden_motifs {
+            if Self::contains_iupac_pattern(primer_sequence, motif.as_bytes()) {
+                return false;
+            }
+        }
+        for (offset, base) in &constraints.locked_positions {
+            if *offset >= primer_sequence.len()
+                || !Self::iupac_match_at(primer_sequence, base.as_bytes(), *offset)
+            {
+                return false;
+            }
+        }
+        true
     }
 
     fn render_primer_design_report_id(raw: Option<String>, template: &str) -> String {
@@ -15093,12 +16158,58 @@ impl GentleEngine {
         })
     }
 
+    fn primer_pair_matches_constraints(
+        template: &[u8],
+        pair: &PrimerDesignPairRecord,
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        constraints: &NormalizedPrimerPairConstraints,
+    ) -> bool {
+        if constraints.require_roi_flanking {
+            let flanking = pair.forward.end_0based_exclusive <= roi_start_0based
+                && pair.reverse.start_0based >= roi_end_0based;
+            if !flanking {
+                return false;
+            }
+        }
+        if let Some(expected_start) = constraints.fixed_amplicon_start_0based {
+            if pair.amplicon_start_0based != expected_start {
+                return false;
+            }
+        }
+        if let Some(expected_end) = constraints.fixed_amplicon_end_0based_exclusive {
+            if pair.amplicon_end_0based_exclusive != expected_end {
+                return false;
+            }
+        }
+        if pair.amplicon_end_0based_exclusive > template.len()
+            || pair.amplicon_start_0based >= pair.amplicon_end_0based_exclusive
+        {
+            return false;
+        }
+        let amplicon = &template[pair.amplicon_start_0based..pair.amplicon_end_0based_exclusive];
+        for motif in &constraints.required_amplicon_motifs {
+            if !Self::contains_iupac_pattern(amplicon, motif.as_bytes()) {
+                return false;
+            }
+        }
+        for motif in &constraints.forbidden_amplicon_motifs {
+            if Self::contains_iupac_pattern(amplicon, motif.as_bytes()) {
+                return false;
+            }
+        }
+        true
+    }
+
     fn design_primer_pairs_internal(
         template_bytes: &[u8],
         roi_start_0based: usize,
         roi_end_0based: usize,
         forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
         reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
         min_amplicon_bp: usize,
         max_amplicon_bp: usize,
         max_tm_delta_c: f64,
@@ -15108,12 +16219,14 @@ impl GentleEngine {
         let forward_candidates = Self::generate_primer_side_candidates(
             template_bytes,
             forward,
+            forward_sequence_constraints,
             false,
             &mut rejection_summary,
         );
         let reverse_candidates = Self::generate_primer_side_candidates(
             template_bytes,
             reverse,
+            reverse_sequence_constraints,
             true,
             &mut rejection_summary,
         );
@@ -15157,11 +16270,129 @@ impl GentleEngine {
                         rejection_summary.amplicon_or_roi_failure.saturating_add(1);
                     continue;
                 }
+                if !Self::primer_pair_matches_constraints(
+                    template_bytes,
+                    &pair,
+                    roi_start_0based,
+                    roi_end_0based,
+                    pair_constraints,
+                ) {
+                    rejection_summary.pair_constraint_failure =
+                        rejection_summary.pair_constraint_failure.saturating_add(1);
+                    continue;
+                }
                 pairs.push(pair);
             }
         }
         Self::sort_and_rank_primer_design_pairs(&mut pairs, max_pairs);
         (pairs, rejection_summary)
+    }
+
+    fn sort_and_rank_qpcr_assays(assays: &mut Vec<QpcrAssayRecord>, max_assays: usize) {
+        assays.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then(a.amplicon_start_0based.cmp(&b.amplicon_start_0based))
+                .then(
+                    a.amplicon_end_0based_exclusive
+                        .cmp(&b.amplicon_end_0based_exclusive),
+                )
+                .then(a.probe.start_0based.cmp(&b.probe.start_0based))
+                .then(a.forward.sequence.cmp(&b.forward.sequence))
+                .then(a.reverse.sequence.cmp(&b.reverse.sequence))
+                .then(a.probe.sequence.cmp(&b.probe.sequence))
+        });
+        if assays.len() > max_assays {
+            assays.truncate(max_assays);
+        }
+        for (idx, assay) in assays.iter_mut().enumerate() {
+            assay.rank = idx + 1;
+        }
+    }
+
+    fn design_qpcr_assays_from_pairs(
+        template_bytes: &[u8],
+        roi_start_0based: usize,
+        roi_end_0based: usize,
+        probe: &PrimerDesignSideConstraint,
+        probe_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        max_probe_tm_delta_c: f64,
+        max_assays: usize,
+        pairs: Vec<PrimerDesignPairRecord>,
+        pair_rejections: PrimerDesignRejectionSummary,
+    ) -> (Vec<QpcrAssayRecord>, QpcrDesignRejectionSummary) {
+        let mut rejection = QpcrDesignRejectionSummary {
+            primer_pair: pair_rejections,
+            ..QpcrDesignRejectionSummary::default()
+        };
+        let mut probe_candidate_rejections = PrimerDesignRejectionSummary::default();
+        let probe_candidates = Self::generate_primer_side_candidates(
+            template_bytes,
+            probe,
+            probe_sequence_constraints,
+            false,
+            &mut probe_candidate_rejections,
+        );
+        rejection.probe_out_of_window = probe_candidate_rejections.out_of_window;
+        rejection.probe_gc_or_tm_out_of_bounds = probe_candidate_rejections.gc_or_tm_out_of_bounds;
+        rejection.probe_non_unique_anneal = probe_candidate_rejections.non_unique_anneal;
+
+        let mut assays: Vec<QpcrAssayRecord> = vec![];
+        for pair in pairs {
+            let amplicon_mid =
+                (pair.amplicon_start_0based + pair.amplicon_end_0based_exclusive) / 2;
+            for probe_candidate in &probe_candidates {
+                let probe_start = probe_candidate.start_0based;
+                let probe_end = probe_candidate.end_0based_exclusive;
+                let probe_inside_amplicon = probe_start >= pair.forward.end_0based_exclusive
+                    && probe_end <= pair.reverse.start_0based;
+                if !probe_inside_amplicon {
+                    rejection.probe_or_assay_failure =
+                        rejection.probe_or_assay_failure.saturating_add(1);
+                    continue;
+                }
+                let probe_tm_delta_c =
+                    (probe_candidate.tm_c - ((pair.forward.tm_c + pair.reverse.tm_c) / 2.0)).abs();
+                let probe_tm_ok = probe_tm_delta_c <= max_probe_tm_delta_c;
+                if !probe_tm_ok {
+                    rejection.probe_or_assay_failure =
+                        rejection.probe_or_assay_failure.saturating_add(1);
+                    continue;
+                }
+                let probe_mid = (probe_start + probe_end) / 2;
+                let probe_mid_penalty = probe_mid.abs_diff(amplicon_mid) as f64;
+                let score = pair.score - (probe_tm_delta_c * 10.0) - (probe_mid_penalty * 0.05);
+                assays.push(QpcrAssayRecord {
+                    rank: 0,
+                    score,
+                    forward: pair.forward.clone(),
+                    reverse: pair.reverse.clone(),
+                    probe: PrimerDesignPrimerRecord {
+                        sequence: probe_candidate.sequence.clone(),
+                        start_0based: probe_start,
+                        end_0based_exclusive: probe_end,
+                        tm_c: probe_candidate.tm_c,
+                        gc_fraction: probe_candidate.gc_fraction,
+                        anneal_hits: probe_candidate.anneal_hits,
+                    },
+                    amplicon_start_0based: pair.amplicon_start_0based,
+                    amplicon_end_0based_exclusive: pair.amplicon_end_0based_exclusive,
+                    amplicon_length_bp: pair.amplicon_length_bp,
+                    primer_tm_delta_c: pair.tm_delta_c,
+                    probe_tm_delta_c,
+                    rule_flags: QpcrAssayRuleFlags {
+                        roi_covered: pair.rule_flags.roi_covered,
+                        amplicon_size_in_range: pair.rule_flags.amplicon_size_in_range,
+                        primer_tm_delta_in_range: pair.rule_flags.tm_delta_in_range,
+                        probe_inside_amplicon,
+                        probe_tm_delta_in_range: probe_tm_ok,
+                    },
+                });
+            }
+        }
+        let _ = (roi_start_0based, roi_end_0based); // reserved for future qPCR ROI/probe rules
+        Self::sort_and_rank_qpcr_assays(&mut assays, max_assays);
+        (assays, rejection)
     }
 
     fn parse_primer3_coord_pair(raw: &str, key: &str) -> Result<(usize, usize), EngineError> {
@@ -15220,7 +16451,10 @@ impl GentleEngine {
         roi_start_0based: usize,
         roi_end_0based: usize,
         forward: &PrimerDesignSideConstraint,
+        forward_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
         reverse: &PrimerDesignSideConstraint,
+        reverse_sequence_constraints: &NormalizedPrimerSideSequenceConstraints,
+        pair_constraints: &NormalizedPrimerPairConstraints,
         min_amplicon_bp: usize,
         max_amplicon_bp: usize,
         max_tm_delta_c: f64,
@@ -15443,6 +16677,18 @@ impl GentleEngine {
                     rejection_summary.non_unique_anneal.saturating_add(1);
                 continue;
             }
+            if !Self::primer_sequence_matches_side_constraints(
+                forward_sequence.as_bytes(),
+                forward_sequence_constraints,
+            ) || !Self::primer_sequence_matches_side_constraints(
+                reverse_sequence.as_bytes(),
+                reverse_sequence_constraints,
+            ) {
+                rejection_summary.primer_constraint_failure = rejection_summary
+                    .primer_constraint_failure
+                    .saturating_add(1);
+                continue;
+            }
 
             let Some(pair) = Self::build_primer_design_pair_record(
                 PrimerDesignPrimerRecord {
@@ -15478,6 +16724,17 @@ impl GentleEngine {
             {
                 rejection_summary.amplicon_or_roi_failure =
                     rejection_summary.amplicon_or_roi_failure.saturating_add(1);
+                continue;
+            }
+            if !Self::primer_pair_matches_constraints(
+                template_bytes,
+                &pair,
+                roi_start_0based,
+                roi_end_0based,
+                pair_constraints,
+            ) {
+                rejection_summary.pair_constraint_failure =
+                    rejection_summary.pair_constraint_failure.saturating_add(1);
                 continue;
             }
             pairs.push(pair);
@@ -15664,12 +16921,54 @@ impl GentleEngine {
                     .get(&seq_id)
                     .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
                 if let Some(anchor) = imported_anchor {
+                    let mut anchor_verified: Option<bool> = None;
+                    if let Some(loaded) = self.state.sequences.get(&seq_id) {
+                        match Self::verify_anchor_sequence_against_catalog(
+                            loaded,
+                            &anchor,
+                            DEFAULT_GENOME_CATALOG_PATH,
+                            None,
+                        ) {
+                            Ok(is_match) => {
+                                anchor_verified = Some(is_match);
+                                if is_match {
+                                    result.messages.push(format!(
+                                        "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
+                                        seq_id,
+                                        DEFAULT_GENOME_CATALOG_PATH,
+                                        anchor.genome_id,
+                                        anchor.chromosome,
+                                        anchor.start_1based
+                                    ));
+                                } else {
+                                    result.warnings.push(format!(
+                                        "Imported GenBank anchor '{}' does not match catalog sequence at {}:{}:{}-{} (catalog='{}')",
+                                        seq_id,
+                                        anchor.genome_id,
+                                        anchor.chromosome,
+                                        anchor.start_1based,
+                                        anchor.end_1based,
+                                        DEFAULT_GENOME_CATALOG_PATH
+                                    ));
+                                }
+                            }
+                            Err(err) => {
+                                result.warnings.push(format!(
+                                    "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
+                                    seq_id, DEFAULT_GENOME_CATALOG_PATH, err
+                                ));
+                            }
+                        }
+                    }
                     self.append_genome_extraction_provenance(GenomeExtractionProvenance {
                         seq_id: seq_id.clone(),
                         recorded_at_unix_ms: Self::now_unix_ms(),
                         operation: "LoadFileGenBankRegion".to_string(),
                         genome_id: anchor.genome_id.clone(),
-                        catalog_path: path.clone(),
+                        // Imported GenBank files are sequence sources, not catalog JSON.
+                        // Keep the default catalog path so later anchor-extension flows
+                        // resolve against real genome catalogs instead of the .gb file.
+                        catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
                         cache_dir: None,
                         chromosome: Some(anchor.chromosome.clone()),
                         start_1based: Some(anchor.start_1based),
@@ -15680,6 +16979,7 @@ impl GentleEngine {
                         gene_name: None,
                         strand: None,
                         anchor_strand: anchor.strand,
+                        anchor_verified,
                         sequence_source_type: Some("genbank_file".to_string()),
                         annotation_source_type: Some("genbank_file".to_string()),
                         sequence_source: Some(path.clone()),
@@ -15688,14 +16988,20 @@ impl GentleEngine {
                         annotation_sha1: None,
                     });
                     let strand = anchor.strand.unwrap_or('+');
+                    let verification_label = match anchor_verified {
+                        Some(true) => "verified",
+                        Some(false) => "unverified",
+                        None => "verification n/a",
+                    };
                     result.messages.push(format!(
-                        "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {})",
+                        "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {}, {})",
                         seq_id,
                         anchor.chromosome,
                         anchor.start_1based,
                         anchor.end_1based,
                         anchor.genome_id,
-                        strand
+                        strand,
+                        verification_label
                     ));
                 }
                 result.created_seq_ids.push(seq_id.clone());
@@ -16049,6 +17355,7 @@ impl GentleEngine {
                     gene_name: None,
                     strand: None,
                     anchor_strand: Some('+'),
+                    anchor_verified: Some(true),
                     sequence_source_type,
                     annotation_source_type,
                     sequence_source,
@@ -16232,6 +17539,7 @@ impl GentleEngine {
                     gene_name: selected_gene.gene_name.clone(),
                     strand: selected_gene.strand,
                     anchor_strand: Some('+'),
+                    anchor_verified: Some(true),
                     sequence_source_type,
                     annotation_source_type,
                     sequence_source,
@@ -16271,20 +17579,76 @@ impl GentleEngine {
                     });
                 }
                 let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
-                let resolved_catalog_path = catalog_path
+                if self
+                    .state
+                    .parameters
+                    .require_verified_genome_anchor_for_extension
+                    && anchor.anchor_verified != Some(true)
+                {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "ExtendGenomeAnchor requires a verified genome anchor when parameter 'require_verified_genome_anchor_for_extension' is true (seq_id='{}')",
+                            seq_id
+                        ),
+                    });
+                }
+                let explicit_catalog_requested = catalog_path
+                    .as_deref()
+                    .map(str::trim)
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false);
+                let requested_catalog_path = catalog_path
                     .or(anchor.catalog_path.clone())
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty())
                     .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let mut resolved_catalog_path = requested_catalog_path.clone();
                 let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
-                let catalog =
-                    GenomeCatalog::from_json_file(&resolved_catalog_path).map_err(|e| {
-                        EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "Could not open genome catalog '{}': {}",
-                                resolved_catalog_path, e
-                            ),
+                let mut catalog_fallback_warning: Option<String> = None;
+                let catalog = match GenomeCatalog::from_json_file(&requested_catalog_path) {
+                    Ok(catalog) => catalog,
+                    Err(primary_err) => {
+                        let default_catalog_path = DEFAULT_GENOME_CATALOG_PATH.to_string();
+                        let should_fallback_to_default = !explicit_catalog_requested
+                            && requested_catalog_path != default_catalog_path;
+                        if should_fallback_to_default {
+                            match GenomeCatalog::from_json_file(&default_catalog_path) {
+                                Ok(catalog) => {
+                                    resolved_catalog_path = default_catalog_path.clone();
+                                    catalog_fallback_warning = Some(format!(
+                                        "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
+                                        requested_catalog_path, primary_err, default_catalog_path
+                                    ));
+                                    catalog
+                                }
+                                Err(default_err) => {
+                                    return Err(EngineError {
+                                        code: ErrorCode::InvalidInput,
+                                        message: format!(
+                                            "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
+                                            requested_catalog_path,
+                                            primary_err,
+                                            default_catalog_path,
+                                            default_err
+                                        ),
+                                    });
+                                }
+                            }
+                        } else {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Could not open genome catalog '{}': {}",
+                                    requested_catalog_path, primary_err
+                                ),
+                            });
                         }
-                    })?;
+                    }
+                };
+                if let Some(warning) = catalog_fallback_warning {
+                    result.warnings.push(warning);
+                }
 
                 let anchor_is_reverse = anchor.strand == Some('-');
                 let (new_start_1based, new_end_1based) = match (anchor_is_reverse, side) {
@@ -16305,9 +17669,22 @@ impl GentleEngine {
                         anchor.end_1based,
                     ),
                 };
+                let prepared_resolution = catalog
+                    .resolve_prepared_genome_id(&anchor.genome_id, resolved_cache_dir.as_deref())
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not resolve prepared genome '{}' for extension: {}",
+                            anchor.genome_id, e
+                        ),
+                    })?;
+                if let Some(warning) = prepared_resolution.fallback_warning {
+                    result.warnings.push(warning);
+                }
+                let effective_genome_id = prepared_resolution.resolved_genome_id;
                 let mut sequence = catalog
                     .get_sequence_region_with_cache(
-                        &anchor.genome_id,
+                        &effective_genome_id,
                         &anchor.chromosome,
                         new_start_1based,
                         new_end_1based,
@@ -16320,7 +17697,7 @@ impl GentleEngine {
                             anchor.chromosome,
                             new_start_1based,
                             new_end_1based,
-                            anchor.genome_id,
+                            effective_genome_id,
                             e
                         ),
                     })?;
@@ -16347,10 +17724,10 @@ impl GentleEngine {
                 parent_seq_ids.push(seq_id.clone());
 
                 let source_plan = catalog
-                    .source_plan(&anchor.genome_id, resolved_cache_dir.as_deref())
+                    .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
                     .ok();
                 let inspection = catalog
-                    .inspect_prepared_genome(&anchor.genome_id, resolved_cache_dir.as_deref())
+                    .inspect_prepared_genome(&effective_genome_id, resolved_cache_dir.as_deref())
                     .ok()
                     .flatten();
                 let (
@@ -16365,7 +17742,7 @@ impl GentleEngine {
                     seq_id: extended_seq_id.clone(),
                     recorded_at_unix_ms: Self::now_unix_ms(),
                     operation: "ExtendGenomeAnchor".to_string(),
-                    genome_id: anchor.genome_id.clone(),
+                    genome_id: effective_genome_id.clone(),
                     catalog_path: resolved_catalog_path.clone(),
                     cache_dir: resolved_cache_dir.clone(),
                     chromosome: Some(anchor.chromosome.clone()),
@@ -16377,6 +17754,7 @@ impl GentleEngine {
                     gene_name: None,
                     strand: anchor.strand,
                     anchor_strand: Some(anchor.strand.unwrap_or('+')),
+                    anchor_verified: Some(true),
                     sequence_source_type,
                     annotation_source_type,
                     sequence_source,
@@ -16390,11 +17768,12 @@ impl GentleEngine {
                 };
                 let anchor_strand = anchor.strand.unwrap_or('+');
                 result.messages.push(format!(
-                    "Extended genome anchor '{}' on {} by {} bp (anchor strand {}) => {}:{}-{} as '{}'",
+                    "Extended genome anchor '{}' on {} by {} bp (anchor strand {}) via '{}' => {}:{}-{} as '{}'",
                     seq_id,
                     side_label,
                     length_bp,
                     anchor_strand,
+                    effective_genome_id,
                     anchor.chromosome,
                     new_start_1based,
                     new_end_1based,
@@ -16757,6 +18136,74 @@ impl GentleEngine {
                     resource.isoforms.len(),
                     strict,
                     panel_path
+                ));
+            }
+            Operation::ImportUniprotSwissProt { path, entry_id } => {
+                if path.trim().is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportUniprotSwissProt requires a non-empty path".to_string(),
+                    });
+                }
+                let text = std::fs::read_to_string(&path).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!("Could not read SWISS-PROT text from '{}': {e}", path),
+                })?;
+                let source = format!("file://{}", path);
+                let entry =
+                    Self::parse_uniprot_entry_text(&text, &source, None, entry_id.as_deref())?;
+                let resolved_entry_id = entry.entry_id.clone();
+                self.upsert_uniprot_entry(entry)?;
+                result.messages.push(format!(
+                    "Imported UniProt SWISS-PROT entry '{}' from '{}'",
+                    resolved_entry_id, path
+                ));
+            }
+            Operation::FetchUniprotSwissProt { query, entry_id } => {
+                let query_trimmed = query.trim();
+                if query_trimmed.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "FetchUniprotSwissProt requires a non-empty query".to_string(),
+                    });
+                }
+                let (source_url, text) = Self::fetch_uniprot_swiss_prot_text(query_trimmed)?;
+                let entry = Self::parse_uniprot_entry_text(
+                    &text,
+                    &source_url,
+                    Some(query_trimmed),
+                    entry_id.as_deref(),
+                )?;
+                let resolved_entry_id = entry.entry_id.clone();
+                let accession = entry.accession.clone();
+                self.upsert_uniprot_entry(entry)?;
+                result.messages.push(format!(
+                    "Fetched UniProt entry '{}' (accession '{}') from '{}'",
+                    resolved_entry_id, accession, source_url
+                ));
+            }
+            Operation::ProjectUniprotToGenome {
+                seq_id,
+                entry_id,
+                projection_id,
+                transcript_id,
+            } => {
+                let projection = self.project_uniprot_to_genome(
+                    &seq_id,
+                    &entry_id,
+                    projection_id.as_deref(),
+                    transcript_id.as_deref(),
+                )?;
+                let projection_id = projection.projection_id.clone();
+                let transcript_count = projection.transcript_projections.len();
+                result.warnings.extend(projection.warnings.clone());
+                for transcript in &projection.transcript_projections {
+                    result.warnings.extend(transcript.warnings.clone());
+                }
+                self.upsert_uniprot_projection(projection)?;
+                result.messages.push(format!(
+                    "Projected UniProt entry '{}' onto '{}' as '{}' (transcripts={})",
+                    entry_id, seq_id, projection_id, transcript_count
                 ));
             }
             Operation::ImportBlastHitsTrack {
@@ -17759,6 +19206,7 @@ impl GentleEngine {
                 roi_end_0based,
                 forward,
                 reverse,
+                pair_constraints,
                 min_amplicon_bp,
                 max_amplicon_bp,
                 max_tm_delta_c,
@@ -17835,6 +19283,12 @@ impl GentleEngine {
 
                 Self::validate_primer_design_side_constraints("forward", &forward)?;
                 Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+                let forward_sequence_constraints =
+                    Self::normalize_primer_side_sequence_constraints(&forward)?;
+                let reverse_sequence_constraints =
+                    Self::normalize_primer_side_sequence_constraints(&reverse)?;
+                let pair_constraints_normalized =
+                    Self::normalize_primer_pair_constraints(&pair_constraints)?;
                 for (label, side) in [("forward", &forward), ("reverse", &reverse)] {
                     if let Some(location) = side.location_0based {
                         if location >= template_bytes.len() {
@@ -17870,6 +19324,28 @@ impl GentleEngine {
                         }
                     }
                 }
+                if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
+                    if start >= template_bytes.len() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                                template_bytes.len()
+                            ),
+                        });
+                    }
+                }
+                if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
+                    if end == 0 || end > template_bytes.len() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
+                                template_bytes.len()
+                            ),
+                        });
+                    }
+                }
 
                 let requested_backend = self.state.parameters.primer_design_backend;
                 let primer3_executable = {
@@ -17888,7 +19364,10 @@ impl GentleEngine {
                             roi_start_0based,
                             roi_end_0based,
                             &forward,
+                            &forward_sequence_constraints,
                             &reverse,
+                            &reverse_sequence_constraints,
+                            &pair_constraints_normalized,
                             min_amplicon_bp,
                             max_amplicon_bp,
                             max_tm_delta_c,
@@ -17902,7 +19381,10 @@ impl GentleEngine {
                                 roi_start_0based,
                                 roi_end_0based,
                                 &forward,
+                                &forward_sequence_constraints,
                                 &reverse,
+                                &reverse_sequence_constraints,
+                                &pair_constraints_normalized,
                                 min_amplicon_bp,
                                 max_amplicon_bp,
                                 max_tm_delta_c,
@@ -17920,7 +19402,10 @@ impl GentleEngine {
                             roi_start_0based,
                             roi_end_0based,
                             &forward,
+                            &forward_sequence_constraints,
                             &reverse,
+                            &reverse_sequence_constraints,
+                            &pair_constraints_normalized,
                             min_amplicon_bp,
                             max_amplicon_bp,
                             max_tm_delta_c,
@@ -17946,7 +19431,10 @@ impl GentleEngine {
                                     roi_start_0based,
                                     roi_end_0based,
                                     &forward,
+                                    &forward_sequence_constraints,
                                     &reverse,
+                                    &reverse_sequence_constraints,
+                                    &pair_constraints_normalized,
                                     min_amplicon_bp,
                                     max_amplicon_bp,
                                     max_tm_delta_c,
@@ -17967,6 +19455,7 @@ impl GentleEngine {
                     roi_end_0based,
                     forward,
                     reverse,
+                    pair_constraints,
                     min_amplicon_bp,
                     max_amplicon_bp,
                     max_tm_delta_c,
@@ -17992,6 +19481,324 @@ impl GentleEngine {
                 if report.pair_count == 0 {
                     result.warnings.push(format!(
                         "No primer pairs satisfied constraints for report '{}'",
+                        report.report_id
+                    ));
+                }
+            }
+            Operation::DesignQpcrAssays {
+                template,
+                roi_start_0based,
+                roi_end_0based,
+                forward,
+                reverse,
+                probe,
+                pair_constraints,
+                min_amplicon_bp,
+                max_amplicon_bp,
+                max_tm_delta_c,
+                max_probe_tm_delta_c,
+                max_assays,
+                report_id,
+            } => {
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&template)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{template}' not found"),
+                    })?
+                    .clone();
+                if dna.is_circular() {
+                    return Err(EngineError {
+                        code: ErrorCode::Unsupported,
+                        message: "DesignQpcrAssays currently supports linear templates only"
+                            .to_string(),
+                    });
+                }
+
+                let template_seq = dna.get_forward_string().to_ascii_uppercase();
+                let template_bytes = template_seq.as_bytes();
+                if template_bytes.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "DesignQpcrAssays requires a non-empty template sequence"
+                            .to_string(),
+                    });
+                }
+                if roi_start_0based >= roi_end_0based || roi_end_0based > template_bytes.len() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignQpcrAssays ROI {}..{} is invalid for template length {}",
+                            roi_start_0based,
+                            roi_end_0based,
+                            template_bytes.len()
+                        ),
+                    });
+                }
+                if min_amplicon_bp == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "DesignQpcrAssays min_amplicon_bp must be >= 1".to_string(),
+                    });
+                }
+                if min_amplicon_bp > max_amplicon_bp {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignQpcrAssays min_amplicon_bp ({min_amplicon_bp}) must be <= max_amplicon_bp ({max_amplicon_bp})"
+                        ),
+                    });
+                }
+                let max_tm_delta_c = max_tm_delta_c.unwrap_or(2.0);
+                if max_tm_delta_c < 0.0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignQpcrAssays max_tm_delta_c ({max_tm_delta_c}) must be >= 0.0"
+                        ),
+                    });
+                }
+                let max_probe_tm_delta_c = max_probe_tm_delta_c.unwrap_or(10.0);
+                if max_probe_tm_delta_c < 0.0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "DesignQpcrAssays max_probe_tm_delta_c ({max_probe_tm_delta_c}) must be >= 0.0"
+                        ),
+                    });
+                }
+                let max_assays = max_assays.unwrap_or(200);
+                if max_assays == 0 {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "DesignQpcrAssays max_assays must be >= 1".to_string(),
+                    });
+                }
+
+                Self::validate_primer_design_side_constraints("forward", &forward)?;
+                Self::validate_primer_design_side_constraints("reverse", &reverse)?;
+                Self::validate_primer_design_side_constraints("probe", &probe)?;
+                let forward_sequence_constraints =
+                    Self::normalize_primer_side_sequence_constraints(&forward)?;
+                let reverse_sequence_constraints =
+                    Self::normalize_primer_side_sequence_constraints(&reverse)?;
+                let probe_sequence_constraints =
+                    Self::normalize_primer_side_sequence_constraints(&probe)?;
+                let pair_constraints_normalized =
+                    Self::normalize_primer_pair_constraints(&pair_constraints)?;
+                for (label, side) in [
+                    ("forward", &forward),
+                    ("reverse", &reverse),
+                    ("probe", &probe),
+                ] {
+                    if let Some(location) = side.location_0based {
+                        if location >= template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "{label}.location_0based ({location}) is outside template length {}",
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                    }
+                    if let Some(start) = side.start_0based {
+                        if start >= template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "{label}.start_0based ({start}) is outside template length {}",
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                    }
+                    if let Some(end) = side.end_0based {
+                        if end == 0 || end > template_bytes.len() {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "{label}.end_0based ({end}) must be in 1..={} for this template",
+                                    template_bytes.len()
+                                ),
+                            });
+                        }
+                    }
+                }
+                if let Some(start) = pair_constraints.fixed_amplicon_start_0based {
+                    if start >= template_bytes.len() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "pair_constraints.fixed_amplicon_start_0based ({start}) is outside template length {}",
+                                template_bytes.len()
+                            ),
+                        });
+                    }
+                }
+                if let Some(end) = pair_constraints.fixed_amplicon_end_0based_exclusive {
+                    if end == 0 || end > template_bytes.len() {
+                        return Err(EngineError {
+                            code: ErrorCode::InvalidInput,
+                            message: format!(
+                                "pair_constraints.fixed_amplicon_end_0based_exclusive ({end}) must be in 1..={} for this template",
+                                template_bytes.len()
+                            ),
+                        });
+                    }
+                }
+
+                let pair_generation_limit = max_assays.saturating_mul(25).clamp(max_assays, 5000);
+                let requested_backend = self.state.parameters.primer_design_backend;
+                let primer3_executable = {
+                    let raw = self.state.parameters.primer3_executable.trim();
+                    if raw.is_empty() { "primer3_core" } else { raw }
+                };
+                let mut backend = PrimerDesignBackendInfo {
+                    requested: requested_backend.as_str().to_string(),
+                    ..PrimerDesignBackendInfo::default()
+                };
+                let (pair_candidates, pair_rejections) = match requested_backend {
+                    PrimerDesignBackend::Internal => {
+                        backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                        Self::design_primer_pairs_internal(
+                            template_bytes,
+                            roi_start_0based,
+                            roi_end_0based,
+                            &forward,
+                            &forward_sequence_constraints,
+                            &reverse,
+                            &reverse_sequence_constraints,
+                            &pair_constraints_normalized,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            pair_generation_limit,
+                        )
+                    }
+                    PrimerDesignBackend::Primer3 => {
+                        let (pairs, rejection_summary, version) =
+                            Self::design_primer_pairs_primer3(
+                                &template_seq,
+                                roi_start_0based,
+                                roi_end_0based,
+                                &forward,
+                                &forward_sequence_constraints,
+                                &reverse,
+                                &reverse_sequence_constraints,
+                                &pair_constraints_normalized,
+                                min_amplicon_bp,
+                                max_amplicon_bp,
+                                max_tm_delta_c,
+                                pair_generation_limit,
+                                primer3_executable,
+                            )?;
+                        backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                        backend.primer3_executable = Some(primer3_executable.to_string());
+                        backend.primer3_version = version;
+                        (pairs, rejection_summary)
+                    }
+                    PrimerDesignBackend::Auto => {
+                        match Self::design_primer_pairs_primer3(
+                            &template_seq,
+                            roi_start_0based,
+                            roi_end_0based,
+                            &forward,
+                            &forward_sequence_constraints,
+                            &reverse,
+                            &reverse_sequence_constraints,
+                            &pair_constraints_normalized,
+                            min_amplicon_bp,
+                            max_amplicon_bp,
+                            max_tm_delta_c,
+                            pair_generation_limit,
+                            primer3_executable,
+                        ) {
+                            Ok((pairs, rejection_summary, version)) => {
+                                backend.used = PrimerDesignBackend::Primer3.as_str().to_string();
+                                backend.primer3_executable = Some(primer3_executable.to_string());
+                                backend.primer3_version = version;
+                                (pairs, rejection_summary)
+                            }
+                            Err(err) => {
+                                backend.used = PrimerDesignBackend::Internal.as_str().to_string();
+                                backend.primer3_executable = Some(primer3_executable.to_string());
+                                backend.fallback_reason = Some(err.message.clone());
+                                result.warnings.push(format!(
+                                    "Primer3 backend unavailable in auto mode: {}. Falling back to internal qPCR design backend.",
+                                    err.message
+                                ));
+                                Self::design_primer_pairs_internal(
+                                    template_bytes,
+                                    roi_start_0based,
+                                    roi_end_0based,
+                                    &forward,
+                                    &forward_sequence_constraints,
+                                    &reverse,
+                                    &reverse_sequence_constraints,
+                                    &pair_constraints_normalized,
+                                    min_amplicon_bp,
+                                    max_amplicon_bp,
+                                    max_tm_delta_c,
+                                    pair_generation_limit,
+                                )
+                            }
+                        }
+                    }
+                };
+
+                let (assays, rejection_summary) = Self::design_qpcr_assays_from_pairs(
+                    template_bytes,
+                    roi_start_0based,
+                    roi_end_0based,
+                    &probe,
+                    &probe_sequence_constraints,
+                    max_probe_tm_delta_c,
+                    max_assays,
+                    pair_candidates,
+                    pair_rejections,
+                );
+
+                let report_id = Self::render_primer_design_report_id(report_id, &template);
+                let report = QpcrDesignReport {
+                    schema: QPCR_DESIGN_REPORT_SCHEMA.to_string(),
+                    report_id: report_id.clone(),
+                    template: template.clone(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    roi_start_0based,
+                    roi_end_0based,
+                    forward,
+                    reverse,
+                    probe,
+                    pair_constraints,
+                    min_amplicon_bp,
+                    max_amplicon_bp,
+                    max_tm_delta_c,
+                    max_probe_tm_delta_c,
+                    max_assays,
+                    assay_count: assays.len(),
+                    assays,
+                    rejection_summary,
+                    backend,
+                };
+                let mut store = self.read_primer_design_store();
+                let replaced = store
+                    .qpcr_reports
+                    .insert(report.report_id.clone(), report.clone())
+                    .is_some();
+                self.write_primer_design_store(store)?;
+                result.messages.push(format!(
+                    "{} qPCR-design report '{}' for template '{}' (assays={})",
+                    if replaced { "Updated" } else { "Created" },
+                    report.report_id,
+                    report.template,
+                    report.assay_count
+                ));
+                if report.assay_count == 0 {
+                    result.warnings.push(format!(
+                        "No qPCR assays satisfied constraints for report '{}'",
                         report.report_id
                     ));
                 }
@@ -19284,6 +21091,23 @@ impl GentleEngine {
                         name, self.state.parameters.max_fragments_per_container
                     ));
                 }
+                "require_verified_genome_anchor_for_extension"
+                | "strict_genome_anchor_verification"
+                | "strict_anchor_verification" => {
+                    let raw = value.as_bool().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a boolean"),
+                    })?;
+                    self.state
+                        .parameters
+                        .require_verified_genome_anchor_for_extension = raw;
+                    result.messages.push(format!(
+                        "Set parameter 'require_verified_genome_anchor_for_extension' to {}",
+                        self.state
+                            .parameters
+                            .require_verified_genome_anchor_for_extension
+                    ));
+                }
                 "primer_design_backend" | "primers_design_backend" => {
                     let raw = value.as_str().ok_or_else(|| EngineError {
                         code: ErrorCode::InvalidInput,
@@ -20515,6 +22339,11 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
                 },
                 reverse: PrimerDesignSideConstraint {
                     min_length: 20,
@@ -20527,7 +22356,13 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
                 },
+                pair_constraints: PrimerDesignPairConstraint::default(),
                 min_amplicon_bp: 40,
                 max_amplicon_bp: 130,
                 max_tm_delta_c: Some(50.0),
@@ -20582,6 +22417,11 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
                 },
                 reverse: PrimerDesignSideConstraint {
                     min_length: 20,
@@ -20594,7 +22434,13 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
                 },
+                pair_constraints: PrimerDesignPairConstraint::default(),
                 min_amplicon_bp: 40,
                 max_amplicon_bp: 130,
                 max_tm_delta_c: Some(50.0),
@@ -20635,6 +22481,7 @@ exit 2
                 roi_end_0based: 30,
                 forward: PrimerDesignSideConstraint::default(),
                 reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
                 min_amplicon_bp: 20,
                 max_amplicon_bp: 80,
                 max_tm_delta_c: Some(10.0),
@@ -20660,6 +22507,7 @@ exit 2
                 roi_end_0based: 200,
                 forward: PrimerDesignSideConstraint::default(),
                 reverse: PrimerDesignSideConstraint::default(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
                 min_amplicon_bp: 40,
                 max_amplicon_bp: 120,
                 max_tm_delta_c: Some(2.0),
@@ -20668,6 +22516,446 @@ exit 2
             })
             .expect_err("invalid roi");
         assert!(err.message.contains("ROI"));
+    }
+
+    #[test]
+    fn test_design_qpcr_assays_persists_report() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            seq(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            ),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+        let result = engine
+            .apply(Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
+                },
+                probe: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(35),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    fixed_5prime: None,
+                    fixed_3prime: None,
+                    required_motifs: vec![],
+                    forbidden_motifs: vec![],
+                    locked_positions: vec![],
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_probe_tm_delta_c: Some(50.0),
+                max_assays: Some(10),
+                report_id: Some("tp73_qpcr".to_string()),
+            })
+            .expect("design qpcr assays");
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|line| line.contains("qPCR-design report"))
+        );
+        let report = engine
+            .get_qpcr_design_report("tp73_qpcr")
+            .expect("qpcr report by id");
+        assert_eq!(report.report_id, "tp73_qpcr");
+        assert_eq!(report.template, "tpl");
+        assert!(!report.assays.is_empty());
+        assert_eq!(report.backend.requested, "internal");
+        assert_eq!(report.backend.used, "internal");
+        let listed = engine.list_qpcr_design_reports();
+        assert!(listed.iter().any(|row| row.report_id == "tp73_qpcr"));
+    }
+
+    #[test]
+    fn test_design_primer_pairs_enforces_side_sequence_constraints() {
+        let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+        let mut state = ProjectState::default();
+        state.sequences.insert("tpl".to_string(), seq(template_seq));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+        let base_forward = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+        let base_reverse = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: base_forward.clone(),
+                reverse: base_reverse.clone(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("baseline_side_constraints".to_string()),
+            })
+            .expect("baseline primer design");
+        let baseline = engine
+            .get_primer_design_report("baseline_side_constraints")
+            .expect("baseline report");
+        assert_eq!(baseline.pair_count, 1);
+        let pair = baseline.pairs[0].clone();
+
+        let mut constrained_forward = base_forward.clone();
+        constrained_forward.fixed_5prime = Some(pair.forward.sequence[..4].to_string());
+        constrained_forward.fixed_3prime =
+            Some(pair.forward.sequence[pair.forward.sequence.len() - 4..].to_string());
+        constrained_forward.required_motifs = vec![pair.forward.sequence[5..9].to_string()];
+        constrained_forward.locked_positions = vec![PrimerDesignBaseLock {
+            offset_0based: 3,
+            base: pair.forward.sequence[3..4].to_string(),
+        }];
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: constrained_forward.clone(),
+                reverse: base_reverse.clone(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("matching_side_constraints".to_string()),
+            })
+            .expect("matching side constraints");
+        let matching = engine
+            .get_primer_design_report("matching_side_constraints")
+            .expect("matching report");
+        assert_eq!(matching.pair_count, 1);
+
+        let mut failing_forward = constrained_forward;
+        let first = pair.forward.sequence.as_bytes()[0] as char;
+        let mismatch = ['A', 'C', 'G', 'T']
+            .into_iter()
+            .find(|base| *base != first)
+            .expect("mismatch base");
+        failing_forward.fixed_5prime = Some(mismatch.to_string());
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: failing_forward,
+                reverse: base_reverse,
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("failing_side_constraints".to_string()),
+            })
+            .expect("failing side constraints design");
+        let failing = engine
+            .get_primer_design_report("failing_side_constraints")
+            .expect("failing report");
+        assert_eq!(failing.pair_count, 0);
+        assert!(failing.rejection_summary.primer_constraint_failure > 0);
+    }
+
+    #[test]
+    fn test_design_primer_pairs_enforces_pair_constraints() {
+        let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+        let mut state = ProjectState::default();
+        state.sequences.insert("tpl".to_string(), seq(template_seq));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+        let forward = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+        let reverse = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: forward.clone(),
+                reverse: reverse.clone(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("baseline_pair_constraints".to_string()),
+            })
+            .expect("baseline primer design");
+        let baseline = engine
+            .get_primer_design_report("baseline_pair_constraints")
+            .expect("baseline report");
+        assert_eq!(baseline.pair_count, 1);
+        let pair = baseline.pairs[0].clone();
+        let amplicon = &template_seq.as_bytes()
+            [pair.amplicon_start_0based..pair.amplicon_end_0based_exclusive];
+        let motif = String::from_utf8(amplicon[8..12].to_vec()).expect("motif text");
+
+        let matching_constraints = PrimerDesignPairConstraint {
+            require_roi_flanking: true,
+            required_amplicon_motifs: vec![motif.clone()],
+            forbidden_amplicon_motifs: vec![],
+            fixed_amplicon_start_0based: Some(pair.amplicon_start_0based),
+            fixed_amplicon_end_0based_exclusive: Some(pair.amplicon_end_0based_exclusive),
+        };
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: forward.clone(),
+                reverse: reverse.clone(),
+                pair_constraints: matching_constraints,
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("matching_pair_constraints".to_string()),
+            })
+            .expect("matching pair constraints design");
+        let matching = engine
+            .get_primer_design_report("matching_pair_constraints")
+            .expect("matching report");
+        assert_eq!(matching.pair_count, 1);
+
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward,
+                reverse,
+                pair_constraints: PrimerDesignPairConstraint {
+                    require_roi_flanking: false,
+                    required_amplicon_motifs: vec![],
+                    forbidden_amplicon_motifs: vec![motif],
+                    fixed_amplicon_start_0based: None,
+                    fixed_amplicon_end_0based_exclusive: None,
+                },
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("failing_pair_constraints".to_string()),
+            })
+            .expect("failing pair constraints design");
+        let failing = engine
+            .get_primer_design_report("failing_pair_constraints")
+            .expect("failing report");
+        assert_eq!(failing.pair_count, 0);
+        assert!(failing.rejection_summary.pair_constraint_failure > 0);
+    }
+
+    #[test]
+    fn test_design_qpcr_assays_enforces_probe_sequence_constraints() {
+        let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+        let mut state = ProjectState::default();
+        state.sequences.insert("tpl".to_string(), seq(template_seq));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+        let forward = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+        let reverse = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+        let probe = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(50),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+
+        engine
+            .apply(Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: forward.clone(),
+                reverse: reverse.clone(),
+                probe: probe.clone(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_probe_tm_delta_c: Some(100.0),
+                max_assays: Some(10),
+                report_id: Some("baseline_qpcr_probe_constraints".to_string()),
+            })
+            .expect("baseline qpcr design");
+        let baseline = engine
+            .get_qpcr_design_report("baseline_qpcr_probe_constraints")
+            .expect("baseline qpcr report");
+        assert_eq!(baseline.assay_count, 1);
+        let assay = baseline.assays[0].clone();
+
+        let mut matching_probe = probe.clone();
+        matching_probe.fixed_5prime = Some(assay.probe.sequence[..4].to_string());
+        matching_probe.fixed_3prime =
+            Some(assay.probe.sequence[assay.probe.sequence.len() - 4..].to_string());
+        matching_probe.required_motifs = vec![assay.probe.sequence[5..9].to_string()];
+        matching_probe.locked_positions = vec![PrimerDesignBaseLock {
+            offset_0based: 3,
+            base: assay.probe.sequence[3..4].to_string(),
+        }];
+        engine
+            .apply(Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: forward.clone(),
+                reverse: reverse.clone(),
+                probe: matching_probe.clone(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_probe_tm_delta_c: Some(100.0),
+                max_assays: Some(10),
+                report_id: Some("matching_qpcr_probe_constraints".to_string()),
+            })
+            .expect("matching qpcr design");
+        let matching = engine
+            .get_qpcr_design_report("matching_qpcr_probe_constraints")
+            .expect("matching qpcr report");
+        assert_eq!(matching.assay_count, 1);
+
+        let mut failing_probe = matching_probe;
+        let first = assay.probe.sequence.as_bytes()[0] as char;
+        let mismatch = ['A', 'C', 'G', 'T']
+            .into_iter()
+            .find(|base| *base != first)
+            .expect("mismatch base");
+        failing_probe.fixed_5prime = Some(mismatch.to_string());
+        engine
+            .apply(Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward,
+                reverse,
+                probe: failing_probe,
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_probe_tm_delta_c: Some(100.0),
+                max_assays: Some(10),
+                report_id: Some("failing_qpcr_probe_constraints".to_string()),
+            })
+            .expect("failing qpcr design");
+        let failing = engine
+            .get_qpcr_design_report("failing_qpcr_probe_constraints")
+            .expect("failing qpcr report");
+        assert_eq!(failing.assay_count, 0);
     }
 
     #[test]
@@ -20867,6 +23155,28 @@ exit 2
                 .any(|m| m.contains("max_fragments_per_container"))
         );
         assert_eq!(engine.state().parameters.max_fragments_per_container, 1234);
+    }
+
+    #[test]
+    fn test_set_parameter_require_verified_genome_anchor_for_extension() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetParameter {
+                name: "require_verified_genome_anchor_for_extension".to_string(),
+                value: serde_json::json!(true),
+            })
+            .unwrap();
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| { m.contains("require_verified_genome_anchor_for_extension") })
+        );
+        assert!(
+            engine
+                .state()
+                .parameters
+                .require_verified_genome_anchor_for_extension
+        );
     }
 
     #[test]
@@ -21736,6 +24046,26 @@ exit 2
                 .iter()
                 .any(|seq_id| seq_id == "tp73")
         );
+        let provenance_catalog = engine
+            .state()
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .and_then(|v| v.get(GENOME_EXTRACTIONS_METADATA_KEY))
+            .and_then(|v| v.as_array())
+            .and_then(|records| {
+                records.iter().find(|entry| {
+                    entry
+                        .get("seq_id")
+                        .and_then(|v| v.as_str())
+                        .map(|id| id == "tp73")
+                        .unwrap_or(false)
+                })
+            })
+            .and_then(|entry| entry.get("catalog_path"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        assert_eq!(provenance_catalog, DEFAULT_GENOME_CATALOG_PATH);
 
         let td = tempdir().unwrap();
         let bed_path = td.path().join("tp73_anchor_test.bed");
@@ -21912,6 +24242,88 @@ ORIGIN
         assert_eq!(dna.molecule_type(), Some("dsDNA"));
         assert_eq!(dna.overhang().forward_5, b"GATC".to_vec());
         assert_eq!(dna.overhang().reverse_5, b"CTAG".to_vec());
+    }
+
+    #[test]
+    fn test_import_and_project_uniprot_swiss_prot() {
+        let dir = tempfile::tempdir().unwrap();
+        let swiss_path = dir.path().join("toy_uniprot.txt");
+        let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   DOMAIN          2..8
+FT                   /note="toy domain"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPEN
+//
+"#;
+        std::fs::write(&swiss_path, swiss_text).unwrap();
+
+        let mut state = ProjectState::default();
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::simple_range(99, 360),
+            qualifiers: vec![
+                ("gene".into(), Some("TOY1".to_string())),
+                ("transcript_id".into(), Some("TX1".to_string())),
+                ("label".into(), Some("TX1".to_string())),
+                (
+                    "cds_ranges_1based".into(),
+                    Some("100-180,300-360".to_string()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        state.sequences.insert("toy_seq".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        let import = engine
+            .apply(Operation::ImportUniprotSwissProt {
+                path: swiss_path.display().to_string(),
+                entry_id: None,
+            })
+            .expect("import uniprot swiss");
+        assert!(
+            import
+                .messages
+                .iter()
+                .any(|message| message.contains("Imported UniProt SWISS-PROT entry"))
+        );
+        let entries = engine.list_uniprot_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entry_id, "PTEST1");
+
+        let map = engine
+            .apply(Operation::ProjectUniprotToGenome {
+                seq_id: "toy_seq".to_string(),
+                entry_id: "PTEST1".to_string(),
+                projection_id: None,
+                transcript_id: None,
+            })
+            .expect("project uniprot");
+        assert!(
+            map.messages
+                .iter()
+                .any(|message| message.contains("Projected UniProt entry"))
+        );
+
+        let projection = engine
+            .get_uniprot_genome_projection("PTEST1@toy_seq")
+            .expect("projection should exist");
+        assert_eq!(projection.entry_id, "PTEST1");
+        assert_eq!(projection.seq_id, "toy_seq");
+        assert!(!projection.transcript_projections.is_empty());
+        assert!(
+            projection
+                .transcript_projections
+                .iter()
+                .any(|row| !row.feature_projections.is_empty())
+        );
     }
 
     #[test]
@@ -24231,6 +26643,100 @@ ORIGIN
     }
 
     #[test]
+    fn test_extend_genome_anchor_uses_compatible_prepared_assembly_fallback() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("grch38.fa");
+        let ann = root.join("grch38.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "Human GRCh38 Ensembl 116": {{
+    "ncbi_taxonomy_id": 9606,
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
+    "ncbi_taxonomy_id": 9606,
+    "ncbi_assembly_accession": "GCF_000001405.40",
+    "ncbi_assembly_name": "GRCh38.p14",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display(),
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "Human GRCh38 Ensembl 116".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "GRCh38.p14".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("alias_slice".to_string()),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let extended = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "alias_slice".to_string(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 2,
+                output_id: Some("alias_slice_ext5".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(
+            extended.created_seq_ids,
+            vec!["alias_slice_ext5".to_string()]
+        );
+        assert!(
+            extended
+                .warnings
+                .iter()
+                .any(|w| w.contains("compatible prepared genome"))
+        );
+        let extended_seq = engine
+            .state()
+            .sequences
+            .get("alias_slice_ext5")
+            .expect("extended sequence should exist");
+        assert_eq!(extended_seq.get_forward_string(), "ACGTACGTAC");
+    }
+
+    #[test]
     fn test_extend_genome_anchor_rejects_zero_length() {
         let mut engine = GentleEngine::new();
         let err = engine
@@ -24264,6 +26770,132 @@ ORIGIN
             .unwrap_err();
         assert!(matches!(err.code, ErrorCode::NotFound));
         assert!(err.message.contains("no genome anchor provenance"));
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_strict_verification_rejects_unverified_anchor() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("anch".to_string(), seq("ACGTACGT"));
+        state.metadata.insert(
+            PROVENANCE_METADATA_KEY.to_string(),
+            serde_json::json!({
+                GENOME_EXTRACTIONS_METADATA_KEY: [
+                    {
+                        "seq_id": "anch",
+                        "recorded_at_unix_ms": 1,
+                        "operation": "LoadFileGenBankRegion",
+                        "genome_id": "ToyGenome",
+                        "catalog_path": "assets/genomes.json",
+                        "cache_dir": null,
+                        "chromosome": "chr1",
+                        "start_1based": 1,
+                        "end_1based": 8,
+                        "gene_query": null,
+                        "occurrence": null,
+                        "gene_id": null,
+                        "gene_name": null,
+                        "strand": null,
+                        "anchor_strand": "+",
+                        "anchor_verified": false,
+                        "sequence_source_type": "genbank_file",
+                        "annotation_source_type": "genbank_file",
+                        "sequence_source": "synthetic",
+                        "annotation_source": "synthetic",
+                        "sequence_sha1": null,
+                        "annotation_sha1": null
+                    }
+                ]
+            }),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::SetParameter {
+                name: "require_verified_genome_anchor_for_extension".to_string(),
+                value: serde_json::json!(true),
+            })
+            .expect("enable strict anchor verification");
+
+        let err = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "anch".to_string(),
+                side: GenomeAnchorSide::ThreePrime,
+                length_bp: 2,
+                output_id: Some("anch_ext".to_string()),
+                catalog_path: None,
+                cache_dir: None,
+            })
+            .expect_err("strict verification should reject unverified anchor");
+        assert!(matches!(err.code, ErrorCode::InvalidInput));
+        assert!(err.message.contains("requires a verified genome anchor"));
+    }
+
+    #[test]
+    fn test_extend_genome_anchor_strict_verification_accepts_verified_anchor() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let gtf = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+        let catalog_path = root.join("catalog.json");
+        let cache_dir = root.join("cache");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 2,
+                end_1based: 7,
+                output_id: Some("anch".to_string()),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::SetParameter {
+                name: "require_verified_genome_anchor_for_extension".to_string(),
+                value: serde_json::json!(true),
+            })
+            .expect("enable strict anchor verification");
+
+        let result = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "anch".to_string(),
+                side: GenomeAnchorSide::ThreePrime,
+                length_bp: 3,
+                output_id: Some("anch_ext".to_string()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .expect("verified anchor should be accepted under strict mode");
+        assert_eq!(result.created_seq_ids, vec!["anch_ext".to_string()]);
     }
 
     #[test]

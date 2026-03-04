@@ -77,9 +77,21 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs` and persisted report inspect/export helpers
-- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`) plus shared-shell execution for report listing/show/export
-- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`) plus shared-shell execution for report listing/show/export
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs` and `DesignQpcrAssays` plus persisted report inspect/export helpers
+- `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
+- `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
+
+UniProt mapping capability status:
+
+- shared shell (`gentle_cli shell`, GUI shell): supported via `uniprot ...` commands
+  - `uniprot fetch QUERY [--entry-id ID]`
+  - `uniprot import-swissprot PATH [--entry-id ID]`
+  - `uniprot list` / `uniprot show ENTRY_ID`
+  - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
+  - `uniprot projection-list [--seq SEQ_ID]`
+  - `uniprot projection-show PROJECTION_ID`
+- engine operations behind those commands:
+  - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`
 
 ## Build and run
 
@@ -746,9 +758,21 @@ Shared shell command:
     - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]`
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
     - `primers export-report REPORT_ID OUTPUT.json`
+    - `primers list-qpcr-reports`
+    - `primers show-qpcr-report REPORT_ID`
+    - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+    - Primer request payload notes (`primers design` / `primers design-qpcr`):
+      - `forward`/`reverse`/`probe` side constraints support optional
+        sequence filters:
+        `fixed_5prime`, `fixed_3prime`, `required_motifs[]`,
+        `forbidden_motifs[]`, `locked_positions[]`.
+      - `pair_constraints` is optional and supports:
+        `require_roi_flanking`, amplicon motif filters, and fixed amplicon
+        start/end coordinates.
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
@@ -976,6 +1000,10 @@ Genome convenience commands:
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtendGenomeAnchor`.
   - Extends an already genome-anchored sequence in-silico on contextual `5'` or `3'`.
+  - If exact anchor genome id is not prepared but one compatible assembly-family
+    cache exists, extension auto-uses that cache and emits a warning.
+  - If multiple compatible prepared caches exist, command fails and lists
+    explicit options.
 
 Helper convenience commands:
 
@@ -1395,6 +1423,12 @@ Set an in-silico engine parameter (example: cap fragment/product combinatorics):
 
 ```json
 {"SetParameter":{"name":"max_fragments_per_container","value":80000}}
+
+Enable strict anchor-verification policy for genome-anchor extension:
+
+```json
+{"SetParameter":{"name":"require_verified_genome_anchor_for_extension","value":true}}
+```
 ```
 
 Set feature-details font size used in the feature tree/details panel (valid range `8.0..24.0`):
@@ -1662,6 +1696,9 @@ Notes:
 - For `ExtractGenomeGene`, `occurrence` is 1-based among matching records.
 - For `ExtendGenomeAnchor`, `side` is contextual to anchor strand.
   On anchor strand `-`, `5'` increases physical genomic position.
+- For anchor-extension reads, genome ids can resolve through assembly-family
+  compatibility (for example `GRCh38.p14` using a prepared `Human GRCh38 ...`
+  cache) when unique; ambiguous matches are rejected with options.
 
 Available `target` values:
 

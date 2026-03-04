@@ -182,6 +182,16 @@ impl RenderDna {
         }
     }
 
+    pub fn linear_visible_vertical_bounds(&self) -> Option<(f32, f32, f32, f32)> {
+        let RenderDna::Linear(renderer) = self else {
+            return None;
+        };
+        let renderer = renderer.read().ok()?;
+        let (content_top, content_bottom) = renderer.visible_feature_bounds_y()?;
+        let area = renderer.area();
+        Some((area.top(), area.bottom(), content_top, content_bottom))
+    }
+
     fn render(&self, ui: &mut egui::Ui, area: Rect) {
         let result = catch_unwind(AssertUnwindSafe(|| match self {
             RenderDna::Circular(renderer) => {

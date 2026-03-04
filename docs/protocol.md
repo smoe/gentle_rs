@@ -107,6 +107,7 @@ Current draft operations:
 - `PcrAdvanced { template, forward_primer, reverse_primer, output_id?, unique? }`
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `DesignPrimerPairs { ... }` (implemented baseline)
+- `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ExtractRegion { input, from, to, output_id? }`
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
@@ -117,6 +118,9 @@ Current draft operations:
     `effective_options_json?`) for sequence-history/audit views.
 - `SelectCandidate { input, criterion, output_id? }`
 - `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
+- `ImportUniprotSwissProt { path, entry_id? }`
+- `FetchUniprotSwissProt { query, entry_id? }`
+- `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
 - `DeleteCandidateSet { set_name }`
@@ -189,6 +193,11 @@ Isoform-panel operation semantics (current):
 - `side` accepts `five_prime` or `three_prime`.
 - Direction is contextual to anchor strand.
 - On anchor strand `-`, `five_prime` increases physical genomic position.
+- If the anchor genome id is not prepared exactly, the engine can auto-resolve
+  to one compatible prepared assembly-family entry (for example `GRCh38.p14`
+  -> `Human GRCh38 Ensembl 116`).
+- If multiple compatible prepared entries exist, extension fails with a
+  deterministic options list so caller/GUI can choose explicitly.
 
 Local `SequenceAnchor` semantics (distinct from genome provenance anchoring):
 
@@ -219,6 +228,14 @@ external coding agent runtime, see:
   - `panels inspect-isoform SEQ_ID PANEL_ID`
   - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
   - `panels validate-isoform PANEL_PATH [--panel-id ID]`
+- shared-shell UniProt routes:
+  - `uniprot fetch QUERY [--entry-id ID]`
+  - `uniprot import-swissprot PATH [--entry-id ID]`
+  - `uniprot list`
+  - `uniprot show ENTRY_ID`
+  - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
+  - `uniprot projection-list [--seq SEQ_ID]`
+  - `uniprot projection-show PROJECTION_ID`
 
 - `gentle_mcp` (stdio MCP adapter, expanded UI-intent parity baseline)
   - MCP role:
@@ -565,6 +582,13 @@ Current parameter support:
 - `max_fragments_per_container` (default `80000`)
   - limits digest fragment output per operation
   - also serves as ligation product-count limit guard
+- `require_verified_genome_anchor_for_extension` (default `false`)
+  - when `true`, `ExtendGenomeAnchor` requires anchor provenance with
+    `anchor_verified=true`
+  - anchors with `anchor_verified=false` or missing verification status are
+    rejected in strict mode
+  - alias parameters accepted: `strict_genome_anchor_verification`,
+    `strict_anchor_verification`
 - primer-design backend controls:
   - `primer_design_backend` (default `auto`)
     - accepted values: `auto`, `internal`, `primer3`
@@ -940,7 +964,12 @@ Operation progress/cancellation semantics:
       "max_tm_c": 68.0,
       "min_gc_fraction": 0.35,
       "max_gc_fraction": 0.70,
-      "max_anneal_hits": 1
+      "max_anneal_hits": 1,
+      "fixed_5prime": null,
+      "fixed_3prime": null,
+      "required_motifs": [],
+      "forbidden_motifs": [],
+      "locked_positions": []
     },
     "reverse": {
       "min_length": 18,
@@ -952,7 +981,19 @@ Operation progress/cancellation semantics:
       "max_tm_c": 68.0,
       "min_gc_fraction": 0.35,
       "max_gc_fraction": 0.70,
-      "max_anneal_hits": 1
+      "max_anneal_hits": 1,
+      "fixed_5prime": null,
+      "fixed_3prime": null,
+      "required_motifs": [],
+      "forbidden_motifs": [],
+      "locked_positions": []
+    },
+    "pair_constraints": {
+      "require_roi_flanking": false,
+      "required_amplicon_motifs": [],
+      "forbidden_amplicon_motifs": [],
+      "fixed_amplicon_start_0based": null,
+      "fixed_amplicon_end_0based_exclusive": null
     },
     "min_amplicon_bp": 120,
     "max_amplicon_bp": 1200,
@@ -963,11 +1004,18 @@ Operation progress/cancellation semantics:
 }
 ```
 
-- `max_tm_delta_c`, `max_pairs`, and `report_id` are optional in current
+- `max_tm_delta_c`, `max_pairs`, `report_id`, and `pair_constraints` are optional in current
   implementation:
   - `max_tm_delta_c` default: `2.0`
   - `max_pairs` default: `200`
   - `report_id` default: auto-generated deterministic-safe id stem
+  - `pair_constraints` default:
+    `{"require_roi_flanking":false,"required_amplicon_motifs":[],"forbidden_amplicon_motifs":[],"fixed_amplicon_start_0based":null,"fixed_amplicon_end_0based_exclusive":null}`
+- Side constraints (`forward`, `reverse`, and qPCR `probe`) accept optional
+  sequence-level filters:
+  - `fixed_5prime`, `fixed_3prime`
+  - `required_motifs[]`, `forbidden_motifs[]`
+  - `locked_positions[]` entries (`offset_0based`, single IUPAC `base`)
 
 - Report schema:
   - `gentle.primer_design_report.v1`
@@ -988,20 +1036,55 @@ Operation progress/cancellation semantics:
     - out-of-window
     - GC/Tm out of bounds
     - non-unique anneal
+    - primer sequence-constraint failure
+    - pair constraint failure
     - amplicon-size or ROI-coverage failure
+
+`DesignQpcrAssays` contract (implemented baseline):
+
+- Purpose:
+  - propose ranked qPCR assays with three oligos (forward primer, reverse
+    primer, internal probe) for one linear template.
+- Operation payload shape:
+  - same core fields as `DesignPrimerPairs` plus:
+    - `probe` (`PrimerDesignSideConstraint`)
+    - `max_probe_tm_delta_c` (probe Tm distance to mean primer Tm)
+    - `max_assays` (result cap)
+  - `pair_constraints` is supported identically to `DesignPrimerPairs` and
+    applies to forward/reverse pair proposal before probe selection.
+- Current baseline behavior:
+  - forward/reverse pair generation follows the same backend routing as
+    `DesignPrimerPairs` (`auto|internal|primer3` for pair proposal).
+  - probe selection is deterministic, constrained to amplicon interior, and
+    reuses the same side sequence-constraint fields (`fixed_5prime`,
+    `fixed_3prime`, motifs, locked positions).
+  - probe Tm gating is enforced via `max_probe_tm_delta_c`.
+- Report schema:
+  - `gentle.qpcr_design_report.v1`
+  - includes ranked `assays[]` with forward/reverse/probe oligos, amplicon
+    window, and rule flags.
+  - includes qPCR rejection summary with pair-level and probe-level counters.
 
 Primer-design shell command family (implemented):
 
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
+  - `primers list-qpcr-reports`
+  - `primers show-qpcr-report REPORT_ID`
+  - `primers export-qpcr-report REPORT_ID OUTPUT.json`
 - `primers design` expects an operation payload whose root variant is
   `{"DesignPrimerPairs": {...}}`.
+- `primers design-qpcr` expects an operation payload whose root variant is
+  `{"DesignQpcrAssays": {...}}`.
 - Response schemas:
   - `gentle.primer_design_report.v1`
   - `gentle.primer_design_report_list.v1`
+  - `gentle.qpcr_design_report.v1`
+  - `gentle.qpcr_design_report_list.v1`
 
 Async BLAST shell contract (agent/MCP-ready baseline):
 

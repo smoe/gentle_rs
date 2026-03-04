@@ -404,6 +404,30 @@ pub enum ShellCommand {
         panel_path: String,
         panel_id: Option<String>,
     },
+    UniprotFetch {
+        query: String,
+        entry_id: Option<String>,
+    },
+    UniprotImportSwissProt {
+        path: String,
+        entry_id: Option<String>,
+    },
+    UniprotList,
+    UniprotShow {
+        entry_id: String,
+    },
+    UniprotMap {
+        entry_id: String,
+        seq_id: String,
+        projection_id: Option<String>,
+        transcript_id: Option<String>,
+    },
+    UniprotProjectionList {
+        seq_id: Option<String>,
+    },
+    UniprotProjectionShow {
+        projection_id: String,
+    },
     RenderRnaSvg {
         seq_id: String,
         output: String,
@@ -841,11 +865,24 @@ pub enum ShellCommand {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
     },
+    PrimersDesignQpcr {
+        request_json: String,
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
     PrimersListReports,
     PrimersShowReport {
         report_id: String,
     },
     PrimersExportReport {
+        report_id: String,
+        path: String,
+    },
+    PrimersListQpcrReports,
+    PrimersShowQpcrReport {
+        report_id: String,
+    },
+    PrimersExportQpcrReport {
         report_id: String,
         path: String,
     },
@@ -2449,6 +2486,53 @@ impl ShellCommand {
                     .unwrap_or("resource default");
                 format!("validate isoform panel '{panel_path}' (panel_id={panel})")
             }
+            Self::UniprotFetch { query, entry_id } => format!(
+                "fetch UniProt SWISS-PROT text for '{}' (entry_id={})",
+                query,
+                entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::UniprotImportSwissProt { path, entry_id } => format!(
+                "import UniProt SWISS-PROT text from '{}' (entry_id={})",
+                path,
+                entry_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::UniprotList => "list imported UniProt entries".to_string(),
+            Self::UniprotShow { entry_id } => format!("show imported UniProt entry '{}'", entry_id),
+            Self::UniprotMap {
+                entry_id,
+                seq_id,
+                projection_id,
+                transcript_id,
+            } => format!(
+                "project UniProt entry '{}' onto '{}' (projection_id={}, transcript={})",
+                entry_id,
+                seq_id,
+                projection_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+                transcript_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto"),
+            ),
+            Self::UniprotProjectionList { seq_id } => format!(
+                "list stored UniProt genome projections{}",
+                seq_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .map(|v| format!(" for '{}'", v))
+                    .unwrap_or_default()
+            ),
+            Self::UniprotProjectionShow { projection_id } => {
+                format!("show UniProt genome projection '{}'", projection_id)
+            }
             Self::RenderRnaSvg { seq_id, output } => {
                 format!("render RNA structure SVG for '{seq_id}' to '{output}'")
             }
@@ -3563,6 +3647,22 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersDesignQpcr {
+                request_json,
+                backend,
+                primer3_executable,
+            } => format!(
+                "design qPCR assays (forward/reverse/probe) from JSON request payload (len={}, backend='{}', primer3_executable='{}')",
+                request_json.len(),
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("default"),
+            ),
             Self::PrimersListReports => "list stored primer-design reports".to_string(),
             Self::PrimersShowReport { report_id } => {
                 format!("show stored primer-design report '{}'", report_id)
@@ -3571,7 +3671,21 @@ impl ShellCommand {
                 "export stored primer-design report '{}' to '{}'",
                 report_id, path
             ),
+            Self::PrimersListQpcrReports => "list stored qPCR-design reports".to_string(),
+            Self::PrimersShowQpcrReport { report_id } => {
+                format!("show stored qPCR-design report '{}'", report_id)
+            }
+            Self::PrimersExportQpcrReport { report_id, path } => format!(
+                "export stored qPCR-design report '{}' to '{}'",
+                report_id, path
+            ),
             Self::SetParameter { name, value_json } => match name.as_str() {
+                "require_verified_genome_anchor_for_extension"
+                | "strict_genome_anchor_verification"
+                | "strict_anchor_verification" => format!(
+                    "set strict genome-anchor verification for extension to {}",
+                    value_json
+                ),
                 "primer_design_backend" | "primers_design_backend" => format!(
                     "set primer design backend to {} (auto|internal|primer3)",
                     value_json
@@ -3650,6 +3764,9 @@ impl ShellCommand {
                 | Self::TracksTrackedRemove { .. }
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
+                | Self::UniprotFetch { .. }
+                | Self::UniprotImportSwissProt { .. }
+                | Self::UniprotMap { .. }
                 | Self::MacrosRun { .. }
                 | Self::MacrosTemplateUpsert { .. }
                 | Self::MacrosTemplateDelete { .. }
@@ -3676,6 +3793,7 @@ impl ShellCommand {
                 | Self::GuidesOligosExport { .. }
                 | Self::GuidesProtocolExport { .. }
                 | Self::PrimersDesign { .. }
+                | Self::PrimersDesignQpcr { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -5233,6 +5351,168 @@ fn parse_panels_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_uniprot_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "uniprot requires a subcommand: fetch, import-swissprot, list, show, map, projection-list, projection-show"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "fetch" => {
+            if tokens.len() < 3 {
+                return Err("uniprot fetch requires QUERY [--entry-id ID]".to_string());
+            }
+            let query = tokens[2].trim().to_string();
+            if query.is_empty() {
+                return Err("uniprot fetch QUERY must not be empty".to_string());
+            }
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--entry-id" => {
+                        entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--entry-id",
+                            "uniprot fetch",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for uniprot fetch")),
+                }
+            }
+            Ok(ShellCommand::UniprotFetch { query, entry_id })
+        }
+        "import-swissprot" | "import" => {
+            if tokens.len() < 3 {
+                return Err("uniprot import-swissprot requires PATH [--entry-id ID]".to_string());
+            }
+            let path = tokens[2].trim().to_string();
+            if path.is_empty() {
+                return Err("uniprot import-swissprot PATH must not be empty".to_string());
+            }
+            let mut entry_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--entry-id" => {
+                        entry_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--entry-id",
+                            "uniprot import-swissprot",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot import-swissprot"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotImportSwissProt { path, entry_id })
+        }
+        "list" => {
+            if tokens.len() > 2 {
+                return Err("uniprot list takes no options".to_string());
+            }
+            Ok(ShellCommand::UniprotList)
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("uniprot show requires ENTRY_ID".to_string());
+            }
+            let entry_id = tokens[2].trim().to_string();
+            if entry_id.is_empty() {
+                return Err("uniprot show ENTRY_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::UniprotShow { entry_id })
+        }
+        "map" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "uniprot map requires ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]"
+                        .to_string(),
+                );
+            }
+            let entry_id = tokens[2].trim().to_string();
+            let seq_id = tokens[3].trim().to_string();
+            if entry_id.is_empty() {
+                return Err("uniprot map ENTRY_ID must not be empty".to_string());
+            }
+            if seq_id.is_empty() {
+                return Err("uniprot map SEQ_ID must not be empty".to_string());
+            }
+            let mut projection_id: Option<String> = None;
+            let mut transcript_id: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--projection-id" => {
+                        projection_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--projection-id",
+                            "uniprot map",
+                        )?);
+                    }
+                    "--transcript" => {
+                        transcript_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--transcript",
+                            "uniprot map",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for uniprot map")),
+                }
+            }
+            Ok(ShellCommand::UniprotMap {
+                entry_id,
+                seq_id,
+                projection_id,
+                transcript_id,
+            })
+        }
+        "projection-list" | "projections" => {
+            let mut seq_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq" => {
+                        seq_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq",
+                            "uniprot projection-list",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for uniprot projection-list"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::UniprotProjectionList { seq_id })
+        }
+        "projection-show" | "show-projection" => {
+            if tokens.len() != 3 {
+                return Err("uniprot projection-show requires PROJECTION_ID".to_string());
+            }
+            let projection_id = tokens[2].trim().to_string();
+            if projection_id.is_empty() {
+                return Err("uniprot projection-show PROJECTION_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::UniprotProjectionShow { projection_id })
+        }
+        other => Err(format!(
+            "Unknown uniprot subcommand '{other}' (expected fetch, import-swissprot, list, show, map, projection-list, projection-show)"
+        )),
+    }
+}
+
 fn parse_candidates_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -6528,7 +6808,7 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, list-reports, show-report, export-report"
+            "primers requires a subcommand: design, design-qpcr, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -6571,6 +6851,48 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 primer3_executable,
             })
         }
+        "design-qpcr" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "primers design-qpcr requires REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+                        .to_string(),
+                );
+            }
+            let request_json = tokens[2].clone();
+            let mut backend: Option<PrimerDesignBackend> = None;
+            let mut primer3_executable: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--backend" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--backend",
+                            "primers design-qpcr",
+                        )?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers design-qpcr",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers design-qpcr"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersDesignQpcr {
+                request_json,
+                backend,
+                primer3_executable,
+            })
+        }
         "list-reports" => {
             if tokens.len() != 2 {
                 return Err("primers list-reports takes no options".to_string());
@@ -6594,8 +6916,31 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 path: tokens[3].clone(),
             })
         }
+        "list-qpcr-reports" => {
+            if tokens.len() != 2 {
+                return Err("primers list-qpcr-reports takes no options".to_string());
+            }
+            Ok(ShellCommand::PrimersListQpcrReports)
+        }
+        "show-qpcr-report" => {
+            if tokens.len() != 3 {
+                return Err("primers show-qpcr-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::PrimersShowQpcrReport {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-qpcr-report" => {
+            if tokens.len() != 4 {
+                return Err("primers export-qpcr-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::PrimersExportQpcrReport {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, list-reports, show-report, export-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }
@@ -8211,6 +8556,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
         "panels" => parse_panels_command(tokens),
+        "uniprot" => parse_uniprot_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
         "guides" => parse_guides_command(tokens),
@@ -9016,6 +9362,85 @@ pub fn execute_shell_command_with_options(
                 state_changed: false,
                 output: serde_json::to_value(report)
                     .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
+            }
+        }
+        ShellCommand::UniprotFetch { query, entry_id } => {
+            let op_result = engine
+                .apply(Operation::FetchUniprotSwissProt {
+                    query: query.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::UniprotImportSwissProt { path, entry_id } => {
+            let op_result = engine
+                .apply(Operation::ImportUniprotSwissProt {
+                    path: path.clone(),
+                    entry_id: entry_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::UniprotList => {
+            let rows = engine.list_uniprot_entries();
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize UniProt entry list: {e}"))?,
+            }
+        }
+        ShellCommand::UniprotShow { entry_id } => {
+            let entry = engine
+                .get_uniprot_entry(entry_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(entry)
+                    .map_err(|e| format!("Could not serialize UniProt entry: {e}"))?,
+            }
+        }
+        ShellCommand::UniprotMap {
+            entry_id,
+            seq_id,
+            projection_id,
+            transcript_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::ProjectUniprotToGenome {
+                    seq_id: seq_id.clone(),
+                    entry_id: entry_id.clone(),
+                    projection_id: projection_id.clone(),
+                    transcript_id: transcript_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::UniprotProjectionList { seq_id } => {
+            let rows = engine.list_uniprot_genome_projections(seq_id.as_deref());
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(rows)
+                    .map_err(|e| format!("Could not serialize UniProt projection list: {e}"))?,
+            }
+        }
+        ShellCommand::UniprotProjectionShow { projection_id } => {
+            let projection = engine
+                .get_uniprot_genome_projection(projection_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(projection)
+                    .map_err(|e| format!("Could not serialize UniProt projection: {e}"))?,
             }
         }
         ShellCommand::RenderRnaSvg { seq_id, output } => {
@@ -11487,6 +11912,79 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::PrimersDesignQpcr {
+            request_json,
+            backend,
+            primer3_executable,
+        } => {
+            let json_text = parse_json_payload(request_json)?;
+            let op: Operation = serde_json::from_str(&json_text).map_err(|e| {
+                format!(
+                    "Invalid primers design-qpcr request JSON: {} (expected Operation payload with DesignQpcrAssays)",
+                    e
+                )
+            })?;
+            let (template_id, requested_report_id) = match &op {
+                Operation::DesignQpcrAssays {
+                    template,
+                    report_id,
+                    ..
+                } => (template.clone(), report_id.clone()),
+                _ => {
+                    return Err(
+                        "primers design-qpcr expects an Operation payload with DesignQpcrAssays"
+                            .to_string(),
+                    );
+                }
+            };
+            let before = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let previous_backend = engine.state().parameters.primer_design_backend;
+            let previous_executable = engine.state().parameters.primer3_executable.clone();
+            if let Some(override_backend) = backend {
+                engine.state_mut().parameters.primer_design_backend = *override_backend;
+            }
+            if let Some(override_exec) = primer3_executable
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                engine.state_mut().parameters.primer3_executable = override_exec.to_string();
+            }
+            let op_result = engine.apply(op).map_err(|e| e.to_string());
+            engine.state_mut().parameters.primer_design_backend = previous_backend;
+            engine.state_mut().parameters.primer3_executable = previous_executable;
+            let op_result = op_result?;
+            let after = engine
+                .state()
+                .metadata
+                .get(PRIMER_DESIGN_REPORTS_METADATA_KEY)
+                .cloned();
+            let reports = engine.list_qpcr_design_reports();
+            let selected_report = if let Some(report_id) = requested_report_id {
+                engine.get_qpcr_design_report(&report_id).ok()
+            } else {
+                reports
+                    .iter()
+                    .filter(|summary| summary.template == template_id)
+                    .max_by_key(|summary| summary.generated_at_unix_ms)
+                    .and_then(|summary| engine.get_qpcr_design_report(&summary.report_id).ok())
+            };
+            let effective_backend = selected_report
+                .as_ref()
+                .map(|report| report.backend.clone());
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "report": selected_report,
+                    "effective_backend": effective_backend,
+                }),
+            }
+        }
         ShellCommand::PrimersListReports => {
             let reports = engine.list_primer_design_reports();
             ShellRunResult {
@@ -11520,6 +12018,42 @@ pub fn execute_shell_command_with_options(
                     "report_id": report.report_id,
                     "path": path,
                     "pair_count": report.pair_count,
+                }),
+            }
+        }
+        ShellCommand::PrimersListQpcrReports => {
+            let reports = engine.list_qpcr_design_reports();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.qpcr_design_report_list.v1",
+                    "report_count": reports.len(),
+                    "reports": reports,
+                }),
+            }
+        }
+        ShellCommand::PrimersShowQpcrReport { report_id } => {
+            let report = engine
+                .get_qpcr_design_report(report_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::PrimersExportQpcrReport { report_id, path } => {
+            let report = engine
+                .export_qpcr_design_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.qpcr_design_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "assay_count": report.assay_count,
                 }),
             }
         }
@@ -12144,6 +12678,29 @@ mod tests {
         .expect("parse command");
         match cmd {
             ShellCommand::PrimersDesign {
+                request_json,
+                backend,
+                primer3_executable,
+            } => {
+                assert_eq!(request_json, "@request.json");
+                assert_eq!(backend, Some(PrimerDesignBackend::Primer3));
+                assert_eq!(
+                    primer3_executable.as_deref(),
+                    Some("/opt/primer3/primer3_core")
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_primers_design_qpcr_with_backend_overrides() {
+        let cmd = parse_shell_line(
+            "primers design-qpcr @request.json --backend primer3 --primer3-exec /opt/primer3/primer3_core",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::PrimersDesignQpcr {
                 request_json,
                 backend,
                 primer3_executable,
@@ -14269,6 +14826,7 @@ filter set1 set2 --metric score --min 10
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
                 max_anneal_hits: 10,
+                ..Default::default()
             },
             reverse: crate::engine::PrimerDesignSideConstraint {
                 min_length: 20,
@@ -14281,9 +14839,11 @@ filter set1 set2 --metric score --min 10
                 min_gc_fraction: 0.0,
                 max_gc_fraction: 1.0,
                 max_anneal_hits: 10,
+                ..Default::default()
             },
             min_amplicon_bp: 40,
             max_amplicon_bp: 130,
+            pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
             max_tm_delta_c: Some(50.0),
             max_pairs: Some(10),
             report_id: Some("tp73_roi".to_string()),
@@ -14343,6 +14903,127 @@ filter set1 set2 --metric score --min 10
         );
         let text = fs::read_to_string(&export_path).expect("read export");
         assert!(text.contains("gentle.primer_design_report.v1"));
+    }
+
+    #[test]
+    fn execute_primers_design_qpcr_list_show_export() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempdir().expect("tempdir");
+        let export_path = tmp.path().join("qpcr_report.json");
+        let request = serde_json::to_string(&Operation::DesignQpcrAssays {
+            template: "tpl".to_string(),
+            roi_start_0based: 30,
+            roi_end_0based: 70,
+            forward: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 100,
+                ..Default::default()
+            },
+            reverse: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(60),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 100,
+                ..Default::default()
+            },
+            probe: crate::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(35),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 100,
+                ..Default::default()
+            },
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 130,
+            pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+            max_tm_delta_c: Some(50.0),
+            max_probe_tm_delta_c: Some(50.0),
+            max_assays: Some(10),
+            report_id: Some("tp73_qpcr".to_string()),
+        })
+        .expect("serialize request");
+
+        let design = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersDesignQpcr {
+                request_json: request,
+                backend: Some(PrimerDesignBackend::Internal),
+                primer3_executable: None,
+            },
+        )
+        .expect("primers design-qpcr");
+        assert!(design.state_changed);
+        let report_id = design.output["report"]["report_id"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        assert_eq!(report_id, "tp73_qpcr");
+
+        let listed = execute_shell_command(&mut engine, &ShellCommand::PrimersListQpcrReports)
+            .expect("primers list-qpcr-reports");
+        assert!(!listed.state_changed);
+        assert_eq!(
+            listed.output["schema"].as_str(),
+            Some("gentle.qpcr_design_report_list.v1")
+        );
+        assert_eq!(listed.output["report_count"].as_u64(), Some(1));
+
+        let shown = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersShowQpcrReport {
+                report_id: report_id.clone(),
+            },
+        )
+        .expect("primers show-qpcr-report");
+        assert!(!shown.state_changed);
+        assert_eq!(
+            shown.output["report"]["report_id"].as_str(),
+            Some("tp73_qpcr")
+        );
+
+        let exported = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersExportQpcrReport {
+                report_id,
+                path: export_path.to_string_lossy().to_string(),
+            },
+        )
+        .expect("primers export-qpcr-report");
+        assert!(!exported.state_changed);
+        assert_eq!(
+            exported.output["schema"].as_str(),
+            Some("gentle.qpcr_design_report_export.v1")
+        );
+        let text = fs::read_to_string(&export_path).expect("read export");
+        assert!(text.contains("gentle.qpcr_design_report.v1"));
     }
 
     #[test]
@@ -15631,6 +16312,55 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         ));
     }
 
+    #[test]
+    fn parse_uniprot_commands() {
+        let fetch = parse_shell_line("uniprot fetch P04637 --entry-id TP53_UNIPROT")
+            .expect("parse uniprot fetch");
+        match fetch {
+            ShellCommand::UniprotFetch { query, entry_id } => {
+                assert_eq!(query, "P04637");
+                assert_eq!(entry_id.as_deref(), Some("TP53_UNIPROT"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let import = parse_shell_line("uniprot import-swissprot tp53.txt --entry-id TP53_FILE")
+            .expect("parse uniprot import-swissprot");
+        match import {
+            ShellCommand::UniprotImportSwissProt { path, entry_id } => {
+                assert_eq!(path, "tp53.txt");
+                assert_eq!(entry_id.as_deref(), Some("TP53_FILE"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let map = parse_shell_line(
+            "uniprot map P04637 seq_a --projection-id tp53_map --transcript ENST00000269305.9",
+        )
+        .expect("parse uniprot map");
+        match map {
+            ShellCommand::UniprotMap {
+                entry_id,
+                seq_id,
+                projection_id,
+                transcript_id,
+            } => {
+                assert_eq!(entry_id, "P04637");
+                assert_eq!(seq_id, "seq_a");
+                assert_eq!(projection_id.as_deref(), Some("tp53_map"));
+                assert_eq!(transcript_id.as_deref(), Some("ENST00000269305.9"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let projections =
+            parse_shell_line("uniprot projection-list --seq seq_a").expect("parse projection-list");
+        assert!(matches!(
+            projections,
+            ShellCommand::UniprotProjectionList { .. }
+        ));
+    }
+
     fn tp53_isoform_test_sequence() -> DNAsequence {
         let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(800)).expect("valid dna");
         dna.features_mut().push(Feature {
@@ -15643,6 +16373,26 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                     Some("ENST00000269305.9".to_string()),
                 ),
                 ("label".into(), Some("TP53-201".to_string())),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        dna
+    }
+
+    fn uniprot_projection_test_sequence() -> DNAsequence {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::simple_range(99, 360),
+            qualifiers: vec![
+                ("gene".into(), Some("TOY1".to_string())),
+                ("transcript_id".into(), Some("TX1".to_string())),
+                ("label".into(), Some("TX1".to_string())),
+                (
+                    "cds_ranges_1based".into(),
+                    Some("100-180,300-360".to_string()),
+                ),
             ]
             .into_iter()
             .collect(),
@@ -15735,6 +16485,85 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         assert_eq!(
             inspect.output["data"]["panel_id"].as_str(),
             Some("tp53_isoforms_v1")
+        );
+    }
+
+    #[test]
+    fn execute_uniprot_import_list_and_projection() {
+        let td = tempdir().expect("tempdir");
+        let swiss_path = td.path().join("toy_uniprot.txt");
+        let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   DOMAIN          2..8
+FT                   /note="toy domain"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPEN
+//
+"#;
+        fs::write(&swiss_path, swiss_text).expect("write swiss file");
+
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_u".to_string(), uniprot_projection_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+
+        let import = execute_shell_command(
+            &mut engine,
+            &ShellCommand::UniprotImportSwissProt {
+                path: swiss_path.to_string_lossy().to_string(),
+                entry_id: None,
+            },
+        )
+        .expect("execute uniprot import");
+        assert!(import.state_changed);
+
+        let listed = execute_shell_command(&mut engine, &ShellCommand::UniprotList)
+            .expect("execute uniprot list");
+        assert!(!listed.state_changed);
+        let rows = listed
+            .output
+            .as_array()
+            .expect("uniprot list output must be array");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["entry_id"].as_str(), Some("PTEST1"));
+
+        let mapped = execute_shell_command(
+            &mut engine,
+            &ShellCommand::UniprotMap {
+                entry_id: "PTEST1".to_string(),
+                seq_id: "seq_u".to_string(),
+                projection_id: None,
+                transcript_id: None,
+            },
+        )
+        .expect("execute uniprot map");
+        assert!(mapped.state_changed);
+
+        let projection_id = "PTEST1@seq_u".to_string();
+        let projection = execute_shell_command(
+            &mut engine,
+            &ShellCommand::UniprotProjectionShow {
+                projection_id: projection_id.clone(),
+            },
+        )
+        .expect("execute uniprot projection-show");
+        assert!(!projection.state_changed);
+        assert_eq!(
+            projection.output["projection_id"].as_str(),
+            Some(projection_id.as_str())
+        );
+        assert_eq!(projection.output["entry_id"].as_str(), Some("PTEST1"));
+        assert_eq!(projection.output["seq_id"].as_str(), Some("seq_u"));
+        assert!(
+            projection.output["transcript_projections"]
+                .as_array()
+                .map(|v| !v.is_empty())
+                .unwrap_or(false)
         );
     }
 

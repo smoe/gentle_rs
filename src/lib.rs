@@ -101,6 +101,8 @@ pub mod tf_motifs;
 pub mod tool_overrides;
 /// UI translation catalogs and language helpers.
 pub mod translations;
+/// UniProt/SWISS-PROT parsing contracts and projection payload models.
+pub mod uniprot;
 /// Generic GUI window abstraction.
 pub mod window;
 /// Window backdrop configuration and rendering helpers.

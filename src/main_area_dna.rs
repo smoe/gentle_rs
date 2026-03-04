@@ -435,6 +435,30 @@ mod tests {
     }
 
     #[test]
+    fn feature_tree_filter_term_presence_is_case_insensitive() {
+        assert!(MainAreaDna::filter_term_present(
+            "kind:tracks source:bed",
+            "SOURCE:BED"
+        ));
+        assert!(!MainAreaDna::filter_term_present(
+            "kind:tracks source:bed",
+            "source:vcf"
+        ));
+    }
+
+    #[test]
+    fn feature_tree_filter_term_add_remove_and_toggle_roundtrip() {
+        let mut filter = "kind:tracks source:bed".to_string();
+        MainAreaDna::set_filter_term_enabled(&mut filter, "source:vcf", true);
+        assert!(MainAreaDna::filter_term_present(&filter, "source:vcf"));
+
+        MainAreaDna::set_filter_term_enabled(&mut filter, "SOURCE:BED", false);
+        assert!(!MainAreaDna::filter_term_present(&filter, "source:bed"));
+        assert!(MainAreaDna::filter_term_present(&filter, "kind:tracks"));
+        assert!(MainAreaDna::filter_term_present(&filter, "source:vcf"));
+    }
+
+    #[test]
     fn parse_positive_usize_text_accepts_positive_integer() {
         assert_eq!(
             MainAreaDna::parse_positive_usize_text("250", "extension length").unwrap(),
@@ -911,6 +935,25 @@ mod tests {
         assert_eq!(area.current_linear_vertical_offset_px(), 10_000.0);
         area.set_linear_vertical_offset_px(-50_000.0);
         assert_eq!(area.current_linear_vertical_offset_px(), -10_000.0);
+    }
+
+    #[test]
+    fn linear_vertical_fit_delta_centers_content_with_margin() {
+        let delta = MainAreaDna::linear_vertical_fit_delta(0.0, 400.0, 80.0, 240.0, 20.0);
+        // Viewport center is 200.0, content center is 160.0.
+        assert!((delta - 40.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn linear_vertical_fit_delta_rejects_invalid_ranges() {
+        assert_eq!(
+            MainAreaDna::linear_vertical_fit_delta(0.0, 0.0, 10.0, 20.0, 10.0),
+            0.0
+        );
+        assert_eq!(
+            MainAreaDna::linear_vertical_fit_delta(0.0, 200.0, 20.0, 10.0, 10.0),
+            0.0
+        );
     }
 
     #[test]
@@ -2525,7 +2568,7 @@ impl MainAreaDna {
                         )
                         .clicked()
                     {
-                        self.set_linear_vertical_offset_px(0.0);
+                        self.fit_linear_features_in_view();
                     }
                     let mut pan_start = start_bp;
                     let max_start = sequence_length.saturating_sub(span_bp);
@@ -5473,6 +5516,54 @@ impl MainAreaDna {
         }
         let current = self.current_linear_vertical_offset_px();
         self.set_linear_vertical_offset_px(current + delta_px);
+    }
+
+    fn linear_vertical_fit_delta(
+        area_top: f32,
+        area_bottom: f32,
+        content_top: f32,
+        content_bottom: f32,
+        margin_px: f32,
+    ) -> f32 {
+        if !area_top.is_finite()
+            || !area_bottom.is_finite()
+            || !content_top.is_finite()
+            || !content_bottom.is_finite()
+        {
+            return 0.0;
+        }
+        if area_bottom <= area_top || content_bottom <= content_top {
+            return 0.0;
+        }
+        let margin = margin_px.max(0.0);
+        let viewport_top = area_top + margin;
+        let viewport_bottom = area_bottom - margin;
+        if viewport_bottom <= viewport_top {
+            return 0.0;
+        }
+        let viewport_center = (viewport_top + viewport_bottom) * 0.5;
+        let content_center = (content_top + content_bottom) * 0.5;
+        viewport_center - content_center
+    }
+
+    fn fit_linear_features_in_view(&self) {
+        if self.is_circular() {
+            return;
+        }
+        let Some((area_top, area_bottom, content_top, content_bottom)) =
+            self.map_dna.linear_visible_vertical_bounds()
+        else {
+            self.set_linear_vertical_offset_px(0.0);
+            return;
+        };
+        let delta = Self::linear_vertical_fit_delta(
+            area_top,
+            area_bottom,
+            content_top,
+            content_bottom,
+            12.0,
+        );
+        self.pan_linear_vertical_viewport(delta);
     }
 
     fn zoom_linear_viewport_around(&self, center_bp: usize, zoom_in: bool) {
@@ -10258,6 +10349,36 @@ impl MainAreaDna {
         filter_text.push_str(normalized);
     }
 
+    fn filter_term_present(filter_text: &str, term: &str) -> bool {
+        let normalized = term.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+        filter_text
+            .split_whitespace()
+            .any(|existing| existing.eq_ignore_ascii_case(normalized))
+    }
+
+    fn remove_filter_term(filter_text: &mut String, term: &str) {
+        let normalized = term.trim();
+        if normalized.is_empty() {
+            return;
+        }
+        let kept = filter_text
+            .split_whitespace()
+            .filter(|existing| !existing.eq_ignore_ascii_case(normalized))
+            .collect::<Vec<_>>();
+        *filter_text = kept.join(" ");
+    }
+
+    fn set_filter_term_enabled(filter_text: &mut String, term: &str, enabled: bool) {
+        if enabled {
+            Self::append_filter_term(filter_text, term);
+        } else {
+            Self::remove_filter_term(filter_text, term);
+        }
+    }
+
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         struct FeatureTreeEntry {
             id: usize,
@@ -10369,6 +10490,7 @@ impl MainAreaDna {
         });
         ui.horizontal_wrapped(|ui| {
             ui.small("Presets:");
+            let mut presets_changed = false;
             for preset in [
                 "kind:tracks",
                 "source:bed",
@@ -10377,11 +10499,22 @@ impl MainAreaDna {
                 "note:enhancer",
                 "label:tp73",
             ] {
-                if ui.small_button(preset).clicked() {
-                    Self::append_filter_term(&mut self.feature_tree_filter, preset);
-                    self.pending_feature_tree_scroll_to = None;
-                    self.save_engine_ops_state();
+                let active = Self::filter_term_present(&self.feature_tree_filter, preset);
+                let response = ui
+                    .selectable_label(active, preset)
+                    .on_hover_text(if active {
+                        "Disable this preset filter term"
+                    } else {
+                        "Enable this preset filter term"
+                    });
+                if response.clicked() {
+                    Self::set_filter_term_enabled(&mut self.feature_tree_filter, preset, !active);
+                    presets_changed = true;
                 }
+            }
+            if presets_changed {
+                self.pending_feature_tree_scroll_to = None;
+                self.save_engine_ops_state();
             }
         });
         if viewport_limited {
@@ -11212,7 +11345,47 @@ impl MainAreaDna {
             if primary_splicing_mode {
                 self.render_primary_splicing_map_ui(ui);
             } else {
-                let response = ui.add(self.map_dna.to_owned());
+                let response = if !self.is_circular() {
+                    let slider_column_width = 30.0;
+                    let available = ui.available_size();
+                    let map_size = Vec2::new(
+                        (available.x - slider_column_width).max(120.0),
+                        available.y.max(120.0),
+                    );
+                    let response = ui.add_sized(map_size, self.map_dna.to_owned());
+                    ui.add_space(4.0);
+                    ui.vertical(|ui| {
+                        let mut vertical_pan_offset = self.current_linear_vertical_offset_px();
+                        let pan_slider = ui
+                            .add(
+                                egui::Slider::new(&mut vertical_pan_offset, -10_000.0..=10_000.0)
+                                    .vertical()
+                                    .show_value(false),
+                            )
+                            .on_hover_text(
+                                "Vertical map pan offset (feature-lane stack up/down in linear view)",
+                            );
+                        if pan_slider.changed() {
+                            self.set_linear_vertical_offset_px(vertical_pan_offset);
+                        }
+                        ui.label(
+                            egui::RichText::new(format!("{:+.1} px", vertical_pan_offset))
+                                .monospace()
+                                .size(10.0),
+                        )
+                        .on_hover_text("Current linear-map vertical pan offset");
+                        if ui
+                            .small_button("0")
+                            .on_hover_text("Fit visible linear features vertically")
+                            .clicked()
+                        {
+                            self.fit_linear_features_in_view();
+                        }
+                    });
+                    response
+                } else {
+                    ui.add(self.map_dna.to_owned())
+                };
                 if response.rect.width().is_finite() && response.rect.width() > 0.0 {
                     self.last_linear_map_width_px = response.rect.width();
                 }

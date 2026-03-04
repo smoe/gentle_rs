@@ -26,6 +26,17 @@ order. Durable architecture constraints and decisions remain in
 - Reference-genome preparation and extraction (`PrepareGenome`,
   `ExtractGenomeRegion`, `ExtractGenomeGene`, `ExtendGenomeAnchor`) including
   catalog-backed helper flows and BLAST integration.
+- Imported GenBank region anchors now record verification status against catalog
+  sequence (`verified`/`unverified`/`verification n/a`) and extension now
+  hardens against stale/invalid anchor `catalog_path` by falling back to the
+  default genome catalog when no explicit catalog override is provided.
+- New strict policy switch is available:
+  `SetParameter(require_verified_genome_anchor_for_extension=true)` enforces
+  verified anchors for `ExtendGenomeAnchor` (unverified/unknown anchors fail).
+- Genome-anchor extension/read paths now resolve assembly-family compatible
+  prepared caches (for example `GRCh38.p14` -> prepared `Human GRCh38 ...`)
+  when the match is unique; ambiguous compatible matches return explicit
+  options instead of guessing.
 - `PrepareGenome` now detects source-path/URL drift for existing manifests and
   rebuilds from configured sources instead of silently reusing stale caches.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
@@ -96,9 +107,23 @@ order. Durable architecture constraints and decisions remain in
 - Primer-design report baseline:
   - engine operation `DesignPrimerPairs` now persists deterministic report
     payloads (`gentle.primer_design_report.v1`) in project metadata
+  - engine operation `DesignQpcrAssays` now persists deterministic qPCR report
+    payloads (`gentle.qpcr_design_report.v1`) with forward/reverse/probe assay
+    records in project metadata
+  - side-sequence constraints are now supported for forward/reverse/probe:
+    - `fixed_5prime`, `fixed_3prime`
+    - `required_motifs[]`, `forbidden_motifs[]`
+    - `locked_positions[]`
+  - pair-level amplicon constraints are now supported through
+    `pair_constraints`:
+    - `require_roi_flanking`
+    - required/forbidden amplicon motifs
+    - fixed amplicon start/end coordinates
   - shared-shell/CLI inspection/export commands are available:
     `primers design`, `primers list-reports`, `primers show-report`,
-    `primers export-report`
+    `primers export-report`, `primers design-qpcr`,
+    `primers list-qpcr-reports`, `primers show-qpcr-report`,
+    `primers export-qpcr-report`
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`
@@ -108,6 +133,21 @@ order. Durable architecture constraints and decisions remain in
     (`requested`, `used`, optional fallback reason + Primer3 executable/version)
   - `auto` mode now falls back deterministically to internal scoring when
     Primer3 is unavailable
+  - deterministic engine tests now cover side/pair/probe constraint pass/fail
+    behavior and shared-shell primer/qPCR request parsing with the extended
+    operation payload
+- UniProt/SWISS-PROT import + genome-projection baseline:
+  - engine operations:
+    - `ImportUniprotSwissProt` (offline SWISS text ingestion)
+    - `FetchUniprotSwissProt` (online accession/id fetch)
+    - `ProjectUniprotToGenome` (feature-to-genome mapping via transcript/CDS)
+  - persisted metadata stores:
+    - `gentle.uniprot_entries.v1`
+    - `gentle.uniprot_genome_projections.v1`
+  - shared-shell commands:
+    - `uniprot fetch`, `uniprot import-swissprot`, `uniprot list`,
+      `uniprot show`, `uniprot map`, `uniprot projection-list`,
+      `uniprot projection-show`
 - Executable tutorial baseline is now integrated with canonical workflow
   examples:
   - tutorial manifest source:
@@ -128,6 +168,10 @@ order. Durable architecture constraints and decisions remain in
     `tp63_anchor_extension_online` (backed by canonical
     `tp63_extend_anchor_online` workflow example for coordinate retrieval +
     +/-2 kb extension)
+  - GUI now exposes `File -> Open Tutorial Project...`:
+    chapter entries are loaded from tutorial manifest/examples, grouped by tier
+    (`Core`/`Advanced`/`Online`), materialized through shared workflow engine
+    execution, and opened as inspectable project states
   - `gentle_examples_docs` now supports:
     `tutorial-generate` and `tutorial-check`
   - CI now gates tutorial drift and workflow runtime coverage through
@@ -203,6 +247,10 @@ order. Durable architecture constraints and decisions remain in
 - DNA sequence windows now expose direct genome-anchor extension controls
   (`Extend 5'` / `Extend 3'` with bp + optional output ID) next to anchor
   status, using shared `ExtendGenomeAnchor` engine semantics (same as shell/CLI).
+- File menu now includes a dedicated `UniProt Mapping...` specialist dialog
+  (fetch/import/project) backed directly by shared UniProt engine operations
+  (`FetchUniprotSwissProt`, `ImportUniprotSwissProt`,
+  `ProjectUniprotToGenome`).
 - Linear sequence windows now include a dedicated primary `Splicing map` mode
   (read-only) for selected `mRNA`/`exon` features.
   - Primary map splicing lanes reuse the same `SplicingExpertView` payload and
@@ -225,6 +273,7 @@ order. Durable architecture constraints and decisions remain in
   - linear DNA map now supports two-axis pan:
     - horizontal pan for bp viewport
     - vertical pan for rendered feature-lane stack
+    - explicit map-side vertical pan slider + quick `0` fit action
   - linear DNA toolbar fit actions are split:
     - `Fit Seq` for full-sequence horizontal fit
     - `Fit Features` for vertical recenter of current subsequence

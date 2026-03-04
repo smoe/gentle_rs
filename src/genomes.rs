@@ -176,6 +176,17 @@ pub struct PreparedGenomeInspection {
     pub installed_at_unix_ms: u128,
 }
 
+/// Result of resolving a requested genome id to a prepared install.
+///
+/// When the exact requested id is not prepared, a compatible prepared assembly
+/// can be selected deterministically if and only if there is a unique match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedGenomeResolution {
+    pub requested_genome_id: String,
+    pub resolved_genome_id: String,
+    pub fallback_warning: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlastHit {
     pub subject_id: String,
@@ -968,16 +979,12 @@ impl GenomeCatalog {
                 "Invalid interval: start ({start_1based}) is greater than end ({end_1based})"
             ));
         }
-
-        let entry = self.entry(genome_id)?;
+        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let resolved_genome_id = prepared.resolved_genome_id;
+        let entry = self.entry(&resolved_genome_id)?;
         let manifest_path = self
-            .install_dir(genome_id, entry, cache_dir_override)
+            .install_dir(&resolved_genome_id, entry, cache_dir_override)
             .join("manifest.json");
-        if !manifest_path.exists() {
-            return Err(format!(
-                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
-            ));
-        }
 
         let manifest = Self::load_manifest(&manifest_path)?;
         Self::validate_manifest_files(&manifest)?;
@@ -1025,7 +1032,7 @@ impl GenomeCatalog {
 Available contigs ({}): {}. This can happen when prepared sequence/annotation naming differs \
 or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
                     chromosome,
-                    genome_id,
+                    resolved_genome_id,
                     tried_aliases.join(", "),
                     available.len(),
                     preview,
@@ -1055,15 +1062,12 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         genome_id: &str,
         cache_dir_override: Option<&str>,
     ) -> Result<Vec<GenomeChromosomeRecord>, String> {
-        let entry = self.entry(genome_id)?;
+        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let resolved_genome_id = prepared.resolved_genome_id;
+        let entry = self.entry(&resolved_genome_id)?;
         let manifest_path = self
-            .install_dir(genome_id, entry, cache_dir_override)
+            .install_dir(&resolved_genome_id, entry, cache_dir_override)
             .join("manifest.json");
-        if !manifest_path.exists() {
-            return Err(format!(
-                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
-            ));
-        }
         let manifest = Self::load_manifest(&manifest_path)?;
         Self::validate_manifest_files(&manifest)?;
         let index = load_fasta_index(Path::new(&manifest.fasta_index_path))?;
@@ -1099,14 +1103,11 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         genome_id: &str,
         cache_dir_override: Option<&str>,
     ) -> Result<Vec<GenomeGeneRecord>, String> {
-        let entry = self.entry(genome_id)?;
-        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let resolved_genome_id = prepared.resolved_genome_id;
+        let entry = self.entry(&resolved_genome_id)?;
+        let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
         let manifest_path = install_dir.join("manifest.json");
-        if !manifest_path.exists() {
-            return Err(format!(
-                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
-            ));
-        }
 
         let mut manifest = Self::load_manifest(&manifest_path)?;
         Self::validate_manifest_files(&manifest)?;
@@ -1150,14 +1151,11 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
             ));
         }
 
-        let entry = self.entry(genome_id)?;
-        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let resolved_genome_id = prepared.resolved_genome_id;
+        let entry = self.entry(&resolved_genome_id)?;
+        let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
         let manifest_path = install_dir.join("manifest.json");
-        if !manifest_path.exists() {
-            return Err(format!(
-                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
-            ));
-        }
 
         let manifest = Self::load_manifest(&manifest_path)?;
         Self::validate_manifest_files(&manifest)?;
@@ -1430,14 +1428,15 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         let task = normalize_blast_task(task)?;
         let query = normalize_blast_query_sequence(query_sequence)?;
 
-        let entry = self.entry(genome_id)?;
-        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
-        let manifest_path = install_dir.join("manifest.json");
-        if !manifest_path.exists() {
-            return Err(format!(
-                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
-            ));
+        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+        let resolved_genome_id = prepared.resolved_genome_id;
+        let mut additional_warnings: Vec<String> = vec![];
+        if let Some(warning) = prepared.fallback_warning {
+            additional_warnings.push(warning);
         }
+        let entry = self.entry(&resolved_genome_id)?;
+        let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
         let mut manifest = Self::load_manifest(&manifest_path)?;
         Self::validate_manifest_files(&manifest)?;
 
@@ -1478,7 +1477,7 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
             };
             return Err(format!(
                 "BLAST index for genome '{}' is not ready (db='{}'): {}",
-                genome_id, blast_prefix, detail
+                resolved_genome_id, blast_prefix, detail
             ));
         }
         if should_cancel() {
@@ -1553,8 +1552,11 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         if !parse_warnings.is_empty() {
             blast_outcome.warnings.extend(parse_warnings);
         }
+        if !additional_warnings.is_empty() {
+            blast_outcome.warnings.extend(additional_warnings);
+        }
         Ok(GenomeBlastReport {
-            genome_id: genome_id.to_string(),
+            genome_id: resolved_genome_id,
             query_length: query.len(),
             max_hits,
             task,
@@ -1570,9 +1572,215 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
         })
     }
 
+    fn normalize_genome_lookup_token(raw: &str) -> String {
+        raw.trim().to_ascii_lowercase()
+    }
+
+    fn infer_assembly_family_token(raw: &str) -> Option<String> {
+        let token = raw.trim();
+        if token.is_empty() {
+            return None;
+        }
+        for chunk in token.split(|c: char| !c.is_ascii_alphanumeric() && c != '.') {
+            let lower = chunk.to_ascii_lowercase();
+            if lower.is_empty() {
+                continue;
+            }
+            let core = lower
+                .split_once(".p")
+                .map(|(prefix, _)| prefix)
+                .unwrap_or(lower.as_str())
+                .trim();
+            if core.is_empty() {
+                continue;
+            }
+            let has_alpha = core.chars().any(|c| c.is_ascii_alphabetic());
+            let has_digit = core.chars().any(|c| c.is_ascii_digit());
+            if has_alpha && has_digit {
+                return Some(core.to_string());
+            }
+        }
+        None
+    }
+
+    fn entry_assembly_family(genome_key: &str, entry: &GenomeCatalogEntry) -> Option<String> {
+        entry
+            .ncbi_assembly_name
+            .as_deref()
+            .and_then(Self::infer_assembly_family_token)
+            .or_else(|| Self::infer_assembly_family_token(genome_key))
+            .or_else(|| {
+                entry
+                    .description
+                    .as_deref()
+                    .and_then(Self::infer_assembly_family_token)
+            })
+    }
+
+    fn find_compatible_prepared_entries(
+        &self,
+        requested_key: &str,
+        requested_entry: &GenomeCatalogEntry,
+        requested_family: Option<&str>,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Vec<String>, String> {
+        let mut compatible: Vec<String> = vec![];
+        for (candidate_key, candidate_entry) in &self.entries {
+            if candidate_key == requested_key {
+                continue;
+            }
+            if let (Some(req_tax), Some(candidate_tax)) = (
+                requested_entry.ncbi_taxonomy_id,
+                candidate_entry.ncbi_taxonomy_id,
+            ) {
+                if req_tax != candidate_tax {
+                    continue;
+                }
+            }
+            if let Some(family) = requested_family {
+                let candidate_family =
+                    Self::entry_assembly_family(candidate_key, candidate_entry).unwrap_or_default();
+                if candidate_family != family {
+                    continue;
+                }
+            }
+            if self.has_sequence_ready_install(candidate_key, cache_dir_override)? {
+                compatible.push(candidate_key.clone());
+            }
+        }
+        compatible.sort_unstable();
+        compatible.dedup();
+        Ok(compatible)
+    }
+
+    /// Resolve a requested genome id to a prepared local install.
+    ///
+    /// If the exact id is not prepared, this can fall back to a unique,
+    /// assembly-compatible prepared entry (for example `GRCh38.p14` ->
+    /// `Human GRCh38 Ensembl 116`). If multiple compatible prepared entries
+    /// exist, this returns an error that lists explicit options.
+    pub fn resolve_prepared_genome_id(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<PreparedGenomeResolution, String> {
+        let requested_key = self.resolve_entry_key(genome_id)?;
+        if self.has_sequence_ready_install(&requested_key, cache_dir_override)? {
+            return Ok(PreparedGenomeResolution {
+                requested_genome_id: genome_id.to_string(),
+                resolved_genome_id: requested_key,
+                fallback_warning: None,
+            });
+        }
+
+        let requested_entry = self
+            .entries
+            .get(&requested_key)
+            .ok_or_else(|| format!("Genome '{genome_id}' is not present in the catalog"))?;
+        let requested_family = Self::infer_assembly_family_token(genome_id)
+            .or_else(|| Self::entry_assembly_family(&requested_key, requested_entry));
+        let compatible_prepared = self.find_compatible_prepared_entries(
+            &requested_key,
+            requested_entry,
+            requested_family.as_deref(),
+            cache_dir_override,
+        )?;
+
+        if compatible_prepared.is_empty() {
+            return Err(format!(
+                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
+            ));
+        }
+        if compatible_prepared.len() > 1 {
+            let family_label = requested_family.unwrap_or_else(|| "same-family".to_string());
+            return Err(format!(
+                "Genome '{genome_id}' is not prepared locally. Compatible prepared options for assembly family '{}' are: {}. Choose one explicitly or run PrepareGenome for '{}'.",
+                family_label,
+                compatible_prepared.join(", "),
+                requested_key
+            ));
+        }
+        let resolved_genome_id = compatible_prepared[0].clone();
+        let family_label = requested_family.unwrap_or_else(|| "compatible".to_string());
+        Ok(PreparedGenomeResolution {
+            requested_genome_id: genome_id.to_string(),
+            resolved_genome_id: resolved_genome_id.clone(),
+            fallback_warning: Some(format!(
+                "Genome '{}' is not prepared; using compatible prepared genome '{}' (assembly family '{}').",
+                genome_id, resolved_genome_id, family_label
+            )),
+        })
+    }
+
+    fn has_sequence_ready_install(
+        &self,
+        genome_id: &str,
+        cache_dir_override: Option<&str>,
+    ) -> Result<bool, String> {
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            return Ok(false);
+        }
+        let manifest = Self::load_manifest(&manifest_path)?;
+        Ok(Self::validate_manifest_files(&manifest).is_ok())
+    }
+
+    fn resolve_entry_key(&self, genome_id: &str) -> Result<String, String> {
+        if self.entries.contains_key(genome_id) {
+            return Ok(genome_id.to_string());
+        }
+        let needle = Self::normalize_genome_lookup_token(genome_id);
+        if needle.is_empty() {
+            return Err("Genome id must not be empty".to_string());
+        }
+        let mut matches: Vec<String> = vec![];
+        for (key, entry) in &self.entries {
+            let key_match = Self::normalize_genome_lookup_token(key) == needle;
+            let alias_match = entry
+                .ncbi_assembly_name
+                .as_deref()
+                .map(Self::normalize_genome_lookup_token)
+                .map(|value| value == needle)
+                .unwrap_or(false)
+                || entry
+                    .ncbi_assembly_accession
+                    .as_deref()
+                    .map(Self::normalize_genome_lookup_token)
+                    .map(|value| value == needle)
+                    .unwrap_or(false)
+                || entry
+                    .genbank_accession
+                    .as_deref()
+                    .map(Self::normalize_genome_lookup_token)
+                    .map(|value| value == needle)
+                    .unwrap_or(false);
+            if key_match || alias_match {
+                matches.push(key.clone());
+            }
+        }
+        matches.sort_unstable();
+        matches.dedup();
+        if matches.len() == 1 {
+            return Ok(matches.remove(0));
+        }
+        if matches.len() > 1 {
+            return Err(format!(
+                "Genome alias '{}' matches multiple catalog entries: {}",
+                genome_id,
+                matches.join(", ")
+            ));
+        }
+        Err(format!(
+            "Genome '{genome_id}' is not present in the catalog"
+        ))
+    }
+
     fn entry(&self, genome_id: &str) -> Result<&GenomeCatalogEntry, String> {
+        let key = self.resolve_entry_key(genome_id)?;
         self.entries
-            .get(genome_id)
+            .get(&key)
             .ok_or_else(|| format!("Genome '{genome_id}' is not present in the catalog"))
     }
 
@@ -5206,6 +5414,194 @@ mod tests {
             .unwrap();
         assert!(source.contains("db=nuccore&id=L09137"));
         assert!(source.contains("rettype=fasta"));
+    }
+
+    #[test]
+    fn test_entry_resolves_ncbi_assembly_alias_and_accession() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "Human GRCh38 NCBI RefSeq GCF_000001405.40".to_string(),
+            GenomeCatalogEntry {
+                ncbi_assembly_accession: Some("GCF_000001405.40".to_string()),
+                ncbi_assembly_name: Some("GRCh38.p14".to_string()),
+                sequence_remote: Some("https://example.invalid/grch38.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/grch38.gtf.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: PathBuf::from("."),
+        };
+
+        assert!(catalog.source_plan("GRCh38.p14", None).is_ok());
+        assert!(catalog.source_plan("gcf_000001405.40", None).is_ok());
+    }
+
+    #[test]
+    fn test_entry_alias_rejects_ambiguous_matches() {
+        let mut entries = HashMap::new();
+        entries.insert(
+            "GenomeA".to_string(),
+            GenomeCatalogEntry {
+                ncbi_assembly_name: Some("GRCh38.p14".to_string()),
+                sequence_remote: Some("https://example.invalid/a.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/a.gtf.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        entries.insert(
+            "GenomeB".to_string(),
+            GenomeCatalogEntry {
+                ncbi_assembly_name: Some("GRCh38.p14".to_string()),
+                sequence_remote: Some("https://example.invalid/b.fa.gz".to_string()),
+                annotations_remote: Some("https://example.invalid/b.gtf.gz".to_string()),
+                ..Default::default()
+            },
+        );
+        let catalog = GenomeCatalog {
+            entries,
+            catalog_base_dir: PathBuf::from("."),
+        };
+
+        let err = catalog.source_plan("GRCh38.p14", None).unwrap_err();
+        assert!(err.contains("matches multiple catalog entries"));
+    }
+
+    #[test]
+    fn test_resolve_prepared_genome_id_falls_back_to_unique_compatible_assembly() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("grch38.fa");
+        let ann = root.join("grch38.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "Human GRCh38 Ensembl 116": {{
+    "ncbi_taxonomy_id": 9606,
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
+    "ncbi_taxonomy_id": 9606,
+    "ncbi_assembly_accession": "GCF_000001405.40",
+    "ncbi_assembly_name": "GRCh38.p14",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display(),
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("load catalog");
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog
+            .prepare_genome_once("Human GRCh38 Ensembl 116")
+            .expect("prepare compatible assembly");
+
+        let resolved = catalog
+            .resolve_prepared_genome_id("GRCh38.p14", None)
+            .expect("resolve compatible prepared fallback");
+        assert_eq!(resolved.resolved_genome_id, "Human GRCh38 Ensembl 116");
+        assert!(
+            resolved
+                .fallback_warning
+                .as_deref()
+                .map(|msg| msg.contains("compatible prepared genome"))
+                .unwrap_or(false)
+        );
+
+        let seq = catalog
+            .get_sequence_region("GRCh38.p14", "chr1", 1, 4)
+            .expect("extract sequence via fallback");
+        assert_eq!(seq, "ACGT");
+    }
+
+    #[test]
+    fn test_resolve_prepared_genome_id_lists_options_for_ambiguous_compatible_entries() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("grch38.fa");
+        let ann = root.join("grch38.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "Human GRCh38 Ensembl 113": {{
+    "ncbi_taxonomy_id": 9606,
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "Human GRCh38 Ensembl 116": {{
+    "ncbi_taxonomy_id": 9606,
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }},
+  "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
+    "ncbi_taxonomy_id": 9606,
+    "ncbi_assembly_accession": "GCF_000001405.40",
+    "ncbi_assembly_name": "GRCh38.p14",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display(),
+            fasta.display(),
+            ann.display(),
+            cache_dir.display(),
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("load catalog");
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog
+            .prepare_genome_once("Human GRCh38 Ensembl 113")
+            .expect("prepare first compatible assembly");
+        catalog
+            .prepare_genome_once("Human GRCh38 Ensembl 116")
+            .expect("prepare second compatible assembly");
+
+        let err = catalog
+            .resolve_prepared_genome_id("GRCh38.p14", None)
+            .expect_err("ambiguous compatible options should require explicit selection");
+        assert!(err.contains("Compatible prepared options"));
+        assert!(err.contains("Human GRCh38 Ensembl 113"));
+        assert!(err.contains("Human GRCh38 Ensembl 116"));
     }
 
     #[test]

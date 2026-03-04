@@ -346,6 +346,21 @@ pub fn run_example_workflow(example: &WorkflowExample) -> Result<(), String> {
         .map_err(|e| format!("Workflow example '{}' failed: {e}", example.id))
 }
 
+/// Executes one workflow example with path rewriting and returns the resulting
+/// project state.
+pub fn run_example_workflow_for_project_state(
+    example: &WorkflowExample,
+    repo_root: &Path,
+    run_dir: &Path,
+) -> Result<ProjectState, String> {
+    let rewritten = rewrite_example_paths_for_execution(example, repo_root, run_dir)?;
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    engine
+        .apply_workflow(rewritten.workflow)
+        .map_err(|e| format!("Workflow example '{}' failed: {e}", example.id))?;
+    Ok(engine.state().clone())
+}
+
 fn parse_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, String> {
     let raw = fs::read_to_string(manifest_path).map_err(|e| {
         format!(
@@ -1883,5 +1898,21 @@ mod tests {
             executed > 0,
             "Expected at least one core chapter to execute"
         );
+    }
+
+    #[test]
+    fn run_example_workflow_for_project_state_returns_sequences() {
+        let examples = load_workflow_examples(&example_dir()).expect("load workflow examples");
+        let loaded = examples
+            .iter()
+            .find(|loaded| loaded.example.id == "load_branch_reverse_complement_pgex_fasta")
+            .expect("example should exist");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let state =
+            run_example_workflow_for_project_state(&loaded.example, Path::new("."), run_dir.path())
+                .expect("workflow should produce project state");
+        assert!(state.sequences.contains_key("pgex_fasta"));
+        assert!(state.sequences.contains_key("pgex_fasta_branch"));
+        assert!(state.sequences.contains_key("pgex_fasta_branch_rc"));
     }
 }
