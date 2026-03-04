@@ -30,7 +30,7 @@ This chapter models a compact molecular cloning routine in one chain: digest sou
   - Reoccurs in: [Chapter 8: Prepare a reference genome cache (online)](./08_prepare_reference_genome_online.md).
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
   - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md), [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md), [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md).
-  - Reoccurs in: no later chapter.
+  - Reoccurs in: [Chapter 10: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./10_tp63_anchor_extension_online.md).
 
 ## GUI First
 

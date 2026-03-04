@@ -31,10 +31,10 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
   - Reoccurs in: no later chapter.
 - **Online Opt-in Execution** (`online_opt_in`): Network-dependent chapters remain explicit opt-in and do not break offline default CI.
   - Status: introduced in this chapter.
-  - Reoccurs in: no later chapter.
+  - Reoccurs in: [Chapter 9: TP53 isoform architecture expert panel (online)](./09_tp53_isoform_architecture_online.md), [Chapter 10: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./10_tp63_anchor_extension_online.md).
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
   - Status: reinforced from [Chapter 2: Find and extend the right genomic target (local catalog)](./02_find_and_extend_genomic_target_local_catalog.md).
-  - Reoccurs in: no later chapter.
+  - Reoccurs in: [Chapter 9: TP53 isoform architecture expert panel (online)](./09_tp53_isoform_architecture_online.md), [Chapter 10: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./10_tp63_anchor_extension_online.md).
 
 ## GUI First
 

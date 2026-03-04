@@ -1,9 +1,10 @@
 //! Feature expert-view SVG renderer.
 
 use crate::feature_expert::{
-    FeatureExpertView, RestrictionSiteExpertView, SplicingExpertView, TfbsExpertView,
+    FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
+    SplicingExpertView, TfbsExpertView,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
 use svg::node::element::path::Data;
 use svg::node::element::{Circle, Line, Path, Rectangle, Text};
@@ -831,10 +832,752 @@ fn render_splicing(view: &SplicingExpertView) -> String {
     doc.to_string()
 }
 
+fn render_isoform_architecture(view: &IsoformArchitectureExpertView) -> String {
+    let lane_count = view.transcript_lanes.len().max(1);
+    let lane_h = 24.0_f32;
+    let lane_gap = 10.0_f32;
+    let top_header = 114.0_f32;
+    let exon_chart_h =
+        lane_count as f32 * lane_h + (lane_count.saturating_sub(1) as f32) * lane_gap;
+    let protein_chart_top = top_header + exon_chart_h + 92.0;
+    let protein_chart_h =
+        lane_count as f32 * lane_h + (lane_count.saturating_sub(1) as f32) * lane_gap;
+    let footer_top = protein_chart_top + protein_chart_h + 64.0;
+    let dyn_h = (footer_top + 120.0).max(H + 140.0);
+
+    let label_x = 44.0_f32;
+    let left = 340.0_f32;
+    let right = W - 44.0_f32;
+    let width = (right - left).max(1.0);
+
+    let region_start = view.region_start_1based.max(1);
+    let region_end = view.region_end_1based.max(region_start);
+    let region_span = (region_end - region_start + 1).max(1) as f32;
+    let dominant_strand_is_reverse = {
+        let mut plus = 0usize;
+        let mut minus = 0usize;
+        for lane in view.transcript_lanes.iter().filter(|lane| lane.mapped) {
+            match lane.strand.trim() {
+                "+" => plus += 1,
+                "-" => minus += 1,
+                _ => {}
+            }
+        }
+        if plus == 0 && minus == 0 {
+            for lane in &view.transcript_lanes {
+                match lane.strand.trim() {
+                    "+" => plus += 1,
+                    "-" => minus += 1,
+                    _ => {}
+                }
+            }
+        }
+        minus > plus
+    };
+    let left_axis_bp = if dominant_strand_is_reverse {
+        region_end
+    } else {
+        region_start
+    };
+    let right_axis_bp = if dominant_strand_is_reverse {
+        region_start
+    } else {
+        region_end
+    };
+    let x_for_genomic = |pos_1based: usize| -> f32 {
+        let clamped = pos_1based.clamp(region_start, region_end);
+        let rel = if dominant_strand_is_reverse {
+            (region_end.saturating_sub(clamped)) as f32 / region_span
+        } else {
+            (clamped.saturating_sub(region_start)) as f32 / region_span
+        };
+        left + rel * width
+    };
+
+    let aa_max = view
+        .protein_lanes
+        .iter()
+        .flat_map(|lane| lane.domains.iter().map(|domain| domain.end_aa))
+        .chain(
+            view.protein_lanes
+                .iter()
+                .filter_map(|lane| lane.expected_length_aa),
+        )
+        .chain(
+            view.protein_lanes
+                .iter()
+                .filter_map(|lane| lane.reference_end_aa),
+        )
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let aa_span = aa_max as f32;
+    let x_for_aa = |aa_1based: usize| -> f32 {
+        let clamped = aa_1based.clamp(1, aa_max);
+        left + ((clamped.saturating_sub(1)) as f32 / aa_span) * width
+    };
+    let x_for_aa_f = |aa_1based: f32| -> f32 {
+        let clamped = aa_1based.clamp(1.0, aa_max as f32);
+        left + ((clamped - 1.0) / aa_span) * width
+    };
+    let top_geometry_kind = if view
+        .transcript_geometry_mode
+        .trim()
+        .eq_ignore_ascii_case("cds")
+    {
+        "cds"
+    } else {
+        "exon"
+    };
+    let top_geometry_title = if top_geometry_kind == "cds" {
+        "A) transcript exons (faint) + CDS (solid) architecture (coordinate-true)"
+    } else {
+        "A) transcript / exon architecture (coordinate-true)"
+    };
+
+    let mut doc = Document::new()
+        .set("viewBox", (0, 0, W, dyn_h))
+        .set("width", W)
+        .set("height", dyn_h)
+        .add(
+            Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", W)
+                .set("height", dyn_h)
+                .set("fill", "#ffffff"),
+        );
+
+    doc = doc
+        .add(
+            Text::new(format!(
+                "Isoform architecture: {} panel '{}' on {}",
+                view.gene_symbol, view.panel_id, view.seq_id
+            ))
+            .set("x", label_x)
+            .set("y", 36)
+            .set("font-family", "monospace")
+            .set("font-size", 18)
+            .set("fill", "#111111"),
+        )
+        .add(
+            Text::new(format!(
+                "genomic span {}..{} | isoforms={} | protein max={} aa",
+                view.region_start_1based,
+                view.region_end_1based,
+                view.transcript_lanes.len(),
+                aa_max
+            ))
+            .set("x", label_x)
+            .set("y", 58)
+            .set("font-family", "monospace")
+            .set("font-size", 12)
+            .set("fill", "#4b5563"),
+        )
+        .add(
+            Text::new(format!(
+                "display orientation: transcript 5'->3' left-to-right (dominant strand {}) | top-panel geometry: {}",
+                if dominant_strand_is_reverse { "-" } else { "+" },
+                top_geometry_kind
+            ))
+            .set("x", label_x)
+            .set("y", 74)
+            .set("font-family", "monospace")
+            .set("font-size", 11)
+            .set("fill", "#4b5563"),
+        )
+        .add(
+            Text::new(top_geometry_title)
+            .set("x", label_x)
+            .set("y", 88)
+            .set("font-family", "monospace")
+            .set("font-size", 13)
+            .set("fill", "#111827"),
+        )
+        .add(
+            Line::new()
+                .set("x1", left)
+                .set("y1", top_header - 16.0)
+                .set("x2", right)
+                .set("y2", top_header - 16.0)
+                .set("stroke", "#6b7280")
+                .set("stroke-width", 1.0),
+        )
+        .add(
+            Text::new(format!("{} bp", left_axis_bp))
+                .set("x", left)
+                .set("y", top_header - 20.0)
+                .set("text-anchor", "start")
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#4b5563"),
+        )
+        .add(
+            Text::new(format!("{} bp", right_axis_bp))
+                .set("x", right)
+                .set("y", top_header - 20.0)
+                .set("text-anchor", "end")
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#4b5563"),
+        );
+
+    for (idx, lane) in view.transcript_lanes.iter().enumerate() {
+        let y = top_header + idx as f32 * (lane_h + lane_gap) + lane_h * 0.5;
+        let label = lane
+            .transcript_id
+            .as_deref()
+            .map(|tx| format!("{} ({tx})", lane.label))
+            .unwrap_or_else(|| lane.label.clone());
+        doc = doc.add(
+            Text::new(label)
+                .set("x", left - 12.0)
+                .set("y", y + 3.5)
+                .set("text-anchor", "end")
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", if lane.mapped { "#111827" } else { "#b45309" }),
+        );
+        for intron in &lane.introns {
+            let xa = x_for_genomic(intron.start_1based);
+            let xb = x_for_genomic(intron.end_1based);
+            let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
+            if (x2 - x1).abs() < 0.5 {
+                continue;
+            }
+            doc = doc.add(
+                Line::new()
+                    .set("x1", x1)
+                    .set("y1", y)
+                    .set("x2", x2)
+                    .set("y2", y)
+                    .set("stroke", "#6b7280")
+                    .set("stroke-width", 1.2),
+            );
+        }
+        if top_geometry_kind == "cds" {
+            for exon in &lane.transcript_exons {
+                let xa = x_for_genomic(exon.start_1based);
+                let xb = x_for_genomic(exon.end_1based);
+                let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
+                if (x2 - x1).abs() < 0.5 {
+                    continue;
+                }
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - 7.5)
+                        .set("width", (x2 - x1).max(1.0))
+                        .set("height", 15.0)
+                        .set("fill", "#93c5fd")
+                        .set("fill-opacity", 0.25)
+                        .set("stroke", "#60a5fa")
+                        .set("stroke-width", 0.35),
+                );
+            }
+        }
+        for exon in &lane.exons {
+            let xa = x_for_genomic(exon.start_1based);
+            let xb = x_for_genomic(exon.end_1based);
+            let (x1, x2) = if xa <= xb { (xa, xb) } else { (xb, xa) };
+            if (x2 - x1).abs() < 0.5 {
+                continue;
+            }
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", x1)
+                    .set("y", y - 7.5)
+                    .set("width", (x2 - x1).max(1.0))
+                    .set("height", 15.0)
+                    .set("fill", if lane.mapped { "#2563eb" } else { "#f59e0b" })
+                    .set("fill-opacity", if lane.mapped { 0.85 } else { 0.45 })
+                    .set("stroke", "#1f2937")
+                    .set("stroke-width", 0.5),
+            );
+        }
+        if let Some(tag) = lane.transactivation_class.as_deref() {
+            doc = doc.add(
+                Text::new(format!("TA={tag}"))
+                    .set("x", right + 6.0)
+                    .set("y", y + 3.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#374151"),
+            );
+        }
+    }
+
+    let protein_axis_y = protein_chart_top - 14.0;
+    let genome_rail_y = top_header + exon_chart_h + 24.0;
+    let mut boundary_set: BTreeSet<usize> = BTreeSet::new();
+    for lane in &view.transcript_lanes {
+        let boundary_exons = if top_geometry_kind == "cds" && !lane.transcript_exons.is_empty() {
+            &lane.transcript_exons
+        } else {
+            &lane.exons
+        };
+        for exon in boundary_exons {
+            if exon.end_1based >= exon.start_1based {
+                boundary_set.insert(exon.start_1based);
+                boundary_set.insert(exon.end_1based);
+            }
+        }
+    }
+    let boundaries = boundary_set.into_iter().collect::<Vec<_>>();
+    if boundaries.len() >= 2 {
+        let mut ribbon_bins: BTreeMap<(i32, i32, i32, i32), (f32, f32, f32, f32, usize)> =
+            BTreeMap::new();
+        let quantize_coord = |value: f32| -> i32 { (value * 1000.0).round() as i32 };
+        let rail_x_a = x_for_genomic(*boundaries.first().unwrap_or(&region_start));
+        let rail_x_b = x_for_genomic(*boundaries.last().unwrap_or(&region_end));
+        let rail_left = rail_x_a.min(rail_x_b);
+        let rail_right = rail_x_a.max(rail_x_b);
+        doc = doc
+            .add(
+                Text::new("genome boundary rail")
+                    .set("x", label_x)
+                    .set("y", genome_rail_y + 4.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 10)
+                    .set("fill", "#4b5563"),
+            )
+            .add(
+                Line::new()
+                    .set("x1", rail_left)
+                    .set("y1", genome_rail_y)
+                    .set("x2", rail_right)
+                    .set("y2", genome_rail_y)
+                    .set("stroke", "#6b7280")
+                    .set("stroke-width", 1.0),
+            );
+        for boundary in &boundaries {
+            let x = x_for_genomic(*boundary);
+            doc = doc.add(
+                Line::new()
+                    .set("x1", x)
+                    .set("y1", genome_rail_y - 3.0)
+                    .set("x2", x)
+                    .set("y2", genome_rail_y + 3.0)
+                    .set("stroke", "#6b7280")
+                    .set("stroke-width", 0.8)
+                    .set("stroke-opacity", 0.8),
+            );
+        }
+        for flank in boundaries.windows(2) {
+            let flank_start = flank[0];
+            let flank_end_exclusive = flank[1];
+            if flank_end_exclusive <= flank_start {
+                continue;
+            }
+            for lane in &view.transcript_lanes {
+                if lane.cds_to_protein_segments.is_empty() {
+                    continue;
+                }
+                for segment in &lane.cds_to_protein_segments {
+                    if segment.aa_end < segment.aa_start {
+                        continue;
+                    }
+                    let seg_start = segment.genomic_start_1based.min(segment.genomic_end_1based);
+                    let seg_end = segment.genomic_start_1based.max(segment.genomic_end_1based);
+                    // Avoid boundary-only tail overlaps: when flank starts exactly at
+                    // a segment's inclusive end, this would otherwise create a tiny
+                    // duplicate ribbon that visually looks like a second edge mapping.
+                    if seg_end <= flank_start || seg_start >= flank_end_exclusive {
+                        continue;
+                    }
+                    let overlap_start = flank_start.max(seg_start);
+                    let overlap_end_exclusive = flank_end_exclusive.min(seg_end.saturating_add(1));
+                    if overlap_end_exclusive <= overlap_start {
+                        continue;
+                    }
+
+                    let seg_nt = seg_end.saturating_sub(seg_start).saturating_add(1).max(1) as f32;
+                    let aa_span = segment
+                        .aa_end
+                        .saturating_sub(segment.aa_start)
+                        .saturating_add(1)
+                        .max(1) as f32;
+                    let start_offset_nt = overlap_start.saturating_sub(seg_start) as f32;
+                    let end_offset_nt = overlap_end_exclusive.saturating_sub(seg_start) as f32;
+                    let aa_left_f = segment.aa_start as f32 + (start_offset_nt / seg_nt) * aa_span;
+                    let aa_right_f = segment.aa_start as f32 + (end_offset_nt / seg_nt) * aa_span;
+                    let aa_x_a = x_for_aa_f(aa_left_f);
+                    let aa_x_b = x_for_aa_f(aa_right_f);
+                    let (aa_left, aa_right) = if aa_x_a <= aa_x_b {
+                        (aa_x_a, aa_x_b)
+                    } else {
+                        (aa_x_b, aa_x_a)
+                    };
+                    let g_x_a = x_for_genomic(overlap_start);
+                    let g_x_b = x_for_genomic(overlap_end_exclusive);
+                    let (g_left, g_right) = if g_x_a <= g_x_b {
+                        (g_x_a, g_x_b)
+                    } else {
+                        (g_x_b, g_x_a)
+                    };
+                    if (g_right - g_left).abs() < 0.4 && (aa_right - aa_left).abs() < 0.4 {
+                        continue;
+                    }
+                    let key = (
+                        quantize_coord(g_left),
+                        quantize_coord(g_right),
+                        quantize_coord(aa_left),
+                        quantize_coord(aa_right),
+                    );
+                    let entry = ribbon_bins
+                        .entry(key)
+                        .or_insert((g_left, g_right, aa_left, aa_right, 0usize));
+                    entry.4 += 1;
+                }
+            }
+        }
+        for (_key, (g_left, g_right, aa_left, aa_right, support_count)) in ribbon_bins {
+            let opacity = (0.14 + support_count.saturating_sub(1) as f32 * 0.04).min(0.42);
+            let ribbon = Data::new()
+                .move_to((g_left, genome_rail_y + 0.5))
+                .line_to((g_right, genome_rail_y + 0.5))
+                .line_to((aa_right, protein_axis_y + 0.5))
+                .line_to((aa_left, protein_axis_y + 0.5))
+                .close();
+            let mut path = Path::new()
+                .set("d", ribbon)
+                .set("fill", "#64748b")
+                .set("fill-opacity", opacity);
+            if support_count > 1 {
+                path = path
+                    .set("stroke", "#475569")
+                    .set("stroke-opacity", 0.18)
+                    .set("stroke-width", 0.3);
+            }
+            doc = doc.add(path);
+        }
+    }
+
+    doc = doc
+        .add(
+            Text::new("B) protein domain architecture")
+                .set("x", label_x)
+                .set("y", protein_chart_top - 32.0)
+                .set("font-family", "monospace")
+                .set("font-size", 13)
+                .set("fill", "#111827"),
+        )
+        .add(
+            Line::new()
+                .set("x1", left)
+                .set("y1", protein_chart_top - 14.0)
+                .set("x2", right)
+                .set("y2", protein_chart_top - 14.0)
+                .set("stroke", "#6b7280")
+                .set("stroke-width", 1.0),
+        )
+        .add(
+            Text::new("1 aa")
+                .set("x", left)
+                .set("y", protein_chart_top - 18.0)
+                .set("text-anchor", "start")
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#4b5563"),
+        )
+        .add(
+            Text::new(format!("{aa_max} aa"))
+                .set("x", right)
+                .set("y", protein_chart_top - 18.0)
+                .set("text-anchor", "end")
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#4b5563"),
+        );
+
+    for (idx, lane) in view.protein_lanes.iter().enumerate() {
+        let y = protein_chart_top + idx as f32 * (lane_h + lane_gap) + lane_h * 0.5;
+        doc = doc.add(
+            Text::new(lane.label.clone())
+                .set("x", left - 12.0)
+                .set("y", y + 3.5)
+                .set("text-anchor", "end")
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#111827"),
+        );
+        let max_domain_end = lane
+            .domains
+            .iter()
+            .map(|domain| domain.end_aa.max(domain.start_aa))
+            .max()
+            .unwrap_or(1)
+            .max(1);
+        let lane_start = lane.reference_start_aa.unwrap_or(1).clamp(1, aa_max);
+        let inferred_end = lane
+            .expected_length_aa
+            .unwrap_or(max_domain_end)
+            .max(max_domain_end);
+        let lane_end = lane
+            .reference_end_aa
+            .unwrap_or(inferred_end)
+            .clamp(lane_start, aa_max);
+        let rail_left = x_for_aa(lane_start);
+        let rail_right = x_for_aa(lane_end);
+        doc = doc.add(
+            Line::new()
+                .set("x1", rail_left)
+                .set("y1", y)
+                .set("x2", rail_right)
+                .set("y2", y)
+                .set("stroke", "#94a3b8")
+                .set("stroke-width", 2.0),
+        );
+        for domain in &lane.domains {
+            let domain_start = domain.start_aa.max(lane_start);
+            let domain_end = domain.end_aa.max(domain.start_aa).min(lane_end);
+            if domain_end < domain_start {
+                continue;
+            }
+            let x1 = x_for_aa(domain_start);
+            let x2 = x_for_aa(domain_end);
+            let fill = domain.color_hex.as_deref().unwrap_or("#7c3aed");
+            doc = doc
+                .add(
+                    Rectangle::new()
+                        .set("x", x1)
+                        .set("y", y - 7.0)
+                        .set("width", (x2 - x1).max(1.0))
+                        .set("height", 14.0)
+                        .set("fill", fill)
+                        .set("fill-opacity", 0.82)
+                        .set("stroke", "#1f2937")
+                        .set("stroke-width", 0.5),
+                )
+                .add(
+                    Text::new(domain.name.clone())
+                        .set("x", x1 + 2.0)
+                        .set("y", y - 9.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", "#334155"),
+                );
+        }
+        if let Some(tag) = lane.transactivation_class.as_deref() {
+            doc = doc.add(
+                Text::new(format!("TA={tag}"))
+                    .set("x", right + 6.0)
+                    .set("y", y + 3.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#374151"),
+            );
+        }
+    }
+
+    let mut y = footer_top;
+    if let Some(source) = view
+        .panel_source
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        doc = doc.add(
+            Text::new(format!("panel source: {source}"))
+                .set("x", label_x)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#334155"),
+        );
+        y += 14.0;
+    }
+    for warning in view.warnings.iter().take(6) {
+        doc = doc.add(
+            Text::new(format!("warning: {warning}"))
+                .set("x", label_x)
+                .set("y", y)
+                .set("font-family", "monospace")
+                .set("font-size", 10)
+                .set("fill", "#b45309"),
+        );
+        y += 12.0;
+    }
+    for (line_idx, line) in wrap_text(&view.instruction, 140).into_iter().enumerate() {
+        doc = doc.add(
+            Text::new(line)
+                .set("x", label_x)
+                .set("y", dyn_h - 64.0 + line_idx as f32 * 14.0)
+                .set("font-family", "monospace")
+                .set("font-size", 11)
+                .set("fill", "#374151"),
+        );
+    }
+
+    doc.to_string()
+}
+
 pub fn render_feature_expert_svg(view: &FeatureExpertView) -> String {
     match view {
         FeatureExpertView::Tfbs(tfbs) => render_tfbs(tfbs),
         FeatureExpertView::RestrictionSite(re) => render_restriction(re),
         FeatureExpertView::Splicing(splicing) => render_splicing(splicing),
+        FeatureExpertView::IsoformArchitecture(isoform) => render_isoform_architecture(isoform),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::feature_expert::{
+        IsoformArchitectureCdsAaSegment, IsoformArchitectureProteinDomain,
+        IsoformArchitectureProteinLane, IsoformArchitectureTranscriptLane, SplicingRange,
+    };
+
+    fn isoform_test_view(transcript_strand: &str) -> IsoformArchitectureExpertView {
+        IsoformArchitectureExpertView {
+            seq_id: "tp53".to_string(),
+            panel_id: "panel".to_string(),
+            gene_symbol: "TP53".to_string(),
+            transcript_geometry_mode: "exon".to_string(),
+            panel_source: Some("test".to_string()),
+            region_start_1based: 101,
+            region_end_1based: 200,
+            instruction: "test".to_string(),
+            transcript_lanes: vec![IsoformArchitectureTranscriptLane {
+                isoform_id: "i1".to_string(),
+                label: "iso1".to_string(),
+                transcript_id: Some("tx1".to_string()),
+                transcript_feature_id: Some(1),
+                strand: transcript_strand.to_string(),
+                transcript_exons: vec![
+                    SplicingRange {
+                        start_1based: 105,
+                        end_1based: 125,
+                    },
+                    SplicingRange {
+                        start_1based: 145,
+                        end_1based: 165,
+                    },
+                ],
+                exons: vec![
+                    SplicingRange {
+                        start_1based: 110,
+                        end_1based: 120,
+                    },
+                    SplicingRange {
+                        start_1based: 150,
+                        end_1based: 160,
+                    },
+                ],
+                introns: vec![SplicingRange {
+                    start_1based: 120,
+                    end_1based: 150,
+                }],
+                mapped: true,
+                transactivation_class: None,
+                cds_to_protein_segments: vec![IsoformArchitectureCdsAaSegment {
+                    genomic_start_1based: 110,
+                    genomic_end_1based: 120,
+                    aa_start: 10,
+                    aa_end: 20,
+                }],
+                note: None,
+            }],
+            protein_lanes: vec![IsoformArchitectureProteinLane {
+                isoform_id: "i1".to_string(),
+                label: "iso1".to_string(),
+                transcript_id: Some("tx1".to_string()),
+                expected_length_aa: Some(100),
+                reference_start_aa: None,
+                reference_end_aa: None,
+                domains: vec![IsoformArchitectureProteinDomain {
+                    name: "dbd".to_string(),
+                    start_aa: 10,
+                    end_aa: 60,
+                    color_hex: Some("#ff0000".to_string()),
+                }],
+                transactivation_class: None,
+            }],
+            warnings: vec![],
+        }
+    }
+
+    fn extract_exon_x_positions(svg: &str) -> Vec<f32> {
+        let mut xs = Vec::new();
+        for part in svg.split("<rect").skip(1) {
+            if !part.contains("fill=\"#2563eb\"") || !part.contains("height=\"15\"") {
+                continue;
+            }
+            let Some(attr_start) = part.find("x=\"") else {
+                continue;
+            };
+            let rest = &part[attr_start + 3..];
+            let Some(attr_end) = rest.find('"') else {
+                continue;
+            };
+            if let Ok(value) = rest[..attr_end].parse::<f32>() {
+                xs.push(value);
+            }
+        }
+        xs
+    }
+
+    fn connector_ribbon_count(svg: &str) -> usize {
+        svg.matches("fill=\"#64748b\"").count()
+    }
+
+    #[test]
+    fn isoform_renderer_keeps_forward_strand_exon_order_left_to_right() {
+        let svg = render_isoform_architecture(&isoform_test_view("+"));
+        let exon_x = extract_exon_x_positions(&svg);
+        assert_eq!(exon_x.len(), 2);
+        assert!(exon_x[0] < exon_x[1]);
+        assert!(svg.contains("dominant strand +"));
+        assert!(svg.contains("101 bp"));
+        assert!(svg.contains("200 bp"));
+    }
+
+    #[test]
+    fn isoform_renderer_flips_reverse_strand_exons_but_keeps_them_visible() {
+        let svg = render_isoform_architecture(&isoform_test_view("-"));
+        let exon_x = extract_exon_x_positions(&svg);
+        assert_eq!(exon_x.len(), 2);
+        assert!(exon_x[0] > exon_x[1]);
+        assert!(svg.contains("dominant strand -"));
+        assert!(svg.contains("200 bp"));
+        assert!(svg.contains("101 bp"));
+    }
+
+    #[test]
+    fn isoform_renderer_draws_cds_to_protein_connector_guides() {
+        let view = isoform_test_view("+");
+        let lane_count = view.transcript_lanes.len().max(1) as f32;
+        let lane_h = 24.0_f32;
+        let lane_gap = 10.0_f32;
+        let top_header = 114.0_f32;
+        let exon_chart_h = lane_count * lane_h + (lane_count - 1.0) * lane_gap;
+        let protein_chart_top = top_header + exon_chart_h + 92.0;
+        let protein_axis_y = protein_chart_top - 14.0 + 0.5;
+        let svg = render_isoform_architecture(&view);
+        assert!(svg.contains("genome boundary rail"));
+        assert!(svg.contains("fill=\"#64748b\""));
+        assert!(svg.contains("fill-opacity=\"0.14\""));
+        assert!(svg.contains(&format!(",{protein_axis_y}")));
+        assert!(!svg.contains(",233.5"));
+    }
+
+    #[test]
+    fn isoform_renderer_merges_duplicate_connector_ribbons() {
+        let single = isoform_test_view("+");
+        let single_svg = render_isoform_architecture(&single);
+        let single_count = connector_ribbon_count(&single_svg);
+
+        let mut duplicated = isoform_test_view("+");
+        let mut duplicated_lane = duplicated.transcript_lanes[0].clone();
+        duplicated_lane.isoform_id = "i2".to_string();
+        duplicated_lane.label = "iso2".to_string();
+        duplicated_lane.transcript_id = Some("tx2".to_string());
+        duplicated.transcript_lanes.push(duplicated_lane);
+
+        let duplicated_svg = render_isoform_architecture(&duplicated);
+        let duplicated_count = connector_ribbon_count(&duplicated_svg);
+        assert_eq!(duplicated_count, single_count);
+        assert!(duplicated_svg.contains("fill-opacity=\"0.18\""));
+        assert!(duplicated_svg.contains("stroke=\"#475569\""));
     }
 }

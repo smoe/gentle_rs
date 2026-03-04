@@ -45,6 +45,11 @@
       "id": "online_opt_in",
       "name": "Online Opt-in Execution",
       "description": "Network-dependent chapters remain explicit opt-in and do not break offline default CI."
+    },
+    {
+      "id": "isoform_architecture_panels",
+      "name": "Isoform Architecture Panels",
+      "description": "Curated transcript/protein architecture overlays can be imported and rendered as deterministic expert-view SVG outputs."
     }
   ],
   "chapters": [
@@ -456,6 +461,119 @@
       "checkpoints": [
         "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",
         "Offline generation still emits the chapter with execution status noted."
+      ]
+    },
+    {
+      "id": "tp53_isoform_architecture_online",
+      "order": 9,
+      "title": "TP53 isoform architecture expert panel (online)",
+      "example_id": "tp53_isoform_architecture_online",
+      "tier": "online",
+      "summary": "Build a TP53 locus project and export Figure-1-style transcript/protein isoform architecture from one deterministic engine route.",
+      "narrative": "This chapter demonstrates a publication-oriented use case: derive TP53 from a prepared GRCh38 reference, import a curated isoform panel, and render transcript/protein architecture from the same expert-view payload used by GUI and shell interfaces. The focus is parity and provenance, not manual figure drawing.",
+      "use_cases": [
+        "You want transcript and protein isoform architecture from one sequence context with explicit panel provenance.",
+        "You need a deterministic SVG baseline for Figure-1-style TP53 isoform presentation.",
+        "You want to preserve the exact panel import and rendering operations in sequence history."
+      ],
+      "gui_steps": [
+        "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.",
+        "Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.",
+        "Open `Isoform Expert` and export SVG from the same panel context."
+      ],
+      "learning_objectives": [
+        "Execute an end-to-end isoform-panel workflow using shared engine operations.",
+        "Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.",
+        "Export deterministic architecture SVG suitable for downstream figure styling."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "isoform_architecture_panels",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ImportIsoformPanel.panel_path / panel_id / strict",
+          "where_used": "operation 3",
+          "why_it_matters": "Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.",
+          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked."
+        },
+        {
+          "parameter": "RenderIsoformArchitectureSvg.path",
+          "where_used": "operation 4",
+          "why_it_matters": "Controls deterministic export location used for tutorial artifact retention and figure review.",
+          "how_to_derive": "Use a stable project-relative path such as `exports/tp53_isoform_architecture.svg`."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
+        "cargo run --bin gentle_cli -- save-project tp53_isoform_architecture.project.gentle.json"
+      ],
+      "retain_outputs": [
+        "exports/tp53_isoform_architecture.svg"
+      ],
+      "checkpoints": [
+        "Panel import reports mapped transcript lanes and any unresolved transcript warnings.",
+        "Isoform architecture SVG export succeeds with deterministic lane ordering.",
+        "Saved project contains TP53 sequence plus imported panel metadata for replay."
+      ]
+    },
+    {
+      "id": "tp63_anchor_extension_online",
+      "order": 10,
+      "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+      "example_id": "tp63_extend_anchor_online",
+      "tier": "online",
+      "summary": "Prepare Human GRCh38, inspect TP63 genomic coordinates, extract TP63, and extend the anchored sequence by 2000 bp on each side.",
+      "narrative": "This chapter focuses on day-to-day genome-anchored sequence inspection: identify TP63 in GRCh38, verify coordinates before extraction, and then widen the visible anchored region directly in the DNA sequence window. The key point is that extension remains deterministic and provenance-preserving, whether triggered in the GUI or via shell/CLI operations.",
+      "use_cases": [
+        "You want to inspect promoter-proximal and downstream context around TP63 without manually typing coordinates.",
+        "You need to confirm annotated TP63 coordinates before creating an anchored sequence.",
+        "You want a reproducible +/-2 kb extension workflow that can be replayed by GUI and CLI users."
+      ],
+      "gui_steps": [
+        "Open `File -> Prepare Reference Genome...` and prepare `Human GRCh38 Ensembl 116` from `assets/genomes.json`.",
+        "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
+        "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
+      ],
+      "learning_objectives": [
+        "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
+        "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
+        "Map GUI actions to equivalent deterministic `ExtendGenomeAnchor` operations."
+      ],
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "sequence_lineage",
+        "online_opt_in"
+      ],
+      "parameter_notes": [
+        {
+          "parameter": "ExtractGenomeGene.gene_query / occurrence",
+          "where_used": "operation 2 and Retrieve Genome Sequence dialog",
+          "why_it_matters": "Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.",
+          "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit."
+        },
+        {
+          "parameter": "ExtendGenomeAnchor.side / length_bp",
+          "where_used": "operations 3 and 4 + DNA window Extend controls",
+          "why_it_matters": "Defines biological flank direction and exact context length added around the anchored region.",
+          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion."
+        }
+      ],
+      "follow_up_commands": [
+        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20",
+        "cargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
+      ],
+      "retain_outputs": [],
+      "checkpoints": [
+        "TP63 coordinate candidates are visible before extraction in Retrieve Genome Sequence workflows.",
+        "ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.",
+        "Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance."
       ]
     }
   ]

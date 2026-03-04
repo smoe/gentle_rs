@@ -1,7 +1,9 @@
 //! Minimal MCP stdio server adapter.
 //!
 //! This module implements a small MCP surface on top of existing deterministic
-//! engine/shell contracts.
+//! engine/shell contracts, including both:
+//! - tool execution (`tools/call`)
+//! - capability discovery/negotiation (`tools/list`, `capabilities`, `help`)
 
 use crate::{
     about,
@@ -20,6 +22,8 @@ use std::path::Path;
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "gentle_mcp";
 const SERVER_TITLE: &str = "GENtle MCP";
+const MAX_MCP_CONTENT_LENGTH_BYTES: usize = 8 * 1024 * 1024;
+const MAX_MCP_JSON_DEPTH: usize = 96;
 
 pub const DEFAULT_MCP_STATE_PATH: &str = ".gentle_state.json";
 
@@ -31,6 +35,7 @@ enum DispatchOutcome {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ToolCallParams {
     name: String,
     #[serde(default)]
@@ -93,10 +98,19 @@ fn read_framed_json<R: BufRead>(reader: &mut R) -> Result<Option<Value>, String>
             continue;
         }
         if let Some(value) = line_trimmed.strip_prefix("Content-Length:") {
+            if content_length.is_some() {
+                return Err("Duplicate Content-Length header in MCP frame".to_string());
+            }
             let len = value
                 .trim()
                 .parse::<usize>()
                 .map_err(|e| format!("Invalid Content-Length header '{line_trimmed}': {e}"))?;
+            if len > MAX_MCP_CONTENT_LENGTH_BYTES {
+                return Err(format!(
+                    "MCP Content-Length {} exceeds maximum allowed {} bytes",
+                    len, MAX_MCP_CONTENT_LENGTH_BYTES
+                ));
+            }
             content_length = Some(len);
         }
     }
@@ -106,9 +120,36 @@ fn read_framed_json<R: BufRead>(reader: &mut R) -> Result<Option<Value>, String>
     reader
         .read_exact(&mut body)
         .map_err(|e| format!("Could not read MCP JSON payload body: {e}"))?;
-    serde_json::from_slice::<Value>(&body)
-        .map(Some)
-        .map_err(|e| format!("Could not parse MCP JSON payload: {e}"))
+    let parsed = serde_json::from_slice::<Value>(&body)
+        .map_err(|e| format!("Could not parse MCP JSON payload: {e}"))?;
+    validate_json_depth(&parsed, MAX_MCP_JSON_DEPTH)?;
+    Ok(Some(parsed))
+}
+
+fn validate_json_depth(value: &Value, max_depth: usize) -> Result<(), String> {
+    let mut stack: Vec<(&Value, usize)> = vec![(value, 1)];
+    while let Some((current, depth)) = stack.pop() {
+        if depth > max_depth {
+            return Err(format!(
+                "MCP JSON payload exceeds maximum nesting depth {}",
+                max_depth
+            ));
+        }
+        match current {
+            Value::Array(items) => {
+                for item in items {
+                    stack.push((item, depth + 1));
+                }
+            }
+            Value::Object(map) => {
+                for item in map.values() {
+                    stack.push((item, depth + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn write_framed_json<W: Write>(writer: &mut W, payload: &Value) -> Result<(), String> {
@@ -1294,6 +1335,19 @@ fn handle_message<W: Write>(
                     );
                 }
             };
+            if !call.arguments.is_object() {
+                return write_response(
+                    writer,
+                    jsonrpc_error(
+                        Some(id),
+                        -32602,
+                        "Invalid params for tools/call",
+                        Some(json!({
+                            "details": "tools/call arguments must be a JSON object"
+                        })),
+                    ),
+                );
+            }
             let result = tool_call_result(default_state_path, call);
             write_response(writer, jsonrpc_response(id, result))
         }
@@ -1330,6 +1384,12 @@ mod tests {
     fn frame(value: &Value) -> Vec<u8> {
         let body = serde_json::to_vec(value).expect("serialize test message");
         let mut bytes = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
+        bytes.extend(body);
+        bytes
+    }
+
+    fn frame_with_raw_body(body: &[u8], declared_len: usize) -> Vec<u8> {
+        let mut bytes = format!("Content-Length: {}\r\n\r\n", declared_len).into_bytes();
         bytes.extend(body);
         bytes
     }
@@ -1382,6 +1442,46 @@ mod tests {
             "expected non-mutating shared shell command"
         );
         run.output
+    }
+
+    #[test]
+    fn read_framed_json_rejects_oversized_content_length() {
+        let oversized = MAX_MCP_CONTENT_LENGTH_BYTES + 1;
+        let mut reader = Cursor::new(frame_with_raw_body(br#"{}"#, oversized));
+        let mut writer = Vec::<u8>::new();
+        let err = run_server_loop(DEFAULT_MCP_STATE_PATH, &mut reader, &mut writer)
+            .expect_err("oversized frame must be rejected");
+        assert!(err.contains("exceeds maximum allowed"));
+    }
+
+    #[test]
+    fn read_framed_json_rejects_duplicate_content_length_header() {
+        let body = br#"{}"#;
+        let raw = format!(
+            "Content-Length: {}\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body.len(),
+            String::from_utf8_lossy(body)
+        );
+        let mut reader = Cursor::new(raw.into_bytes());
+        let mut writer = Vec::<u8>::new();
+        let err = run_server_loop(DEFAULT_MCP_STATE_PATH, &mut reader, &mut writer)
+            .expect_err("duplicate content-length header must be rejected");
+        assert!(err.contains("Duplicate Content-Length header"));
+    }
+
+    #[test]
+    fn read_framed_json_rejects_excessive_json_nesting_depth() {
+        let mut nested = json!(null);
+        for _ in 0..=MAX_MCP_JSON_DEPTH {
+            nested = json!({ "x": nested });
+        }
+        let body = serde_json::to_vec(&nested).expect("serialize nested payload");
+        let mut reader = Cursor::new(frame_with_raw_body(&body, body.len()));
+        let mut writer = Vec::<u8>::new();
+        let err = run_server_loop(DEFAULT_MCP_STATE_PATH, &mut reader, &mut writer)
+            .expect_err("excessively nested payload must be rejected");
+        assert!(err.contains("maximum nesting depth"));
     }
 
     #[test]
@@ -1500,6 +1600,47 @@ mod tests {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         assert!(is_error);
+    }
+
+    #[test]
+    fn tools_call_rejects_unknown_param_fields() {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 701,
+            "method": "tools/call",
+            "params": {
+                "name": "capabilities",
+                "arguments": {},
+                "unexpected": true
+            }
+        });
+        let response = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(response.pointer("/error/code").and_then(Value::as_i64), Some(-32602));
+        let details = response
+            .pointer("/error/data/details")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(details.contains("unknown field"));
+    }
+
+    #[test]
+    fn tools_call_rejects_non_object_arguments() {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 702,
+            "method": "tools/call",
+            "params": {
+                "name": "capabilities",
+                "arguments": "not-an-object"
+            }
+        });
+        let response = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_eq!(response.pointer("/error/code").and_then(Value::as_i64), Some(-32602));
+        let details = response
+            .pointer("/error/data/details")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert_eq!(details, "tools/call arguments must be a JSON object");
     }
 
     #[test]

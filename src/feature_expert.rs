@@ -8,6 +8,8 @@ pub const RESTRICTION_EXPERT_INSTRUCTION: &str = "Restriction-site expert view: 
 
 pub const SPLICING_EXPERT_INSTRUCTION: &str = "Splicing expert view: one lane per transcript on a shared genomic axis. Exon geometry is coordinate-true (labels never resize exon/intron footprints). Donor/acceptor splice boundaries are marked, junction arcs summarize support across transcripts, and the transcript-vs-exon matrix shows isoform differences.";
 
+pub const ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION: &str = "Isoform architecture view: top panel shows transcript/exon or transcript/CDS structure on genomic coordinates with 5'->3' orientation left-to-right (strand-aware axis), bottom panel shows per-isoform protein-domain architecture on amino-acid coordinates. Row order is shared across both panels; CDS-to-protein guide lines indicate which coding segments contribute to which amino-acid spans.";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FeatureExpertTarget {
@@ -25,6 +27,9 @@ pub enum FeatureExpertTarget {
     },
     SplicingFeature {
         feature_id: usize,
+    },
+    IsoformArchitecture {
+        panel_id: String,
     },
 }
 
@@ -52,6 +57,9 @@ impl FeatureExpertTarget {
             }
             Self::SplicingFeature { feature_id } => {
                 format!("splicing feature #{feature_id}")
+            }
+            Self::IsoformArchitecture { panel_id } => {
+                format!("isoform architecture panel '{panel_id}'")
             }
         }
     }
@@ -135,6 +143,84 @@ pub struct SplicingExpertView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoformArchitectureTranscriptLane {
+    pub isoform_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub transcript_id: Option<String>,
+    #[serde(default)]
+    pub transcript_feature_id: Option<usize>,
+    pub strand: String,
+    #[serde(default)]
+    pub transcript_exons: Vec<SplicingRange>,
+    pub exons: Vec<SplicingRange>,
+    pub introns: Vec<SplicingRange>,
+    pub mapped: bool,
+    #[serde(default)]
+    pub transactivation_class: Option<String>,
+    #[serde(default)]
+    pub cds_to_protein_segments: Vec<IsoformArchitectureCdsAaSegment>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoformArchitectureCdsAaSegment {
+    pub genomic_start_1based: usize,
+    pub genomic_end_1based: usize,
+    pub aa_start: usize,
+    pub aa_end: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoformArchitectureProteinDomain {
+    pub name: String,
+    pub start_aa: usize,
+    pub end_aa: usize,
+    #[serde(default)]
+    pub color_hex: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoformArchitectureProteinLane {
+    pub isoform_id: String,
+    pub label: String,
+    #[serde(default)]
+    pub transcript_id: Option<String>,
+    #[serde(default)]
+    pub expected_length_aa: Option<usize>,
+    #[serde(default)]
+    pub reference_start_aa: Option<usize>,
+    #[serde(default)]
+    pub reference_end_aa: Option<usize>,
+    pub domains: Vec<IsoformArchitectureProteinDomain>,
+    #[serde(default)]
+    pub transactivation_class: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoformArchitectureExpertView {
+    pub seq_id: String,
+    pub panel_id: String,
+    pub gene_symbol: String,
+    #[serde(default = "default_isoform_transcript_geometry_mode")]
+    pub transcript_geometry_mode: String,
+    #[serde(default)]
+    pub panel_source: Option<String>,
+    pub region_start_1based: usize,
+    pub region_end_1based: usize,
+    pub instruction: String,
+    pub transcript_lanes: Vec<IsoformArchitectureTranscriptLane>,
+    pub protein_lanes: Vec<IsoformArchitectureProteinLane>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+}
+
+fn default_isoform_transcript_geometry_mode() -> String {
+    "exon".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TfbsExpertColumn {
     pub index_1based: usize,
     pub counts: [f64; 4],
@@ -198,6 +284,7 @@ pub enum FeatureExpertView {
     Tfbs(TfbsExpertView),
     RestrictionSite(RestrictionSiteExpertView),
     Splicing(SplicingExpertView),
+    IsoformArchitecture(IsoformArchitectureExpertView),
 }
 
 impl FeatureExpertView {
@@ -206,6 +293,7 @@ impl FeatureExpertView {
             Self::Tfbs(_) => TFBS_EXPERT_INSTRUCTION,
             Self::RestrictionSite(_) => RESTRICTION_EXPERT_INSTRUCTION,
             Self::Splicing(_) => SPLICING_EXPERT_INSTRUCTION,
+            Self::IsoformArchitecture(_) => ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
         }
     }
 }

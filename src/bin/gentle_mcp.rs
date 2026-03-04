@@ -16,6 +16,9 @@ Starts a MCP stdio server with tools:\n  \
   - op (requires confirm=true)\n  \
   - workflow (requires confirm=true)\n  \
   - help\n\n  \
+MCP role in GENtle:\n  \
+  - tool execution via tools/call\n  \
+  - capability discovery/negotiation via tools/list, capabilities, and help\n\n  \
 Default state path: {default_state}\n",
         default_state = DEFAULT_MCP_STATE_PATH
     );

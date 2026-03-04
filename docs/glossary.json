@@ -1,5 +1,5 @@
 {
-   "command_count": 170,
+   "command_count": 174,
    "commands": [
       {
          "aliases": [
@@ -103,8 +103,8 @@
             "cli-direct"
          ],
          "path": "inspect-feature-expert",
-         "summary": "Inspect TFBS, restriction-site, or splicing expert details as JSON.",
-         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID"
+         "summary": "Inspect TFBS, restriction-site, splicing, or isoform-architecture expert details as JSON.",
+         "usage": "inspect-feature-expert SEQ_ID tfbs FEATURE_ID | inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | inspect-feature-expert SEQ_ID splicing FEATURE_ID | inspect-feature-expert SEQ_ID isoform PANEL_ID"
       },
       {
          "aliases": [],
@@ -117,8 +117,68 @@
             "cli-direct"
          ],
          "path": "render-feature-expert-svg",
-         "summary": "Render TFBS, restriction-site, or splicing expert visualization as SVG.",
-         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg"
+         "summary": "Render TFBS, restriction-site, splicing, or isoform-architecture expert visualization as SVG.",
+         "usage": "render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg | render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg | render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg"
+      },
+      {
+         "aliases": [
+            "panels import"
+         ],
+         "engine_operations": [
+            "ImportIsoformPanel"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels import-isoform",
+         "summary": "Import curated isoform-panel JSON for one sequence context.",
+         "usage": "panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]"
+      },
+      {
+         "aliases": [
+            "panels inspect"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels inspect-isoform",
+         "summary": "Inspect imported isoform architecture payload as expert-view JSON.",
+         "usage": "panels inspect-isoform SEQ_ID PANEL_ID"
+      },
+      {
+         "aliases": [
+            "panels render-svg"
+         ],
+         "engine_operations": [
+            "RenderIsoformArchitectureSvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels render-isoform-svg",
+         "summary": "Render imported isoform architecture as publication-oriented SVG.",
+         "usage": "panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg"
+      },
+      {
+         "aliases": [
+            "panels validate"
+         ],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "panels validate-isoform",
+         "summary": "Validate curated isoform-panel JSON and return a curator-oriented report.",
+         "usage": "panels validate-isoform PANEL_PATH [--panel-id ID]"
       },
       {
          "aliases": [],

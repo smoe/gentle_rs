@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-01
+Last updated: 2026-03-03
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -23,7 +23,8 @@ GENtle is a DNA/cloning workbench with multiple access paths:
 - JavaScript shell for scripted experiments
 - Lua shell for scripted experiments
 - CLI for automation and AI tools
-- MCP server route for tool-based AI integration
+- MCP server route for tool-based AI integration, including capability
+  discovery/negotiation (`tools/list`, `capabilities`)
 
 The long-term requirement is strict behavioral parity:
 
@@ -380,6 +381,9 @@ Practical rule:
 Current baseline:
 
 - `gentle_mcp` stdio server route is available.
+- MCP serves both:
+  - tool execution (`tools/call`)
+  - capability discovery/negotiation (`tools/list`, `capabilities`, `help`)
 - Exposed tools:
   - `capabilities`
   - `state_summary`
@@ -518,7 +522,8 @@ contracts into stable engine operations.
 
 MCP direction:
 
-- MCP is the preferred standardized route for external AI tool orchestration.
+- MCP is the preferred standardized route for external AI tool orchestration and
+  capability negotiation.
 - `agents ask` remains supported as a complementary route for chat-like
   assistance and suggested-command execution.
 
@@ -818,11 +823,12 @@ recomputations. This keeps GUI/CLI/JS/Lua behavior aligned.
 Shared view model:
 
 - `FeatureExpertTarget`: stable target selector
-  (TFBS feature, restriction site, or splicing-seeded feature).
+  (TFBS feature, restriction site, splicing-seeded feature, or isoform panel).
 - `FeatureExpertView`: typed payload with one of:
   - `TfbsExpertView`
   - `RestrictionSiteExpertView`
   - `SplicingExpertView`
+  - `IsoformArchitectureExpertView`
 
 TFBS expert semantics:
 
@@ -855,9 +861,24 @@ Splicing expert semantics:
 - Render junction-support arcs from the same engine payload used by GUI and
   SVG export.
 
+Isoform-architecture expert semantics:
+
+- Import is panel-driven and explicit:
+  - curated JSON resource (`gentle.isoform_panel_resource.v1`)
+  - imported via `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
+- Rendering model is two-section and deterministic:
+  - transcript/exon architecture lanes on genomic coordinates
+  - protein/domain architecture lanes on amino-acid coordinates
+- One stable row order is shared between transcript and protein sections.
+- Domain/transactivation annotations come from the curated panel resource, not
+  from GUI-local inference.
+- Transcript mapping warnings are part of the shared payload, so GUI, shell,
+  CLI, and SVG export report identical mapping diagnostics.
+
 Export semantics:
 
 - `RenderFeatureExpertSvg` is the canonical engine export path.
+- `RenderIsoformArchitectureSvg` is the canonical panel-specific export path.
 - GUI detail panel and shell/CLI scripting consume the same expert view
   contract before/while exporting.
 - SVG output is therefore adapter-equivalent by construction.
@@ -976,6 +997,9 @@ Deferred-scope rules:
 - Add agent-assistant bridge with catalog-driven transports, per-reply
   execution intents, shared-shell execution, and standalone GUI viewport:
   accepted and implemented
+- Add curated isoform-panel import + TP53-style transcript/protein expert view
+  + deterministic SVG export route (`ImportIsoformPanel`,
+  `RenderIsoformArchitectureSvg`): accepted and implemented
 - Add async long-running command execution contract for agent-suggested BLAST
   and primer-pair multi-BLAST workflows: accepted and planned
 - Add shared GUI intent command plane (`ui intents`, `ui open|focus`, prepared

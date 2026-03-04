@@ -11,7 +11,9 @@ GENtle currently provides six binaries:
 - `gentle_js`: interactive JavaScript shell
 - `gentle_lua`: interactive Lua shell
 - `gentle_examples_docs`: generates adapter snippets and tutorial artifacts from canonical protocol examples
-- `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline)
+- `gentle_mcp`: MCP stdio server (guarded mutating + UI-intent parity baseline;
+  includes standardized capability discovery via `tools/list`,
+  `capabilities`, and `help`)
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.
@@ -264,6 +266,8 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 ## `gentle_mcp` (MCP stdio server)
 
 `gentle_mcp` starts a Model Context Protocol server over stdio.
+It provides both tool execution (`tools/call`) and capability
+discovery/negotiation (`tools/list`, `capabilities`, `help`).
 
 Current tools:
 
@@ -614,6 +618,12 @@ cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_f
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
 cargo run --bin gentle_cli -- shell 'set-param tfbs_display_min_llr_quantile 0.95'
+cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
+cargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'
+cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'
+cargo run --bin gentle_cli -- shell 'panels validate-isoform assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
+cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 isoform tp53_isoforms_v1
+cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 exports/tp53_isoform_architecture.svg
 ```
 
 You can pass JSON from a file with `@file.json`.
@@ -739,6 +749,10 @@ Shared shell command:
     - `primers list-reports`
     - `primers show-report REPORT_ID`
     - `primers export-report REPORT_ID OUTPUT.json`
+    - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
+    - `panels inspect-isoform SEQ_ID PANEL_ID`
+    - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
+    - `panels validate-isoform PANEL_PATH [--panel-id ID]`
     - `set-param NAME JSON_VALUE`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
@@ -756,6 +770,21 @@ Screenshot bridge:
 - `screenshot-window` currently returns a deterministic disabled-policy message.
 - `--allow-screenshots` is rejected by argument parsing.
 - Manual documentation updates remain the current approach for image artifacts.
+
+Isoform architecture panel workflow:
+
+- canonical panel resource:
+  - `assets/panels/tp53_isoforms_v1.json`
+- operation route (JSON):
+  - `ImportIsoformPanel` + `RenderIsoformArchitectureSvg`
+- shared shell route:
+  - `panels import-isoform ...`
+  - `panels inspect-isoform ...`
+  - `panels render-isoform-svg ...`
+  - `panels validate-isoform ...`
+- direct expert route:
+  - `inspect-feature-expert SEQ_ID isoform PANEL_ID`
+  - `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`
 
 Pool exchange commands:
 
@@ -823,6 +852,11 @@ Resource sync commands:
   - GENtle ships with built-in motifs in `assets/jaspar.motifs.json` (currently generated from JASPAR 2026 CORE non-redundant); this command provides local updates/extensions.
 
 Agent bridge commands:
+
+Conceptual/tutorial companion:
+
+- `docs/agent_interfaces_tutorial.md` (role map + interface comparison:
+  CLI/shared shell vs MCP vs Agent Assistant vs external coding agents).
 
 - `agents list [--catalog PATH]`
   - Lists configured agent systems from catalog JSON.

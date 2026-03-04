@@ -27,16 +27,16 @@ Many investigations start with "which exact genomic interval should I look at" r
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
   - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md).
-  - Reoccurs in: [Chapter 7: Contribute to GENtle development](./07_contribute_to_gentle_development.md).
+  - Reoccurs in: [Chapter 7: Contribute to GENtle development](./07_contribute_to_gentle_development.md), [Chapter 9: TP53 isoform architecture expert panel (online)](./09_tp53_isoform_architecture_online.md), [Chapter 10: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./10_tp63_anchor_extension_online.md).
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
   - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md).
   - Reoccurs in: [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 4: Guide practical filtering and oligo generation](./04_guides_filter_and_generate_oligos.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md), [Chapter 8: Prepare a reference genome cache (online)](./08_prepare_reference_genome_online.md).
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
   - Status: reinforced from [Chapter 1: Load FASTA, branch, and reverse-complement](./01_load_branch_reverse_complement_pgex_fasta.md).
-  - Reoccurs in: [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md).
+  - Reoccurs in: [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03_load_and_digest_pgex.md), [Chapter 5: Digest -> Ligation -> ExtractRegion minimal slice](./05_digest_ligation_extract_region_minimal.md), [Chapter 10: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./10_tp63_anchor_extension_online.md).
 - **Genome Catalog Targeting** (`genome_catalog_targeting`): Prepared genome catalogs, annotation-based gene filters, and anchor extension connect imported entries to genomic context.
   - Status: introduced in this chapter.
-  - Reoccurs in: [Chapter 8: Prepare a reference genome cache (online)](./08_prepare_reference_genome_online.md).
+  - Reoccurs in: [Chapter 8: Prepare a reference genome cache (online)](./08_prepare_reference_genome_online.md), [Chapter 9: TP53 isoform architecture expert panel (online)](./09_tp53_isoform_architecture_online.md), [Chapter 10: Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./10_tp63_anchor_extension_online.md).
 
 ## GUI First
 

@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 8,
+  "chapter_count": 10,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -16,20 +16,24 @@
     "chapters/06_guides_export_csv_and_protocol.md",
     "chapters/07_contribute_to_gentle_development.md",
     "chapters/08_prepare_reference_genome_online.md",
+    "chapters/09_tp53_isoform_architecture_online.md",
+    "chapters/10_tp63_anchor_extension_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "0e5f74cd2f6f75de58020372c4ef522005db2896",
+    "README.md": "b16a758f5b3523b12fba98f105bc4446cf55fddc",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "d5c2003bff186548a6cea5e3d0f63ad4a0ad5bf2",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "bb99a2bd67f36f6eb4ceec709fd90b8674e3c085",
-    "chapters/03_load_and_digest_pgex.md": "aff04e20fc7c17244a8227aa2d0409b393b232f6",
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "f1efd7d6f253b446fb454f33492827f53d1cc40c",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "91a8fa128f1a8951c964624db6caa0f4ca0caf63",
+    "chapters/03_load_and_digest_pgex.md": "ad05fa609d160d51a72b7d9404bbcfcab0d7d4ce",
     "chapters/04_guides_filter_and_generate_oligos.md": "26755dace6e2f702aa6a37e977f8fbcdd22beaf0",
-    "chapters/05_digest_ligation_extract_region_minimal.md": "a45b745b695369309c58ae618c59602159d6fba3",
-    "chapters/06_guides_export_csv_and_protocol.md": "0a34366d4c38ca85dbb911f64224ab69af93ef2a",
-    "chapters/07_contribute_to_gentle_development.md": "e610c2c2eb2e0c752d248c9920990969c3f75821",
-    "chapters/08_prepare_reference_genome_online.md": "6afb4c501988f48e3c05bd7c6992ff996b7b5c91"
+    "chapters/05_digest_ligation_extract_region_minimal.md": "48a283cfe40ffada34ff6640048e26398d8a2ea6",
+    "chapters/06_guides_export_csv_and_protocol.md": "670cd4fa1fc681e72800870cba02a500a2a9b5fc",
+    "chapters/07_contribute_to_gentle_development.md": "543cfc13273164ca59addaade0ae8bd1ce53cdd5",
+    "chapters/08_prepare_reference_genome_online.md": "6cb72225602c2614932e31f7acb6e754a726e3ca",
+    "chapters/09_tp53_isoform_architecture_online.md": "009fbe35e1b77aab8520606b240bbf95afd3bea1",
+    "chapters/10_tp63_anchor_extension_online.md": "2896d0f9ecd875866138b989585d1dcba9ba50c3"
   },
   "chapters": [
     {
@@ -148,6 +152,39 @@
         "deterministic_workflows",
         "online_opt_in",
         "genome_catalog_targeting"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp53_isoform_architecture_online",
+      "order": 9,
+      "title": "TP53 isoform architecture expert panel (online)",
+      "tier": "online",
+      "example_id": "tp53_isoform_architecture_online",
+      "example_source": "docs/examples/workflows/tp53_isoform_architecture_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "isoform_architecture_panels",
+        "online_opt_in",
+        "artifact_exports"
+      ],
+      "executed": false,
+      "retained_artifacts": []
+    },
+    {
+      "id": "tp63_anchor_extension_online",
+      "order": 10,
+      "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
+      "tier": "online",
+      "example_id": "tp63_extend_anchor_online",
+      "example_source": "docs/examples/workflows/tp63_extend_anchor_online.json",
+      "concepts": [
+        "shared_engine_contract",
+        "genome_catalog_targeting",
+        "sequence_lineage",
+        "online_opt_in"
       ],
       "executed": false,
       "retained_artifacts": []

@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -26,6 +26,8 @@ order. Durable architecture constraints and decisions remain in
 - Reference-genome preparation and extraction (`PrepareGenome`,
   `ExtractGenomeRegion`, `ExtractGenomeGene`, `ExtendGenomeAnchor`) including
   catalog-backed helper flows and BLAST integration.
+- `PrepareGenome` now detects source-path/URL drift for existing manifests and
+  rebuilds from configured sources instead of silently reusing stale caches.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
   with anchor-aware coordinate remapping.
 - Resource ingestion/update path for REBASE and JASPAR snapshots across GUI/CLI
@@ -33,12 +35,15 @@ order. Durable architecture constraints and decisions remain in
 - TFBS annotation guardrails (default cap, explicit unlimited mode), progress
   reporting, and persistent display-time filtering criteria.
 - Feature expert-view pipeline for selected TFBS, restriction sites, and
-  splicing groups:
+  splicing groups, plus curated isoform architecture panels:
   - shared expert payload generation in engine
   - GUI-side expert panel rendering from engine payload
-  - SVG export via `RenderFeatureExpertSvg`
-  - shell/CLI/JS/Lua access (`inspect-feature-expert`,
-    `render-feature-expert-svg`)
+  - SVG export via `RenderFeatureExpertSvg` and
+    `RenderIsoformArchitectureSvg`
+  - shell/CLI/JS/Lua access:
+    - `inspect-feature-expert` / `render-feature-expert-svg`
+    - `panels import-isoform` / `panels inspect-isoform` /
+      `panels render-isoform-svg`
 - VCF display filtering parity between GUI and SVG export (`SetParameter`/shared
   display criteria).
 - Candidate-set workflow (generate/score/filter/set operations + macro scripts)
@@ -115,6 +120,14 @@ order. Durable architecture constraints and decisions remain in
   - dedicated contributor onboarding tutorial chapter added:
     `contribute_to_gentle_development` (backed by executable
     `contribute_gentle_development_baseline` workflow example)
+  - dedicated online TP53 isoform architecture chapter added:
+    `tp53_isoform_architecture_online` (backed by canonical
+    `tp53_isoform_architecture_online` workflow example and curated panel
+    resource `assets/panels/tp53_isoforms_v1.json`)
+  - dedicated online TP63 anchor-extension chapter added:
+    `tp63_anchor_extension_online` (backed by canonical
+    `tp63_extend_anchor_online` workflow example for coordinate retrieval +
+    +/-2 kb extension)
   - `gentle_examples_docs` now supports:
     `tutorial-generate` and `tutorial-check`
   - CI now gates tutorial drift and workflow runtime coverage through
@@ -190,6 +203,15 @@ order. Durable architecture constraints and decisions remain in
 - DNA sequence windows now expose direct genome-anchor extension controls
   (`Extend 5'` / `Extend 3'` with bp + optional output ID) next to anchor
   status, using shared `ExtendGenomeAnchor` engine semantics (same as shell/CLI).
+- Linear sequence windows now include a dedicated primary `Splicing map` mode
+  (read-only) for selected `mRNA`/`exon` features.
+  - Primary map splicing lanes reuse the same `SplicingExpertView` payload and
+    lane-geometry renderer used by the splicing expert window.
+  - Primary splicing lanes are clickable and focus transcript features in the
+    sequence view.
+  - `Export View SVG` now preserves this mode via the same splicing payload
+    renderer (with deterministic placeholder output when no splicing feature is selected).
+  - No duplicate biology logic was introduced; the mode is presentation-only.
 - Context-sensitive hover descriptions on actionable controls.
 - Unified interaction policy baseline is implemented across primary canvases and panes:
   - default wheel/trackpad scroll pans/scrolls
@@ -258,7 +280,7 @@ order. Durable architecture constraints and decisions remain in
 | Shared shell parity across GUI/CLI | Done |
 | Feature expert views (TFBS/restriction/splicing) via shared engine model | Done |
 | Candidate strand-relation controls across adapters | Done |
-| Alternative-splicing interpretation (lanes/boundaries/events/evidence) | Done (expert-view baseline) |
+| Alternative-splicing interpretation (lanes/boundaries/events/evidence) | Done (expert + primary-map read-only baseline) |
 | Cloning-mode macro presets (SnapGene-style workflows) | Partial (starter templates only) |
 | AI communication routes (agent bridge + MCP server) | Partial (agent bridge + guarded MCP op/workflow baseline implemented) |
 | Gel simulation realism and arrangement modeling | Partial |
@@ -328,7 +350,12 @@ Notes:
 7. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
 8. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
-   - dedicated primary map-mode splicing view is still pending
+   - GUI-driven feature editing is not yet first-class:
+     - no explicit edit workflow yet for exon/intron/transcript boundary curation
+       informed by RNA-seq interpretation
+     - feature edits should be performed in sequence/splicing-specialist
+       contexts (not in the main lineage/project window)
+     - engine-backed edit operations + provenance model are still pending
    - adaptive linear DNA-letter routing baseline is implemented (shared
      renderer/UI decision path, seam-offset behavior, condensed backbone
      replacement, deterministic annotation-clearance tests); dense
@@ -359,8 +386,8 @@ Notes:
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
-Goal: add MCP as a first-class AI communication route while keeping one
-deterministic engine contract across all adapters.
+Goal: add MCP as a first-class AI communication and capability-negotiation
+route while keeping one deterministic engine contract across all adapters.
 
 Current baseline:
 
@@ -408,14 +435,78 @@ Status:
      (`FeatureExpertTarget::SplicingFeature`) are in place.
    - boundary markers, event summaries, transcript-vs-exon matrix, and
      junction-support arcs are rendered from the shared payload.
+   - sequence-window primary `Splicing map` mode (read-only) is now available
+     and uses the same shared payload/geometry path as the expert view.
    - GUI expert panel and SVG export use the same payload; shell/CLI/JS/Lua
      can inspect/export via existing feature-expert commands.
 2. Remaining follow-ups:
    - add dense-fixture snapshot tests for boundary visibility/non-overlap.
+   - Add deterministic tests for crowded transcript sets to ensure geometry/readability stays stable (no exon/intron distortion, no clipping).
    - add explicit geometry invariants to ensure label text can never alter
      exon/intron footprints.
-   - add a dedicated primary map-mode splicing view (beyond expert/detail
-     panel embedding) for full-sequence workflows.
+
+### GUI-driven feature editing track (new)
+
+Goal: make annotation curation (especially exon/intron/transcript structure)
+editable through deterministic engine operations with full provenance and
+cross-adapter parity.
+
+Status:
+
+1. Current baseline:
+   - strong read-only interpretation exists (feature map + splicing expert).
+   - no first-class engine operation set for editing existing feature geometry
+     or qualifiers.
+2. Required implementation:
+   - define engine operations for feature editing (add/update/delete) with
+     explicit geometry and qualifier contracts.
+   - include reversible provenance payloads in operation history:
+     - before/after feature snapshots
+     - reason/evidence metadata (for example RNA-seq-supported curation note)
+   - expose identical edit operations in GUI, shared shell/CLI, JS, and Lua.
+3. GUI scope rule:
+   - editing must live in sequence/splicing-specialist windows where local
+     coordinate context is visible.
+   - the main lineage/project window remains orchestration/navigation focused
+     and should not become a feature geometry editor.
+4. RNA-seq alignment path (later in this track):
+   - import/overlay RNA-seq-derived splice evidence as suggestions.
+   - offer user-confirmed "apply suggestion as feature edit" actions via the
+     same engine edit operations (no GUI-only mutation path).
+
+### Isoform-architecture panel track (baseline implemented; follow-ups)
+
+Goal: support deterministic transcript/protein architecture rendering for curated
+panels (for example TP53 Figure-1-style layouts) through one shared engine path.
+
+Status:
+
+1. Implemented baseline:
+   - new operations:
+     - `ImportIsoformPanel`
+     - `RenderIsoformArchitectureSvg`
+   - curated panel resource schema + starter asset:
+     - `gentle.isoform_panel_resource.v1`
+     - `assets/panels/tp53_isoforms_v1.json`
+   - shared shell/CLI command family:
+     - `panels import-isoform`
+     - `panels inspect-isoform`
+     - `panels render-isoform-svg`
+     - `panels validate-isoform`
+   - GUI Engine Ops section for panel import/inspect/export
+   - tutorial/example integration:
+     - `docs/examples/workflows/tp53_isoform_architecture_online.json`
+     - chapter `tp53_isoform_architecture_online`
+   - short hardening pass completed:
+     - curator-facing panel validation/report API
+       (`gentle.isoform_panel_validation_report.v1`) via
+       `panels validate-isoform`
+     - deterministic parity test for isoform SVG output equivalence across
+       render routes (`RenderIsoformArchitectureSvg`,
+       `panels render-isoform-svg`, and `render-feature-expert-svg ... isoform`)
+2. Remaining follow-ups:
+   - add optional publication-style presets (font/spacing/legend layout) while
+     keeping the engine payload and geometry deterministic.
 
 ### Adaptive linear DNA letter routing track
 
@@ -950,14 +1041,22 @@ Planned upgrades:
 - None currently blocking on this branch. Latest local run: `cargo test -q`
   passed (`528 passed, 1 ignored` in main suite; additional suites green).
 
-### Stability TODO (queued, items 5-7)
+### Stability TODO (queued: 4, 7, 6; item 5 done)
 
-- Add malformed-annotation reporting that summarizes non-fatal GTF/GFF parse
-  issues and exposes file/line context in engine/CLI/GUI.
-- Add external-binary preflight diagnostics (BLAST and related tools) with
-  explicit "found/missing/version/path" reporting before long jobs start.
-- Extend cancellation/timebox controls beyond current genome-track import flow
+- Done (2026-03-04): 5) malformed-annotation reporting now summarizes non-fatal
+  GTF/GFF parse issues with file/line context and surfaces the warnings through
+  prepare/report payloads consumed by engine/CLI/GUI paths.
+
+- 4) Harden async long-running job durability:
+  - persist BLAST/long-job transition state across restart
+    (`queued|running|failed|cancelled|completed`),
+  - keep cancellation/timebox semantics deterministic after restart/reload,
+  - add conformance tests for restart + race-transition cases.
+
+- 7) Extend cancellation/timebox controls beyond current genome-track import flow
   (BLAST now supported; continue hardening prepare + future long-running jobs).
+- 6) Add external-binary preflight diagnostics (BLAST and related tools) with
+  explicit "found/missing/version/path" reporting before long jobs start.
 
 ### Missing test coverage (current priority list)
 
@@ -1030,7 +1129,11 @@ Planned upgrades:
 - Continue alternative-splicing follow-ups:
   - dense-fixture regression tests for boundary visibility and label safety
   - coordinate-true geometry invariants
-  - dedicated primary map-mode splicing view
+  - primary splicing map-mode polishing (dense labels + optional interactions)
+- Start GUI-driven feature editing track:
+  - engine operation contract for add/update/delete feature edits
+  - provenance-rich edit history entries and reversible snapshots
+  - sequence/splicing-window editing UX (main window stays orchestration-only)
 - Continue gel work:
   - arrangement authoring/editing UX (create/update/reorder lanes)
   - `plate` arrangement mode as first-class engine + adapter entity

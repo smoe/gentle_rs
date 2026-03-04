@@ -1,0 +1,55 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp53_isoform_architecture_online",
+  "title": "TP53 isoform architecture panel (online)",
+  "summary": "Prepare GRCh38, extract TP53, import curated isoform panel metadata, and render Figure-1-style architecture SVG.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json",
+    "assets/panels/tp53_isoforms_v1.json"
+  ],
+  "tags": [
+    "genome",
+    "isoform",
+    "expert-view",
+    "online",
+    "tp53"
+  ],
+  "workflow": {
+    "run_id": "example_tp53_isoform_architecture_online",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "gene_query": "TP53",
+          "occurrence": 1,
+          "output_id": "grch38_tp53",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ImportIsoformPanel": {
+          "seq_id": "grch38_tp53",
+          "panel_path": "assets/panels/tp53_isoforms_v1.json",
+          "panel_id": "tp53_isoforms_v1",
+          "strict": false
+        }
+      },
+      {
+        "RenderIsoformArchitectureSvg": {
+          "seq_id": "grch38_tp53",
+          "panel_id": "tp53_isoforms_v1",
+          "path": "exports/tp53_isoform_architecture.svg"
+        }
+      }
+    ]
+  }
+}

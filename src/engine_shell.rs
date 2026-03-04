@@ -385,6 +385,25 @@ pub enum ShellCommand {
         target: FeatureExpertTarget,
         output: String,
     },
+    PanelsImportIsoform {
+        seq_id: String,
+        panel_path: String,
+        panel_id: Option<String>,
+        strict: bool,
+    },
+    PanelsInspectIsoform {
+        seq_id: String,
+        panel_id: String,
+    },
+    PanelsRenderIsoformSvg {
+        seq_id: String,
+        panel_id: String,
+        output: String,
+    },
+    PanelsValidateIsoform {
+        panel_path: String,
+        panel_id: Option<String>,
+    },
     RenderRnaSvg {
         seq_id: String,
         output: String,
@@ -2396,6 +2415,40 @@ impl ShellCommand {
                 "render feature expert SVG for '{seq_id}' target={} to '{output}'",
                 target.describe()
             ),
+            Self::PanelsImportIsoform {
+                seq_id,
+                panel_path,
+                panel_id,
+                strict,
+            } => {
+                let panel = panel_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("resource default");
+                format!(
+                    "import isoform panel from '{panel_path}' for '{seq_id}' (panel_id={panel}, strict={strict})"
+                )
+            }
+            Self::PanelsInspectIsoform { seq_id, panel_id } => {
+                format!("inspect isoform architecture for '{seq_id}' panel='{panel_id}'")
+            }
+            Self::PanelsRenderIsoformSvg {
+                seq_id,
+                panel_id,
+                output,
+            } => format!(
+                "render isoform architecture SVG for '{seq_id}' panel='{panel_id}' to '{output}'"
+            ),
+            Self::PanelsValidateIsoform {
+                panel_path,
+                panel_id,
+            } => {
+                let panel = panel_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("resource default");
+                format!("validate isoform panel '{panel_path}' (panel_id={panel})")
+            }
             Self::RenderRnaSvg { seq_id, output } => {
                 format!("render RNA structure SVG for '{seq_id}' to '{output}'")
             }
@@ -4071,7 +4124,7 @@ fn parse_feature_expert_target_tokens(
 ) -> Result<FeatureExpertTarget, String> {
     if tokens.len() < 2 {
         return Err(format!(
-            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID"
+            "{context} requires target syntax: tfbs FEATURE_ID | restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] | splicing FEATURE_ID | isoform PANEL_ID"
         ));
     }
     match tokens[0].trim().to_ascii_lowercase().as_str() {
@@ -4157,8 +4210,20 @@ fn parse_feature_expert_target_tokens(
                 .map_err(|e| format!("Invalid splicing feature id '{}': {e}", tokens[1]))?;
             Ok(FeatureExpertTarget::SplicingFeature { feature_id })
         }
+        "isoform" => {
+            if tokens.len() != 2 {
+                return Err(format!(
+                    "{context} isoform target expects exactly: isoform PANEL_ID"
+                ));
+            }
+            let panel_id = tokens[1].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("isoform PANEL_ID must not be empty".to_string());
+            }
+            Ok(FeatureExpertTarget::IsoformArchitecture { panel_id })
+        }
         other => Err(format!(
-            "Unknown feature target '{other}' (expected tfbs|restriction|splicing)"
+            "Unknown feature target '{other}' (expected tfbs|restriction|splicing|isoform)"
         )),
     }
 }
@@ -5050,6 +5115,120 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         }
         other => Err(format!(
             "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor)"
+        )),
+    }
+}
+
+fn parse_panels_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "panels requires a subcommand: import-isoform, inspect-isoform, render-isoform-svg, validate-isoform"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "import-isoform" | "import" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "panels import-isoform requires SEQ_ID PANEL_PATH [--panel-id ID] [--strict]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let panel_path = tokens[3].clone();
+            let mut panel_id: Option<String> = None;
+            let mut strict = false;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--panel-id" => {
+                        panel_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--panel-id",
+                            "panels import-isoform",
+                        )?);
+                    }
+                    "--strict" => {
+                        strict = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for panels import-isoform"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PanelsImportIsoform {
+                seq_id,
+                panel_path,
+                panel_id,
+                strict,
+            })
+        }
+        "inspect-isoform" | "inspect" => {
+            if tokens.len() != 4 {
+                return Err("panels inspect-isoform requires SEQ_ID PANEL_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let panel_id = tokens[3].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("panels inspect-isoform PANEL_ID must not be empty".to_string());
+            }
+            Ok(ShellCommand::PanelsInspectIsoform { seq_id, panel_id })
+        }
+        "render-isoform-svg" | "render-svg" => {
+            if tokens.len() != 5 {
+                return Err(
+                    "panels render-isoform-svg requires SEQ_ID PANEL_ID OUTPUT.svg".to_string(),
+                );
+            }
+            let seq_id = tokens[2].clone();
+            let panel_id = tokens[3].trim().to_string();
+            if panel_id.is_empty() {
+                return Err("panels render-isoform-svg PANEL_ID must not be empty".to_string());
+            }
+            let output = tokens[4].clone();
+            Ok(ShellCommand::PanelsRenderIsoformSvg {
+                seq_id,
+                panel_id,
+                output,
+            })
+        }
+        "validate-isoform" | "validate" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "panels validate-isoform requires PANEL_PATH [--panel-id ID]".to_string(),
+                );
+            }
+            let panel_path = tokens[2].clone();
+            let mut panel_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--panel-id" => {
+                        panel_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--panel-id",
+                            "panels validate-isoform",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for panels validate-isoform"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PanelsValidateIsoform {
+                panel_path,
+                panel_id,
+            })
+        }
+        other => Err(format!(
+            "Unknown panels subcommand '{other}' (expected import-isoform, inspect-isoform, render-isoform-svg, validate-isoform)"
         )),
     }
 }
@@ -8031,6 +8210,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
+        "panels" => parse_panels_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
         "guides" => parse_guides_command(tokens),
@@ -8772,6 +8952,70 @@ pub fn execute_shell_command_with_options(
             ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::PanelsImportIsoform {
+            seq_id,
+            panel_path,
+            panel_id,
+            strict,
+        } => {
+            let op_result = engine
+                .apply(Operation::ImportIsoformPanel {
+                    seq_id: seq_id.clone(),
+                    panel_path: panel_path.clone(),
+                    panel_id: panel_id.clone(),
+                    strict: *strict,
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::PanelsInspectIsoform { seq_id, panel_id } => {
+            let view = engine
+                .inspect_feature_expert(
+                    seq_id,
+                    &FeatureExpertTarget::IsoformArchitecture {
+                        panel_id: panel_id.clone(),
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(view)
+                    .map_err(|e| format!("Could not serialize isoform architecture view: {e}"))?,
+            }
+        }
+        ShellCommand::PanelsRenderIsoformSvg {
+            seq_id,
+            panel_id,
+            output,
+        } => {
+            let op_result = engine
+                .apply(Operation::RenderIsoformArchitectureSvg {
+                    seq_id: seq_id.clone(),
+                    panel_id: panel_id.clone(),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::PanelsValidateIsoform {
+            panel_path,
+            panel_id,
+        } => {
+            let report =
+                GentleEngine::validate_isoform_panel_resource(panel_path, panel_id.as_deref())
+                    .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: serde_json::to_value(report)
+                    .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
             }
         }
         ShellCommand::RenderRnaSvg { seq_id, output } => {
@@ -15303,6 +15547,21 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             other => panic!("unexpected command: {other:?}"),
         }
 
+        let isoform = parse_shell_line("inspect-feature-expert s isoform tp53_isoforms_v1")
+            .expect("parse isoform feature target");
+        match isoform {
+            ShellCommand::InspectFeatureExpert { seq_id, target } => {
+                assert_eq!(seq_id, "s");
+                assert_eq!(
+                    target,
+                    FeatureExpertTarget::IsoformArchitecture {
+                        panel_id: "tp53_isoforms_v1".to_string()
+                    }
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
         let render = parse_shell_line(
             "render-feature-expert-svg s restriction 123 --enzyme EcoRI --start 100 --end 106 out.svg",
         )
@@ -15327,6 +15586,68 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_panels_commands() {
+        let import = parse_shell_line(
+            "panels import-isoform seq_a assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1 --strict",
+        )
+        .expect("parse panels import-isoform");
+        match import {
+            ShellCommand::PanelsImportIsoform {
+                seq_id,
+                panel_path,
+                panel_id,
+                strict,
+            } => {
+                assert_eq!(seq_id, "seq_a");
+                assert_eq!(panel_path, "assets/panels/tp53_isoforms_v1.json");
+                assert_eq!(panel_id.as_deref(), Some("tp53_isoforms_v1"));
+                assert!(strict);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let inspect = parse_shell_line("panels inspect-isoform seq_a tp53_isoforms_v1")
+            .expect("parse panels inspect-isoform");
+        assert!(matches!(inspect, ShellCommand::PanelsInspectIsoform { .. }));
+
+        let render =
+            parse_shell_line("panels render-isoform-svg seq_a tp53_isoforms_v1 tp53.panel.svg")
+                .expect("parse panels render-isoform-svg");
+        assert!(matches!(
+            render,
+            ShellCommand::PanelsRenderIsoformSvg { .. }
+        ));
+
+        let validate = parse_shell_line(
+            "panels validate-isoform assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1",
+        )
+        .expect("parse panels validate-isoform");
+        assert!(matches!(
+            validate,
+            ShellCommand::PanelsValidateIsoform { .. }
+        ));
+    }
+
+    fn tp53_isoform_test_sequence() -> DNAsequence {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(800)).expect("valid dna");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::simple_range(99, 560),
+            qualifiers: vec![
+                ("gene".into(), Some("TP53".to_string())),
+                (
+                    "transcript_id".into(),
+                    Some("ENST00000269305.9".to_string()),
+                ),
+                ("label".into(), Some("TP53-201".to_string())),
+            ]
+            .into_iter()
+            .collect(),
+        });
+        dna
     }
 
     #[test]
@@ -15375,6 +15696,136 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
         assert_eq!(
             output.output["data"]["feature_id"].as_u64(),
             Some(feature_id as u64)
+        );
+    }
+
+    #[test]
+    fn execute_panels_import_and_inspect_isoform_architecture() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+
+        let import = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PanelsImportIsoform {
+                seq_id: "seq_a".to_string(),
+                panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+                panel_id: Some("tp53_isoforms_v1".to_string()),
+                strict: false,
+            },
+        )
+        .expect("execute panels import");
+        assert!(import.state_changed);
+
+        let inspect = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PanelsInspectIsoform {
+                seq_id: "seq_a".to_string(),
+                panel_id: "tp53_isoforms_v1".to_string(),
+            },
+        )
+        .expect("execute panels inspect");
+        assert!(!inspect.state_changed);
+        assert_eq!(
+            inspect.output["kind"].as_str(),
+            Some("isoform_architecture")
+        );
+        assert_eq!(
+            inspect.output["data"]["panel_id"].as_str(),
+            Some("tp53_isoforms_v1")
+        );
+    }
+
+    #[test]
+    fn execute_panels_validate_isoform_returns_report() {
+        let mut engine = GentleEngine::new();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PanelsValidateIsoform {
+                panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+                panel_id: Some("tp53_isoforms_v1".to_string()),
+            },
+        )
+        .expect("validate panel");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.isoform_panel_validation_report.v1")
+        );
+        assert_eq!(out.output["panel_id"].as_str(), Some("tp53_isoforms_v1"));
+        assert!(matches!(
+            out.output["status"].as_str(),
+            Some("ok") | Some("warning")
+        ));
+        assert!(out.output["isoform_count"].as_u64().unwrap_or(0) >= 1);
+    }
+
+    #[test]
+    fn execute_isoform_svg_routes_are_byte_identical() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::ImportIsoformPanel {
+                seq_id: "seq_a".to_string(),
+                panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+                panel_id: Some("tp53_isoforms_v1".to_string()),
+                strict: false,
+            })
+            .expect("import panel");
+
+        let tmp = tempdir().expect("temp dir");
+        let op_svg = tmp.path().join("isoform.op.svg");
+        let shell_svg = tmp.path().join("isoform.shell.svg");
+        let expert_svg = tmp.path().join("isoform.expert.svg");
+        let op_path = op_svg.display().to_string();
+        let shell_path = shell_svg.display().to_string();
+        let expert_path = expert_svg.display().to_string();
+
+        engine
+            .apply(Operation::RenderIsoformArchitectureSvg {
+                seq_id: "seq_a".to_string(),
+                panel_id: "tp53_isoforms_v1".to_string(),
+                path: op_path.clone(),
+            })
+            .expect("render op route");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PanelsRenderIsoformSvg {
+                seq_id: "seq_a".to_string(),
+                panel_id: "tp53_isoforms_v1".to_string(),
+                output: shell_path.clone(),
+            },
+        )
+        .expect("render shell route");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::RenderFeatureExpertSvg {
+                seq_id: "seq_a".to_string(),
+                target: FeatureExpertTarget::IsoformArchitecture {
+                    panel_id: "tp53_isoforms_v1".to_string(),
+                },
+                output: expert_path.clone(),
+            },
+        )
+        .expect("render expert route");
+
+        let op_text = fs::read_to_string(op_path).expect("read op svg");
+        let shell_text = fs::read_to_string(shell_path).expect("read shell svg");
+        let expert_text = fs::read_to_string(expert_path).expect("read expert svg");
+        assert_eq!(
+            op_text, shell_text,
+            "RenderIsoformArchitectureSvg and panels render-isoform-svg outputs must match"
+        );
+        assert_eq!(
+            op_text, expert_text,
+            "RenderIsoformArchitectureSvg and render-feature-expert-svg isoform outputs must match"
         );
     }
 

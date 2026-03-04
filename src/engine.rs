@@ -30,8 +30,9 @@ use crate::{
     feature_location::{collect_location_ranges_usize, feature_is_reverse},
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
-        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, PrepareGenomeProgress,
-        PrepareGenomeReport, PreparedGenomeInspection, is_prepare_cancelled_error,
+        GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, GenomeTranscriptRecord,
+        PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
+        is_prepare_cancelled_error,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -69,11 +70,13 @@ pub type RunId = String;
 pub type NodeId = String;
 pub type ContainerId = String;
 pub use crate::feature_expert::{
-    FeatureExpertTarget, FeatureExpertView, RESTRICTION_EXPERT_INSTRUCTION,
-    RestrictionSiteExpertView, SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker,
-    SplicingEventSummary, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    SplicingMatrixRow, SplicingRange, SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION,
-    TfbsExpertColumn, TfbsExpertView,
+    FeatureExpertTarget, FeatureExpertView, ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION,
+    IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
+    IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
+    IsoformArchitectureTranscriptLane, RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView,
+    SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary, SplicingExonSummary,
+    SplicingExpertView, SplicingJunctionArc, SplicingMatrixRow, SplicingRange,
+    SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
@@ -102,6 +105,10 @@ const BLAST_HIT_TRACK_GENERATED_TAG: &str = "blast_hit_track";
 const BLAST_OPTIONS_OVERRIDE_METADATA_KEY: &str = "blast_options_override";
 const BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY: &str = "blast_options_defaults_path";
 const DEFAULT_BLAST_OPTIONS_PATH: &str = "assets/blast_defaults.json";
+const ISOFORM_PANELS_METADATA_KEY: &str = "isoform_panels";
+const ISOFORM_PANELS_SCHEMA: &str = "gentle.isoform_panels.v1";
+const ISOFORM_PANEL_RESOURCE_SCHEMA: &str = "gentle.isoform_panel_resource.v1";
+const ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA: &str = "gentle.isoform_panel_validation_report.v1";
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
@@ -1697,6 +1704,143 @@ struct PrimerDesignStore {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelDomainSpec {
+    pub name: String,
+    pub start_aa: usize,
+    pub end_aa: usize,
+    #[serde(default)]
+    pub color_hex: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IsoformTranscriptGeometryMode {
+    #[default]
+    Exon,
+    Cds,
+}
+
+impl IsoformTranscriptGeometryMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Exon => "exon",
+            Self::Cds => "cds",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelIsoformSpec {
+    pub isoform_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub transcript_ids: Vec<String>,
+    #[serde(default)]
+    pub transactivation_class: Option<String>,
+    #[serde(default)]
+    pub expected_length_aa: Option<usize>,
+    #[serde(default)]
+    pub reference_start_aa: Option<usize>,
+    #[serde(default)]
+    pub reference_end_aa: Option<usize>,
+    #[serde(default)]
+    pub domains: Vec<IsoformPanelDomainSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelResource {
+    pub schema: String,
+    pub panel_id: String,
+    pub gene_symbol: String,
+    #[serde(default)]
+    pub transcript_geometry_mode: IsoformTranscriptGeometryMode,
+    #[serde(default)]
+    pub assembly: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub isoforms: Vec<IsoformPanelIsoformSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelValidationIssue {
+    pub severity: String,
+    pub code: String,
+    pub message: String,
+    pub isoform_id: Option<String>,
+    pub transcript_probe: Option<String>,
+    pub domain_name: Option<String>,
+}
+
+impl Default for IsoformPanelValidationIssue {
+    fn default() -> Self {
+        Self {
+            severity: "warning".to_string(),
+            code: String::new(),
+            message: String::new(),
+            isoform_id: None,
+            transcript_probe: None,
+            domain_name: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelValidationIsoformSummary {
+    pub isoform_id: String,
+    pub label: String,
+    pub transcript_probe_count: usize,
+    pub domain_count: usize,
+    pub expected_length_aa: Option<usize>,
+    pub max_domain_end_aa: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct IsoformPanelValidationReport {
+    pub schema: String,
+    pub path: String,
+    pub panel_id: String,
+    pub gene_symbol: String,
+    pub assembly: Option<String>,
+    pub isoform_count: usize,
+    pub transcript_probe_count: usize,
+    pub unique_transcript_probe_count: usize,
+    pub domain_count: usize,
+    pub issue_count: usize,
+    pub status: String,
+    pub isoforms: Vec<IsoformPanelValidationIsoformSummary>,
+    pub issues: Vec<IsoformPanelValidationIssue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct IsoformPanelRecord {
+    seq_id: String,
+    panel_id: String,
+    imported_at_unix_ms: u128,
+    source_path: String,
+    strict: bool,
+    resource: IsoformPanelResource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct IsoformPanelStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    records: Vec<IsoformPanelRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct GuideSet {
     pub guide_set_id: String,
@@ -2089,6 +2233,11 @@ pub enum Operation {
         target: FeatureExpertTarget,
         path: String,
     },
+    RenderIsoformArchitectureSvg {
+        seq_id: SeqId,
+        panel_id: String,
+        path: String,
+    },
     RenderRnaStructureSvg {
         seq_id: SeqId,
         path: String,
@@ -2183,6 +2332,13 @@ pub enum Operation {
         min_score: Option<f64>,
         max_score: Option<f64>,
         clear_existing: Option<bool>,
+    },
+    ImportIsoformPanel {
+        seq_id: SeqId,
+        panel_path: String,
+        panel_id: Option<String>,
+        #[serde(default)]
+        strict: bool,
     },
     ImportBlastHitsTrack {
         seq_id: SeqId,
@@ -3310,6 +3466,7 @@ impl GentleEngine {
                 "SaveFile".to_string(),
                 "RenderSequenceSvg".to_string(),
                 "RenderFeatureExpertSvg".to_string(),
+                "RenderIsoformArchitectureSvg".to_string(),
                 "RenderRnaStructureSvg".to_string(),
                 "RenderLineageSvg".to_string(),
                 "RenderPoolGelSvg".to_string(),
@@ -3324,6 +3481,7 @@ impl GentleEngine {
                 "ImportGenomeBedTrack".to_string(),
                 "ImportGenomeBigWigTrack".to_string(),
                 "ImportGenomeVcfTrack".to_string(),
+                "ImportIsoformPanel".to_string(),
                 "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),
                 "MergeContainersById".to_string(),
@@ -3576,6 +3734,60 @@ impl GentleEngine {
             }
         }
         None
+    }
+
+    fn serialize_ranges_1based(ranges: &[(usize, usize)]) -> Option<String> {
+        let parts = ranges
+            .iter()
+            .filter_map(|(start, end)| {
+                (*start > 0 && *end >= *start).then_some(format!("{start}-{end}"))
+            })
+            .collect::<Vec<_>>();
+        (!parts.is_empty()).then_some(parts.join(","))
+    }
+
+    fn parse_ranges_1based(raw: &str) -> Vec<(usize, usize)> {
+        let mut out = vec![];
+        for token in raw.split(',') {
+            let trimmed = token.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let mut pieces = trimmed.splitn(2, '-');
+            let Some(start_raw) = pieces.next() else {
+                continue;
+            };
+            let Some(end_raw) = pieces.next() else {
+                continue;
+            };
+            let Ok(start) = start_raw.trim().parse::<usize>() else {
+                continue;
+            };
+            let Ok(end) = end_raw.trim().parse::<usize>() else {
+                continue;
+            };
+            if start == 0 || end < start {
+                continue;
+            }
+            out.push((start, end));
+        }
+        out.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        out.dedup();
+        out
+    }
+
+    fn feature_qualifier_ranges_0based(
+        feature: &gb_io::seq::Feature,
+        key: &str,
+    ) -> Vec<(usize, usize)> {
+        Self::feature_qualifier_text(feature, key)
+            .map(|raw| {
+                Self::parse_ranges_1based(&raw)
+                    .into_iter()
+                    .map(|(start_1based, end_1based)| (start_1based - 1, end_1based))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
     }
 
     fn is_tfbs_feature(feature: &gb_io::seq::Feature) -> bool {
@@ -3991,7 +4203,8 @@ impl GentleEngine {
     }
 
     fn is_mrna_feature(feature: &gb_io::seq::Feature) -> bool {
-        feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+        let kind = feature.kind.to_string();
+        kind.eq_ignore_ascii_case("mRNA") || kind.eq_ignore_ascii_case("transcript")
     }
 
     fn is_exon_feature(feature: &gb_io::seq::Feature) -> bool {
@@ -4039,6 +4252,52 @@ impl GentleEngine {
             .collect()
     }
 
+    fn order_ranges_for_transcript(
+        mut ranges: Vec<(usize, usize)>,
+        is_reverse: bool,
+    ) -> Vec<(usize, usize)> {
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        if is_reverse {
+            ranges.reverse();
+        }
+        ranges
+    }
+
+    fn cds_ranges_to_reference_aa_segments(
+        cds_ranges: Vec<(usize, usize)>,
+        is_reverse: bool,
+        reference_start_aa: Option<usize>,
+    ) -> Vec<IsoformArchitectureCdsAaSegment> {
+        let ordered = Self::order_ranges_for_transcript(cds_ranges, is_reverse);
+        if ordered.is_empty() {
+            return vec![];
+        }
+        let reference_start = reference_start_aa.unwrap_or(1).max(1);
+        let mut cumulative_nt = 0usize;
+        let mut out = vec![];
+        for (start_0based, end_0based_exclusive) in ordered {
+            if end_0based_exclusive <= start_0based {
+                continue;
+            }
+            let segment_nt = end_0based_exclusive - start_0based;
+            let local_aa_start = cumulative_nt / 3 + 1;
+            let local_aa_end = (cumulative_nt + segment_nt) / 3;
+            cumulative_nt = cumulative_nt.saturating_add(segment_nt);
+            if local_aa_end < local_aa_start {
+                continue;
+            }
+            let aa_start = reference_start.saturating_add(local_aa_start.saturating_sub(1));
+            let aa_end = reference_start.saturating_add(local_aa_end.saturating_sub(1));
+            out.push(IsoformArchitectureCdsAaSegment {
+                genomic_start_1based: start_0based.saturating_add(1),
+                genomic_end_1based: end_0based_exclusive,
+                aa_start,
+                aa_end,
+            });
+        }
+        out
+    }
+
     fn sequence_slice_upper(dna: &DNAsequence, start: usize, end: usize) -> String {
         if end <= start {
             return String::new();
@@ -4046,6 +4305,746 @@ impl GentleEngine {
         dna.get_range_safe(start..end)
             .map(|bytes| String::from_utf8_lossy(&bytes).to_ascii_uppercase())
             .unwrap_or_default()
+    }
+
+    fn normalize_transcript_probe(raw: &str) -> String {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return String::new();
+        }
+        let mut out = trimmed.to_ascii_uppercase();
+        if let Some((prefix, suffix)) = out.rsplit_once('.')
+            && !prefix.is_empty()
+            && !suffix.is_empty()
+            && suffix.chars().all(|ch| ch.is_ascii_digit())
+        {
+            out = prefix.to_string();
+        }
+        out
+    }
+
+    fn feature_transcript_match_keys(
+        feature: &gb_io::seq::Feature,
+        fallback: usize,
+    ) -> Vec<String> {
+        let mut keys: BTreeSet<String> = BTreeSet::new();
+        for key in [
+            "transcript_id",
+            "standard_name",
+            "label",
+            "name",
+            "product",
+            "protein_id",
+        ] {
+            if let Some(value) = Self::feature_qualifier_text(feature, key) {
+                let normalized = Self::normalize_transcript_probe(&value);
+                if !normalized.is_empty() {
+                    keys.insert(normalized);
+                }
+            }
+        }
+        let fallback_id =
+            Self::normalize_transcript_probe(&Self::feature_transcript_id(feature, fallback));
+        if !fallback_id.is_empty() {
+            keys.insert(fallback_id);
+        }
+        keys.into_iter().collect()
+    }
+
+    fn load_isoform_panel_resource(
+        path: &str,
+        panel_id_override: Option<&str>,
+    ) -> Result<IsoformPanelResource, EngineError> {
+        let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read isoform panel file '{path}': {e}"),
+        })?;
+        let mut resource =
+            serde_json::from_str::<IsoformPanelResource>(&text).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not parse isoform panel JSON in '{path}': {e}"),
+            })?;
+        if resource.schema.trim().is_empty() {
+            resource.schema = ISOFORM_PANEL_RESOURCE_SCHEMA.to_string();
+        }
+        if resource.schema != ISOFORM_PANEL_RESOURCE_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported isoform-panel schema '{}' in '{}'; expected '{}'",
+                    resource.schema, path, ISOFORM_PANEL_RESOURCE_SCHEMA
+                ),
+            });
+        }
+        if let Some(override_id) = panel_id_override.map(str::trim).filter(|v| !v.is_empty()) {
+            resource.panel_id = override_id.to_string();
+        }
+        resource.panel_id = resource.panel_id.trim().to_string();
+        if resource.panel_id.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Isoform panel file '{}' has empty panel_id", path),
+            });
+        }
+        resource.gene_symbol = resource.gene_symbol.trim().to_string();
+        if resource.gene_symbol.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Isoform panel file '{}' has empty gene_symbol", path),
+            });
+        }
+        if resource.isoforms.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Isoform panel file '{}' has no isoforms", path),
+            });
+        }
+        for (idx, isoform) in resource.isoforms.iter_mut().enumerate() {
+            isoform.isoform_id = isoform.isoform_id.trim().to_string();
+            if isoform.isoform_id.is_empty() {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Isoform panel '{}' contains isoform with empty isoform_id at row {}",
+                        resource.panel_id,
+                        idx + 1
+                    ),
+                });
+            }
+            isoform.label = isoform
+                .label
+                .take()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+            let mut transcript_ids: Vec<String> = vec![];
+            let mut seen_transcripts: BTreeSet<String> = BTreeSet::new();
+            for entry in &isoform.transcript_ids {
+                let normalized = entry.trim().to_string();
+                if normalized.is_empty() {
+                    continue;
+                }
+                let key = normalized.to_ascii_uppercase();
+                if seen_transcripts.insert(key) {
+                    transcript_ids.push(normalized);
+                }
+            }
+            isoform.transcript_ids = transcript_ids;
+            for (domain_idx, domain) in isoform.domains.iter_mut().enumerate() {
+                domain.name = domain.name.trim().to_string();
+                if domain.name.is_empty() {
+                    domain.name = format!("domain_{}", domain_idx + 1);
+                }
+                if domain.start_aa == 0 || domain.end_aa == 0 || domain.end_aa < domain.start_aa {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!(
+                            "Isoform panel '{}' has invalid domain range for isoform '{}' domain '{}': {}..{}",
+                            resource.panel_id,
+                            isoform.isoform_id,
+                            domain.name,
+                            domain.start_aa,
+                            domain.end_aa
+                        ),
+                    });
+                }
+                domain.color_hex = domain
+                    .color_hex
+                    .take()
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty());
+            }
+            isoform.domains.sort_by(|left, right| {
+                left.start_aa
+                    .cmp(&right.start_aa)
+                    .then(left.end_aa.cmp(&right.end_aa))
+            });
+        }
+        Ok(resource)
+    }
+
+    fn isoform_validation_issue(
+        code: &str,
+        message: String,
+        isoform_id: Option<&str>,
+        transcript_probe: Option<&str>,
+        domain_name: Option<&str>,
+    ) -> IsoformPanelValidationIssue {
+        IsoformPanelValidationIssue {
+            severity: "warning".to_string(),
+            code: code.to_string(),
+            message,
+            isoform_id: isoform_id.map(|v| v.to_string()),
+            transcript_probe: transcript_probe.map(|v| v.to_string()),
+            domain_name: domain_name.map(|v| v.to_string()),
+        }
+    }
+
+    pub fn validate_isoform_panel_resource(
+        path: &str,
+        panel_id_override: Option<&str>,
+    ) -> Result<IsoformPanelValidationReport, EngineError> {
+        let resource = Self::load_isoform_panel_resource(path, panel_id_override)?;
+        let color_hex_re = Regex::new(r"^#[0-9A-Fa-f]{6}$").map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not compile isoform color-hex regex: {e}"),
+        })?;
+
+        let mut issues: Vec<IsoformPanelValidationIssue> = vec![];
+        let mut isoforms: Vec<IsoformPanelValidationIsoformSummary> = vec![];
+        let mut transcript_probe_count = 0usize;
+        let mut unique_transcript_probes: BTreeSet<String> = BTreeSet::new();
+        let mut domain_count = 0usize;
+        let mut isoform_id_buckets: HashMap<String, Vec<String>> = HashMap::new();
+        let mut transcript_probe_buckets: HashMap<String, BTreeSet<String>> = HashMap::new();
+
+        for isoform in &resource.isoforms {
+            let isoform_key = isoform.isoform_id.to_ascii_uppercase();
+            isoform_id_buckets
+                .entry(isoform_key)
+                .or_default()
+                .push(isoform.isoform_id.clone());
+
+            if isoform.transcript_ids.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_transcript_probe",
+                    format!(
+                        "Isoform '{}' has no transcript probes; mapping can only rely on label heuristics",
+                        isoform.isoform_id
+                    ),
+                    Some(&isoform.isoform_id),
+                    None,
+                    None,
+                ));
+            }
+            for transcript_probe in &isoform.transcript_ids {
+                let normalized = Self::normalize_transcript_probe(transcript_probe);
+                if normalized.is_empty() {
+                    continue;
+                }
+                transcript_probe_count += 1;
+                unique_transcript_probes.insert(normalized.clone());
+                transcript_probe_buckets
+                    .entry(normalized)
+                    .or_default()
+                    .insert(isoform.isoform_id.clone());
+            }
+
+            if isoform.domains.is_empty() {
+                issues.push(Self::isoform_validation_issue(
+                    "missing_domains",
+                    format!(
+                        "Isoform '{}' has no domains; protein lane may render without functional landmarks",
+                        isoform.isoform_id
+                    ),
+                    Some(&isoform.isoform_id),
+                    None,
+                    None,
+                ));
+            }
+
+            domain_count += isoform.domains.len();
+            let mut sorted_domains = isoform.domains.clone();
+            sorted_domains.sort_by(|left, right| {
+                left.start_aa
+                    .cmp(&right.start_aa)
+                    .then(left.end_aa.cmp(&right.end_aa))
+                    .then(left.name.cmp(&right.name))
+            });
+
+            for domain in &sorted_domains {
+                if let Some(color_hex) = domain.color_hex.as_deref()
+                    && !color_hex_re.is_match(color_hex)
+                {
+                    issues.push(Self::isoform_validation_issue(
+                        "invalid_color_hex",
+                        format!(
+                            "Isoform '{}' domain '{}' uses non-hex color '{}'; expected '#RRGGBB'",
+                            isoform.isoform_id, domain.name, color_hex
+                        ),
+                        Some(&isoform.isoform_id),
+                        None,
+                        Some(&domain.name),
+                    ));
+                }
+            }
+
+            for pair in sorted_domains.windows(2) {
+                if pair[1].start_aa <= pair[0].end_aa {
+                    issues.push(Self::isoform_validation_issue(
+                        "overlapping_domains",
+                        format!(
+                            "Isoform '{}' has overlapping domains '{}' ({}..{}) and '{}' ({}..{})",
+                            isoform.isoform_id,
+                            pair[0].name,
+                            pair[0].start_aa,
+                            pair[0].end_aa,
+                            pair[1].name,
+                            pair[1].start_aa,
+                            pair[1].end_aa
+                        ),
+                        Some(&isoform.isoform_id),
+                        None,
+                        Some(&pair[1].name),
+                    ));
+                }
+            }
+
+            let max_domain_end_aa = sorted_domains.iter().map(|domain| domain.end_aa).max();
+            if let (Some(reference_start), Some(reference_end)) =
+                (isoform.reference_start_aa, isoform.reference_end_aa)
+                && reference_end < reference_start
+            {
+                issues.push(Self::isoform_validation_issue(
+                    "invalid_reference_range",
+                    format!(
+                        "Isoform '{}' reference range is invalid (start={} > end={})",
+                        isoform.isoform_id, reference_start, reference_end
+                    ),
+                    Some(&isoform.isoform_id),
+                    None,
+                    None,
+                ));
+            }
+            if let Some(reference_end) = isoform.reference_end_aa {
+                if let Some(max_domain_end) = max_domain_end_aa
+                    && reference_end < max_domain_end
+                {
+                    issues.push(Self::isoform_validation_issue(
+                        "reference_end_below_domain_end",
+                        format!(
+                            "Isoform '{}' reference_end_aa={} is smaller than max domain end {}",
+                            isoform.isoform_id, reference_end, max_domain_end
+                        ),
+                        Some(&isoform.isoform_id),
+                        None,
+                        None,
+                    ));
+                }
+            } else if let (Some(expected), Some(max_domain_end)) =
+                (isoform.expected_length_aa, max_domain_end_aa)
+                && expected < max_domain_end
+            {
+                issues.push(Self::isoform_validation_issue(
+                    "expected_length_below_domain_end",
+                    format!(
+                        "Isoform '{}' expected_length_aa={} is smaller than max domain end {}",
+                        isoform.isoform_id, expected, max_domain_end
+                    ),
+                    Some(&isoform.isoform_id),
+                    None,
+                    None,
+                ));
+            }
+
+            isoforms.push(IsoformPanelValidationIsoformSummary {
+                isoform_id: isoform.isoform_id.clone(),
+                label: isoform
+                    .label
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or(isoform.isoform_id.as_str())
+                    .to_string(),
+                transcript_probe_count: isoform.transcript_ids.len(),
+                domain_count: isoform.domains.len(),
+                expected_length_aa: isoform.expected_length_aa,
+                max_domain_end_aa,
+            });
+        }
+
+        for isoform_ids in isoform_id_buckets.values() {
+            if isoform_ids.len() < 2 {
+                continue;
+            }
+            let mut ids = isoform_ids.clone();
+            ids.sort();
+            ids.dedup();
+            issues.push(Self::isoform_validation_issue(
+                "duplicate_isoform_id",
+                format!(
+                    "Panel '{}' contains duplicate isoform_id entries: {}",
+                    resource.panel_id,
+                    ids.join(", ")
+                ),
+                ids.first().map(String::as_str),
+                None,
+                None,
+            ));
+        }
+
+        for (normalized_probe, isoform_ids) in &transcript_probe_buckets {
+            if isoform_ids.len() < 2 {
+                continue;
+            }
+            let ids = isoform_ids.iter().cloned().collect::<Vec<_>>();
+            issues.push(Self::isoform_validation_issue(
+                "shared_transcript_probe",
+                format!(
+                    "Transcript probe '{}' is shared by multiple isoforms: {}",
+                    normalized_probe,
+                    ids.join(", ")
+                ),
+                ids.first().map(String::as_str),
+                Some(normalized_probe.as_str()),
+                None,
+            ));
+        }
+
+        issues.sort_by(|left, right| {
+            left.code
+                .cmp(&right.code)
+                .then(left.isoform_id.cmp(&right.isoform_id))
+                .then(left.transcript_probe.cmp(&right.transcript_probe))
+                .then(left.domain_name.cmp(&right.domain_name))
+                .then(left.message.cmp(&right.message))
+        });
+
+        let issue_count = issues.len();
+        let status = if issue_count == 0 {
+            "ok".to_string()
+        } else {
+            "warning".to_string()
+        };
+
+        Ok(IsoformPanelValidationReport {
+            schema: ISOFORM_PANEL_VALIDATION_REPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            panel_id: resource.panel_id,
+            gene_symbol: resource.gene_symbol,
+            assembly: resource.assembly,
+            isoform_count: isoforms.len(),
+            transcript_probe_count,
+            unique_transcript_probe_count: unique_transcript_probes.len(),
+            domain_count,
+            issue_count,
+            status,
+            isoforms,
+            issues,
+        })
+    }
+
+    fn build_isoform_architecture_expert_view_from_resource(
+        &self,
+        seq_id: &str,
+        panel_id: &str,
+        resource: &IsoformPanelResource,
+        strict: bool,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let features = dna.features();
+
+        #[derive(Clone)]
+        struct TranscriptProjection {
+            feature_id: usize,
+            transcript_id: String,
+            is_reverse: bool,
+            full_exon_ranges: Vec<(usize, usize)>,
+            geometry_ranges: Vec<(usize, usize)>,
+            cds_ranges: Vec<(usize, usize)>,
+            intron_ranges: Vec<(usize, usize)>,
+            used_cds_geometry: bool,
+        }
+
+        let mut projections: Vec<TranscriptProjection> = vec![];
+        let mut projection_key_index: HashMap<String, Vec<usize>> = HashMap::new();
+        let use_cds_geometry =
+            resource.transcript_geometry_mode == IsoformTranscriptGeometryMode::Cds;
+
+        let gene_probe = resource.gene_symbol.trim().to_ascii_uppercase();
+        let mut has_gene_probe_match = gene_probe.is_empty();
+        for (feature_id, feature) in features.iter().enumerate() {
+            if !has_gene_probe_match
+                && let Some(gene_name) = Self::first_nonempty_feature_qualifier(
+                    feature,
+                    &[
+                        "gene",
+                        "gene_id",
+                        "locus_tag",
+                        "standard_name",
+                        "name",
+                        "product",
+                    ],
+                )
+            {
+                has_gene_probe_match = gene_name.to_ascii_uppercase().contains(&gene_probe);
+            }
+
+            if !Self::is_mrna_feature(feature) {
+                continue;
+            }
+
+            let mut exon_ranges = vec![];
+            collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+            if exon_ranges.is_empty() {
+                let (from, to) = feature.location.find_bounds().map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse transcript range: {e}"),
+                })?;
+                if from >= 0 && to >= 0 {
+                    exon_ranges.push((from as usize, to as usize));
+                }
+            }
+            exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            exon_ranges.retain(|(start, end)| end > start);
+            if exon_ranges.is_empty() {
+                continue;
+            }
+            let cds_ranges = Self::feature_qualifier_ranges_0based(feature, "cds_ranges_1based");
+            let full_exon_ranges = exon_ranges.clone();
+            let (geometry_ranges, used_cds_geometry) = if use_cds_geometry && !cds_ranges.is_empty()
+            {
+                (cds_ranges.clone(), true)
+            } else {
+                (exon_ranges, false)
+            };
+            let mut intron_ranges = vec![];
+            for pair in geometry_ranges.windows(2) {
+                if pair[1].0 > pair[0].1 {
+                    intron_ranges.push((pair[0].1, pair[1].0));
+                }
+            }
+            let projection_idx = projections.len();
+            let transcript_id = Self::feature_transcript_id(feature, feature_id);
+            projections.push(TranscriptProjection {
+                feature_id,
+                transcript_id: transcript_id.clone(),
+                is_reverse: feature_is_reverse(feature),
+                full_exon_ranges,
+                geometry_ranges,
+                cds_ranges,
+                intron_ranges,
+                used_cds_geometry,
+            });
+            for key in Self::feature_transcript_match_keys(feature, feature_id) {
+                projection_key_index
+                    .entry(key)
+                    .or_default()
+                    .push(projection_idx);
+            }
+        }
+
+        let mut warnings: Vec<String> = vec![];
+        if projections.is_empty() {
+            let message = format!(
+                "No mRNA/transcript features available in sequence '{}' for isoform panel '{}'",
+                seq_id, panel_id
+            );
+            if strict {
+                return Err(EngineError {
+                    code: ErrorCode::NotFound,
+                    message,
+                });
+            }
+            warnings.push(message);
+        }
+
+        if !has_gene_probe_match {
+            let message = format!(
+                "No feature-gene qualifier in '{}' matched panel gene_symbol '{}'",
+                seq_id, resource.gene_symbol
+            );
+            if strict {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message,
+                });
+            }
+            warnings.push(message);
+        }
+
+        let mut mapped_ranges: Vec<(usize, usize)> = vec![];
+        let mut transcript_lanes: Vec<IsoformArchitectureTranscriptLane> = vec![];
+        let mut protein_lanes: Vec<IsoformArchitectureProteinLane> = vec![];
+
+        for isoform in &resource.isoforms {
+            let label = isoform
+                .label
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .unwrap_or(isoform.isoform_id.as_str())
+                .to_string();
+            let probes: Vec<String> = isoform
+                .transcript_ids
+                .iter()
+                .map(|entry| Self::normalize_transcript_probe(entry))
+                .filter(|entry| !entry.is_empty())
+                .collect();
+            let mut matched_projection: Option<&TranscriptProjection> = None;
+            for probe in &probes {
+                if let Some(indices) = projection_key_index.get(probe)
+                    && let Some(first) = indices.first()
+                {
+                    matched_projection = projections.get(*first);
+                    if matched_projection.is_some() {
+                        break;
+                    }
+                }
+            }
+
+            let (
+                mapped,
+                transcript_id,
+                transcript_feature_id,
+                strand,
+                transcript_exons,
+                exons,
+                introns,
+                note,
+                cds_to_protein_segments,
+            ) = if let Some(projection) = matched_projection {
+                mapped_ranges.extend(projection.geometry_ranges.iter().copied());
+                let geometry_note = (use_cds_geometry && !projection.used_cds_geometry)
+                    .then_some("CDS geometry unavailable; fell back to exon geometry".to_string());
+                let cds_to_protein_segments = Self::cds_ranges_to_reference_aa_segments(
+                    projection.cds_ranges.clone(),
+                    projection.is_reverse,
+                    isoform.reference_start_aa,
+                );
+                (
+                    true,
+                    Some(projection.transcript_id.clone()),
+                    Some(projection.feature_id),
+                    if projection.is_reverse {
+                        "-".to_string()
+                    } else {
+                        "+".to_string()
+                    },
+                    Self::range_vec_to_splicing(projection.full_exon_ranges.clone()),
+                    Self::range_vec_to_splicing(projection.geometry_ranges.clone()),
+                    Self::range_vec_to_splicing(projection.intron_ranges.clone()),
+                    geometry_note,
+                    cds_to_protein_segments,
+                )
+            } else {
+                let probe_text = if isoform.transcript_ids.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    isoform.transcript_ids.join(", ")
+                };
+                let message = format!(
+                    "Isoform '{}' has no mapped transcript in '{}' (probes: {})",
+                    isoform.isoform_id, seq_id, probe_text
+                );
+                if strict {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message,
+                    });
+                }
+                warnings.push(message.clone());
+                (
+                    false,
+                    isoform.transcript_ids.first().cloned(),
+                    None,
+                    "?".to_string(),
+                    vec![],
+                    vec![],
+                    vec![],
+                    Some("No transcript mapping found".to_string()),
+                    vec![],
+                )
+            };
+
+            transcript_lanes.push(IsoformArchitectureTranscriptLane {
+                isoform_id: isoform.isoform_id.clone(),
+                label: label.clone(),
+                transcript_id: transcript_id.clone(),
+                transcript_feature_id,
+                strand,
+                transcript_exons,
+                exons,
+                introns,
+                mapped,
+                transactivation_class: isoform.transactivation_class.clone(),
+                cds_to_protein_segments,
+                note,
+            });
+
+            let mut domains = isoform
+                .domains
+                .iter()
+                .map(|domain| IsoformArchitectureProteinDomain {
+                    name: domain.name.clone(),
+                    start_aa: domain.start_aa,
+                    end_aa: domain.end_aa,
+                    color_hex: domain.color_hex.clone(),
+                })
+                .collect::<Vec<_>>();
+            domains.sort_by(|left, right| {
+                left.start_aa
+                    .cmp(&right.start_aa)
+                    .then(left.end_aa.cmp(&right.end_aa))
+            });
+            let expected_length_aa = isoform.expected_length_aa.or_else(|| {
+                domains
+                    .iter()
+                    .map(|domain| domain.end_aa)
+                    .max()
+                    .filter(|max_end| *max_end > 0)
+            });
+            protein_lanes.push(IsoformArchitectureProteinLane {
+                isoform_id: isoform.isoform_id.clone(),
+                label,
+                transcript_id,
+                expected_length_aa,
+                reference_start_aa: isoform.reference_start_aa,
+                reference_end_aa: isoform.reference_end_aa,
+                domains,
+                transactivation_class: isoform.transactivation_class.clone(),
+            });
+        }
+
+        let (region_start_1based, region_end_1based) = if mapped_ranges.is_empty() {
+            (1, dna.len().max(1))
+        } else {
+            let start0 = mapped_ranges
+                .iter()
+                .map(|(start, _)| *start)
+                .min()
+                .unwrap_or(0);
+            let end0 = mapped_ranges
+                .iter()
+                .map(|(_, end)| *end)
+                .max()
+                .unwrap_or(start0 + 1);
+            (start0 + 1, end0.max(start0 + 1))
+        };
+
+        Ok(IsoformArchitectureExpertView {
+            seq_id: seq_id.to_string(),
+            panel_id: panel_id.to_string(),
+            gene_symbol: resource.gene_symbol.clone(),
+            transcript_geometry_mode: resource.transcript_geometry_mode.as_str().to_string(),
+            panel_source: resource.source.clone(),
+            region_start_1based,
+            region_end_1based,
+            instruction: ISOFORM_ARCHITECTURE_EXPERT_INSTRUCTION.to_string(),
+            transcript_lanes,
+            protein_lanes,
+            warnings,
+        })
+    }
+
+    fn build_isoform_architecture_expert_view(
+        &self,
+        seq_id: &str,
+        panel_id: &str,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let record = self.get_isoform_panel_record(seq_id, panel_id)?;
+        self.build_isoform_architecture_expert_view_from_resource(
+            seq_id,
+            &record.panel_id,
+            &record.resource,
+            false,
+        )
     }
 
     fn splice_boundary_markers_for_introns(
@@ -4601,6 +5600,9 @@ impl GentleEngine {
             FeatureExpertTarget::SplicingFeature { feature_id } => self
                 .build_splicing_expert_view(seq_id, *feature_id)
                 .map(FeatureExpertView::Splicing),
+            FeatureExpertTarget::IsoformArchitecture { panel_id } => self
+                .build_isoform_architecture_expert_view(seq_id, panel_id)
+                .map(FeatureExpertView::IsoformArchitecture),
         }
     }
 
@@ -4617,6 +5619,26 @@ impl GentleEngine {
             message: format!("Could not write feature-expert SVG to '{path}': {e}"),
         })?;
         Ok(view)
+    }
+
+    pub fn render_isoform_architecture_svg_to_path(
+        &self,
+        seq_id: &str,
+        panel_id: &str,
+        path: &str,
+    ) -> Result<IsoformArchitectureExpertView, EngineError> {
+        let target = FeatureExpertTarget::IsoformArchitecture {
+            panel_id: panel_id.to_string(),
+        };
+        let view = self.render_feature_expert_svg_to_path(seq_id, &target, path)?;
+        match view {
+            FeatureExpertView::IsoformArchitecture(isoform) => Ok(isoform),
+            _ => Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Unexpected expert-view payload while rendering isoform architecture SVG"
+                    .to_string(),
+            }),
+        }
     }
 
     fn open_reference_genome_catalog(
@@ -5382,6 +6404,7 @@ impl GentleEngine {
             Operation::SaveFile { .. }
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderFeatureExpertSvg { .. }
+                | Operation::RenderIsoformArchitectureSvg { .. }
                 | Operation::RenderRnaStructureSvg { .. }
                 | Operation::RenderLineageSvg { .. }
                 | Operation::RenderPoolGelSvg { .. }
@@ -5563,6 +6586,136 @@ impl GentleEngine {
             "{}:{}-{} ({})",
             record.chromosome, record.start_1based, record.end_1based, label
         )
+    }
+
+    fn transcript_feature_from_genome_record(
+        record: &GenomeTranscriptRecord,
+        extracted_start_1based: usize,
+        extracted_end_1based: usize,
+    ) -> Option<gb_io::seq::Feature> {
+        let mut exons = record
+            .exons_1based
+            .iter()
+            .filter_map(|(start, end)| {
+                let clipped_start = (*start).max(extracted_start_1based);
+                let clipped_end = (*end).min(extracted_end_1based);
+                (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+            })
+            .collect::<Vec<_>>();
+        exons.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        exons.dedup();
+        if exons.is_empty() {
+            return None;
+        }
+        let mut cds_local_1based = record
+            .cds_1based
+            .iter()
+            .filter_map(|(start, end)| {
+                let clipped_start = (*start).max(extracted_start_1based);
+                let clipped_end = (*end).min(extracted_end_1based);
+                if clipped_end < clipped_start {
+                    return None;
+                }
+                let local_start = clipped_start
+                    .saturating_sub(extracted_start_1based)
+                    .saturating_add(1);
+                let local_end = clipped_end
+                    .saturating_sub(extracted_start_1based)
+                    .saturating_add(1);
+                (local_start > 0 && local_end >= local_start).then_some((local_start, local_end))
+            })
+            .collect::<Vec<_>>();
+        cds_local_1based.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        cds_local_1based.dedup();
+        let mut parts = exons
+            .iter()
+            .filter_map(|(start, end)| {
+                if *start < extracted_start_1based {
+                    return None;
+                }
+                let local_start_0based = start.saturating_sub(extracted_start_1based);
+                let local_end_exclusive =
+                    end.saturating_sub(extracted_start_1based).saturating_add(1);
+                (local_end_exclusive > local_start_0based).then_some(
+                    gb_io::seq::Location::simple_range(
+                        local_start_0based as i64,
+                        local_end_exclusive as i64,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+        if parts.is_empty() {
+            return None;
+        }
+        let base_location = if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            gb_io::seq::Location::Join(parts)
+        };
+        let location = if record.strand == Some('-') {
+            gb_io::seq::Location::Complement(Box::new(base_location))
+        } else {
+            base_location
+        };
+
+        let mut qualifiers = vec![
+            ("transcript_id".into(), Some(record.transcript_id.clone())),
+            ("label".into(), Some(record.transcript_id.clone())),
+            ("chromosome".into(), Some(record.chromosome.clone())),
+            (
+                "genomic_start_1based".into(),
+                Some(record.transcript_start_1based.to_string()),
+            ),
+            (
+                "genomic_end_1based".into(),
+                Some(record.transcript_end_1based.to_string()),
+            ),
+        ];
+        if let Some(gene_name) = &record.gene_name {
+            qualifiers.push(("gene".into(), Some(gene_name.clone())));
+        }
+        if let Some(gene_id) = &record.gene_id {
+            qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+        }
+        if let Some(strand) = record.strand {
+            qualifiers.push(("strand".into(), Some(strand.to_string())));
+        }
+        if let Some(cds_encoded) = Self::serialize_ranges_1based(&cds_local_1based) {
+            qualifiers.push(("cds_ranges_1based".into(), Some(cds_encoded)));
+        }
+
+        Some(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location,
+            qualifiers,
+        })
+    }
+
+    fn attach_transcript_features_to_extracted_gene_sequence(
+        &mut self,
+        seq_id: &str,
+        extracted_start_1based: usize,
+        extracted_end_1based: usize,
+        records: &[GenomeTranscriptRecord],
+    ) -> usize {
+        let Some(dna) = self.state.sequences.get_mut(seq_id) else {
+            return 0;
+        };
+        let mut added = 0usize;
+        for record in records {
+            if let Some(feature) = Self::transcript_feature_from_genome_record(
+                record,
+                extracted_start_1based,
+                extracted_end_1based,
+            ) {
+                dna.features_mut().push(feature);
+                added = added.saturating_add(1);
+            }
+        }
+        if added > 0 {
+            Self::prepare_sequence(dna);
+        }
+        added
     }
 
     fn import_genome_slice_sequence(
@@ -5900,6 +7053,85 @@ impl GentleEngine {
             .metadata
             .insert(CANDIDATE_SETS_METADATA_KEY.to_string(), value);
         Ok(())
+    }
+
+    fn read_isoform_panel_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> IsoformPanelStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<IsoformPanelStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = ISOFORM_PANELS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_isoform_panel_store(&self) -> IsoformPanelStore {
+        Self::read_isoform_panel_store_from_metadata(
+            self.state.metadata.get(ISOFORM_PANELS_METADATA_KEY),
+        )
+    }
+
+    fn write_isoform_panel_store(
+        &mut self,
+        mut store: IsoformPanelStore,
+    ) -> Result<(), EngineError> {
+        if store.records.is_empty() {
+            self.state.metadata.remove(ISOFORM_PANELS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = ISOFORM_PANELS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize isoform-panel metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(ISOFORM_PANELS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn upsert_isoform_panel_record(
+        &mut self,
+        record: IsoformPanelRecord,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_isoform_panel_store();
+        store.records.retain(|existing| {
+            !(existing.seq_id == record.seq_id && existing.panel_id == record.panel_id)
+        });
+        store.records.push(record);
+        self.write_isoform_panel_store(store)
+    }
+
+    fn get_isoform_panel_record(
+        &self,
+        seq_id: &str,
+        panel_id: &str,
+    ) -> Result<IsoformPanelRecord, EngineError> {
+        let probe = panel_id.trim();
+        if probe.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "panel_id cannot be empty".to_string(),
+            });
+        }
+        let store = self.read_isoform_panel_store();
+        store
+            .records
+            .iter()
+            .rev()
+            .find(|record| record.seq_id == seq_id && record.panel_id == probe)
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "Isoform panel '{}' was not imported for sequence '{}'",
+                    probe, seq_id
+                ),
+            })
     }
 
     fn read_primer_design_store_from_metadata(
@@ -14535,6 +15767,17 @@ impl GentleEngine {
                     path
                 ));
             }
+            Operation::RenderIsoformArchitectureSvg {
+                seq_id,
+                panel_id,
+                path,
+            } => {
+                self.render_isoform_architecture_svg_to_path(&seq_id, &panel_id, &path)?;
+                result.messages.push(format!(
+                    "Wrote isoform architecture SVG for '{}' panel='{}' to '{}'",
+                    seq_id, panel_id, path
+                ));
+            }
             Operation::RenderRnaStructureSvg { seq_id, path } => {
                 let report = self.render_rna_structure_svg_to_path(&seq_id, &path)?;
                 result.messages.push(format!(
@@ -14930,6 +16173,36 @@ impl GentleEngine {
                 );
                 let base = output_id.unwrap_or(default_id);
                 let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                match catalog.list_gene_transcript_records(
+                    &genome_id,
+                    &selected_gene.chromosome,
+                    selected_gene.start_1based,
+                    selected_gene.end_1based,
+                    selected_gene.gene_id.as_deref(),
+                    selected_gene.gene_name.as_deref(),
+                    cache_dir.as_deref(),
+                ) {
+                    Ok(records) => {
+                        let added = self.attach_transcript_features_to_extracted_gene_sequence(
+                            &seq_id,
+                            selected_gene.start_1based,
+                            selected_gene.end_1based,
+                            &records,
+                        );
+                        if added > 0 {
+                            result.messages.push(format!(
+                                "Attached {} transcript/exon feature(s) to extracted gene '{}'",
+                                added, seq_id
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        result.warnings.push(format!(
+                            "Could not attach transcript/exon features for extracted gene '{}': {}",
+                            seq_id, e
+                        ));
+                    }
+                }
                 let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
                 let inspection = catalog
                     .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
@@ -15443,6 +16716,48 @@ impl GentleEngine {
                         report.imported_features, MAX_IMPORTED_SIGNAL_FEATURES
                     ));
                 }
+            }
+            Operation::ImportIsoformPanel {
+                seq_id,
+                panel_path,
+                panel_id,
+                strict,
+            } => {
+                if panel_path.trim().is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportIsoformPanel requires a non-empty panel_path".to_string(),
+                    });
+                }
+                if !self.state.sequences.contains_key(&seq_id) {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    });
+                }
+                let resource = Self::load_isoform_panel_resource(&panel_path, panel_id.as_deref())?;
+                let panel_id = resource.panel_id.clone();
+                let preview = self.build_isoform_architecture_expert_view_from_resource(
+                    &seq_id, &panel_id, &resource, strict,
+                )?;
+                self.upsert_isoform_panel_record(IsoformPanelRecord {
+                    seq_id: seq_id.clone(),
+                    panel_id: panel_id.clone(),
+                    imported_at_unix_ms: Self::now_unix_ms(),
+                    source_path: panel_path.clone(),
+                    strict,
+                    resource: resource.clone(),
+                })?;
+                result.changed_seq_ids.push(seq_id.clone());
+                result.warnings.extend(preview.warnings.clone());
+                result.messages.push(format!(
+                    "Imported isoform panel '{}' for '{}' (isoforms={}, strict={}) from '{}'",
+                    panel_id,
+                    seq_id,
+                    resource.isoforms.len(),
+                    strict,
+                    panel_path
+                ));
             }
             Operation::ImportBlastHitsTrack {
                 seq_id,
@@ -21112,6 +22427,16 @@ ORIGIN
     }
 
     #[test]
+    fn test_is_mrna_feature_accepts_transcript_alias() {
+        let feature = gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("transcript"),
+            location: gb_io::seq::Location::simple_range(1, 10),
+            qualifiers: vec![],
+        };
+        assert!(GentleEngine::is_mrna_feature(&feature));
+    }
+
+    #[test]
     fn test_render_feature_expert_svg_operation() {
         let mut state = ProjectState::default();
         state
@@ -21179,6 +22504,239 @@ ORIGIN
         let text = std::fs::read_to_string(path_text).unwrap();
         assert!(text.contains("<svg"));
         assert!(text.contains("Splicing expert"));
+    }
+
+    #[test]
+    fn test_validate_isoform_panel_resource_reports_summary() {
+        let report = GentleEngine::validate_isoform_panel_resource(
+            "assets/panels/tp53_isoforms_v1.json",
+            Some("tp53_isoforms_v1"),
+        )
+        .expect("validate panel");
+        assert_eq!(report.schema, "gentle.isoform_panel_validation_report.v1");
+        assert_eq!(report.panel_id, "tp53_isoforms_v1");
+        assert_eq!(report.gene_symbol, "TP53");
+        assert!(report.isoform_count >= 1);
+        assert!(report.transcript_probe_count >= 1);
+        assert!(matches!(report.status.as_str(), "ok" | "warning"));
+    }
+
+    #[test]
+    fn test_import_isoform_panel_allows_unmapped_when_strict_false_and_no_mrna_features() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("s".to_string(), seq(&"ATGC".repeat(80)));
+        let mut engine = GentleEngine::from_state(state);
+        let import = engine
+            .apply(Operation::ImportIsoformPanel {
+                seq_id: "s".to_string(),
+                panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+                panel_id: Some("tp53_isoforms_v1".to_string()),
+                strict: false,
+            })
+            .expect("strict=false import should succeed even without transcript mapping");
+        assert!(
+            import
+                .messages
+                .iter()
+                .any(|m| m.contains("Imported isoform panel"))
+        );
+        let view = engine
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::IsoformArchitecture {
+                    panel_id: "tp53_isoforms_v1".to_string(),
+                },
+            )
+            .expect("inspect isoform architecture");
+        match view {
+            FeatureExpertView::IsoformArchitecture(isoform) => {
+                assert!(!isoform.transcript_lanes.is_empty());
+                assert!(
+                    isoform
+                        .warnings
+                        .iter()
+                        .any(|w| w.contains("No mRNA/transcript features"))
+                );
+            }
+            other => panic!("expected isoform architecture view, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_isoform_panel_cds_geometry_mode_uses_cds_ranges_when_available() {
+        let mut dna = seq(&"ATGC".repeat(120));
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, 30),
+                gb_io::seq::Location::simple_range(40, 80),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("TP53".to_string())),
+                ("transcript_id".into(), Some("TX1".to_string())),
+                ("label".into(), Some("TX1".to_string())),
+                ("cds_ranges_1based".into(), Some("6-20,51-68".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+
+        let tmp = tempdir().expect("tempdir");
+        let panel_path = tmp.path().join("panel_cds.json");
+        fs::write(
+            &panel_path,
+            r##"{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "tp53_cds_demo",
+  "gene_symbol": "TP53",
+  "transcript_geometry_mode": "cds",
+  "isoforms": [
+    {
+      "isoform_id": "alpha",
+      "label": "TAp53α",
+      "transcript_ids": ["TX1"],
+      "domains": [{"name": "DBD", "start_aa": 10, "end_aa": 50, "color_hex": "#2563eb"}]
+    }
+  ]
+}"##,
+        )
+        .expect("write panel");
+
+        engine
+            .apply(Operation::ImportIsoformPanel {
+                seq_id: "s".to_string(),
+                panel_path: panel_path.display().to_string(),
+                panel_id: None,
+                strict: true,
+            })
+            .expect("import panel");
+        let view = engine
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::IsoformArchitecture {
+                    panel_id: "tp53_cds_demo".to_string(),
+                },
+            )
+            .expect("inspect isoform");
+        match view {
+            FeatureExpertView::IsoformArchitecture(isoform) => {
+                assert_eq!(isoform.transcript_geometry_mode, "cds");
+                assert_eq!(isoform.transcript_lanes.len(), 1);
+                assert_eq!(isoform.transcript_lanes[0].exons[0].start_1based, 6);
+                assert_eq!(isoform.transcript_lanes[0].exons[0].end_1based, 20);
+                assert_eq!(isoform.transcript_lanes[0].exons[1].start_1based, 51);
+                assert_eq!(isoform.transcript_lanes[0].exons[1].end_1based, 68);
+                assert_eq!(isoform.transcript_lanes[0].cds_to_protein_segments.len(), 2);
+                assert_eq!(
+                    isoform.transcript_lanes[0].cds_to_protein_segments[0].aa_start,
+                    1
+                );
+                assert_eq!(
+                    isoform.transcript_lanes[0].cds_to_protein_segments[0].aa_end,
+                    5
+                );
+                assert_eq!(
+                    isoform.transcript_lanes[0].cds_to_protein_segments[1].aa_start,
+                    6
+                );
+                assert_eq!(
+                    isoform.transcript_lanes[0].cds_to_protein_segments[1].aa_end,
+                    11
+                );
+            }
+            other => panic!("expected isoform architecture view, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_cds_ranges_to_reference_aa_segments_respects_reverse_transcript_order() {
+        let segments = GentleEngine::cds_ranges_to_reference_aa_segments(
+            vec![(100, 112), (200, 218)],
+            true,
+            Some(160),
+        );
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].genomic_start_1based, 201);
+        assert_eq!(segments[0].genomic_end_1based, 218);
+        assert_eq!(segments[0].aa_start, 160);
+        assert_eq!(segments[0].aa_end, 165);
+        assert_eq!(segments[1].genomic_start_1based, 101);
+        assert_eq!(segments[1].genomic_end_1based, 112);
+        assert_eq!(segments[1].aa_start, 166);
+        assert_eq!(segments[1].aa_end, 169);
+    }
+
+    #[test]
+    fn test_transcript_feature_from_genome_record_includes_cds_ranges_qualifier() {
+        let record = GenomeTranscriptRecord {
+            chromosome: "chr17".to_string(),
+            transcript_id: "TX1".to_string(),
+            gene_id: Some("GENE1".to_string()),
+            gene_name: Some("GENE1".to_string()),
+            strand: Some('+'),
+            transcript_start_1based: 100,
+            transcript_end_1based: 180,
+            exons_1based: vec![(100, 130), (151, 180)],
+            cds_1based: vec![(105, 120), (160, 175)],
+        };
+        let feature = GentleEngine::transcript_feature_from_genome_record(&record, 100, 180)
+            .expect("feature");
+        let cds = GentleEngine::feature_qualifier_text(&feature, "cds_ranges_1based")
+            .expect("cds ranges qualifier");
+        assert_eq!(cds, "6-21,61-76");
+    }
+
+    #[test]
+    fn test_validate_isoform_panel_resource_detects_curation_issues() {
+        let tmp = tempdir().expect("temp dir");
+        let panel_path = tmp.path().join("panel.json");
+        let raw = r##"{
+  "schema": "gentle.isoform_panel_resource.v1",
+  "panel_id": "demo_panel",
+  "gene_symbol": "DEMO1",
+  "isoforms": [
+    {
+      "isoform_id": "alpha",
+      "transcript_ids": ["ENST000001.1"],
+      "expected_length_aa": 100,
+      "domains": [
+        {"name": "dbd", "start_aa": 50, "end_aa": 90, "color_hex": "#12GG00"},
+        {"name": "ctd", "start_aa": 80, "end_aa": 120, "color_hex": "#112233"}
+      ]
+    },
+    {
+      "isoform_id": "beta",
+      "transcript_ids": ["ENST000001.1"],
+      "domains": []
+    },
+    {
+      "isoform_id": "alpha",
+      "transcript_ids": ["ENST000003.1"],
+      "domains": []
+    }
+  ]
+}"##;
+        fs::write(&panel_path, raw).expect("write panel fixture");
+        let report =
+            GentleEngine::validate_isoform_panel_resource(panel_path.to_str().unwrap(), None)
+                .expect("validate panel");
+
+        assert_eq!(report.status, "warning");
+        let mut codes = report
+            .issues
+            .iter()
+            .map(|issue| issue.code.as_str())
+            .collect::<Vec<_>>();
+        codes.sort();
+        assert!(codes.contains(&"invalid_color_hex"));
+        assert!(codes.contains(&"overlapping_domains"));
+        assert!(codes.contains(&"expected_length_below_domain_end"));
+        assert!(codes.contains(&"duplicate_isoform_id"));
+        assert!(codes.contains(&"shared_transcript_probe"));
+        assert!(codes.contains(&"missing_domains"));
     }
 
     #[test]
@@ -22267,6 +23825,80 @@ ORIGIN
                     .map(|v| !v.is_empty())
                     .unwrap_or(false)
         }));
+    }
+
+    #[test]
+    fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+            ),
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let extract_gene = engine
+            .apply(Operation::ExtractGenomeGene {
+                genome_id: "ToyGenome".to_string(),
+                gene_query: "MYGENE".to_string(),
+                occurrence: None,
+                output_id: Some("toy_gene".to_string()),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(extract_gene.messages.iter().any(|m| m.contains("Attached")));
+        let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
+        let tx_feature = loaded_gene
+            .features()
+            .iter()
+            .find(|feature| {
+                feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                    && feature
+                        .qualifier_values("transcript_id".into())
+                        .any(|value| value == "TX1")
+            })
+            .expect("expected extracted transcript feature");
+        let mut exons = vec![];
+        collect_location_ranges_usize(&tx_feature.location, &mut exons);
+        exons.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        assert_eq!(exons, vec![(0, 4), (8, 12)]);
     }
 
     #[test]

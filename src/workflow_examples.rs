@@ -810,12 +810,21 @@ fn rewrite_example_paths_for_execution(
             *path = resolve_input_path(path, repo_root);
             continue;
         }
+        if let Operation::ImportIsoformPanel { panel_path, .. } = op {
+            *panel_path = resolve_input_path(panel_path, repo_root);
+            continue;
+        }
         if let Operation::ExportGuideOligos { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
             continue;
         }
         if let Operation::ExportGuideProtocolText { path, .. } = op {
+            *path = resolve_output_path(path, run_dir);
+            ensure_parent_exists(path)?;
+            continue;
+        }
+        if let Operation::RenderIsoformArchitectureSvg { path, .. } = op {
             *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
             continue;
@@ -1785,6 +1794,58 @@ mod tests {
         assert!(markdown.contains("## Concepts and Recurrence"));
         assert!(markdown.contains("## GUI First"));
         assert!(markdown.contains("## Parameters That Matter"));
+    }
+
+    #[test]
+    fn rewrite_example_paths_handles_isoform_panel_io() {
+        let example = WorkflowExample {
+            schema: WORKFLOW_EXAMPLE_SCHEMA.to_string(),
+            id: "isoform_path_rewrite_test".to_string(),
+            title: "isoform path rewrite test".to_string(),
+            summary: String::new(),
+            test_mode: ExampleTestMode::Skip,
+            required_files: vec!["assets/panels/tp53_isoforms_v1.json".to_string()],
+            tags: vec![],
+            workflow: Workflow {
+                run_id: "isoform_path_rewrite_test".to_string(),
+                ops: vec![
+                    Operation::ImportIsoformPanel {
+                        seq_id: "seq_a".to_string(),
+                        panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+                        panel_id: Some("tp53_isoforms_v1".to_string()),
+                        strict: false,
+                    },
+                    Operation::RenderIsoformArchitectureSvg {
+                        seq_id: "seq_a".to_string(),
+                        panel_id: "tp53_isoforms_v1".to_string(),
+                        path: "exports/tp53_isoform.svg".to_string(),
+                    },
+                ],
+            },
+        };
+        let repo_root = std::env::current_dir().expect("cwd");
+        let run_dir = TempDir::new().expect("temp run dir");
+        let rewritten =
+            rewrite_example_paths_for_execution(&example, repo_root.as_path(), run_dir.path())
+                .expect("rewrite should succeed");
+        match &rewritten.workflow.ops[0] {
+            Operation::ImportIsoformPanel { panel_path, .. } => {
+                assert!(
+                    Path::new(panel_path).is_absolute(),
+                    "panel path should be rewritten to absolute path"
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
+        match &rewritten.workflow.ops[1] {
+            Operation::RenderIsoformArchitectureSvg { path, .. } => {
+                assert!(
+                    path.starts_with(&display_path(run_dir.path())),
+                    "render output path should be rewritten into run dir"
+                );
+            }
+            other => panic!("unexpected operation: {other:?}"),
+        }
     }
 
     #[test]

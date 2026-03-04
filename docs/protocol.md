@@ -93,6 +93,8 @@ Current draft operations:
 - `LoadFile { path, as_id? }`
 - `SaveFile { seq_id, path, format }`
 - `RenderSequenceSvg { seq_id, mode, path }`
+- `RenderFeatureExpertSvg { seq_id, target, path }`
+- `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
 - `RenderPoolGelSvg { inputs, path, ladders? }`
@@ -114,6 +116,7 @@ Current draft operations:
     `catalog_path?`, `cache_dir?`, `options_override_json?`,
     `effective_options_json?`) for sequence-history/audit views.
 - `SelectCandidate { input, criterion, output_id? }`
+- `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
 - `DeleteCandidateSet { set_name }`
@@ -146,6 +149,34 @@ Current draft operations:
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)
 
+Isoform-panel operation semantics (current):
+
+- `ImportIsoformPanel` loads curated panel resources with schema
+  `gentle.isoform_panel_resource.v1` and binds them to one sequence context.
+- `strict=true` enforces hard failure when panel transcript mapping fails;
+  `strict=false` records warnings and keeps partial mappings.
+- `RenderIsoformArchitectureSvg` emits a deterministic two-section architecture
+  SVG (transcript/exon lanes + protein/domain lanes) derived from the same
+  expert payload used by GUI/shell inspection.
+  - when CDS ranges are available for mapped transcripts, SVG rendering uses
+    dual coding in the top panel (faint full exons + solid CDS blocks) and
+    adds a genome boundary rail with semi-transparent flank ribbons mapping
+    boundary intervals to amino-acid spans on the shared protein reference axis
+    (`1 aa ... max aa`), so mapping is readable across all protein lanes.
+    Identical ribbons are merged and rendered once with support-weighted opacity.
+- `gentle.isoform_panel_resource.v1` supports optional protein reference-span
+  hints per isoform:
+  - `reference_start_aa` (1-based inclusive)
+  - `reference_end_aa` (1-based inclusive)
+  - when present, protein lanes render and clip domains within this span while
+    keeping one shared amino-acid axis across isoforms (useful for TP53
+    N-terminus/C-terminus class overlays).
+- `gentle.isoform_panel_resource.v1` also supports panel-level transcript
+  geometry mode:
+  - `transcript_geometry_mode: exon|cds` (default `exon`)
+  - `cds` renders top-panel lanes from transcript CDS segments when available,
+    falling back to exon geometry per transcript if CDS metadata is missing.
+
 `LoadFile` import detection semantics (current):
 
 - deterministic probe order: `GenBank -> EMBL -> FASTA -> XML`
@@ -171,6 +202,11 @@ Local `SequenceAnchor` semantics (distinct from genome provenance anchoring):
 
 Adapter utility contracts (current, non-engine operations):
 
+For narrative/operator guidance on when to use CLI, MCP, Agent Assistant, or an
+external coding agent runtime, see:
+
+- `docs/agent_interfaces_tutorial.md`
+
 - `help [COMMAND ...] [--format text|json|markdown] [--interface ...]`
   - backed by structured glossary source `docs/glossary.json`
   - `--format text` renders human-readable help
@@ -178,8 +214,17 @@ Adapter utility contracts (current, non-engine operations):
   - `--format markdown` renders documentation-ready markdown
   - `--interface` accepts: `all|cli-direct|cli-shell|gui-shell|js|lua|mcp`
     (`mcp` currently aliases to shared shell command docs)
+- shared-shell isoform panel routes:
+  - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
+  - `panels inspect-isoform SEQ_ID PANEL_ID`
+  - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
+  - `panels validate-isoform PANEL_PATH [--panel-id ID]`
 
 - `gentle_mcp` (stdio MCP adapter, expanded UI-intent parity baseline)
+  - MCP role:
+    - request/response transport for tool execution (`tools/call`)
+    - standardized capability discovery/negotiation (`tools/list`,
+      `capabilities`, `help`)
   - current tools:
     - `capabilities`
     - `state_summary`
@@ -197,6 +242,12 @@ Adapter utility contracts (current, non-engine operations):
     required to remain non-mutating (`state_changed = false`)
   - tool handlers are adapter wrappers over existing deterministic engine/shell
     contracts (no MCP-only biology logic branch)
+  - stdio framing/validation hardening:
+    - `Content-Length` is required, duplicate headers are rejected
+    - maximum accepted frame size is `8 MiB`
+    - parsed JSON nesting depth is capped at `96`
+    - `tools/call` params are strict (`name`, optional `arguments` only)
+    - `tools/call.arguments` must be a JSON object
 
 MCP UI-intent tool contracts (current):
 

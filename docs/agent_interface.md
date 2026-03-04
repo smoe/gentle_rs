@@ -1,9 +1,15 @@
 # GENtle Agent Interface
 
-Last updated: 2026-02-28
+Last updated: 2026-03-04
 
 This guide explains how agents can control GENtle and how the available
 interfaces differ.
+
+For a self-standing narrative tutorial with role-based usage, step-by-step
+flows, and explicit comparisons (CLI vs MCP vs Agent Assistant vs external
+coding agents like Codex), start with:
+
+- `docs/agent_interfaces_tutorial.md`
 
 ## Why this exists
 
@@ -15,6 +21,11 @@ GENtle exposes multiple agent-facing routes:
 
 These routes are related, but they are not identical in transport, ergonomics,
 and safety flow.
+
+Plain-language note used in this file:
+
+- "fixed format" means a command/tool with defined inputs and predictable
+  outputs (usually JSON).
 
 ## Agent-facing routes
 
@@ -34,7 +45,7 @@ What it is good for:
 
 Key properties:
 
-- same engine contract as GUI/JS/Lua
+- same engine behavior as GUI/JS/Lua
 - machine-readable JSON outputs
 - strong reproducibility and auditability
 
@@ -42,6 +53,9 @@ Key properties:
 
 MCP is the tool-based route for external AI clients that speak JSON-RPC over
 stdio.
+It is not only transport: MCP is also the standardized discovery/negotiation
+surface (`tools/list`, `capabilities`, `help`) used to understand available
+GENtle functionality before execution.
 
 Current MCP tool families include:
 
@@ -61,6 +75,7 @@ What it is good for:
 
 - integrating GENtle into MCP-compatible agent runners
 - explicit tool-call loops (`tools/list`, `tools/call`)
+- explicit capability negotiation before/alongside execution
 - deterministic tool result handling with standard MCP envelopes
 
 Key properties:
@@ -93,7 +108,7 @@ What it is good for:
 Key properties:
 
 - not a direct replacement for deterministic interfaces
-- produces suggestions that can be executed through shared shell contracts
+- produces suggestions that can be executed through shared shell commands
 - recursion guardrail blocks nested `agents ask` execution from suggested
   commands
 - suggested commands can execute shared BLAST routes (`genomes/helpers blast`,
@@ -129,13 +144,14 @@ Current template set includes:
 
 Important distinction:
 
-- Interface (CLI/MCP/shared shell): executable contract and deterministic result
+- Interface (CLI/MCP/shared shell): executable command format and deterministic
+  result
 - Prompt template: guidance text for the model request
 
 In short:
 
 - prompt quality affects assistant output quality
-- execution determinism comes from the underlying shell/engine contracts
+- execution determinism comes from underlying shell/engine command formats
 
 ## Typical usage patterns
 
@@ -166,7 +182,7 @@ Example command suggestions (valid through Agent Assistant execution path):
 
 ## Safety and governance notes
 
-- Keep business/biology logic in shared engine contracts only.
+- Keep business/biology logic in shared engine paths only.
 - Keep adapters thin (CLI/MCP/GUI assistant should not fork biology behavior).
 - Use explicit confirmation for mutating routes.
 - Prefer deterministic machine-readable outputs for automation.
@@ -175,5 +191,5 @@ Example command suggestions (valid through Agent Assistant execution path):
 
 - `docs/gui.md` (GUI usage and Agent Assistant UI details)
 - `docs/cli.md` (CLI and MCP operational commands)
-- `docs/protocol.md` (protocol contracts and schema-level details)
+- `docs/protocol.md` (protocol details and schema-level definitions)
 - `docs/architecture.md` (architecture invariants and parity rules)

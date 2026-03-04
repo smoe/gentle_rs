@@ -254,6 +254,20 @@ pub struct GenomeGeneRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenomeTranscriptRecord {
+    pub chromosome: String,
+    pub transcript_id: String,
+    pub gene_id: Option<String>,
+    pub gene_name: Option<String>,
+    pub strand: Option<char>,
+    pub transcript_start_1based: usize,
+    pub transcript_end_1based: usize,
+    pub exons_1based: Vec<(usize, usize)>,
+    #[serde(default)]
+    pub cds_1based: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenomeChromosomeRecord {
     pub chromosome: String,
     pub length_bp: usize,
@@ -549,10 +563,43 @@ impl GenomeCatalog {
             )
         })?;
         let manifest_path = install_dir.join("manifest.json");
+        let sequence_resolution = self.resolve_source_with_type(
+            genome_id,
+            "sequence",
+            entry.sequence_local.as_ref(),
+            entry.sequence_remote.as_ref(),
+            entry,
+        )?;
+        let annotation_resolution = self.resolve_source_with_type(
+            genome_id,
+            "annotation",
+            entry.annotations_local.as_ref(),
+            entry.annotations_remote.as_ref(),
+            entry,
+        )?;
+        let sequence_source = sequence_resolution.source.clone();
+        let annotation_source = annotation_resolution.source.clone();
+        let mut force_refresh_from_sources = false;
+
+        if manifest_path.exists() {
+            let manifest = Self::load_manifest(&manifest_path)?;
+            if !sources_equivalent(&manifest.sequence_source, &sequence_source)
+                || !sources_equivalent(&manifest.annotation_source, &annotation_source)
+            {
+                force_refresh_from_sources = true;
+                fs::remove_file(&manifest_path).map_err(|e| {
+                    format!(
+                        "Could not reset stale genome manifest '{}' after source change: {e}",
+                        manifest_path.display()
+                    )
+                })?;
+            } else {
+                Self::validate_manifest_files(&manifest)?;
+            }
+        }
 
         if manifest_path.exists() {
             let mut manifest = Self::load_manifest(&manifest_path)?;
-            Self::validate_manifest_files(&manifest)?;
             let checksum_changed = ensure_manifest_checksums(&mut manifest)?;
             let mut warnings: Vec<String> = vec![];
             let mut annotation_parse_report: Option<AnnotationParseReport> = None;
@@ -676,21 +723,12 @@ impl GenomeCatalog {
             });
         }
 
-        let sequence_resolution = self.resolve_source_with_type(
-            genome_id,
-            "sequence",
-            entry.sequence_local.as_ref(),
-            entry.sequence_remote.as_ref(),
-            entry,
-        )?;
-        let sequence_source = sequence_resolution.source.clone();
-
         let sequence_path = install_dir.join("sequence.fa");
         let fasta_index_path = install_dir.join("sequence.fa.fai");
         let gene_index_path = install_dir.join("genes.json");
         let blast_prefix_path = default_blast_db_prefix(&install_dir);
 
-        if non_empty_regular_file_exists(&sequence_path) {
+        if !force_refresh_from_sources && non_empty_regular_file_exists(&sequence_path) {
             let bytes = fs::metadata(&sequence_path)
                 .map(|meta| meta.len())
                 .unwrap_or(0);
@@ -723,32 +761,45 @@ impl GenomeCatalog {
                 })
             })?;
         }
-        let annotation_resolution = self.resolve_source_with_type(
-            genome_id,
-            "annotation",
-            entry.annotations_local.as_ref(),
-            entry.annotations_remote.as_ref(),
-            entry,
-        )?;
-        let annotation_source = annotation_resolution.source.clone();
         let annotation_ext = infer_annotation_extension(&annotation_source);
         let annotation_path = install_dir.join(format!("annotation.{annotation_ext}"));
-        materialize_source_with_progress(&annotation_source, &annotation_path, |done, total| {
-            on_progress(PrepareGenomeProgress {
-                genome_id: genome_id.to_string(),
-                phase: "download_annotation".to_string(),
-                item: annotation_source.clone(),
-                bytes_done: done,
-                bytes_total: total,
-                percent: total.and_then(|t| {
-                    if t == 0 {
-                        None
-                    } else {
-                        Some((done as f64 / t as f64) * 100.0)
-                    }
-                }),
-            })
-        })?;
+        if !force_refresh_from_sources && non_empty_regular_file_exists(&annotation_path) {
+            let bytes = fs::metadata(&annotation_path)
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            forward_prepare_progress(
+                on_progress,
+                PrepareGenomeProgress {
+                    genome_id: genome_id.to_string(),
+                    phase: "reuse_annotation".to_string(),
+                    item: canonical_or_display(&annotation_path),
+                    bytes_done: bytes,
+                    bytes_total: Some(bytes),
+                    percent: Some(100.0),
+                },
+            )?;
+        } else {
+            materialize_source_with_progress(
+                &annotation_source,
+                &annotation_path,
+                |done, total| {
+                    on_progress(PrepareGenomeProgress {
+                        genome_id: genome_id.to_string(),
+                        phase: "download_annotation".to_string(),
+                        item: annotation_source.clone(),
+                        bytes_done: done,
+                        bytes_total: total,
+                        percent: total.and_then(|t| {
+                            if t == 0 {
+                                None
+                            } else {
+                                Some((done as f64 / t as f64) * 100.0)
+                            }
+                        }),
+                    })
+                },
+            )?;
+        }
         build_fasta_index_with_progress(&sequence_path, &fasta_index_path, |done, total| {
             on_progress(PrepareGenomeProgress {
                 genome_id: genome_id.to_string(),
@@ -766,22 +817,44 @@ impl GenomeCatalog {
             })
         })?;
         let annotation_parse_report =
-            build_gene_index_file(&annotation_path, &gene_index_path, |done, total| {
-                on_progress(PrepareGenomeProgress {
-                    genome_id: genome_id.to_string(),
-                    phase: "index_genes".to_string(),
-                    item: canonical_or_display(&annotation_path),
-                    bytes_done: done,
-                    bytes_total: total,
-                    percent: total.and_then(|t| {
-                        if t == 0 {
-                            None
-                        } else {
-                            Some((done as f64 / t as f64) * 100.0)
-                        }
-                    }),
-                })
-            })?;
+            if !force_refresh_from_sources && non_empty_regular_file_exists(&gene_index_path) {
+                let bytes = fs::metadata(&gene_index_path)
+                    .map(|meta| meta.len())
+                    .unwrap_or(0);
+                forward_prepare_progress(
+                    on_progress,
+                    PrepareGenomeProgress {
+                        genome_id: genome_id.to_string(),
+                        phase: "reuse_gene_index".to_string(),
+                        item: canonical_or_display(&gene_index_path),
+                        bytes_done: bytes,
+                        bytes_total: Some(bytes),
+                        percent: Some(100.0),
+                    },
+                )?;
+                None
+            } else {
+                Some(build_gene_index_file(
+                    &annotation_path,
+                    &gene_index_path,
+                    |done, total| {
+                        on_progress(PrepareGenomeProgress {
+                            genome_id: genome_id.to_string(),
+                            phase: "index_genes".to_string(),
+                            item: canonical_or_display(&annotation_path),
+                            bytes_done: done,
+                            bytes_total: total,
+                            percent: total.and_then(|t| {
+                                if t == 0 {
+                                    None
+                                } else {
+                                    Some((done as f64 / t as f64) * 100.0)
+                                }
+                            }),
+                        })
+                    },
+                )?)
+            };
         forward_prepare_progress(
             on_progress,
             PrepareGenomeProgress {
@@ -842,9 +915,9 @@ impl GenomeCatalog {
         )?;
 
         let mut warnings = blast_outcome.warnings;
-        warnings.extend(summarize_annotation_parse_warnings(
-            &annotation_parse_report,
-        ));
+        if let Some(report) = annotation_parse_report.as_ref() {
+            warnings.extend(summarize_annotation_parse_warnings(report));
+        }
 
         Ok(PrepareGenomeReport {
             genome_id: genome_id.to_string(),
@@ -860,7 +933,7 @@ impl GenomeCatalog {
             blast_index_ready: blast_outcome.ready,
             blast_index_executable: blast_outcome.executable,
             warnings,
-            annotation_parse_report: Some(annotation_parse_report),
+            annotation_parse_report,
         })
     }
 
@@ -1052,6 +1125,261 @@ or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
             Self::write_manifest(&manifest_path, &manifest)?;
         }
         load_gene_index_file(&gene_index_path)
+    }
+
+    /// List transcript/exon records overlapping one extracted gene interval.
+    ///
+    /// This is used to project annotation-backed transcript structures into
+    /// extracted gene slices (for example for isoform architecture views).
+    /// For non-tabular annotation sources (GenBank/XML), this currently returns
+    /// an empty list.
+    pub fn list_gene_transcript_records(
+        &self,
+        genome_id: &str,
+        chromosome: &str,
+        start_1based: usize,
+        end_1based: usize,
+        gene_id_hint: Option<&str>,
+        gene_name_hint: Option<&str>,
+        cache_dir_override: Option<&str>,
+    ) -> Result<Vec<GenomeTranscriptRecord>, String> {
+        if start_1based == 0 || end_1based < start_1based {
+            return Err(format!(
+                "Invalid gene interval {}:{}-{}",
+                chromosome, start_1based, end_1based
+            ));
+        }
+
+        let entry = self.entry(genome_id)?;
+        let install_dir = self.install_dir(genome_id, entry, cache_dir_override);
+        let manifest_path = install_dir.join("manifest.json");
+        if !manifest_path.exists() {
+            return Err(format!(
+                "Genome '{genome_id}' is not prepared locally. Run PrepareGenome first."
+            ));
+        }
+
+        let manifest = Self::load_manifest(&manifest_path)?;
+        Self::validate_manifest_files(&manifest)?;
+        let annotation_path = PathBuf::from(&manifest.annotation_path);
+        if !annotation_path.exists() {
+            return Err(format!(
+                "Prepared annotation file '{}' is missing",
+                annotation_path.display()
+            ));
+        }
+        if is_genbank_annotation_path(&annotation_path) || is_xml_annotation_path(&annotation_path)
+        {
+            return Ok(vec![]);
+        }
+
+        #[derive(Default)]
+        struct TranscriptAccum {
+            chromosome: String,
+            transcript_id: String,
+            gene_id: Option<String>,
+            gene_name: Option<String>,
+            strand: Option<char>,
+            transcript_start_1based: Option<usize>,
+            transcript_end_1based: Option<usize>,
+            exons_1based: Vec<(usize, usize)>,
+            cds_1based: Vec<(usize, usize)>,
+        }
+
+        let file = File::open(&annotation_path).map_err(|e| {
+            format!(
+                "Could not open annotation file '{}': {e}",
+                annotation_path.display()
+            )
+        })?;
+        let reader = BufReader::new(file);
+        let gene_id_hint_norm = gene_id_hint
+            .map(|v| normalize_gene_match_token(v))
+            .filter(|v| !v.is_empty());
+        let gene_name_hint_norm = gene_name_hint
+            .map(|v| normalize_gene_match_token(v))
+            .filter(|v| !v.is_empty());
+
+        let mut transcripts: HashMap<String, TranscriptAccum> = HashMap::new();
+        for line_result in reader.lines() {
+            let line = line_result.map_err(|e| {
+                format!(
+                    "Could not read annotation file '{}': {e}",
+                    annotation_path.display()
+                )
+            })?;
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let cols: Vec<&str> = trimmed.split('\t').collect();
+            if cols.len() < 9 {
+                continue;
+            }
+            if !chromosome_names_match(chromosome, cols[0]) {
+                continue;
+            }
+            let feature_kind = cols[2].trim().to_ascii_lowercase();
+            if !matches!(
+                feature_kind.as_str(),
+                "transcript" | "mrna" | "exon" | "cds"
+            ) {
+                continue;
+            }
+            let Some(row_start) = parse_annotation_coordinate(cols[3]) else {
+                continue;
+            };
+            let Some(row_end) = parse_annotation_coordinate(cols[4]) else {
+                continue;
+            };
+            if row_end < row_start {
+                continue;
+            }
+            if row_end < start_1based || row_start > end_1based {
+                continue;
+            }
+            let attrs = parse_annotation_attributes(cols[8]);
+            let row_gene_id = pick_gene_id(&attrs);
+            let row_gene_name = pick_gene_name(&attrs);
+            let matches_gene_id = gene_id_hint_norm
+                .as_ref()
+                .map(|hint| {
+                    row_gene_id
+                        .as_deref()
+                        .map(|value| normalize_gene_match_token(value) == *hint)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(true);
+            let matches_gene_name = gene_name_hint_norm
+                .as_ref()
+                .map(|hint| {
+                    row_gene_name
+                        .as_deref()
+                        .map(|value| normalize_gene_match_token(value) == *hint)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(true);
+            if !matches_gene_id && !matches_gene_name {
+                continue;
+            }
+
+            let transcript_id =
+                pick_annotation_attribute(&attrs, &["transcript_id", "transcript", "id", "name"])
+                    .map(|v| normalize_transcript_id(&v))
+                    .filter(|v| !v.is_empty())
+                    .or_else(|| {
+                        if feature_kind == "transcript" || feature_kind == "mrna" {
+                            Some(format!(
+                                "{}:{}-{}",
+                                row_gene_id
+                                    .as_deref()
+                                    .or(row_gene_name.as_deref())
+                                    .unwrap_or("transcript"),
+                                row_start,
+                                row_end
+                            ))
+                        } else {
+                            None
+                        }
+                    });
+            let Some(transcript_id) = transcript_id else {
+                continue;
+            };
+            let strand = cols[6].chars().next().and_then(|c| match c {
+                '+' | '-' => Some(c),
+                _ => None,
+            });
+            let entry =
+                transcripts
+                    .entry(transcript_id.clone())
+                    .or_insert_with(|| TranscriptAccum {
+                        chromosome: cols[0].trim().to_string(),
+                        transcript_id: transcript_id.clone(),
+                        gene_id: row_gene_id.clone(),
+                        gene_name: row_gene_name.clone(),
+                        strand,
+                        transcript_start_1based: None,
+                        transcript_end_1based: None,
+                        exons_1based: vec![],
+                        cds_1based: vec![],
+                    });
+            if entry.gene_id.is_none() {
+                entry.gene_id = row_gene_id.clone();
+            }
+            if entry.gene_name.is_none() {
+                entry.gene_name = row_gene_name.clone();
+            }
+            if entry.strand.is_none() {
+                entry.strand = strand;
+            }
+            if feature_kind == "transcript" || feature_kind == "mrna" {
+                entry.transcript_start_1based = Some(row_start);
+                entry.transcript_end_1based = Some(row_end);
+            } else if feature_kind == "exon" {
+                entry.exons_1based.push((row_start, row_end));
+            } else {
+                entry.cds_1based.push((row_start, row_end));
+            }
+        }
+
+        let mut out: Vec<GenomeTranscriptRecord> = transcripts
+            .into_values()
+            .filter_map(|mut tx| {
+                tx.exons_1based
+                    .sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                tx.exons_1based.dedup();
+                let mut clipped_exons: Vec<(usize, usize)> = tx
+                    .exons_1based
+                    .into_iter()
+                    .filter_map(|(start, end)| {
+                        let clipped_start = start.max(start_1based);
+                        let clipped_end = end.min(end_1based);
+                        (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+                    })
+                    .collect();
+                clipped_exons.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                clipped_exons.dedup();
+                let mut clipped_cds: Vec<(usize, usize)> = tx
+                    .cds_1based
+                    .into_iter()
+                    .filter_map(|(start, end)| {
+                        let clipped_start = start.max(start_1based);
+                        let clipped_end = end.min(end_1based);
+                        (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+                    })
+                    .collect();
+                clipped_cds.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+                clipped_cds.dedup();
+
+                let transcript_start = tx
+                    .transcript_start_1based
+                    .or_else(|| clipped_exons.first().map(|(start, _)| *start))?;
+                let transcript_end = tx
+                    .transcript_end_1based
+                    .or_else(|| clipped_exons.last().map(|(_, end)| *end))?;
+                let clipped_start = transcript_start.max(start_1based);
+                let clipped_end = transcript_end.min(end_1based);
+                if clipped_end < clipped_start {
+                    return None;
+                }
+                if clipped_exons.is_empty() {
+                    clipped_exons.push((clipped_start, clipped_end));
+                }
+                Some(GenomeTranscriptRecord {
+                    chromosome: tx.chromosome,
+                    transcript_id: tx.transcript_id,
+                    gene_id: tx.gene_id,
+                    gene_name: tx.gene_name,
+                    strand: tx.strand,
+                    transcript_start_1based: clipped_start,
+                    transcript_end_1based: clipped_end,
+                    exons_1based: clipped_exons,
+                    cds_1based: clipped_cds,
+                })
+            })
+            .collect();
+        out.sort_by(|a, b| a.transcript_id.cmp(&b.transcript_id));
+        Ok(out)
     }
 
     /// Run BLASTN of query sequence against the prepared genome index.
@@ -1897,6 +2225,25 @@ fn infer_annotation_extension(source: &str) -> &'static str {
 
 fn is_http_source(source: &str) -> bool {
     source.starts_with("http://") || source.starts_with("https://")
+}
+
+fn source_compare_key(source: &str) -> String {
+    if is_http_source(source) {
+        return source.trim().to_string();
+    }
+    let path = if let Some(stripped) = source.strip_prefix("file://") {
+        PathBuf::from(stripped)
+    } else {
+        PathBuf::from(source)
+    };
+    fs::canonicalize(&path)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn sources_equivalent(left: &str, right: &str) -> bool {
+    source_compare_key(left) == source_compare_key(right)
 }
 
 fn is_gzip_source(source: &str) -> bool {
@@ -3632,6 +3979,37 @@ fn parse_annotation_coordinate(raw: &str) -> Option<usize> {
     }
 }
 
+fn normalize_transcript_id(raw: &str) -> String {
+    raw.trim().to_string()
+}
+
+fn normalize_gene_match_token(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let core = trimmed
+        .split_once('.')
+        .map(|(left, _)| left)
+        .unwrap_or(trimmed);
+    core.to_ascii_uppercase()
+}
+
+fn normalize_chromosome_token(raw: &str) -> String {
+    let trimmed = raw.trim().to_ascii_lowercase();
+    let without_chr = trimmed.strip_prefix("chr").unwrap_or(&trimmed);
+    let stripped_zeros = without_chr.trim_start_matches('0');
+    if stripped_zeros.is_empty() {
+        "0".to_string()
+    } else {
+        stripped_zeros.to_string()
+    }
+}
+
+fn chromosome_names_match(expected: &str, actual: &str) -> bool {
+    if expected.eq_ignore_ascii_case(actual) {
+        return true;
+    }
+    normalize_chromosome_token(expected) == normalize_chromosome_token(actual)
+}
+
 fn pick_gene_name(attrs: &HashMap<String, String>) -> Option<String> {
     pick_annotation_attribute(
         attrs,
@@ -3965,6 +4343,73 @@ mod tests {
     }
 
     #[test]
+    fn test_list_gene_transcript_records_from_gtf() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\tCDS\t2\t4\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+                "chr1\tsrc\tCDS\t9\t11\t.\t+\t2\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\ttranscript\t2\t10\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX2\";\n",
+                "chr1\tsrc\texon\t2\t10\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX2\"; exon_number \"1\";\n",
+                "chr1\tsrc\tCDS\t3\t9\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX2\";\n",
+                "chr1\tsrc\tgene\t14\t18\t.\t+\t.\tgene_id \"GENE2\"; gene_name \"OTHER\";\n",
+            ),
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let records = catalog
+            .list_gene_transcript_records(
+                "ToyGenome",
+                "chr1",
+                1,
+                12,
+                Some("GENE1"),
+                Some("MYGENE"),
+                None,
+            )
+            .unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].transcript_id, "TX1");
+        assert_eq!(records[0].exons_1based, vec![(1, 4), (9, 12)]);
+        assert_eq!(records[0].cds_1based, vec![(2, 4), (9, 11)]);
+        assert_eq!(records[1].transcript_id, "TX2");
+        assert_eq!(records[1].exons_1based, vec![(2, 10)]);
+        assert_eq!(records[1].cds_1based, vec![(3, 9)]);
+    }
+
+    #[test]
     fn test_get_sequence_region_missing_contig_reports_aliases_and_available_contigs() {
         let td = tempdir().unwrap();
         let root = td.path();
@@ -4219,6 +4664,160 @@ mod tests {
         );
         assert!(second_phases.iter().any(|phase| phase == "index_blast"));
         assert!(second_phases.iter().any(|phase| phase == "ready"));
+    }
+
+    #[test]
+    fn test_prepare_rebuilds_cache_when_catalog_sources_change() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta_a = root.join("toy_a.fa");
+        let ann_a = root.join("toy_a.gtf");
+        fs::write(&fasta_a, ">chr1\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann_a,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+
+        let fasta_b = root.join("toy_b.fa");
+        let ann_b = root.join("toy_b.gtf");
+        fs::write(&fasta_b, ">chr1\nTTTTGGGG\n").unwrap();
+        fs::write(
+            &ann_b,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE2\"; gene_name \"GENE2\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_a_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta_a.display(),
+            ann_a.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_a_json).unwrap();
+        let catalog_a = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let first = catalog_a.prepare_genome_once("ToyGenome").unwrap();
+        assert!(!first.reused_existing);
+
+        let catalog_b_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta_b.display(),
+            ann_b.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_b_json).unwrap();
+        let catalog_b = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+
+        let mut second_phases: Vec<String> = vec![];
+        let second = catalog_b
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                second_phases.push(progress.phase);
+                true
+            })
+            .unwrap();
+        assert!(!second.reused_existing);
+        assert!(
+            second_phases
+                .iter()
+                .any(|phase| phase == "download_sequence")
+        );
+        assert!(
+            second_phases
+                .iter()
+                .any(|phase| phase == "download_annotation")
+        );
+
+        let installed_sequence =
+            fs::read_to_string(cache_dir.join("toygenome").join("sequence.fa"))
+                .expect("installed sequence");
+        assert!(installed_sequence.contains("TTTTGGGG"));
+        let installed_annotation =
+            fs::read_to_string(cache_dir.join("toygenome").join("annotation.gtf"))
+                .expect("installed annotation");
+        assert!(installed_annotation.contains("GENE2"));
+    }
+
+    #[test]
+    fn test_prepare_first_run_reuses_existing_annotation_and_gene_index_in_install_dir() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let source_fasta = root.join("source.fa");
+        let source_ann = root.join("source.gtf");
+        fs::write(&source_fasta, ">chr1\nACGT\nACGT\n").unwrap();
+        fs::write(
+            &source_ann,
+            "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let install_dir = cache_dir.join("toygenome");
+        fs::create_dir_all(&install_dir).unwrap();
+        fs::copy(&source_fasta, install_dir.join("sequence.fa")).unwrap();
+        fs::copy(&source_ann, install_dir.join("annotation.gtf")).unwrap();
+        fs::write(install_dir.join("genes.json"), "[]").unwrap();
+
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "description": "toy test genome",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            source_fasta.display(),
+            source_ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+
+        let mut phases: Vec<String> = vec![];
+        let report = catalog
+            .prepare_genome_once_with_progress("ToyGenome", None, &mut |progress| {
+                phases.push(progress.phase);
+                true
+            })
+            .unwrap();
+        assert!(!report.reused_existing);
+        assert!(phases.iter().any(|phase| phase == "reuse_sequence"));
+        assert!(phases.iter().any(|phase| phase == "reuse_annotation"));
+        assert!(phases.iter().any(|phase| phase == "reuse_gene_index"));
+        assert!(!phases.iter().any(|phase| phase == "download_sequence"));
+        assert!(!phases.iter().any(|phase| phase == "download_annotation"));
+        assert!(!phases.iter().any(|phase| phase == "index_genes"));
+        assert!(
+            report.annotation_parse_report.is_none(),
+            "existing gene index should avoid reparsing annotation"
+        );
     }
 
     #[test]

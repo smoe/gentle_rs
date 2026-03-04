@@ -30,7 +30,7 @@ Operational work is only useful if outputs can be shared with collaborators and 
   - Reoccurs in: no later chapter.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
   - Status: introduced in this chapter.
-  - Reoccurs in: no later chapter.
+  - Reoccurs in: [Chapter 9: TP53 isoform architecture expert panel (online)](./09_tp53_isoform_architecture_online.md).
 
 ## GUI First
 

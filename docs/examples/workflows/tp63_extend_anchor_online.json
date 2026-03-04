@@ -1,0 +1,58 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp63_extend_anchor_online",
+  "title": "Prepare GRCh38, locate TP63, and extend anchor by 2 kb on both sides (online)",
+  "summary": "Prepares Human GRCh38 Ensembl 116, extracts TP63, and extends the anchored region by 2000 bp to 5' and 3' sides.",
+  "test_mode": "online",
+  "required_files": [
+    "assets/genomes.json"
+  ],
+  "tags": [
+    "genome",
+    "anchor",
+    "online",
+    "tp63"
+  ],
+  "workflow": {
+    "run_id": "example_tp63_extend_anchor_online",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "gene_query": "TP63",
+          "occurrence": 1,
+          "output_id": "grch38_tp63",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtendGenomeAnchor": {
+          "seq_id": "grch38_tp63",
+          "side": "five_prime",
+          "length_bp": 2000,
+          "output_id": "grch38_tp63_ext5_2kb",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtendGenomeAnchor": {
+          "seq_id": "grch38_tp63_ext5_2kb",
+          "side": "three_prime",
+          "length_bp": 2000,
+          "output_id": "grch38_tp63_ext5_ext3_2kb",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      }
+    ]
+  }
+}

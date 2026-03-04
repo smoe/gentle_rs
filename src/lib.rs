@@ -51,7 +51,7 @@ pub mod linear_base_routing;
 pub mod lua_interface;
 /// Main sequence-window GUI controller and interaction orchestration.
 pub mod main_area_dna;
-/// MCP stdio server adapter exposing read-only tool endpoints.
+/// MCP stdio server adapter exposing tool execution and capability discovery.
 pub mod mcp_server;
 /// Methylation-site detection and state helpers.
 pub mod methylation_sites;

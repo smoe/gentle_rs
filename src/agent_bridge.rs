@@ -1,6 +1,7 @@
 //! Agent-assistant bridge models, transports, and execution guardrails.
 
 use crate::engine::EngineStateSummary;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -41,6 +42,8 @@ pub const AGENT_CONNECT_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_CONNECT_TIMEOUT_S
 pub const AGENT_READ_TIMEOUT_SECS_ENV: &str = "GENTLE_AGENT_READ_TIMEOUT_SECS";
 pub const AGENT_MAX_RETRIES_ENV: &str = "GENTLE_AGENT_MAX_RETRIES";
 pub const AGENT_MAX_RESPONSE_BYTES_ENV: &str = "GENTLE_AGENT_MAX_RESPONSE_BYTES";
+pub const AGENT_COMPAT_HOST_ALLOWLIST_ENV: &str = "GENTLE_AGENT_COMPAT_HOST_ALLOWLIST";
+pub const AGENT_COMPAT_HOST_DENYLIST_ENV: &str = "GENTLE_AGENT_COMPAT_HOST_DENYLIST";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentBridgeErrorCode {
@@ -76,7 +79,39 @@ impl AgentBridgeErrorCode {
 }
 
 fn agent_err(code: AgentBridgeErrorCode, message: impl Into<String>) -> String {
-    format!("AGENT_{}: {}", code.as_str(), message.into())
+    format!(
+        "AGENT_{}: {}",
+        code.as_str(),
+        redact_sensitive_text(&message.into())
+    )
+}
+
+fn redact_sensitive_text(raw: &str) -> String {
+    let mut out = raw.to_string();
+    for (pattern, replacement) in [
+        (
+            r"(?i)(OPENAI_API_KEY\s*=\s*)([^\s,;]+)",
+            "$1[REDACTED_OPENAI_API_KEY]",
+        ),
+        (
+            r"(?i)(authorization\s*:\s*bearer\s+)([^\s,;]+)",
+            "$1[REDACTED_BEARER_TOKEN]",
+        ),
+        (
+            r"(?i)([?&](?:api[_-]?key|access[_-]?token|token|key)=)([^&\s]+)",
+            "$1[REDACTED]",
+        ),
+        (
+            r"(?i)\b(api[_-]?key|access[_-]?token)\s*[:=]\s*([^\s,;]+)",
+            "$1=[REDACTED]",
+        ),
+        (r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED_OPENAI_KEY]"),
+    ] {
+        if let Ok(re) = Regex::new(pattern) {
+            out = re.replace_all(&out, replacement).into_owned();
+        }
+    }
+    out
 }
 
 fn parse_schema_major(schema: &str, prefix: &str) -> Option<u32> {
@@ -317,6 +352,19 @@ fn is_model_unspecified(raw: &str) -> bool {
             .eq_ignore_ascii_case(OPENAI_COMPAT_UNSPECIFIED_MODEL)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BaseUrlSource {
+    EnvOverride,
+    Catalog,
+    Default,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedBaseUrl {
+    url: String,
+    source: BaseUrlSource,
+}
+
 fn normalize_base_url(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -330,29 +378,157 @@ fn normalize_base_url(raw: &str) -> Option<String> {
     Some(with_scheme.trim_end_matches('/').to_string())
 }
 
-fn resolve_base_url(system: &AgentSystemSpec, default: &str) -> String {
-    system
+fn parse_http_base_url(raw: &str) -> Result<reqwest::Url, String> {
+    let normalized =
+        normalize_base_url(raw).ok_or_else(|| "base_url must be a non-empty string".to_string())?;
+    let mut url = reqwest::Url::parse(&normalized)
+        .map_err(|e| format!("base_url '{}' is not a valid URL: {e}", normalized))?;
+    let scheme = url.scheme().to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err(format!(
+            "base_url '{}' uses unsupported scheme '{}' (only http/https are allowed)",
+            normalized, scheme
+        ));
+    }
+    if url.host_str().is_none() {
+        return Err(format!("base_url '{}' must include a host", normalized));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(format!(
+            "base_url '{}' must not include user/password credentials",
+            normalized
+        ));
+    }
+    // Strip query/fragment to avoid accidental token leakage and keep endpoint
+    // selection deterministic.
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url)
+}
+
+fn resolve_base_url_with_source(system: &AgentSystemSpec, default: &str) -> ResolvedBaseUrl {
+    if let Some(url) = system
         .env
         .get(AGENT_BASE_URL_ENV)
         .and_then(|value| normalize_base_url(value))
-        .or_else(|| {
-            system
-                .base_url
-                .as_deref()
-                .and_then(|value| normalize_base_url(value))
-        })
-        .or_else(|| normalize_base_url(default))
-        .unwrap_or_else(|| default.trim_end_matches('/').to_string())
+    {
+        return ResolvedBaseUrl {
+            url,
+            source: BaseUrlSource::EnvOverride,
+        };
+    }
+    if let Some(url) = system
+        .base_url
+        .as_deref()
+        .and_then(|value| normalize_base_url(value))
+    {
+        return ResolvedBaseUrl {
+            url,
+            source: BaseUrlSource::Catalog,
+        };
+    }
+    ResolvedBaseUrl {
+        url: normalize_base_url(default)
+            .unwrap_or_else(|| default.trim_end_matches('/').to_string()),
+        source: BaseUrlSource::Default,
+    }
+}
+
+fn resolve_base_url(system: &AgentSystemSpec, default: &str) -> String {
+    resolve_base_url_with_source(system, default).url
+}
+
+fn normalize_host_rule(raw: &str) -> Option<String> {
+    let rule = raw.trim().to_ascii_lowercase();
+    if rule.is_empty() {
+        None
+    } else if let Some(stripped) = rule.strip_prefix("http://") {
+        Some(stripped.trim_end_matches('/').to_string())
+    } else if let Some(stripped) = rule.strip_prefix("https://") {
+        Some(stripped.trim_end_matches('/').to_string())
+    } else {
+        Some(rule)
+    }
+}
+
+fn host_matches_rule(host: &str, rule: &str) -> bool {
+    let host = host.trim().to_ascii_lowercase();
+    let Some(rule) = normalize_host_rule(rule) else {
+        return false;
+    };
+    if rule == "*" {
+        return true;
+    }
+    if let Some(suffix) = rule.strip_prefix("*.") {
+        return host == suffix || host.ends_with(&format!(".{suffix}"));
+    }
+    host == rule
+}
+
+fn host_matches_any_rule(host: &str, rules: &[String]) -> bool {
+    rules.iter().any(|rule| host_matches_rule(host, rule))
+}
+
+fn resolve_host_rules(system: &AgentSystemSpec, key: &str) -> Vec<String> {
+    let raw = system
+        .env
+        .get(key)
+        .cloned()
+        .or_else(|| std::env::var(key).ok())
+        .unwrap_or_default();
+    raw.split(',')
+        .filter_map(normalize_host_rule)
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn is_local_host(host: &str) -> bool {
+    let normalized = host.trim().to_ascii_lowercase();
+    matches!(
+        normalized.as_str(),
+        "localhost" | "127.0.0.1" | "::1" | "0.0.0.0"
+    )
+}
+
+fn enforce_openai_compat_base_url_policy(
+    system: &AgentSystemSpec,
+    resolved: &ResolvedBaseUrl,
+) -> Result<String, String> {
+    let parsed = parse_http_base_url(&resolved.url)?;
+    let host = parsed
+        .host_str()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if host.is_empty() {
+        return Err("base_url host is empty".to_string());
+    }
+    let deny_rules = resolve_host_rules(system, AGENT_COMPAT_HOST_DENYLIST_ENV);
+    if host_matches_any_rule(&host, &deny_rules) {
+        return Err(format!(
+            "OpenAI-compatible base_url host '{}' is denied by {}",
+            host, AGENT_COMPAT_HOST_DENYLIST_ENV
+        ));
+    }
+    let allow_rules = resolve_host_rules(system, AGENT_COMPAT_HOST_ALLOWLIST_ENV);
+    if !allow_rules.is_empty() && !host_matches_any_rule(&host, &allow_rules) {
+        return Err(format!(
+            "OpenAI-compatible base_url host '{}' is not allowed by {}",
+            host, AGENT_COMPAT_HOST_ALLOWLIST_ENV
+        ));
+    }
+    if !is_local_host(&host) && !matches!(resolved.source, BaseUrlSource::EnvOverride) {
+        return Err(format!(
+            "OpenAI-compatible base_url host '{}' is remote; provide explicit {} / --base-url override to allow remote hosts",
+            host, AGENT_BASE_URL_ENV
+        ));
+    }
+    Ok(parsed.to_string().trim_end_matches('/').to_string())
 }
 
 fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
-    let normalized = normalize_base_url(base_url)
-        .or_else(|| normalize_base_url(OPENAI_COMPAT_DEFAULT_BASE_URL))
-        .unwrap_or_else(|| {
-            OPENAI_COMPAT_DEFAULT_BASE_URL
-                .trim_end_matches('/')
-                .to_string()
-        });
+    let normalized =
+        normalize_base_url(base_url).unwrap_or_else(|| base_url.trim_end_matches('/').to_string());
     let mut endpoints = vec![format!("{normalized}/chat/completions")];
     if !normalized.ends_with("/v1") {
         let v1 = format!("{normalized}/v1/chat/completions");
@@ -363,19 +539,19 @@ fn openai_compat_endpoint_candidates(base_url: &str) -> Vec<String> {
     endpoints
 }
 
-fn openai_compat_endpoint_candidates_for_system(system: &AgentSystemSpec) -> Vec<String> {
-    let primary_base = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
-    openai_compat_endpoint_candidates(&primary_base)
+fn openai_compat_endpoint_candidates_for_system(
+    system: &AgentSystemSpec,
+) -> Result<Vec<String>, String> {
+    let resolved = resolve_base_url_with_source(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
+    let base_url = enforce_openai_compat_base_url_policy(system, &resolved)?;
+    Ok(openai_compat_endpoint_candidates(&base_url))
 }
 
-fn openai_model_list_endpoint_candidates(base_url: &str) -> Vec<String> {
-    let normalized = normalize_base_url(base_url)
-        .or_else(|| normalize_base_url(OPENAI_COMPAT_DEFAULT_BASE_URL))
-        .unwrap_or_else(|| {
-            OPENAI_COMPAT_DEFAULT_BASE_URL
-                .trim_end_matches('/')
-                .to_string()
-        });
+fn openai_model_list_endpoint_candidates(base_url: &str) -> Result<Vec<String>, String> {
+    let normalized = parse_http_base_url(base_url)?
+        .to_string()
+        .trim_end_matches('/')
+        .to_string();
     let mut endpoints = vec![format!("{normalized}/models")];
     if !normalized.ends_with("/v1") {
         let v1 = format!("{normalized}/v1/models");
@@ -383,7 +559,7 @@ fn openai_model_list_endpoint_candidates(base_url: &str) -> Vec<String> {
             endpoints.push(v1);
         }
     }
-    endpoints
+    Ok(endpoints)
 }
 
 fn extract_models_from_openai_models_payload(value: &Value) -> Vec<String> {
@@ -430,7 +606,8 @@ pub fn discover_openai_models(
     base_url: &str,
     api_key: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    let endpoints = openai_model_list_endpoint_candidates(base_url);
+    let endpoints =
+        openai_model_list_endpoint_candidates(base_url).map_err(|e| redact_sensitive_text(&e))?;
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
@@ -525,8 +702,17 @@ pub fn agent_system_availability(system: &AgentSystemSpec) -> AgentSystemAvailab
             }
         }
         AgentSystemTransport::NativeOpenaiCompat => {
-            let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
-            let endpoints = openai_compat_endpoint_candidates_for_system(system);
+            let resolved = resolve_base_url_with_source(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
+            let base_url = match enforce_openai_compat_base_url_policy(system, &resolved) {
+                Ok(url) => url,
+                Err(err) => {
+                    return AgentSystemAvailability {
+                        available: false,
+                        reason: Some(err),
+                    };
+                }
+            };
+            let endpoints = openai_compat_endpoint_candidates(&base_url);
             let model = resolve_model(system, OPENAI_COMPAT_DEFAULT_MODEL);
             let runtime = resolve_agent_runtime_config(system);
             if is_model_unspecified(&model) {
@@ -1574,8 +1760,14 @@ fn invoke_native_openai_compat_once(
             ),
         });
     }
-    let base_url = resolve_base_url(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
-    let endpoints = openai_compat_endpoint_candidates_for_system(system);
+    let resolved = resolve_base_url_with_source(system, OPENAI_COMPAT_DEFAULT_BASE_URL);
+    let base_url = enforce_openai_compat_base_url_policy(system, &resolved).map_err(|message| {
+        ExternalAttemptError {
+            kind: ExternalAttemptErrorKind::Unavailable,
+            message,
+        }
+    })?;
+    let endpoints = openai_compat_endpoint_candidates(&base_url);
     let system_prompt = "You are a GENtle agent bridge.\nReturn STRICT JSON only with this schema:\n{\"schema\":\"gentle.agent_response.v1\",\"assistant_message\":\"string\",\"questions\":[\"string\"],\"suggested_commands\":[{\"title\":\"string\",\"rationale\":\"string\",\"command\":\"string\",\"execution\":\"chat|ask|auto\"}]}\nUse only keys from the schema. Extensions may use x_ prefix. Do not include markdown fences.";
     let payload = json!({
         "model": model,
@@ -2022,7 +2214,7 @@ pub fn invoke_agent_support_with_env_overrides(
             let response = parse_agent_response(&stdout)?;
             let mut runtime_summary = runtime_summary(&runtime);
             runtime_summary.endpoint_candidates =
-                openai_compat_endpoint_candidates_for_system(&system);
+                openai_compat_endpoint_candidates_for_system(&system).unwrap_or_default();
             runtime_summary.attempted_endpoints = attempted_endpoints;
             runtime_summary.selected_endpoint = selected_endpoint;
             AgentInvocationOutcome {
@@ -2258,7 +2450,7 @@ mod tests {
         };
         let endpoints = openai_compat_endpoint_candidates_for_system(&system);
         assert_eq!(
-            endpoints,
+            endpoints.expect("resolved local endpoint candidates"),
             vec!["http://127.0.0.1:10000/v1/chat/completions".to_string()]
         );
     }

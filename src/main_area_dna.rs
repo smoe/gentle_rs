@@ -15,8 +15,8 @@ use crate::{
         shell_help_text,
     },
     feature_expert::{
-        FeatureExpertTarget, FeatureExpertView, RestrictionSiteExpertView, SplicingExpertView,
-        TfbsExpertView,
+        FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
+        RestrictionSiteExpertView, SplicingExpertView, TfbsExpertView,
     },
     feature_location::collect_location_ranges_usize,
     gc_contents::GcContents,
@@ -30,6 +30,7 @@ use crate::{
     pool_gel::build_pool_gel_layout,
     render_dna::{RenderDna, RestrictionEnzymePosition},
     render_export::{export_circular_svg, export_linear_svg},
+    render_feature_expert::render_feature_expert_svg,
     render_sequence::RenderSequence,
     scroll_input_policy::{self, WheelIntent, ZoomDirection},
     tf_motifs,
@@ -51,11 +52,30 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum PrimaryMapMode {
+    #[default]
+    Standard,
+    Splicing,
+}
+
+impl PrimaryMapMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Standard => "Standard map",
+            Self::Splicing => "Splicing map",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct EngineOpsUiState {
     show_engine_ops: bool,
     #[serde(default)]
     show_shell: bool,
+    #[serde(default)]
+    primary_map_mode: PrimaryMapMode,
     #[serde(default)]
     shell_command_text: String,
     digest_enzymes_text: String,
@@ -298,6 +318,14 @@ struct EngineOpsUiState {
     #[serde(default)]
     vcf_display_required_info_keys: String,
     #[serde(default)]
+    isoform_panel_path: String,
+    #[serde(default)]
+    isoform_panel_id: String,
+    #[serde(default)]
+    isoform_panel_strict: bool,
+    #[serde(default)]
+    isoform_svg_output_path: String,
+    #[serde(default)]
     container_digest_id: String,
     #[serde(default)]
     container_merge_ids: String,
@@ -347,7 +375,7 @@ struct EngineOpsUiState {
 
 #[cfg(test)]
 mod tests {
-    use super::{MainAreaDna, ViewSvgExportProfile};
+    use super::{MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
     use crate::{
         dna_sequence::DNAsequence,
         engine::{GentleEngine, LinearSequenceLetterLayoutMode, ProjectState},
@@ -941,6 +969,61 @@ mod tests {
             MainAreaDna::splicing_expert_viewport_id("seq2", 7)
         );
     }
+
+    #[test]
+    fn current_engine_ops_state_records_primary_map_mode() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.primary_map_mode = PrimaryMapMode::Splicing;
+        let state = area.current_engine_ops_state();
+        assert_eq!(state.primary_map_mode, PrimaryMapMode::Splicing);
+    }
+
+    #[test]
+    fn primary_map_mode_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().remove("primary_map_mode");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.primary_map_mode, PrimaryMapMode::Standard);
+    }
+
+    #[test]
+    fn splicing_lane_index_at_y_returns_expected_lane() {
+        assert_eq!(
+            MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 20.0, 4),
+            Some(1)
+        );
+        assert_eq!(
+            MainAreaDna::splicing_lane_index_at_y(159.9, 80.0, 20.0, 4),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn splicing_lane_index_at_y_rejects_out_of_range_positions() {
+        assert_eq!(
+            MainAreaDna::splicing_lane_index_at_y(79.0, 80.0, 20.0, 4),
+            None
+        );
+        assert_eq!(
+            MainAreaDna::splicing_lane_index_at_y(160.0, 80.0, 20.0, 4),
+            None
+        );
+        assert_eq!(
+            MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 0.0, 4),
+            None
+        );
+    }
+
+    #[test]
+    fn splicing_map_placeholder_svg_mentions_selected_sequence() {
+        let svg = MainAreaDna::render_splicing_map_placeholder_svg("tp53.seq");
+        assert!(svg.contains("tp53.seq"));
+        assert!(svg.contains("No mRNA/exon feature is selected"));
+        assert!(svg.contains("<svg"));
+    }
 }
 
 fn default_true() -> bool {
@@ -1090,6 +1173,31 @@ impl FeatureTreeGroupingMode {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SplicingLaneCanvasStyle {
+    label_column_width_px: f32,
+    lane_height_px: f32,
+    min_plot_width_px: f32,
+}
+
+impl SplicingLaneCanvasStyle {
+    fn expert() -> Self {
+        Self {
+            label_column_width_px: 220.0,
+            lane_height_px: 26.0,
+            min_plot_width_px: 920.0,
+        }
+    }
+
+    fn primary_map() -> Self {
+        Self {
+            label_column_width_px: 240.0,
+            lane_height_px: 28.0,
+            min_plot_width_px: 780.0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RegulatoryFeatureGrouping {
     primary_key: String,
@@ -1162,6 +1270,7 @@ pub struct MainAreaDna {
     map_sequence: RenderSequence,
     show_sequence: bool, // TODO move to DnaDisplay
     show_map: bool,      // TODO move to DnaDisplay
+    primary_map_mode: PrimaryMapMode,
     show_engine_ops: bool,
     show_shell: bool,
     shell_command_text: String,
@@ -1286,6 +1395,10 @@ pub struct MainAreaDna {
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
     vcf_display_required_info_keys: String,
+    isoform_panel_path: String,
+    isoform_panel_id: String,
+    isoform_panel_strict: bool,
+    isoform_svg_output_path: String,
     declutter_snapshot: Option<DeclutterSnapshot>,
     op_status: String,
     op_error_popup: Option<String>,
@@ -1329,6 +1442,9 @@ pub struct MainAreaDna {
     show_splicing_expert_window: bool,
     splicing_expert_window_feature_id: Option<usize>,
     splicing_expert_window_view: Option<SplicingExpertView>,
+    show_isoform_expert_window: bool,
+    isoform_expert_window_panel_id: Option<String>,
+    isoform_expert_window_view: Option<IsoformArchitectureExpertView>,
     linear_drag_selection_anchor_bp: Option<usize>,
     linear_pan_drag_origin_bp: Option<(usize, f32)>,
     last_linear_map_width_px: f32,
@@ -1394,6 +1510,7 @@ impl MainAreaDna {
             map_sequence: RenderSequence::new_single_sequence(dna, dna_display),
             show_sequence: true,
             show_map: true,
+            primary_map_mode: PrimaryMapMode::Standard,
             show_engine_ops: false,
             show_shell: false,
             shell_command_text: "state-summary".to_string(),
@@ -1519,6 +1636,10 @@ impl MainAreaDna {
             tfbs_task: None,
             tfbs_progress: None,
             vcf_display_required_info_keys: String::new(),
+            isoform_panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
+            isoform_panel_id: "tp53_isoforms_v1".to_string(),
+            isoform_panel_strict: false,
+            isoform_svg_output_path: String::new(),
             declutter_snapshot: None,
             op_status: String::new(),
             op_error_popup: None,
@@ -1562,6 +1683,9 @@ impl MainAreaDna {
             show_splicing_expert_window: false,
             splicing_expert_window_feature_id: None,
             splicing_expert_window_view: None,
+            show_isoform_expert_window: false,
+            isoform_expert_window_panel_id: None,
+            isoform_expert_window_view: None,
             linear_drag_selection_anchor_bp: None,
             linear_pan_drag_origin_bp: None,
             last_linear_map_width_px: 0.0,
@@ -1677,6 +1801,28 @@ impl MainAreaDna {
         b_end_exclusive: usize,
     ) -> bool {
         a_start < b_end_exclusive && a_end_exclusive > b_start
+    }
+
+    fn splicing_lane_index_at_y(
+        y: f32,
+        lanes_top: f32,
+        lane_height_px: f32,
+        lane_count: usize,
+    ) -> Option<usize> {
+        if lane_count == 0
+            || !y.is_finite()
+            || !lanes_top.is_finite()
+            || !lane_height_px.is_finite()
+            || lane_height_px <= 0.0
+        {
+            return None;
+        }
+        let lane_f = ((y - lanes_top) / lane_height_px).floor();
+        if !lane_f.is_finite() || lane_f < 0.0 {
+            return None;
+        }
+        let lane = lane_f as usize;
+        if lane < lane_count { Some(lane) } else { None }
     }
 
     fn feature_overlaps_linear_viewport(
@@ -2234,7 +2380,13 @@ impl MainAreaDna {
             } else {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     self.update_dna_map();
-                    ui.add(self.map_dna.to_owned());
+                    if !self.is_circular()
+                        && matches!(self.primary_map_mode, PrimaryMapMode::Splicing)
+                    {
+                        self.render_primary_splicing_map_ui(ui);
+                    } else {
+                        ui.add(self.map_dna.to_owned());
+                    }
                 });
             }
         } else {
@@ -2321,6 +2473,20 @@ impl MainAreaDna {
             };
 
             if !self.is_circular() {
+                let splicing_mode_active = matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
+                let response = ui
+                    .selectable_label(splicing_mode_active, "Splicing map")
+                    .on_hover_text(
+                        "Toggle primary map rendering between standard feature map and transcript/exon splicing lanes for selected mRNA/exon features",
+                    );
+                if response.clicked() {
+                    self.primary_map_mode = if splicing_mode_active {
+                        PrimaryMapMode::Standard
+                    } else {
+                        PrimaryMapMode::Splicing
+                    };
+                    self.save_engine_ops_state();
+                }
                 let (start_bp, span_bp, sequence_length) = self.current_linear_viewport();
                 if sequence_length > 0 {
                     ui.separator();
@@ -4525,6 +4691,126 @@ impl MainAreaDna {
                 }
                     });
 
+                egui::CollapsingHeader::new("Isoform architecture panels")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.label("Import curated isoform panels and inspect transcript/protein architecture.");
+                        ui.horizontal(|ui| {
+                            ui.label("panel_path");
+                            ui.text_edit_singleline(&mut self.isoform_panel_path);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("panel_id");
+                            ui.text_edit_singleline(&mut self.isoform_panel_id);
+                            ui.checkbox(&mut self.isoform_panel_strict, "Strict");
+                        });
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button("Import Isoform Panel")
+                                .on_hover_text("Import isoform panel JSON for active sequence")
+                                .clicked()
+                            {
+                                let seq_id = self.seq_id.clone().unwrap_or_default();
+                                if seq_id.trim().is_empty() {
+                                    self.op_status = "No active sequence for isoform panel import"
+                                        .to_string();
+                                } else if self.isoform_panel_path.trim().is_empty() {
+                                    self.op_status =
+                                        "Isoform panel path must not be empty".to_string();
+                                } else {
+                                    self.apply_operation_with_feedback(Operation::ImportIsoformPanel {
+                                        seq_id,
+                                        panel_path: self.isoform_panel_path.trim().to_string(),
+                                        panel_id: if self.isoform_panel_id.trim().is_empty() {
+                                            None
+                                        } else {
+                                            Some(self.isoform_panel_id.trim().to_string())
+                                        },
+                                        strict: self.isoform_panel_strict,
+                                    });
+                                }
+                            }
+                            if ui
+                                .button("Open Isoform Expert")
+                                .on_hover_text("Inspect isoform architecture view in dedicated window")
+                                .clicked()
+                            {
+                                let seq_id = self.seq_id.clone().unwrap_or_default();
+                                let panel_id = self.isoform_panel_id.trim().to_string();
+                                if seq_id.is_empty() {
+                                    self.op_status =
+                                        "No active sequence for isoform expert view".to_string();
+                                } else if panel_id.is_empty() {
+                                    self.op_status = "panel_id must not be empty".to_string();
+                                } else {
+                                    match self.inspect_feature_expert_target(
+                                        &FeatureExpertTarget::IsoformArchitecture {
+                                            panel_id: panel_id.clone(),
+                                        },
+                                    ) {
+                                        Ok(FeatureExpertView::IsoformArchitecture(view)) => {
+                                            self.isoform_expert_window_panel_id =
+                                                Some(panel_id.clone());
+                                            self.isoform_expert_window_view = Some(view);
+                                            self.show_isoform_expert_window = true;
+                                            let viewport_id =
+                                                Self::isoform_expert_viewport_id(&seq_id, &panel_id);
+                                            ui.ctx().send_viewport_cmd_to(
+                                                viewport_id,
+                                                egui::ViewportCommand::Visible(true),
+                                            );
+                                            ui.ctx().send_viewport_cmd_to(
+                                                viewport_id,
+                                                egui::ViewportCommand::Focus,
+                                            );
+                                        }
+                                        Ok(other) => {
+                                            self.op_status = format!(
+                                                "Unexpected expert-view payload for isoform panel: {other:?}"
+                                            );
+                                        }
+                                        Err(err) => {
+                                            self.op_status = err;
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("svg_output");
+                            ui.text_edit_singleline(&mut self.isoform_svg_output_path);
+                            if ui
+                                .button("Export Isoform SVG")
+                                .on_hover_text("Render isoform architecture SVG using shared engine route")
+                                .clicked()
+                            {
+                                let seq_id = self.seq_id.clone().unwrap_or_default();
+                                let panel_id = self.isoform_panel_id.trim().to_string();
+                                if seq_id.is_empty() {
+                                    self.op_status =
+                                        "No active sequence for isoform SVG export".to_string();
+                                } else if panel_id.is_empty() {
+                                    self.op_status = "panel_id must not be empty".to_string();
+                                } else {
+                                    let output_path = if self.isoform_svg_output_path.trim().is_empty()
+                                    {
+                                        format!("{seq_id}.{panel_id}.isoform.svg")
+                                    } else {
+                                        self.isoform_svg_output_path.trim().to_string()
+                                    };
+                                    self.isoform_svg_output_path = output_path.clone();
+                                    self.apply_operation_with_feedback(
+                                        Operation::RenderIsoformArchitectureSvg {
+                                            seq_id,
+                                            panel_id,
+                                            path: output_path,
+                                        },
+                                    );
+                                }
+                            }
+                        });
+                    });
+
                 egui::CollapsingHeader::new("VCF display filter")
                     .default_open(false)
                     .show(ui, |ui| {
@@ -5692,51 +5978,46 @@ impl MainAreaDna {
         });
     }
 
-    fn render_splicing_expert_view_ui(&self, ui: &mut egui::Ui, view: &SplicingExpertView) {
-        ui.label(
-            egui::RichText::new(format!(
-                "{}  {}:{}..{}  strand {}  transcripts={}  exons={}",
-                view.group_label,
-                view.seq_id,
-                view.region_start_1based,
-                view.region_end_1based,
-                view.strand,
-                view.transcript_count,
-                view.unique_exon_count
-            ))
-            .monospace()
-            .size(self.feature_details_font_size()),
-        );
-        ui.add_space(2.0);
-
-        let lane_count = view.transcripts.len().max(1);
-        let lane_height = 26.0_f32;
+    fn render_splicing_lane_canvas_ui(
+        &self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+        style: SplicingLaneCanvasStyle,
+        interactive: bool,
+    ) -> Option<usize> {
+        let transcript_count = view.transcripts.len();
+        let lane_count = transcript_count.max(1);
         let max_junction_support = view
             .junctions
             .iter()
             .map(|junction| junction.support_transcript_count.max(1) as f32)
             .fold(1.0_f32, f32::max);
-        // Reserve enough vertical headroom so high-support intron arcs do not get clipped
-        // by the text/status stripe above this canvas.
+        // Reserve enough vertical headroom so high-support intron arcs do not get clipped.
         let axis_top_padding = (30.0 + max_junction_support * 2.0).clamp(18.0, 84.0) + 10.0;
         let lanes_offset_from_axis = 30.0_f32;
-        let plot_height =
-            axis_top_padding + lanes_offset_from_axis + lane_count as f32 * lane_height + 36.0;
-        let desired_width = (ui.available_width()).max(920.0);
+        let plot_height = axis_top_padding
+            + lanes_offset_from_axis
+            + lane_count as f32 * style.lane_height_px
+            + 36.0;
+        let desired_width = ui.available_width().max(style.min_plot_width_px);
+        let mut clicked_feature_id: Option<usize> = None;
 
         egui::ScrollArea::horizontal().show(ui, |ui| {
             scroll_input_policy::apply_scrollarea_keyboard_navigation(
                 ui,
                 scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
             );
-            let (rect, response) = ui.allocate_exact_size(
-                egui::Vec2::new(desired_width, plot_height),
-                egui::Sense::hover(),
-            );
-            response.on_hover_text(view.instruction.as_str());
+            let sense = if interactive {
+                egui::Sense::click()
+            } else {
+                egui::Sense::hover()
+            };
+            let (rect, response) =
+                ui.allocate_exact_size(egui::Vec2::new(desired_width, plot_height), sense);
+            response.clone().on_hover_text(view.instruction.as_str());
             let painter = ui.painter_at(rect);
             let label_x = rect.left() + 6.0;
-            let plot_left = rect.left() + 220.0;
+            let plot_left = rect.left() + style.label_column_width_px;
             let plot_right = rect.right() - 20.0;
             let axis_y = rect.top() + axis_top_padding;
             let lanes_top = axis_y + lanes_offset_from_axis;
@@ -5806,7 +6087,7 @@ impl MainAreaDna {
                 let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
                     continue;
                 };
-                let y = lanes_top + *idx as f32 * lane_height + lane_height * 0.5;
+                let y = lanes_top + *idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
                 let x = to_x(marker.position_1based);
                 let (dy, color) = if marker.side.eq_ignore_ascii_case("donor") {
                     (
@@ -5834,7 +6115,7 @@ impl MainAreaDna {
             }
 
             for (idx, transcript) in view.transcripts.iter().enumerate() {
-                let y = lanes_top + idx as f32 * lane_height + lane_height * 0.5;
+                let y = lanes_top + idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
                 painter.text(
                     egui::pos2(label_x, y),
                     egui::Align2::LEFT_CENTER,
@@ -5881,7 +6162,118 @@ impl MainAreaDna {
                     );
                 }
             }
+
+            if interactive {
+                if let Some(pointer_pos) = response.hover_pos() {
+                    if let Some(lane_idx) = Self::splicing_lane_index_at_y(
+                        pointer_pos.y,
+                        lanes_top,
+                        style.lane_height_px,
+                        transcript_count,
+                    ) {
+                        let transcript = &view.transcripts[lane_idx];
+                        response.clone().on_hover_ui_at_pointer(|ui| {
+                            ui.monospace(format!(
+                                "n-{} {}",
+                                transcript.transcript_feature_id, transcript.transcript_id
+                            ));
+                            ui.label("Click to focus this transcript feature in the sequence view");
+                        });
+                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                    }
+                }
+                if response.clicked() {
+                    if let Some(pointer_pos) = response.interact_pointer_pos() {
+                        if let Some(lane_idx) = Self::splicing_lane_index_at_y(
+                            pointer_pos.y,
+                            lanes_top,
+                            style.lane_height_px,
+                            transcript_count,
+                        ) {
+                            clicked_feature_id =
+                                Some(view.transcripts[lane_idx].transcript_feature_id);
+                        }
+                    }
+                }
+            }
         });
+        clicked_feature_id
+    }
+
+    fn current_splicing_expert_view_for_primary_map(&mut self) -> Option<SplicingExpertView> {
+        self.refresh_description_cache();
+        match self.description_cache_expert_view.clone() {
+            Some(FeatureExpertView::Splicing(view)) => Some(view),
+            _ => None,
+        }
+    }
+
+    fn render_primary_splicing_map_ui(&mut self, ui: &mut egui::Ui) {
+        let panel_width = ui.available_width().max(600.0);
+        self.last_linear_map_width_px = panel_width;
+        egui::Frame::none()
+            .fill(egui::Color32::from_gray(249))
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .show(ui, |ui| {
+                ui.set_width(panel_width);
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new(self.primary_map_mode.label())
+                        .strong(),
+                    )
+                    .on_hover_text(
+                        "Primary splicing map reuses the same transcript/exon lane geometry as the Splicing Expert window",
+                    );
+                    if let Some(view) = self.current_splicing_expert_view_for_primary_map() {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{}:{}..{}  transcripts={}  exons={}  strand {}",
+                                view.seq_id,
+                                view.region_start_1based,
+                                view.region_end_1based,
+                                view.transcript_count,
+                                view.unique_exon_count,
+                                view.strand
+                            ))
+                            .monospace()
+                            .size(self.feature_details_font_size()),
+                        );
+                        if let Some(feature_id) = self.render_splicing_lane_canvas_ui(
+                            ui,
+                            &view,
+                            SplicingLaneCanvasStyle::primary_map(),
+                            true,
+                        ) {
+                            self.focus_feature(feature_id);
+                        }
+                    } else {
+                        ui.add_space(6.0);
+                        ui.label(
+                            "Select an mRNA or exon feature in the feature tree to render splicing lanes.",
+                        );
+                    }
+                });
+            });
+    }
+
+    fn render_splicing_expert_view_ui(&self, ui: &mut egui::Ui, view: &SplicingExpertView) {
+        ui.label(
+            egui::RichText::new(format!(
+                "{}  {}:{}..{}  strand {}  transcripts={}  exons={}",
+                view.group_label,
+                view.seq_id,
+                view.region_start_1based,
+                view.region_end_1based,
+                view.strand,
+                view.transcript_count,
+                view.unique_exon_count
+            ))
+            .monospace()
+            .size(self.feature_details_font_size()),
+        );
+        ui.add_space(2.0);
+        let _ =
+            self.render_splicing_lane_canvas_ui(ui, view, SplicingLaneCanvasStyle::expert(), false);
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
             ui.separator();
@@ -5956,6 +6348,146 @@ impl MainAreaDna {
         }
     }
 
+    fn render_isoform_architecture_expert_view_ui(
+        &self,
+        ui: &mut egui::Ui,
+        view: &IsoformArchitectureExpertView,
+    ) {
+        let font_size = self.feature_details_font_size();
+        ui.label(
+            egui::RichText::new(format!(
+                "{} panel '{}' on {} ({}..{})",
+                view.gene_symbol,
+                view.panel_id,
+                view.seq_id,
+                view.region_start_1based,
+                view.region_end_1based
+            ))
+            .monospace()
+            .size(font_size + 1.0),
+        );
+        if let Some(source) = view
+            .panel_source
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            ui.label(egui::RichText::new(format!("source: {source}")).size(font_size));
+        }
+        if !view.warnings.is_empty() {
+            ui.label(
+                egui::RichText::new(format!("warnings: {}", view.warnings.len()))
+                    .size(font_size)
+                    .color(egui::Color32::from_rgb(180, 83, 9)),
+            );
+            for warning in view.warnings.iter().take(6) {
+                ui.label(
+                    egui::RichText::new(format!(" - {warning}"))
+                        .size(font_size)
+                        .color(egui::Color32::from_rgb(180, 83, 9)),
+                );
+            }
+        }
+
+        ui.separator();
+        ui.label(
+            egui::RichText::new("Transcript/exon architecture")
+                .strong()
+                .size(font_size),
+        );
+        egui::Grid::new("isoform_transcript_grid")
+            .num_columns(5)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("isoform").strong().size(font_size));
+                ui.label(egui::RichText::new("transcript").strong().size(font_size));
+                ui.label(egui::RichText::new("strand").strong().size(font_size));
+                ui.label(egui::RichText::new("mapped").strong().size(font_size));
+                ui.label(egui::RichText::new("exons").strong().size(font_size));
+                ui.end_row();
+                for lane in &view.transcript_lanes {
+                    ui.label(egui::RichText::new(&lane.label).size(font_size));
+                    ui.label(
+                        egui::RichText::new(lane.transcript_id.as_deref().unwrap_or("-"))
+                            .monospace()
+                            .size(font_size),
+                    );
+                    ui.label(egui::RichText::new(&lane.strand).size(font_size));
+                    ui.label(
+                        egui::RichText::new(if lane.mapped { "yes" } else { "no" })
+                            .size(font_size)
+                            .color(if lane.mapped {
+                                egui::Color32::from_rgb(22, 101, 52)
+                            } else {
+                                egui::Color32::from_rgb(180, 83, 9)
+                            }),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            lane.exons
+                                .iter()
+                                .map(|exon| format!("{}..{}", exon.start_1based, exon.end_1based))
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.end_row();
+                }
+            });
+
+        ui.separator();
+        ui.label(
+            egui::RichText::new("Protein/domain architecture")
+                .strong()
+                .size(font_size),
+        );
+        egui::Grid::new("isoform_protein_grid")
+            .num_columns(4)
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new("isoform").strong().size(font_size));
+                ui.label(egui::RichText::new("expected aa").strong().size(font_size));
+                ui.label(egui::RichText::new("TA class").strong().size(font_size));
+                ui.label(egui::RichText::new("domains").strong().size(font_size));
+                ui.end_row();
+                for lane in &view.protein_lanes {
+                    ui.label(egui::RichText::new(&lane.label).size(font_size));
+                    ui.label(
+                        egui::RichText::new(
+                            lane.expected_length_aa
+                                .map(|v| v.to_string())
+                                .unwrap_or_else(|| "-".to_string()),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(lane.transactivation_class.as_deref().unwrap_or("-"))
+                            .size(font_size),
+                    );
+                    ui.label(
+                        egui::RichText::new(
+                            lane.domains
+                                .iter()
+                                .map(|domain| {
+                                    format!(
+                                        "{}:{}..{}",
+                                        domain.name, domain.start_aa, domain.end_aa
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        )
+                        .monospace()
+                        .size(font_size),
+                    );
+                    ui.end_row();
+                }
+            });
+    }
+
     fn render_feature_expert_view_ui(&self, ui: &mut egui::Ui, view: &FeatureExpertView) {
         match view {
             FeatureExpertView::Tfbs(tfbs) => self.render_tfbs_expert_view_ui(ui, tfbs),
@@ -5964,6 +6496,9 @@ impl MainAreaDna {
             }
             FeatureExpertView::Splicing(splicing) => {
                 self.render_splicing_expert_view_ui(ui, splicing)
+            }
+            FeatureExpertView::IsoformArchitecture(isoform) => {
+                self.render_isoform_architecture_expert_view_ui(ui, isoform)
             }
         }
     }
@@ -6038,6 +6573,61 @@ impl MainAreaDna {
             let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
             if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
                 self.show_splicing_expert_window = false;
+            }
+        });
+    }
+
+    fn isoform_expert_viewport_id(seq_id: &str, panel_id: &str) -> egui::ViewportId {
+        egui::ViewportId::from_hash_of(("isoform_expert_viewport", seq_id, panel_id))
+    }
+
+    fn render_isoform_expert_window(&mut self, ctx: &egui::Context) {
+        if !self.show_isoform_expert_window {
+            return;
+        }
+        let Some(view) = self.isoform_expert_window_view.clone() else {
+            self.show_isoform_expert_window = false;
+            return;
+        };
+        let panel_id = self
+            .isoform_expert_window_panel_id
+            .clone()
+            .unwrap_or_else(|| view.panel_id.clone());
+        let title = format!("Isoform Expert - {} ({})", panel_id, view.seq_id);
+        let viewport_id = Self::isoform_expert_viewport_id(&view.seq_id, &panel_id);
+        let builder = egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([1120.0, 700.0])
+            .with_min_inner_size([840.0, 460.0]);
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            if class == egui::ViewportClass::Embedded {
+                let mut open = self.show_isoform_expert_window;
+                egui::Window::new(title.clone())
+                    .id(egui::Id::new(format!(
+                        "isoform_expert_window_embedded_{}_{}",
+                        view.seq_id, panel_id
+                    )))
+                    .open(&mut open)
+                    .resizable(true)
+                    .default_size(Vec2::new(1120.0, 700.0))
+                    .show(ctx, |ui| {
+                        let backdrop_settings = current_window_backdrop_settings();
+                        paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                        self.render_isoform_architecture_expert_view_ui(ui, &view);
+                    });
+                self.show_isoform_expert_window = open;
+                return;
+            }
+
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let backdrop_settings = current_window_backdrop_settings();
+                paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                self.render_isoform_architecture_expert_view_ui(ui, &view);
+            });
+
+            let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
+            if close_shortcut || ctx.input(|i| i.viewport().close_requested()) {
+                self.show_isoform_expert_window = false;
             }
         });
     }
@@ -6601,6 +7191,27 @@ impl MainAreaDna {
         }
     }
 
+    fn render_splicing_map_placeholder_svg(seq_id: &str) -> String {
+        let title = format!("Splicing map (read-only) | {seq_id}");
+        let subtitle = "No mRNA/exon feature is selected";
+        let hint =
+            "Select an mRNA or exon feature in the feature tree to render transcript/exon lanes.";
+        format!(
+            concat!(
+                "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1200\" height=\"700\" viewBox=\"0 0 1200 700\">",
+                "<rect x=\"0\" y=\"0\" width=\"1200\" height=\"700\" fill=\"#ffffff\"/>",
+                "<rect x=\"36\" y=\"56\" width=\"1128\" height=\"588\" fill=\"#f9fafb\" stroke=\"#d1d5db\" stroke-width=\"1\"/>",
+                "<text x=\"68\" y=\"104\" font-family=\"monospace\" font-size=\"22\" fill=\"#111827\">{}</text>",
+                "<text x=\"68\" y=\"146\" font-family=\"monospace\" font-size=\"16\" fill=\"#374151\">{}</text>",
+                "<text x=\"68\" y=\"184\" font-family=\"monospace\" font-size=\"14\" fill=\"#4b5563\">{}</text>",
+                "</svg>"
+            ),
+            Self::xml_escape(&title),
+            Self::xml_escape(subtitle),
+            Self::xml_escape(hint)
+        )
+    }
+
     fn view_svg_export_layout(
         profile: ViewSvgExportProfile,
         observed_map_width_px: f32,
@@ -6713,6 +7324,14 @@ impl MainAreaDna {
             return;
         };
 
+        let primary_splicing_map_export =
+            !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
+        let splicing_export_view = if primary_splicing_map_export {
+            self.current_splicing_expert_view_for_primary_map()
+        } else {
+            None
+        };
+
         let (map_svg, map_mode_label) = {
             let guard = engine.read().expect("Engine lock poisoned");
             let state = guard.state();
@@ -6720,19 +7339,22 @@ impl MainAreaDna {
                 self.op_status = format!("Active sequence '{seq_id}' not found in engine state");
                 return;
             };
-            let map_svg = if self.is_circular() {
-                export_circular_svg(dna, &state.display)
-            } else {
-                export_linear_svg(dna, &state.display)
-            };
-            (
-                map_svg,
-                if self.is_circular() {
-                    "circular"
+            if self.is_circular() {
+                (
+                    export_circular_svg(dna, &state.display),
+                    "circular".to_string(),
+                )
+            } else if primary_splicing_map_export {
+                let map_svg = if let Some(view) = &splicing_export_view {
+                    let expert = FeatureExpertView::Splicing(view.clone());
+                    render_feature_expert_svg(&expert)
                 } else {
-                    "linear"
-                },
-            )
+                    Self::render_splicing_map_placeholder_svg(&seq_id)
+                };
+                (map_svg, "linear-splicing".to_string())
+            } else {
+                (export_linear_svg(dna, &state.display), "linear".to_string())
+            }
         };
 
         let dna_guard = match self.dna.read() {
@@ -6823,6 +7445,26 @@ impl MainAreaDna {
         let (linear_start, linear_span, sequence_length) = self.current_linear_viewport();
         let viewport_text = if self.is_circular() {
             format!("circular view | {} bp", dna_guard.len())
+        } else if primary_splicing_map_export {
+            if let Some(view) = &splicing_export_view {
+                format!(
+                    "linear splicing view {}..{} ({} bp) of {} bp | transcripts={} | unique exons={} | strand={}",
+                    view.region_start_1based,
+                    view.region_end_1based,
+                    view.region_end_1based
+                        .saturating_sub(view.region_start_1based)
+                        .saturating_add(1),
+                    dna_guard.len(),
+                    view.transcript_count,
+                    view.unique_exon_count,
+                    view.strand
+                )
+            } else {
+                format!(
+                    "linear splicing view | {} bp | no selected mRNA/exon feature",
+                    dna_guard.len()
+                )
+            }
         } else {
             format!(
                 "linear view {}..{} ({} bp) of {} bp | density {:.2} | cols-fit {:.0} | glyph {:.2}px | export-span x{:.1}",
@@ -6845,7 +7487,7 @@ impl MainAreaDna {
             Self::xml_escape(&viewport_text)
         ));
         y += 18.0;
-        if cfg!(debug_assertions) {
+        if cfg!(debug_assertions) && !self.is_circular() && !primary_splicing_map_export {
             let threshold_text = format!(
                 "debug tiers: standard<= {:.2}, helical<= {:.2}, condensed<= {:.2}",
                 routing.tier_standard_max_density,
@@ -8396,6 +9038,7 @@ impl MainAreaDna {
         EngineOpsUiState {
             show_engine_ops: self.show_engine_ops,
             show_shell: self.show_shell,
+            primary_map_mode: self.primary_map_mode,
             shell_command_text: self.shell_command_text.clone(),
             digest_enzymes_text: self.digest_enzymes_text.clone(),
             digest_prefix_text: self.digest_prefix_text.clone(),
@@ -8543,6 +9186,10 @@ impl MainAreaDna {
             vcf_display_use_max_qual: vcf_display.use_max_qual,
             vcf_display_max_qual: vcf_display.max_qual,
             vcf_display_required_info_keys: vcf_display.required_info_keys.join(","),
+            isoform_panel_path: self.isoform_panel_path.clone(),
+            isoform_panel_id: self.isoform_panel_id.clone(),
+            isoform_panel_strict: self.isoform_panel_strict,
+            isoform_svg_output_path: self.isoform_svg_output_path.clone(),
             container_digest_id: self.container_digest_id.clone(),
             container_merge_ids: self.container_merge_ids.clone(),
             container_ligation_id: self.container_ligation_id.clone(),
@@ -8575,6 +9222,7 @@ impl MainAreaDna {
     fn apply_engine_ops_state(&mut self, s: EngineOpsUiState) {
         self.show_engine_ops = s.show_engine_ops;
         self.show_shell = s.show_shell;
+        self.primary_map_mode = s.primary_map_mode;
         self.shell_command_text = s.shell_command_text;
         self.digest_enzymes_text = s.digest_enzymes_text;
         self.digest_prefix_text = s.digest_prefix_text;
@@ -8695,6 +9343,10 @@ impl MainAreaDna {
         self.tfbs_per_tf_min_llr_quantile = s.tfbs_per_tf_min_llr_quantile;
         self.tfbs_clear_existing = s.tfbs_clear_existing;
         self.vcf_display_required_info_keys = s.vcf_display_required_info_keys;
+        self.isoform_panel_path = s.isoform_panel_path;
+        self.isoform_panel_id = s.isoform_panel_id;
+        self.isoform_panel_strict = s.isoform_panel_strict;
+        self.isoform_svg_output_path = s.isoform_svg_output_path;
         self.container_digest_id = s.container_digest_id;
         self.container_merge_ids = s.container_merge_ids;
         self.container_ligation_id = s.container_ligation_id;
@@ -10555,260 +11207,275 @@ impl MainAreaDna {
 
             ui.separator();
 
-            let response = ui.add(self.map_dna.to_owned());
-            if response.rect.width().is_finite() && response.rect.width() > 0.0 {
-                self.last_linear_map_width_px = response.rect.width();
-            }
+            let primary_splicing_mode =
+                !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
+            if primary_splicing_mode {
+                self.render_primary_splicing_map_ui(ui);
+            } else {
+                let response = ui.add(self.map_dna.to_owned());
+                if response.rect.width().is_finite() && response.rect.width() > 0.0 {
+                    self.last_linear_map_width_px = response.rect.width();
+                }
 
-            if response.hovered() {
-                let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-                self.map_dna.on_hover(pointer_state);
+                if response.hovered() {
+                    let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
+                    self.map_dna.on_hover(pointer_state);
 
-                if let Some(feature_id) = self.map_dna.get_hovered_feature_id() {
-                    let hover_text = self.dna.read().ok().and_then(|dna| {
-                        let feature = dna.features().get(feature_id)?;
-                        let name = {
-                            let label = RenderDna::feature_name(feature);
-                            if label.trim().is_empty() {
-                                feature.kind.to_string()
-                            } else {
-                                label
-                            }
-                        };
-                        let range = {
-                            let text = RenderDna::feature_range_text(feature);
-                            if text.is_empty() {
-                                "-".to_string()
-                            } else {
-                                text
-                            }
-                        };
-                        let details = RenderDna::feature_detail_lines(feature);
-                        Some((name, feature.kind.to_string(), range, details))
-                    });
-                    if let Some((name, kind, range, details)) = hover_text {
-                        let detail_font_size = self.feature_details_font_size();
-                        response.clone().on_hover_ui_at_pointer(|ui| {
-                            ui.strong(name);
-                            ui.label(
-                                egui::RichText::new(format!("{kind} | {range}"))
-                                    .monospace()
-                                    .size(detail_font_size),
-                            );
-                            for line in details.iter().take(4) {
-                                ui.label(
-                                    egui::RichText::new(line).monospace().size(detail_font_size),
-                                );
-                            }
+                    if let Some(feature_id) = self.map_dna.get_hovered_feature_id() {
+                        let hover_text = self.dna.read().ok().and_then(|dna| {
+                            let feature = dna.features().get(feature_id)?;
+                            let name = {
+                                let label = RenderDna::feature_name(feature);
+                                if label.trim().is_empty() {
+                                    feature.kind.to_string()
+                                } else {
+                                    label
+                                }
+                            };
+                            let range = {
+                                let text = RenderDna::feature_range_text(feature);
+                                if text.is_empty() {
+                                    "-".to_string()
+                                } else {
+                                    text
+                                }
+                            };
+                            let details = RenderDna::feature_detail_lines(feature);
+                            Some((name, feature.kind.to_string(), range, details))
                         });
+                        if let Some((name, kind, range, details)) = hover_text {
+                            let detail_font_size = self.feature_details_font_size();
+                            response.clone().on_hover_ui_at_pointer(|ui| {
+                                ui.strong(name);
+                                ui.label(
+                                    egui::RichText::new(format!("{kind} | {range}"))
+                                        .monospace()
+                                        .size(detail_font_size),
+                                );
+                                for line in details.iter().take(4) {
+                                    ui.label(
+                                        egui::RichText::new(line)
+                                            .monospace()
+                                            .size(detail_font_size),
+                                    );
+                                }
+                            });
+                        }
+                    }
+
+                    if !self.is_circular() {
+                        let (wheel_delta, modifiers) =
+                            ctx.input(|i| (i.smooth_scroll_delta, i.modifiers));
+                        let linear_map_wheel_intent =
+                            scroll_input_policy::wheel_intent(wheel_delta, modifiers);
+                        match linear_map_wheel_intent {
+                            WheelIntent::None => {}
+                            WheelIntent::Pan { delta } => {
+                                let (_, span_bp, _) = self.current_linear_viewport();
+                                if delta.x.abs() > f32::EPSILON {
+                                    let delta_bp = ((-delta.x / response.rect.width().max(1.0))
+                                        * span_bp as f32)
+                                        .round()
+                                        as isize;
+                                    self.pan_linear_viewport(delta_bp);
+                                }
+                                if delta.y.abs() > f32::EPSILON {
+                                    self.pan_linear_vertical_viewport(delta.y);
+                                }
+                            }
+                            WheelIntent::Zoom { direction, .. } => {
+                                let (start_bp, span_bp, sequence_length) =
+                                    self.current_linear_viewport();
+                                if sequence_length > 0 {
+                                    let center_bp = response
+                                        .hover_pos()
+                                        .map(|pos| {
+                                            let frac = ((pos.x - response.rect.left())
+                                                / response.rect.width().max(1.0))
+                                            .clamp(0.0, 1.0);
+                                            start_bp + (frac * span_bp as f32).floor() as usize
+                                        })
+                                        .unwrap_or_else(|| start_bp.saturating_add(span_bp / 2));
+                                    self.zoom_linear_viewport_around(
+                                        center_bp,
+                                        direction == ZoomDirection::In,
+                                    );
+                                }
+                            }
+                        }
+                        if !ctx.wants_keyboard_input() {
+                            let keyboard_pan_delta = ctx.input(|i| {
+                                scroll_input_policy::canvas_keyboard_pan_delta(
+                                    i,
+                                    scroll_input_policy::DEFAULT_CANVAS_PAN_STEP,
+                                )
+                            });
+                            if keyboard_pan_delta != Vec2::ZERO {
+                                let (_, span_bp, _) = self.current_linear_viewport();
+                                if keyboard_pan_delta.x.abs() > f32::EPSILON {
+                                    let delta_bp = ((keyboard_pan_delta.x
+                                        / response.rect.width().max(1.0))
+                                        * span_bp as f32)
+                                        .round()
+                                        as isize;
+                                    self.pan_linear_viewport(delta_bp);
+                                }
+                                if keyboard_pan_delta.y.abs() > f32::EPSILON {
+                                    self.pan_linear_vertical_viewport(keyboard_pan_delta.y);
+                                }
+                            }
+                            let zoom_steps =
+                                ctx.input(scroll_input_policy::canvas_keyboard_zoom_steps);
+                            if zoom_steps != 0 {
+                                let (start_bp, span_bp, sequence_length) =
+                                    self.current_linear_viewport();
+                                if sequence_length > 0 {
+                                    let center_bp = start_bp.saturating_add(span_bp / 2);
+                                    for _ in 0..zoom_steps.unsigned_abs() {
+                                        self.zoom_linear_viewport_around(center_bp, zoom_steps > 0);
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(cursor) = scroll_input_policy::canvas_hover_cursor(
+                            modifiers,
+                            true,
+                            self.linear_pan_drag_origin_bp.is_some(),
+                            false,
+                            linear_map_wheel_intent,
+                        ) {
+                            ui.output_mut(|o| o.cursor_icon = cursor);
+                        }
                     }
                 }
 
                 if !self.is_circular() {
-                    let (wheel_delta, modifiers) =
-                        ctx.input(|i| (i.smooth_scroll_delta, i.modifiers));
-                    let linear_map_wheel_intent =
-                        scroll_input_policy::wheel_intent(wheel_delta, modifiers);
-                    match linear_map_wheel_intent {
-                        WheelIntent::None => {}
-                        WheelIntent::Pan { delta } => {
-                            let (_, span_bp, _) = self.current_linear_viewport();
-                            if delta.x.abs() > f32::EPSILON {
-                                let delta_bp =
-                                    ((-delta.x / response.rect.width().max(1.0)) * span_bp as f32)
-                                        .round() as isize;
-                                self.pan_linear_viewport(delta_bp);
-                            }
-                            if delta.y.abs() > f32::EPSILON {
-                                self.pan_linear_vertical_viewport(delta.y);
-                            }
-                        }
-                        WheelIntent::Zoom { direction, .. } => {
-                            let (start_bp, span_bp, sequence_length) =
-                                self.current_linear_viewport();
-                            if sequence_length > 0 {
-                                let center_bp = response
-                                    .hover_pos()
-                                    .map(|pos| {
-                                        let frac = ((pos.x - response.rect.left())
-                                            / response.rect.width().max(1.0))
-                                        .clamp(0.0, 1.0);
-                                        start_bp + (frac * span_bp as f32).floor() as usize
-                                    })
-                                    .unwrap_or_else(|| start_bp.saturating_add(span_bp / 2));
-                                self.zoom_linear_viewport_around(
-                                    center_bp,
-                                    direction == ZoomDirection::In,
-                                );
+                    let option_pan_modifier =
+                        ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
+                    if response.drag_started() {
+                        if option_pan_modifier {
+                            self.linear_pan_drag_origin_bp = Some((
+                                self.current_linear_viewport().0,
+                                self.current_linear_vertical_offset_px(),
+                            ));
+                            self.linear_drag_selection_anchor_bp = None;
+                        } else if let Some(pos) = response.interact_pointer_pos() {
+                            if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
+                                self.linear_drag_selection_anchor_bp = Some(bp);
+                                self.linear_pan_drag_origin_bp = None;
+                                self.update_linear_drag_selection(bp, bp);
+                                self.clear_feature_focus_keep_map_selection();
                             }
                         }
                     }
-                    if !ctx.wants_keyboard_input() {
-                        let keyboard_pan_delta = ctx.input(|i| {
-                            scroll_input_policy::canvas_keyboard_pan_delta(
-                                i,
-                                scroll_input_policy::DEFAULT_CANVAS_PAN_STEP,
-                            )
-                        });
-                        if keyboard_pan_delta != Vec2::ZERO {
-                            let (_, span_bp, _) = self.current_linear_viewport();
-                            if keyboard_pan_delta.x.abs() > f32::EPSILON {
+                    if response.dragged() {
+                        if let Some((start_bp, start_vertical_offset_px)) =
+                            self.linear_pan_drag_origin_bp
+                        {
+                            let (_, span_bp, sequence_length) = self.current_linear_viewport();
+                            if sequence_length > span_bp {
                                 let delta_bp =
-                                    ((keyboard_pan_delta.x / response.rect.width().max(1.0))
+                                    ((-response.drag_delta().x / response.rect.width().max(1.0))
                                         * span_bp as f32)
                                         .round() as isize;
-                                self.pan_linear_viewport(delta_bp);
+                                let max_start = sequence_length.saturating_sub(span_bp) as isize;
+                                let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
+                                self.set_linear_viewport(new_start as usize, span_bp);
                             }
-                            if keyboard_pan_delta.y.abs() > f32::EPSILON {
-                                self.pan_linear_vertical_viewport(keyboard_pan_delta.y);
-                            }
-                        }
-                        let zoom_steps = ctx.input(scroll_input_policy::canvas_keyboard_zoom_steps);
-                        if zoom_steps != 0 {
-                            let (start_bp, span_bp, sequence_length) =
-                                self.current_linear_viewport();
-                            if sequence_length > 0 {
-                                let center_bp = start_bp.saturating_add(span_bp / 2);
-                                for _ in 0..zoom_steps.unsigned_abs() {
-                                    self.zoom_linear_viewport_around(center_bp, zoom_steps > 0);
-                                }
+                            self.set_linear_vertical_offset_px(
+                                start_vertical_offset_px + response.drag_delta().y,
+                            );
+                        } else if let (Some(anchor_bp), Some(pos)) = (
+                            self.linear_drag_selection_anchor_bp,
+                            response.interact_pointer_pos(),
+                        ) {
+                            if let Some(current_bp) =
+                                self.pointer_pos_to_linear_bp(response.rect, pos)
+                            {
+                                self.update_linear_drag_selection(anchor_bp, current_bp);
+                                self.clear_feature_focus_keep_map_selection();
                             }
                         }
                     }
-                    if let Some(cursor) = scroll_input_policy::canvas_hover_cursor(
-                        modifiers,
-                        true,
-                        self.linear_pan_drag_origin_bp.is_some(),
-                        false,
-                        linear_map_wheel_intent,
-                    ) {
-                        ui.output_mut(|o| o.cursor_icon = cursor);
-                    }
-                }
-            }
-
-            if !self.is_circular() {
-                let option_pan_modifier =
-                    ctx.input(|i| scroll_input_policy::option_pan_modifier_active(i.modifiers));
-                if response.drag_started() {
-                    if option_pan_modifier {
-                        self.linear_pan_drag_origin_bp = Some((
-                            self.current_linear_viewport().0,
-                            self.current_linear_vertical_offset_px(),
-                        ));
+                    if response.drag_stopped() {
                         self.linear_drag_selection_anchor_bp = None;
-                    } else if let Some(pos) = response.interact_pointer_pos() {
-                        if let Some(bp) = self.pointer_pos_to_linear_bp(response.rect, pos) {
-                            self.linear_drag_selection_anchor_bp = Some(bp);
-                            self.linear_pan_drag_origin_bp = None;
-                            self.update_linear_drag_selection(bp, bp);
-                            self.clear_feature_focus_keep_map_selection();
-                        }
+                        self.linear_pan_drag_origin_bp = None;
                     }
-                }
-                if response.dragged() {
-                    if let Some((start_bp, start_vertical_offset_px)) =
-                        self.linear_pan_drag_origin_bp
+                    if self.linear_pan_drag_origin_bp.is_some()
+                        && !ctx.input(|i| i.pointer.primary_down())
                     {
-                        let (_, span_bp, sequence_length) = self.current_linear_viewport();
-                        if sequence_length > span_bp {
-                            let delta_bp = ((-response.drag_delta().x
-                                / response.rect.width().max(1.0))
-                                * span_bp as f32)
-                                .round() as isize;
-                            let max_start = sequence_length.saturating_sub(span_bp) as isize;
-                            let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
-                            self.set_linear_viewport(new_start as usize, span_bp);
-                        }
-                        self.set_linear_vertical_offset_px(
-                            start_vertical_offset_px + response.drag_delta().y,
-                        );
-                    } else if let (Some(anchor_bp), Some(pos)) = (
-                        self.linear_drag_selection_anchor_bp,
-                        response.interact_pointer_pos(),
-                    ) {
-                        if let Some(current_bp) = self.pointer_pos_to_linear_bp(response.rect, pos)
-                        {
-                            self.update_linear_drag_selection(anchor_bp, current_bp);
+                        self.linear_pan_drag_origin_bp = None;
+                    }
+                    if self.linear_pan_drag_origin_bp.is_some() {
+                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+                    }
+                }
+
+                if response.clicked() {
+                    let additive = ctx.input(|i| i.modifiers.command);
+                    let previous_selected = self.map_dna.get_selected_feature_id();
+                    let previous_restriction = self
+                        .map_dna
+                        .get_selected_restriction_site()
+                        .map(|site| site.key.to_string());
+                    let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
+                    self.map_dna.on_click(pointer_state);
+                    let next_selected = self.map_dna.get_selected_feature_id();
+                    let next_restriction = self
+                        .map_dna
+                        .get_selected_restriction_site()
+                        .map(|site| site.key.to_string());
+                    if additive {
+                        if let Some(feature_id) = next_selected {
+                            self.toggle_feature_multi_select(feature_id);
+                        } else if next_restriction.is_some() {
                             self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
                         }
+                    } else if next_selected != previous_selected {
+                        if let Some(feature_id) = next_selected {
+                            self.focus_feature(feature_id);
+                        } else if next_restriction.is_some() {
+                            self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
+                        }
+                    } else if next_restriction != previous_restriction && next_restriction.is_some()
+                    {
+                        self.clear_feature_focus_keep_map_selection();
                     }
                 }
-                if response.drag_stopped() {
-                    self.linear_drag_selection_anchor_bp = None;
-                    self.linear_pan_drag_origin_bp = None;
-                }
-                if self.linear_pan_drag_origin_bp.is_some()
-                    && !ctx.input(|i| i.pointer.primary_down())
-                {
-                    self.linear_pan_drag_origin_bp = None;
-                }
-                if self.linear_pan_drag_origin_bp.is_some() {
-                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
-                }
-            }
 
-            if response.clicked() {
-                let additive = ctx.input(|i| i.modifiers.command);
-                let previous_selected = self.map_dna.get_selected_feature_id();
-                let previous_restriction = self
-                    .map_dna
-                    .get_selected_restriction_site()
-                    .map(|site| site.key.to_string());
-                let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-                self.map_dna.on_click(pointer_state);
-                let next_selected = self.map_dna.get_selected_feature_id();
-                let next_restriction = self
-                    .map_dna
-                    .get_selected_restriction_site()
-                    .map(|site| site.key.to_string());
-                if additive {
-                    if let Some(feature_id) = next_selected {
-                        self.toggle_feature_multi_select(feature_id);
-                    } else if next_restriction.is_some() {
+                if response.double_clicked() {
+                    let previous_selected = self.map_dna.get_selected_feature_id();
+                    let previous_restriction = self
+                        .map_dna
+                        .get_selected_restriction_site()
+                        .map(|site| site.key.to_string());
+                    let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
+                    self.map_dna.on_double_click(pointer_state);
+                    let next_selected = self.map_dna.get_selected_feature_id();
+                    let next_restriction = self
+                        .map_dna
+                        .get_selected_restriction_site()
+                        .map(|site| site.key.to_string());
+                    if next_selected != previous_selected {
+                        if let Some(feature_id) = next_selected {
+                            self.focus_feature(feature_id);
+                        } else if next_restriction.is_some() {
+                            self.clear_feature_focus_keep_map_selection();
+                        } else {
+                            self.clear_feature_focus();
+                        }
+                    } else if next_restriction != previous_restriction && next_restriction.is_some()
+                    {
                         self.clear_feature_focus_keep_map_selection();
-                    } else {
-                        self.clear_feature_focus();
                     }
-                } else if next_selected != previous_selected {
-                    if let Some(feature_id) = next_selected {
-                        self.focus_feature(feature_id);
-                    } else if next_restriction.is_some() {
-                        self.clear_feature_focus_keep_map_selection();
-                    } else {
-                        self.clear_feature_focus();
-                    }
-                } else if next_restriction != previous_restriction && next_restriction.is_some() {
-                    self.clear_feature_focus_keep_map_selection();
-                }
-            }
-
-            if response.double_clicked() {
-                let previous_selected = self.map_dna.get_selected_feature_id();
-                let previous_restriction = self
-                    .map_dna
-                    .get_selected_restriction_site()
-                    .map(|site| site.key.to_string());
-                let pointer_state: PointerState = ctx.input(|i| i.pointer.to_owned());
-                self.map_dna.on_double_click(pointer_state);
-                let next_selected = self.map_dna.get_selected_feature_id();
-                let next_restriction = self
-                    .map_dna
-                    .get_selected_restriction_site()
-                    .map(|site| site.key.to_string());
-                if next_selected != previous_selected {
-                    if let Some(feature_id) = next_selected {
-                        self.focus_feature(feature_id);
-                    } else if next_restriction.is_some() {
-                        self.clear_feature_focus_keep_map_selection();
-                    } else {
-                        self.clear_feature_focus();
-                    }
-                } else if next_restriction != previous_restriction && next_restriction.is_some() {
-                    self.clear_feature_focus_keep_map_selection();
                 }
             }
         });
         self.render_splicing_expert_window(ctx);
+        self.render_isoform_expert_window(ctx);
     }
 }

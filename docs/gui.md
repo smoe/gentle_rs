@@ -265,44 +265,55 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Shows or hides the sequence text panel.
 3. Show/Hide map panel
    - Shows or hides the graphical DNA map.
-4. CDS
+4. Splicing map (linear mode)
+   - Toggles primary map rendering between standard feature-map mode and a
+     read-only transcript/exon splicing-lane mode for the selected
+     `mRNA`/`exon` feature.
+   - Uses the same splicing payload/geometry contract as the dedicated
+     Splicing Expert window.
+   - Clicking a transcript lane focuses the corresponding transcript feature in
+     the sequence view.
+5. CDS
    - Shows or hides CDS feature rendering.
-5. Gene
+6. Gene
    - Shows or hides gene feature rendering.
-6. mRNA
+7. mRNA
    - Shows or hides mRNA feature rendering.
-7. Show/Hide TFBS
+8. Show/Hide TFBS
    - Toggles computed TFBS annotations.
    - Default is off.
-8. Show/Hide restriction enzymes
+9. Show/Hide restriction enzymes
    - Toggles restriction enzyme cut-site markers and labels.
-9. Show/Hide GC content
+10. Show/Hide GC content
    - Toggles GC-content visualization overlay.
    - Aggregation uses the configurable GC bin size (default `100 bp`).
-10. Show/Hide ORFs
+11. Show/Hide ORFs
    - Toggles open reading frame overlays.
-11. Show/Hide methylation sites
+12. Show/Hide methylation sites
    - Toggles methylation-site markers.
-12. Export Seq
+13. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-13. Export SVG
+14. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-14. Export View SVG
+15. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
+   - When linear `Splicing map` mode is active, export uses the same splicing
+     payload renderer as the on-screen splicing map (including transcript/exon
+     lane context when an `mRNA`/`exon` is selected).
    - `View SVG ▾` exposes additional export profiles:
      - `wide-context`: larger canvas + expanded base-span context around the
        current linear viewport.
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
    - Debug builds include adaptive routing-tier diagnostics in the SVG header.
-15. Export RNA SVG (ssRNA only)
+16. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
-16. Engine Ops
+17. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
-17. Shell
+18. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 
@@ -379,6 +390,13 @@ Screenshot command status:
 
 GENtle provides a standalone `Agent Assistant` window for structured support from
 configured external/internal agent systems.
+
+Conceptual/tutorial companion:
+
+- `docs/agent_interfaces_tutorial.md` (who runs what where, and how Agent
+  Assistant differs from CLI, MCP, and external coding agents).
+- external MCP clients discover available GENtle tools/capabilities with
+  `tools/list` and `capabilities` before calling operations.
 
 Access:
 
@@ -991,6 +1009,38 @@ TFBS display reduction (no recomputation needed):
 - each enabled criterion applies its threshold live to visible TFBS features
 - disabling all criteria shows all TFBS features
 - sequence SVG export now uses the same TFBS filter settings as the GUI display
+
+## Isoform Architecture Panels (Engine Ops)
+
+The Engine Ops panel includes `Isoform architecture panels` for curated
+transcript/protein layouts (for example TP53 panel rendering):
+
+- `panel path`
+  - path to a curated panel JSON resource
+  - default: `assets/panels/tp53_isoforms_v1.json`
+- `panel id`
+  - optional explicit panel selector when one file contains multiple panel IDs
+- `Strict`
+  - when enabled, import fails on unresolved transcript mappings
+  - when disabled, unresolved mappings are reported as warnings
+
+Buttons:
+
+- `Import Panel`
+  - executes `ImportIsoformPanel` for the active sequence.
+- `Open Isoform Expert`
+  - opens a dedicated expert window rendered from shared engine payload
+    (`FeatureExpertTarget::IsoformArchitecture`).
+- `Export Isoform SVG`
+  - executes `RenderIsoformArchitectureSvg` and writes a deterministic SVG.
+
+Expected output structure:
+
+- top section: transcript/exon lanes on genomic coordinates
+- bottom section: protein/domain lanes on amino-acid coordinates
+- shared isoform row ordering across both sections
+- warning/instruction footer from the same engine payload used by shell/CLI
+  inspection commands.
 
 VCF display filtering (no recomputation needed):
 

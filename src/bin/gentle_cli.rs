@@ -443,9 +443,15 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID tfbs FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED]\n  \
   gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID splicing FEATURE_ID\n  \
+  gentle_cli [--state PATH|--project PATH] inspect-feature-expert SEQ_ID isoform PANEL_ID\n  \
   gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID tfbs FEATURE_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID restriction CUT_POS_1BASED [--enzyme NAME] [--start START_1BASED] [--end END_1BASED] OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]\n  \
+  gentle_cli [--state PATH|--project PATH] panels inspect-isoform SEQ_ID PANEL_ID\n  \
+  gentle_cli [--state PATH|--project PATH] panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg\n  \
+  gentle_cli [--state PATH|--project PATH] panels validate-isoform PANEL_PATH [--panel-id ID]\n  \
   gentle_cli [--state PATH|--project PATH] render-rna-svg SEQ_ID OUTPUT.svg\n  \
   gentle_cli [--state PATH|--project PATH] rna-info SEQ_ID\n  \
   gentle_cli [--state PATH|--project PATH] render-lineage-svg OUTPUT.svg\n\n  \
@@ -547,6 +553,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "agents",
     "ui",
     "routines",
+    "panels",
     "macros",
     "resources",
     "import-pool",
@@ -2360,6 +2367,31 @@ T [ 0 0 0 10 ]
         ])
         .expect("parse ui open");
         assert!(matches!(ui_open, ShellCommand::UiIntent { .. }));
+
+        let panels_import = parse_shell_tokens(&[
+            "panels".to_string(),
+            "import-isoform".to_string(),
+            "seqA".to_string(),
+            "assets/panels/tp53_isoforms_v1.json".to_string(),
+            "--panel-id".to_string(),
+            "tp53_isoforms_v1".to_string(),
+        ])
+        .expect("parse panels import-isoform");
+        assert!(matches!(
+            panels_import,
+            ShellCommand::PanelsImportIsoform { .. }
+        ));
+
+        let panels_validate = parse_shell_tokens(&[
+            "panels".to_string(),
+            "validate-isoform".to_string(),
+            "assets/panels/tp53_isoforms_v1.json".to_string(),
+        ])
+        .expect("parse panels validate-isoform");
+        assert!(matches!(
+            panels_validate,
+            ShellCommand::PanelsValidateIsoform { .. }
+        ));
     }
 
     #[test]

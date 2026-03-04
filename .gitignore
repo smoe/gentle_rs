@@ -4,3 +4,4 @@ docs/examples/generated/
 target/
 *.gz
 assets/cache/
+.gentle_state.json
