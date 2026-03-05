@@ -4818,7 +4818,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_reuses_downloaded_sequence_when_annotation_path_is_invalid() {
+    fn test_prepare_fails_fast_when_annotation_path_is_invalid_before_sequence_download() {
         let td = tempdir().unwrap();
         let root = td.path();
 
@@ -4854,13 +4854,14 @@ mod tests {
             .unwrap_err();
         assert!(first_err.contains("missing_annotation.gtf"));
         assert!(
-            first_phases
+            !first_phases
                 .iter()
                 .any(|phase| phase == "download_sequence")
         );
+        assert!(first_phases.is_empty());
 
         let sequence_path = cache_dir.join("toygenome").join("sequence.fa");
-        assert!(sequence_path.exists());
+        assert!(!sequence_path.exists());
 
         let mut second_phases: Vec<String> = vec![];
         let second_err = catalog
@@ -4875,7 +4876,7 @@ mod tests {
                 .iter()
                 .any(|phase| phase == "download_sequence")
         );
-        assert!(second_phases.iter().any(|phase| phase == "reuse_sequence"));
+        assert!(second_phases.is_empty());
     }
 
     #[test]
