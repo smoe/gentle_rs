@@ -14,3 +14,11 @@ Rules:
 
 The legacy pack file `assets/cloning_patterns.json` is still supported for
 backward compatibility.
+
+Current family examples in this hierarchical catalog:
+
+- `restriction/.../digest_ligate_extract_sticky.json`
+- `gibson/.../gibson_two_fragment_overlap_preview.json`
+- `pcr/.../pcr_site_insertion_then_digest.json`
+- `crispr/...` guide candidate/oligo workflows
+- `sequence/.../branch_reverse_complement.json`

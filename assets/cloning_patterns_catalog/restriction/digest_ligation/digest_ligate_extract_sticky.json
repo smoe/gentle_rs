@@ -54,5 +54,79 @@
       "required": false
     }
   ],
+  "input_ports": [
+    {
+      "port_id": "seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Input sequence to digest."
+    },
+    {
+      "port_id": "enzyme_a",
+      "kind": "string",
+      "required": true,
+      "cardinality": "one",
+      "description": "Primary restriction enzyme name."
+    },
+    {
+      "port_id": "enzyme_b",
+      "kind": "string",
+      "required": true,
+      "cardinality": "one",
+      "description": "Secondary restriction enzyme name."
+    },
+    {
+      "port_id": "left_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "1-based digest fragment index for ligation left input."
+    },
+    {
+      "port_id": "right_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "1-based digest fragment index for ligation right input."
+    },
+    {
+      "port_id": "extract_from",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Extract start coordinate from first ligation product."
+    },
+    {
+      "port_id": "extract_to",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Extract end coordinate from first ligation product."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "digest_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Digest product prefix namespace."
+    },
+    {
+      "port_id": "ligation_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Ligation product prefix namespace."
+    },
+    {
+      "port_id": "output_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Extracted ligation product sequence ID."
+    }
+  ],
   "script": "op {\"Digest\":{\"input\":\"${seq_id}\",\"enzymes\":[\"${enzyme_a}\",\"${enzyme_b}\"],\"output_prefix\":\"${digest_prefix}\"}}\nop {\"Ligation\":{\"inputs\":[\"${digest_prefix}_${left_fragment}\",\"${digest_prefix}_${right_fragment}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${ligation_prefix}\",\"unique\":false}}\nop {\"ExtractRegion\":{\"input\":\"${ligation_prefix}_1\",\"from\":${extract_from},\"to\":${extract_to},\"output_id\":\"${output_id}\"}}"
 }

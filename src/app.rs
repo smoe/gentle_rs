@@ -56,6 +56,7 @@ use crate::{
         shell_help_markdown_from_glossary_json as render_shell_help_markdown_from_glossary_json,
     },
     tf_motifs, tool_overrides,
+    uniprot::UniprotEntrySummary,
     window::Window,
     window_backdrop::{self, WindowBackdropKind, WindowBackdropSettings},
     workflow_examples::{
@@ -2860,25 +2861,34 @@ Error: `{err}`"
             let mut engine = self.engine.write().unwrap();
             engine.apply(op)
         };
-        if let Ok(result) = load_result {
-            if let Some(seq_id) = result.created_seq_ids.first() {
-                let seq_id = seq_id.to_string();
-                let dna = self
-                    .engine
-                    .read()
-                    .unwrap()
-                    .state()
-                    .sequences
-                    .get(&seq_id)
-                    .cloned();
-                if let Some(dna) = dna {
-                    self.new_dna_window(seq_id, dna);
-                    return;
+        match load_result {
+            Ok(result) => {
+                if let Some(seq_id) = result.created_seq_ids.first() {
+                    let seq_id = seq_id.to_string();
+                    let dna = self
+                        .engine
+                        .read()
+                        .unwrap()
+                        .state()
+                        .sequences
+                        .get(&seq_id)
+                        .cloned();
+                    if let Some(dna) = dna {
+                        self.new_dna_window(seq_id.clone(), dna);
+                        self.app_status = format!("Open sequence: loaded '{}'", seq_id);
+                        return;
+                    }
                 }
+                self.app_status = Self::format_op_result_status(
+                    "Open sequence: operation finished but no sequence window was created",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
             }
-            // TODO warning: load op ran but no created sequence
-        } else {
-            // TODO error, could not load file through engine
+            Err(err) => {
+                self.app_status = format!("Open sequence failed: {}", err.message);
+            }
         }
     }
 
@@ -3060,6 +3070,10 @@ Error: `{err}`"
             || !state.lineage.nodes.is_empty()
             || !state.container_state.containers.is_empty()
             || !state.container_state.arrangements.is_empty()
+    }
+
+    fn can_close_project(&self) -> bool {
+        self.current_project_path.is_some() || self.project_has_user_content()
     }
 
     fn mark_clean_snapshot(&mut self) {
@@ -6964,6 +6978,26 @@ Error: `{err}`"
         }
     }
 
+    fn sort_uniprot_entries_recent(mut rows: Vec<UniprotEntrySummary>) -> Vec<UniprotEntrySummary> {
+        rows.sort_by(|left, right| {
+            right
+                .imported_at_unix_ms
+                .cmp(&left.imported_at_unix_ms)
+                .then_with(|| left.entry_id.cmp(&right.entry_id))
+        });
+        rows
+    }
+
+    fn recent_uniprot_entries_for_dialog(&self, limit: usize) -> Vec<UniprotEntrySummary> {
+        let rows = self.engine.read().unwrap().list_uniprot_entries();
+        let mut rows = Self::sort_uniprot_entries_recent(rows);
+        let cap = limit.max(1);
+        if rows.len() > cap {
+            rows.truncate(cap);
+        }
+        rows
+    }
+
     fn fetch_uniprot_entry_from_dialog(&mut self) {
         let query = self.uniprot_query.trim().to_string();
         if query.is_empty() {
@@ -7171,6 +7205,60 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.project_uniprot_entry_from_dialog();
+                }
+                ui.separator();
+                let recent_entries = self.recent_uniprot_entries_for_dialog(12);
+                ui.label(format!("Recent imported entries ({})", recent_entries.len()));
+                if recent_entries.is_empty() {
+                    ui.small("No UniProt entries imported in this project yet.");
+                } else {
+                    egui::ScrollArea::vertical()
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                ui,
+                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            );
+                            egui::Grid::new("uniprot_recent_entries_grid")
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.strong("entry_id");
+                                    ui.strong("accession");
+                                    ui.strong("primary_id");
+                                    ui.strong("AA");
+                                    ui.strong("imported_ms");
+                                    ui.strong("source");
+                                    ui.strong("action");
+                                    ui.end_row();
+                                    for row in recent_entries.iter() {
+                                        ui.monospace(&row.entry_id);
+                                        ui.monospace(&row.accession);
+                                        ui.label(&row.primary_id);
+                                        ui.label(row.sequence_length.to_string());
+                                        ui.label(row.imported_at_unix_ms.to_string());
+                                        ui.label(&row.source);
+                                        if ui
+                                            .small_button("Use")
+                                            .on_hover_text(
+                                                "Use this entry_id for projection and downstream actions",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.uniprot_entry_id = row.entry_id.clone();
+                                            if self.uniprot_query.trim().is_empty()
+                                                && !row.accession.trim().is_empty()
+                                            {
+                                                self.uniprot_query = row.accession.clone();
+                                            }
+                                            self.uniprot_status = format!(
+                                                "Selected UniProt entry '{}'",
+                                                row.entry_id
+                                            );
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                        });
                 }
                 if !self.uniprot_status.trim().is_empty() {
                     ui.separator();
@@ -10520,7 +10608,7 @@ Error: `{err}`"
                     }
                 });
                 if ui
-                    .button("Close Project")
+                    .add_enabled(self.can_close_project(), egui::Button::new("Close Project"))
                     .on_hover_text("Close the current project from the workspace")
                     .clicked()
                 {
@@ -16952,14 +17040,32 @@ Error: `{err}`"
                 output_id,
                 catalog_path,
                 cache_dir,
+                prepared_genome_id,
             } => format!(
-                "Extend genome anchor: seq_id={}, side={:?}, length_bp={}, output_id={}, catalog_path={}, cache_dir={}",
+                "Extend genome anchor: seq_id={}, side={:?}, length_bp={}, output_id={}, catalog_path={}, cache_dir={}, prepared_genome_id={}",
                 seq_id,
                 side,
                 length_bp,
                 output_id.clone().unwrap_or_else(|| "-".to_string()),
                 catalog_path.clone().unwrap_or_else(|| "-".to_string()),
-                cache_dir.clone().unwrap_or_else(|| "-".to_string())
+                cache_dir.clone().unwrap_or_else(|| "-".to_string()),
+                prepared_genome_id
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+            Operation::VerifyGenomeAnchor {
+                seq_id,
+                catalog_path,
+                cache_dir,
+                prepared_genome_id,
+            } => format!(
+                "Verify genome anchor: seq_id={}, catalog_path={}, cache_dir={}, prepared_genome_id={}",
+                seq_id,
+                catalog_path.clone().unwrap_or_else(|| "-".to_string()),
+                cache_dir.clone().unwrap_or_else(|| "-".to_string()),
+                prepared_genome_id
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string())
             ),
             Operation::ImportGenomeBedTrack {
                 seq_id,
@@ -17254,6 +17360,7 @@ mod tests {
             BlastHitFeatureInput, BlastInvocationProvenance, DisplaySettings, GentleEngine,
             LinearSequenceLetterLayoutMode, OpResult, Operation, ProjectState,
         },
+        uniprot::UniprotEntrySummary,
         window::Window,
     };
     use eframe::egui;
@@ -17549,6 +17656,32 @@ mod tests {
     }
 
     #[test]
+    fn can_close_project_is_disabled_for_empty_untitled_project() {
+        let app = GENtleApp::default();
+        assert!(!app.can_close_project());
+    }
+
+    #[test]
+    fn can_close_project_is_enabled_when_project_path_is_set() {
+        let mut app = GENtleApp::default();
+        app.current_project_path = Some("/tmp/demo.gentle.json".to_string());
+        assert!(app.can_close_project());
+    }
+
+    #[test]
+    fn can_close_project_is_enabled_for_unsaved_project_with_content() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq1".to_string(),
+            DNAsequence::from_sequence("ACGT").expect("sequence"),
+        );
+        let mut app = GENtleApp::default();
+        app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        app.current_project_path = None;
+        assert!(app.can_close_project());
+    }
+
+    #[test]
     fn tutorial_project_catalog_loads_chapters() {
         let entries =
             GENtleApp::load_tutorial_project_entries().expect("tutorial catalog should load");
@@ -17562,6 +17695,86 @@ mod tests {
                 .any(|entry| entry.chapter_id == "tp63_anchor_extension_online"),
             "Expected TP63 tutorial chapter to be present"
         );
+    }
+
+    #[test]
+    fn open_new_window_from_missing_file_sets_error_status() {
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let missing = temp.path().join("missing_sequence_file.gb");
+
+        app.open_new_window_from_file(missing.to_string_lossy().as_ref());
+
+        assert!(
+            app.app_status.contains("Open sequence failed"),
+            "status was: {}",
+            app.app_status
+        );
+        assert!(app.new_windows.is_empty());
+    }
+
+    #[test]
+    fn sort_uniprot_entries_recent_prefers_newest_then_entry_id() {
+        let rows = vec![
+            UniprotEntrySummary {
+                entry_id: "P_B".to_string(),
+                imported_at_unix_ms: 1_000,
+                ..UniprotEntrySummary::default()
+            },
+            UniprotEntrySummary {
+                entry_id: "P_C".to_string(),
+                imported_at_unix_ms: 2_000,
+                ..UniprotEntrySummary::default()
+            },
+            UniprotEntrySummary {
+                entry_id: "P_A".to_string(),
+                imported_at_unix_ms: 2_000,
+                ..UniprotEntrySummary::default()
+            },
+        ];
+        let sorted = GENtleApp::sort_uniprot_entries_recent(rows);
+        let ordered_ids = sorted
+            .into_iter()
+            .map(|row| row.entry_id)
+            .collect::<Vec<_>>();
+        assert_eq!(ordered_ids, vec!["P_A", "P_C", "P_B"]);
+    }
+
+    #[test]
+    fn uniprot_dialog_import_swiss_prot_persists_entry() {
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let swiss_path = temp.path().join("toy_uniprot_dialog.txt");
+        let swiss_text = r#"ID   TOY1_HUMAN              Reviewed;         30 AA.
+AC   PTEST1;
+DE   RecName: Full=Toy DNA-binding protein;
+GN   Name=TOY1;
+OS   Homo sapiens (Human).
+DR   Ensembl; TX1; ENSPTOY1; ENSGTOY1.
+FT   DOMAIN          2..8
+FT                   /note="toy domain"
+SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
+     MEEPQSDPSV EPPLSQETFSDLWKLLPEN
+//
+"#;
+        fs::write(&swiss_path, swiss_text).expect("write swiss toy");
+
+        app.uniprot_entry_id = "TOY_DIALOG".to_string();
+        app.uniprot_swiss_path = swiss_path.display().to_string();
+        app.import_uniprot_swiss_prot_from_dialog();
+
+        let entries = app.engine.read().unwrap().list_uniprot_entries();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].entry_id, "TOY_DIALOG");
+        assert!(
+            app.uniprot_status.contains("UniProt import: ok"),
+            "status was: {}",
+            app.uniprot_status
+        );
+
+        let recent = app.recent_uniprot_entries_for_dialog(5);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].entry_id, "TOY_DIALOG");
     }
 
     #[test]

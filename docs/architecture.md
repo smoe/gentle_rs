@@ -635,6 +635,13 @@ Command surface:
   - recursive directory import
 - Typed cloning-routine manifest baseline:
   `assets/cloning_routines.json` (`gentle.cloning_routines.v1`)
+- First Gibson + restriction family baselines are now shipped:
+  - routine: `gibson.two_fragment_overlap_preview`
+  - template:
+    `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`
+  - routine: `restriction.digest_ligate_extract_sticky`
+  - template:
+    `assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json`
 - GUI `Patterns` menu mirrors the catalog folder hierarchy and routes imports
   through the same shared-shell command path.
 - GUI `Patterns` menu now also exposes routine catalog discovery grouped by
@@ -646,6 +653,13 @@ Command surface:
 - Shared-shell macro introspection contracts are available via:
   - `macros instance-list`
   - `macros instance-show MACRO_INSTANCE_ID`
+- Shared-shell preflight now supports routine-family semantic hooks in addition
+  to generic typed-port checks:
+  - Gibson routines validate adjacent sequence overlap compatibility against
+    declared overlap length (`overlap_bp`) before mutation.
+  - Restriction routines validate enzyme resolution and digest-sanity semantics
+    (distinct enzyme inputs, recognition-site presence, fragment-index and
+    extract-range checks) before mutation.
 
 This enables reusable query composition:
 

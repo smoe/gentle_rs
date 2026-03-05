@@ -109,7 +109,8 @@ Current draft operations:
 - `DesignPrimerPairs { ... }` (implemented baseline)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ExtractRegion { input, from, to, output_id? }`
-- `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir? }`
+- `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
+- `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
   - optional `blast_provenance` payload preserves invocation context
     (`genome_id`, `query_label`, `query_length`, `max_hits`, `task`,
@@ -198,6 +199,17 @@ Isoform-panel operation semantics (current):
   -> `Human GRCh38 Ensembl 116`).
 - If multiple compatible prepared entries exist, extension fails with a
   deterministic options list so caller/GUI can choose explicitly.
+- `prepared_genome_id` can be passed explicitly to force a specific prepared
+  cache and bypass compatibility auto-selection.
+
+`VerifyGenomeAnchor` semantics:
+
+- Re-checks one anchored sequence against the selected prepared genome cache at
+  recorded coordinates/strand.
+- Writes one new provenance entry with `operation = VerifyGenomeAnchor` and
+  `anchor_verified = true|false`.
+- Returns an in-place state change (`changed_seq_ids`) for the same sequence id
+  so GUI/CLI can refresh verification badges/status lines deterministically.
 
 Local `SequenceAnchor` semantics (distinct from genome provenance anchoring):
 
@@ -387,6 +399,13 @@ Adapter-equivalence guarantee for UI-intent tools:
   - preflight includes cross-port semantic checks (alias/collision checks,
     input sequence/container consistency, and sequence-anchor semantics when
     sequence context is unambiguous)
+  - routine-family semantic checks are now supported:
+    - Gibson routines validate adjacent fragment overlap compatibility against
+      configured overlap length before execution
+    - Restriction routines validate enzyme-name resolution, duplicate-enzyme
+      misuse, enzyme-site presence across bound input sequences, and common
+      digest parameter sanity (`left_fragment`/`right_fragment`,
+      `extract_from`/`extract_to`)
   - mutating `macros run` / `macros template-run` executions always persist one
     lineage macro-instance record (`ok`/`failed`/`cancelled`)
   - successful runs return `macro_instance_id`; failed runs include
@@ -589,6 +608,17 @@ Current parameter support:
     rejected in strict mode
   - alias parameters accepted: `strict_genome_anchor_verification`,
     `strict_anchor_verification`
+- `genome_anchor_prepared_fallback_policy` (default `single_compatible`)
+  - controls how `ExtendGenomeAnchor` / `VerifyGenomeAnchor` resolve anchor
+    genome ids when exact prepared cache id is not present.
+  - accepted values:
+    - `off` (no compatibility fallback; must match exact prepared id)
+    - `single_compatible` (auto-fallback only when one compatible prepared
+      cache exists)
+    - `always_explicit` (never auto-fallback; require explicit selection even
+      when only one compatible prepared cache exists)
+  - alias parameters accepted: `genome_anchor_fallback_mode`,
+    `genome_anchor_prepared_mode`
 - primer-design backend controls:
   - `primer_design_backend` (default `auto`)
     - accepted values: `auto`, `internal`, `primer3`
@@ -755,11 +785,18 @@ Candidate-set semantics:
     - legacy pack: `assets/cloning_patterns.json` (`gentle.cloning_patterns.v1`)
     - hierarchical catalog: `assets/cloning_patterns_catalog/**/*.json`
       (`gentle.cloning_pattern_template.v1`, one template per file)
+    - Gibson baseline template:
+      `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`
+    - Restriction baseline template:
+      `assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json`
 - Typed cloning-routine catalog baseline:
   - manifest: `assets/cloning_routines.json`
   - schema: `gentle.cloning_routines.v1`
   - typed routine metadata fields include routine family/status/tags, linked
     template name/path, and typed input/output port declarations
+  - includes Gibson + restriction family baselines:
+    - `gibson.two_fragment_overlap_preview`
+    - `restriction.digest_ligate_extract_sticky`
   - adapter discovery surface:
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
 - Macro-instance lineage baseline:

@@ -31,8 +31,8 @@ use crate::{
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, GenomeTranscriptRecord,
-        PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeInspection,
-        is_prepare_cancelled_error,
+        PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeFallbackPolicy,
+        PreparedGenomeInspection, is_prepare_cancelled_error,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -420,6 +420,7 @@ pub struct ContainerState {
 pub struct EngineParameters {
     pub max_fragments_per_container: usize,
     pub require_verified_genome_anchor_for_extension: bool,
+    pub genome_anchor_prepared_fallback_policy: GenomeAnchorPreparedFallbackPolicy,
     pub primer_design_backend: PrimerDesignBackend,
     pub primer3_executable: String,
 }
@@ -429,8 +430,28 @@ impl Default for EngineParameters {
         Self {
             max_fragments_per_container: 80_000,
             require_verified_genome_anchor_for_extension: false,
+            genome_anchor_prepared_fallback_policy:
+                GenomeAnchorPreparedFallbackPolicy::SingleCompatible,
             primer_design_backend: PrimerDesignBackend::Auto,
             primer3_executable: "primer3_core".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenomeAnchorPreparedFallbackPolicy {
+    Off,
+    SingleCompatible,
+    AlwaysExplicit,
+}
+
+impl GenomeAnchorPreparedFallbackPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::SingleCompatible => "single_compatible",
+            Self::AlwaysExplicit => "always_explicit",
         }
     }
 }
@@ -2461,6 +2482,15 @@ pub enum Operation {
         output_id: Option<SeqId>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        #[serde(default)]
+        prepared_genome_id: Option<String>,
+    },
+    VerifyGenomeAnchor {
+        seq_id: SeqId,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        #[serde(default)]
+        prepared_genome_id: Option<String>,
     },
     ImportGenomeBedTrack {
         seq_id: SeqId,
@@ -2998,6 +3028,18 @@ pub struct SequenceGenomeAnchorSummary {
     pub start_1based: usize,
     pub end_1based: usize,
     pub strand: Option<char>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor_verified: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceAnchorPreparedGenomeOptionsSummary {
+    pub seq_id: String,
+    pub requested_genome_id: String,
+    pub requested_catalog_key: String,
+    pub requested_family: Option<String>,
+    pub exact_prepared: bool,
+    pub compatible_prepared_options: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -3500,6 +3542,52 @@ impl GentleEngine {
             start_1based: anchor.start_1based,
             end_1based: anchor.end_1based,
             strand: anchor.strand,
+            anchor_verified: anchor.anchor_verified,
+        })
+    }
+
+    pub fn sequence_anchor_prepared_genome_options(
+        &self,
+        seq_id: &str,
+        catalog_path: Option<&str>,
+        cache_dir: Option<&str>,
+    ) -> Result<SequenceAnchorPreparedGenomeOptionsSummary, EngineError> {
+        let anchor = self.latest_genome_anchor_for_seq(seq_id)?;
+        let requested_catalog_path = catalog_path
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .or_else(|| anchor.catalog_path.clone())
+            .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+        let resolved_cache_dir = cache_dir
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.to_string())
+            .or_else(|| anchor.cache_dir.clone());
+        let catalog =
+            GenomeCatalog::from_json_file(&requested_catalog_path).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not open genome catalog '{}': {}",
+                    requested_catalog_path, e
+                ),
+            })?;
+        let inspection = catalog
+            .inspect_prepared_genome_compatibility(&anchor.genome_id, resolved_cache_dir.as_deref())
+            .map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Could not inspect prepared genome compatibility for '{}': {}",
+                    anchor.genome_id, e
+                ),
+            })?;
+        Ok(SequenceAnchorPreparedGenomeOptionsSummary {
+            seq_id: seq_id.to_string(),
+            requested_genome_id: anchor.genome_id,
+            requested_catalog_key: inspection.requested_catalog_key,
+            requested_family: inspection.requested_family,
+            exact_prepared: inspection.exact_prepared,
+            compatible_prepared_options: inspection.compatible_prepared_options,
         })
     }
 
@@ -13953,6 +14041,18 @@ impl GentleEngine {
         Ok(reference.eq_ignore_ascii_case(&dna.get_forward_string()))
     }
 
+    fn genome_anchor_fallback_policy_for_extension(&self) -> PreparedGenomeFallbackPolicy {
+        match self.state.parameters.genome_anchor_prepared_fallback_policy {
+            GenomeAnchorPreparedFallbackPolicy::Off => PreparedGenomeFallbackPolicy::Off,
+            GenomeAnchorPreparedFallbackPolicy::SingleCompatible => {
+                PreparedGenomeFallbackPolicy::SingleCompatible
+            }
+            GenomeAnchorPreparedFallbackPolicy::AlwaysExplicit => {
+                PreparedGenomeFallbackPolicy::AlwaysExplicit
+            }
+        }
+    }
+
     fn classify_import_origin(path: &str, dna: &DNAsequence) -> SequenceOrigin {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".fa")
@@ -17565,6 +17665,7 @@ impl GentleEngine {
                 output_id,
                 catalog_path,
                 cache_dir,
+                prepared_genome_id,
             } => {
                 if length_bp == 0 {
                     return Err(EngineError {
@@ -17669,13 +17770,31 @@ impl GentleEngine {
                         anchor.end_1based,
                     ),
                 };
+                let preferred_prepared = prepared_genome_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.to_string());
+                let resolution_query = preferred_prepared
+                    .as_deref()
+                    .unwrap_or(&anchor.genome_id)
+                    .to_string();
+                let fallback_policy = if preferred_prepared.is_some() {
+                    PreparedGenomeFallbackPolicy::Off
+                } else {
+                    self.genome_anchor_fallback_policy_for_extension()
+                };
                 let prepared_resolution = catalog
-                    .resolve_prepared_genome_id(&anchor.genome_id, resolved_cache_dir.as_deref())
+                    .resolve_prepared_genome_id_with_policy(
+                        &resolution_query,
+                        resolved_cache_dir.as_deref(),
+                        fallback_policy,
+                    )
                     .map_err(|e| EngineError {
                         code: ErrorCode::NotFound,
                         message: format!(
                             "Could not resolve prepared genome '{}' for extension: {}",
-                            anchor.genome_id, e
+                            resolution_query, e
                         ),
                     })?;
                 if let Some(warning) = prepared_resolution.fallback_warning {
@@ -17788,6 +17907,189 @@ impl GentleEngine {
                     result.warnings.push(format!(
                         "Requested {} bp {} extension for '{}' clipped at chromosome start position 1",
                         length_bp, side_label, seq_id
+                    ));
+                }
+            }
+            Operation::VerifyGenomeAnchor {
+                seq_id,
+                catalog_path,
+                cache_dir,
+                prepared_genome_id,
+            } => {
+                let anchor = self.latest_genome_anchor_for_seq(&seq_id)?;
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?
+                    .clone();
+                let explicit_catalog_requested = catalog_path
+                    .as_deref()
+                    .map(str::trim)
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false);
+                let requested_catalog_path = catalog_path
+                    .or(anchor.catalog_path.clone())
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or_else(|| DEFAULT_GENOME_CATALOG_PATH.to_string());
+                let mut resolved_catalog_path = requested_catalog_path.clone();
+                let resolved_cache_dir = cache_dir.or(anchor.cache_dir.clone());
+                let mut catalog_fallback_warning: Option<String> = None;
+                let catalog = match GenomeCatalog::from_json_file(&requested_catalog_path) {
+                    Ok(catalog) => catalog,
+                    Err(primary_err) => {
+                        let default_catalog_path = DEFAULT_GENOME_CATALOG_PATH.to_string();
+                        let should_fallback_to_default = !explicit_catalog_requested
+                            && requested_catalog_path != default_catalog_path;
+                        if should_fallback_to_default {
+                            match GenomeCatalog::from_json_file(&default_catalog_path) {
+                                Ok(catalog) => {
+                                    resolved_catalog_path = default_catalog_path.clone();
+                                    catalog_fallback_warning = Some(format!(
+                                        "Could not open genome catalog '{}' from anchor provenance ({}). Falling back to default '{}'.",
+                                        requested_catalog_path, primary_err, default_catalog_path
+                                    ));
+                                    catalog
+                                }
+                                Err(default_err) => {
+                                    return Err(EngineError {
+                                        code: ErrorCode::InvalidInput,
+                                        message: format!(
+                                            "Could not open genome catalog '{}' ({}) and fallback '{}' ({})",
+                                            requested_catalog_path,
+                                            primary_err,
+                                            default_catalog_path,
+                                            default_err
+                                        ),
+                                    });
+                                }
+                            }
+                        } else {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Could not open genome catalog '{}': {}",
+                                    requested_catalog_path, primary_err
+                                ),
+                            });
+                        }
+                    }
+                };
+                if let Some(warning) = catalog_fallback_warning {
+                    result.warnings.push(warning);
+                }
+
+                let preferred_prepared = prepared_genome_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(|v| v.to_string());
+                let resolution_query = preferred_prepared
+                    .as_deref()
+                    .unwrap_or(&anchor.genome_id)
+                    .to_string();
+                let fallback_policy = if preferred_prepared.is_some() {
+                    PreparedGenomeFallbackPolicy::Off
+                } else {
+                    self.genome_anchor_fallback_policy_for_extension()
+                };
+                let prepared_resolution = catalog
+                    .resolve_prepared_genome_id_with_policy(
+                        &resolution_query,
+                        resolved_cache_dir.as_deref(),
+                        fallback_policy,
+                    )
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!(
+                            "Could not resolve prepared genome '{}' for verification: {}",
+                            resolution_query, e
+                        ),
+                    })?;
+                if let Some(warning) = prepared_resolution.fallback_warning {
+                    result.warnings.push(warning);
+                }
+                let effective_genome_id = prepared_resolution.resolved_genome_id;
+                let anchor_for_verification = GenomeSequenceAnchor {
+                    genome_id: effective_genome_id.clone(),
+                    chromosome: anchor.chromosome.clone(),
+                    start_1based: anchor.start_1based,
+                    end_1based: anchor.end_1based,
+                    strand: anchor.strand,
+                    anchor_verified: anchor.anchor_verified,
+                    catalog_path: anchor.catalog_path.clone(),
+                    cache_dir: anchor.cache_dir.clone(),
+                };
+                let is_match = Self::verify_anchor_sequence_against_catalog(
+                    &dna,
+                    &anchor_for_verification,
+                    &resolved_catalog_path,
+                    resolved_cache_dir.as_deref(),
+                )
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not verify genome anchor '{}' against catalog '{}': {}",
+                        seq_id, resolved_catalog_path, e
+                    ),
+                })?;
+                let source_plan = catalog
+                    .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
+                    .ok();
+                let inspection = catalog
+                    .inspect_prepared_genome(&effective_genome_id, resolved_cache_dir.as_deref())
+                    .ok()
+                    .flatten();
+                let (
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
+                self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                    seq_id: seq_id.clone(),
+                    recorded_at_unix_ms: Self::now_unix_ms(),
+                    operation: "VerifyGenomeAnchor".to_string(),
+                    genome_id: effective_genome_id.clone(),
+                    catalog_path: resolved_catalog_path.clone(),
+                    cache_dir: resolved_cache_dir.clone(),
+                    chromosome: Some(anchor.chromosome.clone()),
+                    start_1based: Some(anchor.start_1based),
+                    end_1based: Some(anchor.end_1based),
+                    gene_query: None,
+                    occurrence: None,
+                    gene_id: None,
+                    gene_name: None,
+                    strand: anchor.strand,
+                    anchor_strand: Some(anchor.strand.unwrap_or('+')),
+                    anchor_verified: Some(is_match),
+                    sequence_source_type,
+                    annotation_source_type,
+                    sequence_source,
+                    annotation_source,
+                    sequence_sha1,
+                    annotation_sha1,
+                });
+                result.changed_seq_ids.push(seq_id.clone());
+                if is_match {
+                    result.messages.push(format!(
+                        "Genome anchor for '{}' verified against '{}' via prepared '{}'",
+                        seq_id, resolved_catalog_path, effective_genome_id
+                    ));
+                } else {
+                    result.warnings.push(format!(
+                        "Genome anchor for '{}' is unverified against '{}' via prepared '{}'",
+                        seq_id, resolved_catalog_path, effective_genome_id
+                    ));
+                    result.messages.push(format!(
+                        "Recorded anchor verification status for '{}' as unverified",
+                        seq_id
                     ));
                 }
             }
@@ -21089,6 +21391,37 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Set parameter '{}' to {}",
                         name, self.state.parameters.max_fragments_per_container
+                    ));
+                }
+                "genome_anchor_prepared_fallback_policy"
+                | "genome_anchor_fallback_mode"
+                | "genome_anchor_prepared_mode" => {
+                    let raw = value.as_str().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a string value"),
+                    })?;
+                    let normalized = raw.trim().to_ascii_lowercase().replace('-', "_");
+                    let policy = match normalized.as_str() {
+                        "off" | "disabled" | "none" => GenomeAnchorPreparedFallbackPolicy::Off,
+                        "single_compatible" | "single" | "auto" => {
+                            GenomeAnchorPreparedFallbackPolicy::SingleCompatible
+                        }
+                        "always_explicit" | "explicit" => {
+                            GenomeAnchorPreparedFallbackPolicy::AlwaysExplicit
+                        }
+                        other => {
+                            return Err(EngineError {
+                                code: ErrorCode::InvalidInput,
+                                message: format!(
+                                    "Unsupported {name} '{other}' (expected off|single_compatible|always_explicit)"
+                                ),
+                            });
+                        }
+                    };
+                    self.state.parameters.genome_anchor_prepared_fallback_policy = policy;
+                    result.messages.push(format!(
+                        "Set parameter 'genome_anchor_prepared_fallback_policy' to {}",
+                        policy.as_str()
                     ));
                 }
                 "require_verified_genome_anchor_for_extension"
@@ -26411,6 +26744,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("toy_slice_ext5".to_string()),
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap();
         assert_eq!(extended.created_seq_ids, vec!["toy_slice_ext5".to_string()]);
@@ -26550,6 +26884,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("rev_ext5".to_string()),
                 catalog_path: None,
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap();
         assert_eq!(ext5.created_seq_ids, vec!["rev_ext5".to_string()]);
@@ -26571,6 +26906,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("rev_ext3".to_string()),
                 catalog_path: None,
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap();
         assert_eq!(ext3.created_seq_ids, vec!["rev_ext3".to_string()]);
@@ -26716,6 +27052,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("alias_slice_ext5".to_string()),
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap();
         assert_eq!(
@@ -26747,6 +27084,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: None,
                 catalog_path: None,
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap_err();
         assert!(matches!(err.code, ErrorCode::InvalidInput));
@@ -26766,6 +27104,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: None,
                 catalog_path: None,
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap_err();
         assert!(matches!(err.code, ErrorCode::NotFound));
@@ -26823,6 +27162,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("anch_ext".to_string()),
                 catalog_path: None,
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .expect_err("strict verification should reject unverified anchor");
         assert!(matches!(err.code, ErrorCode::InvalidInput));
@@ -26893,6 +27233,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("anch_ext".to_string()),
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .expect("verified anchor should be accepted under strict mode");
         assert_eq!(result.created_seq_ids, vec!["anch_ext".to_string()]);
@@ -26977,6 +27318,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 output_id: Some("anch_ext".to_string()),
                 catalog_path: None,
                 cache_dir: None,
+                prepared_genome_id: None,
             })
             .unwrap();
         assert_eq!(result.created_seq_ids, vec!["anch_ext".to_string()]);
@@ -26985,6 +27327,121 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 .warnings
                 .iter()
                 .any(|w| w.contains("clipped at chromosome start position 1"))
+        );
+    }
+
+    #[test]
+    fn test_verify_genome_anchor_records_unverified_status_in_provenance() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let gtf = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+        let catalog_path = root.join("catalog.json");
+        let cache_dir = root.join("cache");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("anch".to_string()),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        // Force mismatch before re-verification.
+        engine
+            .state_mut()
+            .sequences
+            .insert("anch".to_string(), seq("AAAAAAAA"));
+
+        let result = engine
+            .apply(Operation::VerifyGenomeAnchor {
+                seq_id: "anch".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                prepared_genome_id: None,
+            })
+            .expect("verify anchor should succeed");
+        assert_eq!(result.changed_seq_ids, vec!["anch".to_string()]);
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("is unverified against")),
+            "expected unverified warning in operation result"
+        );
+        let anchor_summary = engine
+            .sequence_genome_anchor_summary("anch")
+            .expect("anchor summary");
+        assert_eq!(anchor_summary.anchor_verified, Some(false));
+
+        let provenance = engine
+            .state()
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .and_then(|v| v.as_object())
+            .expect("provenance metadata object");
+        let extractions = provenance
+            .get(GENOME_EXTRACTIONS_METADATA_KEY)
+            .and_then(|v| v.as_array())
+            .expect("genome_extractions array");
+        let verify_entry = extractions
+            .iter()
+            .rev()
+            .find(|entry| {
+                entry
+                    .get("seq_id")
+                    .and_then(|v| v.as_str())
+                    .map(|v| v == "anch")
+                    .unwrap_or(false)
+                    && entry
+                        .get("operation")
+                        .and_then(|v| v.as_str())
+                        .map(|v| v == "VerifyGenomeAnchor")
+                        .unwrap_or(false)
+            })
+            .expect("VerifyGenomeAnchor provenance entry");
+        assert_eq!(
+            verify_entry
+                .get("anchor_verified")
+                .and_then(|v| v.as_bool()),
+            Some(false)
+        );
+        assert_eq!(
+            verify_entry.get("catalog_path").and_then(|v| v.as_str()),
+            Some(catalog_path_str.as_str())
         );
     }
 

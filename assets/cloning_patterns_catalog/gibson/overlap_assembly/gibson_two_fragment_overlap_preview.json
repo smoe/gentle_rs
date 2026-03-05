@@ -1,0 +1,71 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "gibson_two_fragment_overlap_preview",
+  "description": "Baseline Gibson planning template for two fragments. Preflight validates configured overlap compatibility, then emits deterministic concatenation previews for review and communication.",
+  "details_url": "https://www.neb.com/en-us/applications/cloning-and-synthetic-biology/gibson-assembly",
+  "parameters": [
+    {
+      "name": "left_seq_id",
+      "required": true
+    },
+    {
+      "name": "right_seq_id",
+      "required": true
+    },
+    {
+      "name": "overlap_bp",
+      "default_value": "20",
+      "required": false
+    },
+    {
+      "name": "assembly_prefix",
+      "default_value": "gibson_preview",
+      "required": false
+    },
+    {
+      "name": "output_id",
+      "default_value": "gibson_forward",
+      "required": false
+    }
+  ],
+  "input_ports": [
+    {
+      "port_id": "left_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Left fragment ID (5'->3' order)."
+    },
+    {
+      "port_id": "right_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Right fragment ID (5'->3' order)."
+    },
+    {
+      "port_id": "overlap_bp",
+      "kind": "number",
+      "required": true,
+      "cardinality": "one",
+      "description": "Homology overlap length used for Gibson preflight checks."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "assembly_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Preview ligation products prefix (ordered combinations)."
+    },
+    {
+      "port_id": "output_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Deterministic left->right preview sequence ID copied from ${assembly_prefix}_1."
+    }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${left_seq_id}\",\"${right_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

@@ -1064,6 +1064,7 @@ impl LuaInterface {
                             output_id,
                             catalog_path,
                             cache_dir,
+                            prepared_genome_id: None,
                         })
                         .map_err(|e| Self::err(&e.to_string()))?;
                     #[derive(Serialize)]

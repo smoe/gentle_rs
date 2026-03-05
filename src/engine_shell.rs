@@ -38,6 +38,7 @@ use crate::{
         SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
+    enzymes::active_restriction_enzymes,
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord,
@@ -588,6 +589,14 @@ pub enum ShellCommand {
         output_id: Option<String>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
+        prepared_genome_id: Option<String>,
+    },
+    ReferenceVerifyAnchor {
+        helper_mode: bool,
+        seq_id: String,
+        catalog_path: Option<String>,
+        cache_dir: Option<String>,
+        prepared_genome_id: Option<String>,
     },
     ReferenceBlast {
         helper_mode: bool,
@@ -2083,6 +2092,369 @@ fn apply_cross_port_semantics(engine: &GentleEngine, report: &mut MacroTemplateP
     }
 }
 
+fn summarize_overlap_segment(raw: &str, max_len: usize) -> String {
+    if raw.chars().count() <= max_len {
+        return raw.to_string();
+    }
+    let prefix = raw.chars().take(max_len).collect::<String>();
+    format!("{prefix}...")
+}
+
+fn parse_optional_usize_binding(
+    bindings: &HashMap<String, String>,
+    key: &str,
+    errors: &mut Vec<String>,
+) -> Option<usize> {
+    let raw = bindings.get(key)?;
+    let value = raw.trim();
+    if value.is_empty() {
+        return None;
+    }
+    match value.parse::<usize>() {
+        Ok(parsed) => Some(parsed),
+        Err(err) => {
+            errors.push(format!(
+                "Restriction preflight expects '{}' to be a non-negative integer, got '{}': {}",
+                key, raw, err
+            ));
+            None
+        }
+    }
+}
+
+fn collect_restriction_enzyme_bindings(bindings: &HashMap<String, String>) -> Vec<String> {
+    let mut ordered_values: Vec<String> = vec![];
+    let preferred_keys = [
+        "enzyme_a",
+        "enzyme_b",
+        "enzymes",
+        "digest_enzymes",
+        "restriction_enzymes",
+        "enzyme",
+    ];
+    for key in preferred_keys {
+        if let Some(raw) = bindings.get(key) {
+            ordered_values.push(raw.clone());
+        }
+    }
+    let mut extra_keys = bindings.keys().cloned().collect::<Vec<_>>();
+    extra_keys.sort_by_key(|k| k.to_ascii_lowercase());
+    for key in extra_keys {
+        if preferred_keys.contains(&key.as_str()) {
+            continue;
+        }
+        if key.to_ascii_lowercase().contains("enzyme") {
+            if let Some(raw) = bindings.get(&key) {
+                ordered_values.push(raw.clone());
+            }
+        }
+    }
+
+    let mut names: Vec<String> = vec![];
+    for raw in ordered_values {
+        for token in raw.split(',') {
+            let name = token.trim();
+            if name.is_empty() {
+                continue;
+            }
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+fn apply_gibson_family_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+) {
+    let checked_rows = report
+        .checked_ports
+        .iter()
+        .filter(|row| {
+            row.direction == RoutinePortDirection::Input
+                && matches!(row.status, RoutinePortValidationStatus::Ok)
+        })
+        .collect::<Vec<_>>();
+    if checked_rows.is_empty() {
+        return;
+    }
+
+    let sequence_values = checked_rows
+        .iter()
+        .filter(|row| normalize_port_kind(&row.kind) == "sequence")
+        .flat_map(|row| row.values.iter().cloned())
+        .collect::<Vec<_>>();
+    if sequence_values.len() < 2 {
+        report.errors.push(format!(
+            "Gibson preflight requires at least two sequence inputs, found {}",
+            sequence_values.len()
+        ));
+        return;
+    }
+
+    let overlap_bp = checked_rows
+        .iter()
+        .find(|row| normalize_port_kind(&row.kind) == "number")
+        .and_then(|row| row.values.first())
+        .and_then(|raw| raw.trim().parse::<usize>().ok());
+    let Some(overlap_bp) = overlap_bp else {
+        report.errors.push(
+            "Gibson preflight requires one numeric overlap input port (for example overlap_bp)"
+                .to_string(),
+        );
+        return;
+    };
+    if overlap_bp == 0 {
+        report
+            .errors
+            .push("Gibson preflight requires overlap_bp >= 1".to_string());
+        return;
+    }
+    if overlap_bp < 15 {
+        report.warnings.push(format!(
+            "Gibson overlap_bp={} is short for typical assembly design (often >=15 bp)",
+            overlap_bp
+        ));
+    }
+    if overlap_bp > 120 {
+        report.warnings.push(format!(
+            "Gibson overlap_bp={} is unusually long; verify primer and synthesis practicality",
+            overlap_bp
+        ));
+    }
+
+    for pair in sequence_values.windows(2) {
+        let left_id = &pair[0];
+        let right_id = &pair[1];
+        let Some(left) = engine.state().sequences.get(left_id) else {
+            continue;
+        };
+        let Some(right) = engine.state().sequences.get(right_id) else {
+            continue;
+        };
+        let left_seq = left.get_forward_string().to_ascii_uppercase();
+        let right_seq = right.get_forward_string().to_ascii_uppercase();
+        if left_seq.len() < overlap_bp {
+            report.errors.push(format!(
+                "Gibson overlap check failed: sequence '{}' length {} is shorter than overlap_bp={}",
+                left_id,
+                left_seq.len(),
+                overlap_bp
+            ));
+            continue;
+        }
+        if right_seq.len() < overlap_bp {
+            report.errors.push(format!(
+                "Gibson overlap check failed: sequence '{}' length {} is shorter than overlap_bp={}",
+                right_id,
+                right_seq.len(),
+                overlap_bp
+            ));
+            continue;
+        }
+        let left_suffix = &left_seq[left_seq.len() - overlap_bp..];
+        let right_prefix = &right_seq[..overlap_bp];
+        if left_suffix != right_prefix {
+            report.errors.push(format!(
+                "Gibson overlap mismatch between '{}' and '{}': left suffix '{}' != right prefix '{}' (overlap_bp={})",
+                left_id,
+                right_id,
+                summarize_overlap_segment(left_suffix, 24),
+                summarize_overlap_segment(right_prefix, 24),
+                overlap_bp
+            ));
+        }
+    }
+}
+
+fn apply_restriction_family_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+    bindings: &HashMap<String, String>,
+) {
+    let checked_rows = report
+        .checked_ports
+        .iter()
+        .filter(|row| {
+            row.direction == RoutinePortDirection::Input
+                && matches!(row.status, RoutinePortValidationStatus::Ok)
+        })
+        .collect::<Vec<_>>();
+    if checked_rows.is_empty() {
+        return;
+    }
+
+    let sequence_values = checked_rows
+        .iter()
+        .filter(|row| normalize_port_kind(&row.kind) == "sequence")
+        .flat_map(|row| row.values.iter().cloned())
+        .collect::<Vec<_>>();
+    if sequence_values.is_empty() {
+        report
+            .errors
+            .push("Restriction preflight requires at least one sequence input".to_string());
+        return;
+    }
+
+    let enzyme_names = collect_restriction_enzyme_bindings(bindings);
+    if enzyme_names.is_empty() {
+        report.warnings.push(
+            "Restriction preflight could not infer enzyme bindings; enzyme/site checks were skipped"
+                .to_string(),
+        );
+    } else {
+        let catalog = active_restriction_enzymes();
+        if catalog.is_empty() {
+            report.warnings.push(
+                "Restriction preflight could not load active restriction-enzyme catalog; enzyme/site checks were skipped"
+                    .to_string(),
+            );
+        } else {
+            let mut by_name_lower = HashMap::new();
+            for enzyme in catalog {
+                by_name_lower.insert(enzyme.name.to_ascii_lowercase(), enzyme);
+            }
+
+            let mut valid_enzymes = vec![];
+            let mut unknown_names = vec![];
+            for name in &enzyme_names {
+                let lookup = name.to_ascii_lowercase();
+                if let Some(enzyme) = by_name_lower.get(&lookup) {
+                    valid_enzymes.push((name.clone(), enzyme.clone()));
+                } else {
+                    unknown_names.push(name.clone());
+                }
+            }
+            if !unknown_names.is_empty() {
+                report.errors.push(format!(
+                    "Restriction preflight unknown enzyme name(s): {}",
+                    unknown_names.join(", ")
+                ));
+            }
+
+            if valid_enzymes.len() >= 2 {
+                let first = valid_enzymes[0].0.to_ascii_lowercase();
+                let second = valid_enzymes[1].0.to_ascii_lowercase();
+                if first == second {
+                    report.errors.push(format!(
+                        "Restriction preflight expects distinct enzyme inputs, got duplicate enzyme '{}'",
+                        valid_enzymes[0].0
+                    ));
+                }
+            }
+
+            if !valid_enzymes.is_empty() {
+                let mut per_sequence = Vec::with_capacity(sequence_values.len());
+                for seq_id in &sequence_values {
+                    if let Some(dna) = engine.state().sequences.get(seq_id) {
+                        per_sequence.push((seq_id.as_str(), dna));
+                    }
+                }
+                for (raw_name, enzyme) in &valid_enzymes {
+                    let total_sites = per_sequence
+                        .iter()
+                        .map(|(_, dna)| enzyme.get_sites(dna, None).len())
+                        .sum::<usize>();
+                    if total_sites == 0 {
+                        report.errors.push(format!(
+                            "Restriction preflight: enzyme '{}' has no recognition site across input sequence(s): {}",
+                            raw_name,
+                            sequence_values.join(", ")
+                        ));
+                    } else if total_sites == 1 {
+                        report.warnings.push(format!(
+                            "Restriction preflight: enzyme '{}' has only one recognition site across input sequence(s)",
+                            raw_name
+                        ));
+                    }
+                }
+
+                if valid_enzymes.len() >= 2 {
+                    let has_shared_cuttable_sequence = per_sequence.iter().any(|(_, dna)| {
+                        valid_enzymes
+                            .iter()
+                            .all(|(_, enzyme)| !enzyme.get_sites(dna, None).is_empty())
+                    });
+                    if !has_shared_cuttable_sequence {
+                        report.errors.push(
+                            "Restriction preflight: no single input sequence has recognition sites for all selected enzymes"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let mut local_errors: Vec<String> = vec![];
+    let left_fragment = parse_optional_usize_binding(bindings, "left_fragment", &mut local_errors);
+    let right_fragment =
+        parse_optional_usize_binding(bindings, "right_fragment", &mut local_errors);
+    let extract_from = parse_optional_usize_binding(bindings, "extract_from", &mut local_errors);
+    let extract_to = parse_optional_usize_binding(bindings, "extract_to", &mut local_errors);
+    report.errors.extend(local_errors);
+
+    if left_fragment == Some(0) {
+        report.errors.push(
+            "Restriction preflight expects left_fragment >= 1 (digest products are 1-indexed)"
+                .to_string(),
+        );
+    }
+    if right_fragment == Some(0) {
+        report.errors.push(
+            "Restriction preflight expects right_fragment >= 1 (digest products are 1-indexed)"
+                .to_string(),
+        );
+    }
+    if let (Some(left), Some(right)) = (left_fragment, right_fragment) {
+        if left == right {
+            report.warnings.push(format!(
+                "Restriction preflight: left_fragment and right_fragment are both {}",
+                left
+            ));
+        }
+    }
+    if let (Some(from), Some(to)) = (extract_from, extract_to) {
+        if from == to {
+            report.warnings.push(
+                "Restriction preflight: extract_from equals extract_to (full-length circular-style extract)"
+                    .to_string(),
+            );
+        } else if from > to {
+            report.warnings.push(
+                "Restriction preflight: extract_from > extract_to (wrap-around extract semantics)"
+                    .to_string(),
+            );
+        }
+        let max_input_len = sequence_values
+            .iter()
+            .filter_map(|seq_id| engine.state().sequences.get(seq_id).map(|dna| dna.len()))
+            .max()
+            .unwrap_or(0);
+        if max_input_len > 0 && to > max_input_len {
+            report.warnings.push(format!(
+                "Restriction preflight: extract_to={} exceeds longest input sequence length {}",
+                to, max_input_len
+            ));
+        }
+    }
+}
+
+fn apply_family_specific_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+    bindings: &HashMap<String, String>,
+) {
+    let Some(family) = report.routine_family.as_deref() else {
+        return;
+    };
+    if family.eq_ignore_ascii_case("gibson") {
+        apply_gibson_family_preflight_semantics(engine, report);
+    } else if family.eq_ignore_ascii_case("restriction") {
+        apply_restriction_family_preflight_semantics(engine, report, bindings);
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PreflightPortContract {
     direction: RoutinePortDirection,
@@ -2395,6 +2767,7 @@ fn preflight_workflow_macro_template_run(
     }
 
     apply_cross_port_semantics(engine, &mut report);
+    apply_family_specific_preflight_semantics(engine, &mut report, &resolved_bindings);
 
     Ok(report)
 }
@@ -2933,6 +3306,7 @@ impl ShellCommand {
                 output_id,
                 catalog_path,
                 cache_dir,
+                prepared_genome_id,
             } => {
                 let label = if *helper_mode { "helper" } else { "genome" };
                 let catalog = catalog_path
@@ -2940,12 +3314,34 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                let prepared = prepared_genome_id
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
                 let side_label = match side {
                     GenomeAnchorSide::FivePrime => "5'",
                     GenomeAnchorSide::ThreePrime => "3'",
                 };
                 format!(
-                    "extend {label}-anchored sequence '{seq_id}' on {side_label} by {length_bp} bp (output='{output}', catalog='{catalog}', cache='{cache}')"
+                    "extend {label}-anchored sequence '{seq_id}' on {side_label} by {length_bp} bp (output='{output}', catalog='{catalog}', cache='{cache}', prepared_genome_id='{prepared}')"
+                )
+            }
+            Self::ReferenceVerifyAnchor {
+                helper_mode,
+                seq_id,
+                catalog_path,
+                cache_dir,
+                prepared_genome_id,
+            } => {
+                let label = if *helper_mode { "helper" } else { "genome" };
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
+                let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
+                let prepared = prepared_genome_id
+                    .clone()
+                    .unwrap_or_else(|| "-".to_string());
+                format!(
+                    "verify {label}-anchored sequence '{seq_id}' (catalog='{catalog}', cache='{cache}', prepared_genome_id='{prepared}')"
                 )
             }
             Self::ReferenceBlast {
@@ -3680,6 +4076,12 @@ impl ShellCommand {
                 report_id, path
             ),
             Self::SetParameter { name, value_json } => match name.as_str() {
+                "genome_anchor_prepared_fallback_policy"
+                | "genome_anchor_fallback_mode"
+                | "genome_anchor_prepared_mode" => format!(
+                    "set genome-anchor prepared-fallback policy to {} (off|single_compatible|always_explicit)",
+                    value_json
+                ),
                 "require_verified_genome_anchor_for_extension"
                 | "strict_genome_anchor_verification"
                 | "strict_anchor_verification" => format!(
@@ -3756,6 +4158,7 @@ impl ShellCommand {
                 | Self::ReferenceExtractRegion { .. }
                 | Self::ReferenceExtractGene { .. }
                 | Self::ReferenceExtendAnchor { .. }
+                | Self::ReferenceVerifyAnchor { .. }
                 | Self::ReferenceBlastTrack { .. }
                 | Self::TracksImportBed { .. }
                 | Self::TracksImportBigWig { .. }
@@ -5187,7 +5590,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "extend-anchor" => {
             if tokens.len() < 5 {
                 return Err(format!(
-                    "{label} extend-anchor requires SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extend-anchor requires SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
                 ));
             }
             let seq_id = tokens[2].clone();
@@ -5201,6 +5604,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
             let mut output_id: Option<String> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
+            let mut prepared_genome_id: Option<String> = None;
             let mut idx = 5usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -5213,6 +5617,14 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--prepared-genome" => {
+                        prepared_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--prepared-genome",
+                            label,
+                        )?)
                     }
                     other => {
                         return Err(format!(
@@ -5229,10 +5641,54 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 output_id,
                 catalog_path,
                 cache_dir,
+                prepared_genome_id,
+            })
+        }
+        "verify-anchor" => {
+            if tokens.len() < 3 {
+                return Err(format!(
+                    "{label} verify-anchor requires SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]"
+                ));
+            }
+            let seq_id = tokens[2].clone();
+            let mut catalog_path: Option<String> = None;
+            let mut cache_dir: Option<String> = None;
+            let mut prepared_genome_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path =
+                            Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
+                    }
+                    "--cache-dir" => {
+                        cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
+                    }
+                    "--prepared-genome" => {
+                        prepared_genome_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--prepared-genome",
+                            label,
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for {label} verify-anchor"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::ReferenceVerifyAnchor {
+                helper_mode,
+                seq_id,
+                catalog_path,
+                cache_dir,
+                prepared_genome_id,
             })
         }
         other => Err(format!(
-            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor)"
+            "Unknown {label} subcommand '{other}' (expected list, validate-catalog, status, genes, prepare, blast, blast-start, blast-status, blast-cancel, blast-list, blast-track, extract-region, extract-gene, extend-anchor, verify-anchor)"
         )),
     }
 }
@@ -10582,6 +11038,7 @@ pub fn execute_shell_command_with_options(
             output_id,
             catalog_path,
             cache_dir,
+            prepared_genome_id,
         } => {
             let op_result = engine
                 .apply(Operation::ExtendGenomeAnchor {
@@ -10591,6 +11048,29 @@ pub fn execute_shell_command_with_options(
                     output_id: output_id.clone(),
                     catalog_path: operation_catalog_path(catalog_path, *helper_mode),
                     cache_dir: cache_dir.clone(),
+                    prepared_genome_id: prepared_genome_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let state_changed =
+                !op_result.created_seq_ids.is_empty() || !op_result.changed_seq_ids.is_empty();
+            ShellRunResult {
+                state_changed,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ReferenceVerifyAnchor {
+            helper_mode,
+            seq_id,
+            catalog_path,
+            cache_dir,
+            prepared_genome_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::VerifyGenomeAnchor {
+                    seq_id: seq_id.clone(),
+                    catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                    cache_dir: cache_dir.clone(),
+                    prepared_genome_id: prepared_genome_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             let state_changed =
@@ -14612,6 +15092,269 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_macros_template_validate_only_applies_gibson_family_overlap_checks() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "left".to_string(),
+            DNAsequence::from_sequence("ATGCCGTTACCGGTTAAACCCGGGTTT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "right_ok".to_string(),
+            DNAsequence::from_sequence("AACCCGGGTTTGGGAAATTTCCCGGG").expect("sequence"),
+        );
+        state.sequences.insert(
+            "right_bad".to_string(),
+            DNAsequence::from_sequence("TTTAAACCCGGGGGGAAATTTCCCGGG").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let path = format!(
+            "{}/assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+            .expect("import gibson template");
+
+        let ok_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gibson_two_fragment_overlap_preview".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("right_seq_id".to_string(), "right_ok".to_string()),
+                    ("overlap_bp".to_string(), "11".to_string()),
+                    ("assembly_prefix".to_string(), "gib_ok".to_string()),
+                    ("output_id".to_string(), "gib_ok_forward".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("gibson validate-only success");
+        assert_eq!(ok_run.output["can_execute"].as_bool(), Some(true));
+        let ok_errors = ok_run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            ok_errors.is_empty(),
+            "did not expect Gibson preflight errors for matching overlap: {:?}",
+            ok_errors
+        );
+
+        let bad_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gibson_two_fragment_overlap_preview".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("right_seq_id".to_string(), "right_bad".to_string()),
+                    ("overlap_bp".to_string(), "11".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("gibson validate-only mismatch");
+        assert_eq!(bad_run.output["can_execute"].as_bool(), Some(false));
+        let bad_errors = bad_run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            bad_errors
+                .iter()
+                .any(|message| message.contains("Gibson overlap mismatch")),
+            "expected Gibson overlap mismatch error, got: {:?}",
+            bad_errors
+        );
+    }
+
+    #[test]
+    fn execute_macros_template_validate_only_applies_restriction_family_checks() {
+        let enzymes = crate::enzymes::active_restriction_enzymes();
+        assert!(
+            enzymes.len() >= 2,
+            "restriction enzyme catalog should provide at least two enzymes"
+        );
+        let enzyme_a = enzymes
+            .iter()
+            .find(|enzyme| !enzyme.sequence.is_empty())
+            .expect("enzyme_a with sequence");
+        let enzyme_b = enzymes
+            .iter()
+            .find(|enzyme| enzyme.name != enzyme_a.name && !enzyme.sequence.is_empty())
+            .expect("enzyme_b with sequence");
+        let sequence_text = format!("AAA{}TTT{}GGG", enzyme_a.sequence, enzyme_b.sequence);
+
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "vector".to_string(),
+            DNAsequence::from_sequence(&sequence_text).expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let path = format!(
+            "{}/assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+            .expect("import restriction template");
+
+        let ok_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "digest_ligate_extract_sticky".to_string(),
+                bindings: HashMap::from([
+                    ("seq_id".to_string(), "vector".to_string()),
+                    ("enzyme_a".to_string(), enzyme_a.name.clone()),
+                    ("enzyme_b".to_string(), enzyme_b.name.clone()),
+                    ("left_fragment".to_string(), "1".to_string()),
+                    ("right_fragment".to_string(), "2".to_string()),
+                    ("extract_from".to_string(), "0".to_string()),
+                    ("extract_to".to_string(), "20".to_string()),
+                    ("digest_prefix".to_string(), "digest_ok".to_string()),
+                    ("ligation_prefix".to_string(), "lig_ok".to_string()),
+                    ("output_id".to_string(), "restriction_ok".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("restriction validate-only success");
+        assert_eq!(ok_run.output["can_execute"].as_bool(), Some(true));
+        let ok_errors = ok_run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            ok_errors.is_empty(),
+            "did not expect restriction preflight errors for valid inputs: {:?}",
+            ok_errors
+        );
+
+        let duplicate_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "digest_ligate_extract_sticky".to_string(),
+                bindings: HashMap::from([
+                    ("seq_id".to_string(), "vector".to_string()),
+                    ("enzyme_a".to_string(), enzyme_a.name.clone()),
+                    ("enzyme_b".to_string(), enzyme_a.name.clone()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("restriction validate-only duplicate enzyme");
+        assert_eq!(duplicate_run.output["can_execute"].as_bool(), Some(false));
+        let duplicate_errors = duplicate_run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            duplicate_errors
+                .iter()
+                .any(|message| message.contains("expects distinct enzyme inputs")),
+            "expected duplicate-enzyme restriction error, got: {:?}",
+            duplicate_errors
+        );
+
+        let unknown_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "digest_ligate_extract_sticky".to_string(),
+                bindings: HashMap::from([
+                    ("seq_id".to_string(), "vector".to_string()),
+                    ("enzyme_a".to_string(), "__missing_enzyme__".to_string()),
+                    ("enzyme_b".to_string(), enzyme_b.name.clone()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("restriction validate-only unknown enzyme");
+        assert_eq!(unknown_run.output["can_execute"].as_bool(), Some(false));
+        let unknown_errors = unknown_run
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            unknown_errors
+                .iter()
+                .any(|message| message.contains("unknown enzyme name")),
+            "expected unknown-enzyme restriction error, got: {:?}",
+            unknown_errors
+        );
+    }
+
+    #[test]
+    fn execute_macros_template_run_gibson_preview_creates_deterministic_outputs() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "left".to_string(),
+            DNAsequence::from_sequence("ATGCCGTTACCGGTTAAACCCGGGTTT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "right".to_string(),
+            DNAsequence::from_sequence("AACCCGGGTTTGGGAAATTTCCCGGG").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let path = format!(
+            "{}/assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+            .expect("import gibson template");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gibson_two_fragment_overlap_preview".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("right_seq_id".to_string(), "right".to_string()),
+                    ("overlap_bp".to_string(), "11".to_string()),
+                    ("assembly_prefix".to_string(), "gib_preview".to_string()),
+                    ("output_id".to_string(), "gib_forward".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+        )
+        .expect("run gibson template");
+        assert!(run.state_changed);
+        assert!(engine.state().sequences.contains_key("gib_preview_1"));
+        assert!(engine.state().sequences.contains_key("gib_preview_2"));
+        assert!(engine.state().sequences.contains_key("gib_forward"));
+    }
+
+    #[test]
     fn execute_candidates_macro_runs_multiple_statements() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -15769,6 +16512,7 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 output_id,
                 catalog_path,
                 cache_dir,
+                prepared_genome_id,
             } => {
                 assert!(!helper_mode);
                 assert_eq!(seq_id, "tp73".to_string());
@@ -15777,6 +16521,61 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 assert_eq!(output_id, Some("tp73_ext".to_string()));
                 assert_eq!(catalog_path, Some("c.json".to_string()));
                 assert_eq!(cache_dir, Some("cache".to_string()));
+                assert_eq!(prepared_genome_id, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_extend_anchor_with_prepared_genome() {
+        let cmd = parse_shell_line(
+            "genomes extend-anchor tp73 3p 200 --prepared-genome Human_GRCh38 --catalog c.json",
+        )
+        .expect("parse genomes extend-anchor with prepared genome");
+        match cmd {
+            ShellCommand::ReferenceExtendAnchor {
+                helper_mode,
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+                catalog_path,
+                cache_dir,
+                prepared_genome_id,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(seq_id, "tp73".to_string());
+                assert_eq!(side, GenomeAnchorSide::ThreePrime);
+                assert_eq!(length_bp, 200);
+                assert_eq!(output_id, None);
+                assert_eq!(catalog_path, Some("c.json".to_string()));
+                assert_eq!(cache_dir, None);
+                assert_eq!(prepared_genome_id, Some("Human_GRCh38".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_verify_anchor_with_prepared_genome() {
+        let cmd = parse_shell_line(
+            "genomes verify-anchor tp73 --catalog c.json --cache-dir cache --prepared-genome Human_GRCh38",
+        )
+        .expect("parse genomes verify-anchor");
+        match cmd {
+            ShellCommand::ReferenceVerifyAnchor {
+                helper_mode,
+                seq_id,
+                catalog_path,
+                cache_dir,
+                prepared_genome_id,
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(seq_id, "tp73".to_string());
+                assert_eq!(catalog_path, Some("c.json".to_string()));
+                assert_eq!(cache_dir, Some("cache".to_string()));
+                assert_eq!(prepared_genome_id, Some("Human_GRCh38".to_string()));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -15848,6 +16647,7 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 output_id: Some("slice_ext5".to_string()),
                 catalog_path: Some(catalog_path),
                 cache_dir: None,
+                prepared_genome_id: None,
             },
         )
         .expect("execute extend-anchor");
@@ -15870,6 +16670,101 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             .get("slice_ext5")
             .expect("extended sequence in state");
         assert_eq!(seq.get_forward_string(), "ACGTACGTAC");
+    }
+
+    #[test]
+    fn execute_genomes_verify_anchor_updates_verification_status() {
+        let td = tempdir().expect("tempdir");
+        let fasta = td.path().join("toy.fa");
+        let gtf = td.path().join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").expect("write fasta");
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .expect("write gtf");
+        let catalog = td.path().join("catalog.json");
+        let cache_dir = td.path().join("cache");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog, catalog_json).expect("write catalog");
+        let catalog_path = catalog.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferencePrepare {
+                helper_mode: false,
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            },
+        )
+        .expect("prepare genome");
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceExtractRegion {
+                helper_mode: false,
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some("slice".to_string()),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+            },
+        )
+        .expect("extract region");
+
+        // Mutate sequence to force a mismatch and validate unverified status recording.
+        engine.state_mut().sequences.insert(
+            "slice".to_string(),
+            DNAsequence::from_sequence("AAAAAAAA").expect("mutated sequence"),
+        );
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferenceVerifyAnchor {
+                helper_mode: false,
+                seq_id: "slice".to_string(),
+                catalog_path: Some(catalog_path),
+                cache_dir: None,
+                prepared_genome_id: None,
+            },
+        )
+        .expect("verify-anchor");
+
+        assert!(out.state_changed);
+        let changed = out
+            .output
+            .get("result")
+            .and_then(|v| v.get("changed_seq_ids"))
+            .and_then(|v| v.as_array())
+            .expect("changed_seq_ids");
+        assert!(
+            changed
+                .iter()
+                .any(|v| v.as_str().map(|id| id == "slice").unwrap_or(false))
+        );
+        let anchor_status = engine
+            .describe_sequence_genome_anchor("slice")
+            .expect("anchor status");
+        assert!(
+            anchor_status.contains("unverified"),
+            "expected unverified status, got: {}",
+            anchor_status
+        );
     }
 
     #[test]

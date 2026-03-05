@@ -1,6 +1,6 @@
 # Cloning Routine Catalog and Macro-Graph Plan
 
-Last updated: 2026-02-26
+Last updated: 2026-03-05
 
 Purpose: map current cloning vocabulary coverage to GENtle capabilities and
 define an implementation plan for a first-class cloning-routine catalog where
@@ -14,10 +14,10 @@ Reference vocabulary source: cloning-method review article
 
 | Routine family / vocabulary | Current GENtle support | Gap status |
 |---|---|---|
-| Restriction digest + ligation (`restriction enzyme`, `sticky end`, `blunt end`, `ligation`) | Implemented primitives: `Digest`, `Ligation` (`Sticky`/`Blunt`), container-aware variants, starter macro `digest_ligate_extract_sticky` | Partial: no curated full template family (single-insert, multi-insert, directional variants) |
+| Restriction digest + ligation (`restriction enzyme`, `sticky end`, `blunt end`, `ligation`) | Implemented primitives: `Digest`, `Ligation` (`Sticky`/`Blunt`), container-aware variants, starter macro `digest_ligate_extract_sticky`, and family preflight checks for enzyme resolution/site sanity | Partial: no curated full template family (single-insert, multi-insert, directional variants) |
 | PCR cloning (`primer`, `amplicon`, site introduction) | Implemented primitives: `Pcr`, `PcrAdvanced`, `PcrMutagenesis`, starter macro `pcr_site_insertion_then_digest` | Partial: no protocol-labeled template catalog coverage and no workflow-graph macro nodes |
 | TA/GC and TOPO cloning (`A-overhang`, `T-overhang`, `TOPO`) | No protocol-specific operation/template set | Missing |
-| Gibson Assembly (`homology overlap`) | No dedicated overlap-assembly operation; only approximable through generic steps/macros | Missing |
+| Gibson Assembly (`homology overlap`) | Baseline shipped: `gibson_two_fragment_overlap_preview` template + routine-catalog entry + family preflight overlap checks; still no dedicated overlap-assembly operation | Partial |
 | In-Fusion / NEBuilder HiFi (`recombination-style overlap assembly`) | No dedicated operation/template semantics for overlap validation and assembly intent | Missing |
 | Golden Gate (`Type IIS`, modular assembly) | No Type IIS-aware protocol template or overhang compatibility planner | Missing |
 | Gateway recombination (`BP`, `LR`, `att` sites) | No recombination-specific operation/template family | Missing |
@@ -43,6 +43,7 @@ Current reusable infrastructure already in place:
 Current starter hierarchy (implemented):
 
 - `assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json`
+- `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`
 - `assets/cloning_patterns_catalog/sequence/transform/branch_reverse_complement.json`
 - `assets/cloning_patterns_catalog/pcr/site_insertion/pcr_site_insertion_then_digest.json`
 - `assets/cloning_patterns_catalog/crispr/guides/candidate_scans/grna_candidate_priority_scan.json`

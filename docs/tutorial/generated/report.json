@@ -2,7 +2,7 @@
   "schema": "gentle.tutorial_generation_report.v1",
   "manifest": "docs/tutorial/manifest.json",
   "source_examples": "docs/examples/workflows",
-  "chapter_count": 10,
+  "chapter_count": 11,
   "online_enabled": false,
   "generated_files": [
     "README.md",
@@ -11,29 +11,31 @@
     "chapters/01_load_branch_reverse_complement_pgex_fasta.md",
     "chapters/02_find_and_extend_genomic_target_local_catalog.md",
     "chapters/03_load_and_digest_pgex.md",
-    "chapters/04_guides_filter_and_generate_oligos.md",
-    "chapters/05_digest_ligation_extract_region_minimal.md",
-    "chapters/06_guides_export_csv_and_protocol.md",
-    "chapters/07_contribute_to_gentle_development.md",
-    "chapters/08_prepare_reference_genome_online.md",
-    "chapters/09_tp53_isoform_architecture_online.md",
-    "chapters/10_tp63_anchor_extension_online.md",
+    "chapters/04_gibson_two_fragment_overlap_preview.md",
+    "chapters/05_guides_filter_and_generate_oligos.md",
+    "chapters/06_digest_ligation_extract_region_minimal.md",
+    "chapters/07_guides_export_csv_and_protocol.md",
+    "chapters/08_contribute_to_gentle_development.md",
+    "chapters/09_prepare_reference_genome_online.md",
+    "chapters/10_tp53_isoform_architecture_online.md",
+    "chapters/11_tp63_anchor_extension_online.md",
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "b16a758f5b3523b12fba98f105bc4446cf55fddc",
+    "README.md": "97c44dca9d1d83dcf7165c53bce2628522ee538e",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.csv": "2fd8b22187bb90dcdc0388ed65df4f6c33240893",
     "artifacts/guides_export_csv_and_protocol/exports/demo_guides.protocol.txt": "ddfcc1b983151b4a7fa444b171065c4d90a6ecfb",
-    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "f1efd7d6f253b446fb454f33492827f53d1cc40c",
-    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "91a8fa128f1a8951c964624db6caa0f4ca0caf63",
-    "chapters/03_load_and_digest_pgex.md": "ad05fa609d160d51a72b7d9404bbcfcab0d7d4ce",
-    "chapters/04_guides_filter_and_generate_oligos.md": "26755dace6e2f702aa6a37e977f8fbcdd22beaf0",
-    "chapters/05_digest_ligation_extract_region_minimal.md": "48a283cfe40ffada34ff6640048e26398d8a2ea6",
-    "chapters/06_guides_export_csv_and_protocol.md": "670cd4fa1fc681e72800870cba02a500a2a9b5fc",
-    "chapters/07_contribute_to_gentle_development.md": "543cfc13273164ca59addaade0ae8bd1ce53cdd5",
-    "chapters/08_prepare_reference_genome_online.md": "6cb72225602c2614932e31f7acb6e754a726e3ca",
-    "chapters/09_tp53_isoform_architecture_online.md": "009fbe35e1b77aab8520606b240bbf95afd3bea1",
-    "chapters/10_tp63_anchor_extension_online.md": "2896d0f9ecd875866138b989585d1dcba9ba50c3"
+    "chapters/01_load_branch_reverse_complement_pgex_fasta.md": "8fb86d121b3d16a897bdcad5b112d2212ce58d16",
+    "chapters/02_find_and_extend_genomic_target_local_catalog.md": "fbacafe7b0e630fe526dee566aa8a1b4f4377bc3",
+    "chapters/03_load_and_digest_pgex.md": "4b60fe5a37833d1d4feb8ff9e5ef14846efd2506",
+    "chapters/04_gibson_two_fragment_overlap_preview.md": "f51ef89cce223e04ced2c6a17cd03e5cdd302e10",
+    "chapters/05_guides_filter_and_generate_oligos.md": "b9c131926affc75053cfb6dbbac81ad22d965713",
+    "chapters/06_digest_ligation_extract_region_minimal.md": "1ed27b117870004a610a67657cb387478ce462d7",
+    "chapters/07_guides_export_csv_and_protocol.md": "f2742b2bfc42bdc5a065b0c0282a58875def27fc",
+    "chapters/08_contribute_to_gentle_development.md": "3a2a1b6d66e2b0a4d19c195bc5fe3130ec6c5f47",
+    "chapters/09_prepare_reference_genome_online.md": "632cda32b0331661fdd977805230de557f066c3c",
+    "chapters/10_tp53_isoform_architecture_online.md": "b9634e65d3b9e20b3b110e50620a6d7eac845e28",
+    "chapters/11_tp63_anchor_extension_online.md": "94725810a36ec292aa08af6559fc846c197098e4"
   },
   "chapters": [
     {
@@ -82,8 +84,23 @@
       "retained_artifacts": []
     },
     {
-      "id": "guides_filter_and_generate_oligos",
+      "id": "gibson_two_fragment_overlap_preview",
       "order": 4,
+      "title": "Gibson two-fragment overlap planning baseline",
+      "tier": "core",
+      "example_id": "gibson_two_fragment_overlap_preview",
+      "example_source": "docs/examples/workflows/gibson_two_fragment_overlap_preview.json",
+      "concepts": [
+        "shared_engine_contract",
+        "deterministic_workflows",
+        "sequence_lineage"
+      ],
+      "executed": true,
+      "retained_artifacts": []
+    },
+    {
+      "id": "guides_filter_and_generate_oligos",
+      "order": 5,
       "title": "Guide practical filtering and oligo generation",
       "tier": "core",
       "example_id": "guides_filter_and_generate_oligos",
@@ -97,7 +114,7 @@
     },
     {
       "id": "digest_ligation_extract_region_minimal",
-      "order": 5,
+      "order": 6,
       "title": "Digest -> Ligation -> ExtractRegion minimal slice",
       "tier": "core",
       "example_id": "digest_ligation_extract_region_minimal",
@@ -111,7 +128,7 @@
     },
     {
       "id": "guides_export_csv_and_protocol",
-      "order": 6,
+      "order": 7,
       "title": "Guide oligo export (CSV + protocol)",
       "tier": "advanced",
       "example_id": "guides_export_csv_and_protocol",
@@ -128,7 +145,7 @@
     },
     {
       "id": "contribute_to_gentle_development",
-      "order": 7,
+      "order": 8,
       "title": "Contribute to GENtle development",
       "tier": "advanced",
       "example_id": "contribute_gentle_development_baseline",
@@ -143,7 +160,7 @@
     },
     {
       "id": "prepare_reference_genome_online",
-      "order": 8,
+      "order": 9,
       "title": "Prepare a reference genome cache (online)",
       "tier": "online",
       "example_id": "prepare_reference_genome_online",
@@ -158,7 +175,7 @@
     },
     {
       "id": "tp53_isoform_architecture_online",
-      "order": 9,
+      "order": 10,
       "title": "TP53 isoform architecture expert panel (online)",
       "tier": "online",
       "example_id": "tp53_isoform_architecture_online",
@@ -175,7 +192,7 @@
     },
     {
       "id": "tp63_anchor_extension_online",
-      "order": 10,
+      "order": 11,
       "title": "Retrieve TP63 and extend the displayed region by +/-2 kb (online)",
       "tier": "online",
       "example_id": "tp63_extend_anchor_online",

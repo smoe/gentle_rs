@@ -626,6 +626,8 @@ cargo run --bin gentle_cli -- guides protocol-export tp73_guides exports/tp73_gu
 cargo run --bin gentle_cli -- shell 'macros template-list'
 cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns.json'
 cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog'
+cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'
+cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --transactional'
 cargo run --bin gentle_cli -- shell 'macros run --transactional --file cloning_flow.gsh'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_pass_only true'
 cargo run --bin gentle_cli -- shell 'set-param vcf_display_required_info_keys ["AF","DP"]'
@@ -778,6 +780,9 @@ Shared shell command:
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
     - `panels validate-isoform PANEL_PATH [--panel-id ID]`
     - `set-param NAME JSON_VALUE`
+      - anchor-related examples:
+        - `set-param require_verified_genome_anchor_for_extension true`
+        - `set-param genome_anchor_prepared_fallback_policy "single_compatible|always_explicit|off"`
     - `op <operation-json-or-@file>`
     - `workflow <workflow-json-or-@file>`
     - `screenshot-window OUTPUT.png` (currently disabled by security policy)
@@ -997,13 +1002,17 @@ Genome convenience commands:
   - Runs engine `ExtractGenomeRegion`.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
-- `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Runs engine `ExtendGenomeAnchor`.
   - Extends an already genome-anchored sequence in-silico on contextual `5'` or `3'`.
   - If exact anchor genome id is not prepared but one compatible assembly-family
     cache exists, extension auto-uses that cache and emits a warning.
   - If multiple compatible prepared caches exist, command fails and lists
     explicit options.
+- `genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
+  - Runs engine `VerifyGenomeAnchor`.
+  - Re-checks one anchored sequence against prepared reference sequence at
+    recorded coordinates and records `anchor_verified` in provenance.
 
 Helper convenience commands:
 
@@ -1033,8 +1042,10 @@ Helper convenience commands:
   - Same behavior as `genomes extract-region`, with helper-catalog default.
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
-- `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Same behavior as `genomes extend-anchor`, with helper-catalog default.
+- `helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
+  - Same behavior as `genomes verify-anchor`, with helper-catalog default.
 
 Workflow macro commands (`gentle_cli shell 'macros ...'`):
 
@@ -1081,7 +1092,12 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Preflight now includes richer semantics:
     - cross-port alias/collision checks,
     - input sequence vs input container consistency checks,
-    - sequence-anchor semantic checks against the bound input sequence when unambiguous.
+    - sequence-anchor semantic checks against the bound input sequence when unambiguous,
+    - Gibson-family overlap checks (adjacent suffix/prefix validation against
+      configured overlap length on Gibson routines),
+    - restriction-family digest checks (enzyme-name resolution, duplicate-enzyme
+      misuse, recognition-site presence across bound input sequences, and
+      digest parameter sanity for fragment indices/extract range).
   - `--validate-only` runs preflight only and never mutates state.
   - Mutating runs now always record a macro-instance lineage row:
     - success: `ok`
@@ -1108,6 +1124,8 @@ Shipped starter assets:
 - Typed routine manifest:
   - `assets/cloning_routines.json`
   - schema: `gentle.cloning_routines.v1`
+  - includes `gibson.two_fragment_overlap_preview`
+    -> `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`
 - Import commands:
   - `gentle_cli shell 'macros template-import assets/cloning_patterns.json'`
   - `gentle_cli shell 'macros template-import assets/cloning_patterns_catalog'`
@@ -1423,12 +1441,20 @@ Set an in-silico engine parameter (example: cap fragment/product combinatorics):
 
 ```json
 {"SetParameter":{"name":"max_fragments_per_container","value":80000}}
+```
 
 Enable strict anchor-verification policy for genome-anchor extension:
 
 ```json
 {"SetParameter":{"name":"require_verified_genome_anchor_for_extension","value":true}}
 ```
+
+Set prepared-genome fallback policy for anchor extension/verification:
+
+```json
+{"SetParameter":{"name":"genome_anchor_prepared_fallback_policy","value":"single_compatible"}}
+{"SetParameter":{"name":"genome_anchor_prepared_fallback_policy","value":"always_explicit"}}
+{"SetParameter":{"name":"genome_anchor_prepared_fallback_policy","value":"off"}}
 ```
 
 Set feature-details font size used in the feature tree/details panel (valid range `8.0..24.0`):

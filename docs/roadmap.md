@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-04
+Last updated: 2026-03-05
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -37,6 +37,13 @@ order. Durable architecture constraints and decisions remain in
   prepared caches (for example `GRCh38.p14` -> prepared `Human GRCh38 ...`)
   when the match is unique; ambiguous compatible matches return explicit
   options instead of guessing.
+- Genome-anchor resolution policy now supports deterministic modes via
+  `SetParameter(genome_anchor_prepared_fallback_policy=off|single_compatible|always_explicit)`.
+- Sequence-window anchored controls now include:
+  - explicit prepared-genome chooser popup when multiple compatible prepared
+    references exist,
+  - `Re-verify anchor` action (engine `VerifyGenomeAnchor`),
+  - visible `anchor check: verified|unverified|n/a` badge.
 - `PrepareGenome` now detects source-path/URL drift for existing manifests and
   rebuilds from configured sources instead of silently reusing stale caches.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
@@ -97,6 +104,23 @@ order. Durable architecture constraints and decisions remain in
     - output alias/collision diagnostics
     - sequence/container compatibility diagnostics
     - sequence-anchor semantic checks when one sequence context is bound
+  - routine-family preflight baseline now includes:
+    - Gibson overlap checks:
+      - validates adjacent fragment suffix/prefix homology against configured
+        overlap length
+      - emits explicit mismatch diagnostics before mutation
+    - Restriction digest/ligation checks:
+      - validates enzyme-name resolution and duplicate-enzyme misuse
+      - validates recognition-site presence across bound sequence inputs
+      - validates digest parameter sanity (`left_fragment`/`right_fragment`,
+        `extract_from`/`extract_to`)
+  - first shipped Gibson + restriction routine/template baselines:
+    - routine id: `gibson.two_fragment_overlap_preview`
+    - template:
+      `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`
+    - routine id: `restriction.digest_ligate_extract_sticky`
+    - template:
+      `assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json`
   - mutating `macros run` and `macros template-run` now append deterministic
     lineage macro-instance records for success and failure/cancel pathways
     (typed bound inputs/outputs + emitted op ids + status/status_message)
@@ -124,6 +148,9 @@ order. Durable architecture constraints and decisions remain in
     `primers export-report`, `primers design-qpcr`,
     `primers list-qpcr-reports`, `primers show-qpcr-report`,
     `primers export-qpcr-report`
+  - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
+    including explicit side-sequence constraints and pair constraints (no raw
+    JSON required for common interactive use)
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`
@@ -168,6 +195,10 @@ order. Durable architecture constraints and decisions remain in
     `tp63_anchor_extension_online` (backed by canonical
     `tp63_extend_anchor_online` workflow example for coordinate retrieval +
     +/-2 kb extension)
+  - dedicated Gibson planning chapter added:
+    `gibson_two_fragment_overlap_preview` (backed by canonical
+    `gibson_two_fragment_overlap_preview` workflow example and routine-catalog
+    template import/run path)
   - GUI now exposes `File -> Open Tutorial Project...`:
     chapter entries are loaded from tutorial manifest/examples, grouped by tier
     (`Core`/`Advanced`/`Online`), materialized through shared workflow engine
@@ -250,7 +281,8 @@ order. Durable architecture constraints and decisions remain in
 - File menu now includes a dedicated `UniProt Mapping...` specialist dialog
   (fetch/import/project) backed directly by shared UniProt engine operations
   (`FetchUniprotSwissProt`, `ImportUniprotSwissProt`,
-  `ProjectUniprotToGenome`).
+  `ProjectUniprotToGenome`) and a recent-entry table for quick `entry_id`
+  reuse.
 - Linear sequence windows now include a dedicated primary `Splicing map` mode
   (read-only) for selected `mRNA`/`exon` features.
   - Primary map splicing lanes reuse the same `SplicingExpertView` payload and
@@ -348,9 +380,10 @@ Notes:
    - typed cloning-routine catalog + template-port preflight baseline is now
      integrated into macro validation and lineage visualization, but semantic
      depth is still incomplete
-   - richer preflight semantics are now baseline, but protocol-specific
-     constraints remain incomplete (for example routine-family-specific
-     compatibility constraints beyond generic alias/container/anchor checks)
+   - richer preflight semantics are now baseline (generic +
+     Gibson + restriction), but protocol-specific constraints remain incomplete
+     for remaining families (Golden Gate, Gateway, TOPO, TA/GC, In-Fusion,
+     NEBuilder HiFi, and deeper restriction variants)
    - macro-instance lineage recording now covers success and failure/cancel and
      supports shell introspection, but replay-oriented helpers are still pending
      (for example per-instance re-run from recorded bindings)
@@ -665,16 +698,18 @@ Current baseline:
   input/output edge rendering.
 - GUI lineage now includes a persistent selected-macro detail pane with
   inputs/outputs and emitted operation drill-down.
-- routine-family coverage and deeper semantic validation are still incomplete.
+- routine-family coverage and deeper semantic validation are still incomplete
+  beyond current Gibson + restriction baselines.
 
 Planned work:
 
-1. Extend semantic preflight from baseline generic checks to
-   routine-family-specific rules (protocol-aware compatibility models).
+1. Extend semantic preflight from baseline generic checks +
+   Gibson/restriction checks to additional routine-family-specific rules
+   (protocol-aware compatibility models).
 2. Expand macro-node dense-view controls (edge-density filtering/aggregation,
    compact operation summaries for large projects).
-3. Fill protocol-family packs incrementally (restriction, Gibson, Golden Gate,
-   Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
+3. Fill protocol-family packs incrementally (restriction and Gibson baseline
+   shipped; next: Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
 4. Postponed: add replay helpers for recorded macro instances only after
    routine-family preflight models and protocol-family packs are stabilized.
 
@@ -769,7 +804,9 @@ while keeping GENtle’s shared-engine and open-protocol architecture.
 - Restriction cloning:
   - single-fragment insertion, multi-fragment insertion, linear ligation.
 - Gibson Assembly:
-  - one-insert, multi-insert, circularize-fragment workflows.
+  - baseline shipped: two-fragment overlap planning preview + Gibson-specific
+    preflight overlap diagnostics.
+  - next: one-insert, multi-insert, circularize-fragment workflows.
 - NEBuilder HiFi:
   - one-insert and multi-insert assembly workflows.
 - In-Fusion:
@@ -1149,8 +1186,8 @@ Planned upgrades:
   - macro-run instance recording
   - macro box nodes in lineage/workflow graph
 - Add protocol macro template packs for the cloning modes listed in Section 2
-  (restriction, Gibson, Golden Gate, Gateway, TOPO, TA/GC, In-Fusion,
-  NEBuilder HiFi).
+  (restriction + Gibson baseline already shipped; next focus on Golden Gate,
+  Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
 - Start repeated cross-tool cloning UX gaps after routine packs land:
   - primer design/validation workflow contracts
   - Primer3 wrapper integration + backend-equivalence test matrix

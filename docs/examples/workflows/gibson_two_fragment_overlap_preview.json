@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "gibson_two_fragment_overlap_preview",
+  "title": "Gibson two-fragment overlap planning preview",
+  "summary": "Creates two overlapping fragments, validates overlap assumptions in preflight-capable template workflows, and emits deterministic forward-order preview products.",
+  "test_mode": "always",
+  "required_files": [
+    "test_files/pGEX_3X.fa"
+  ],
+  "tags": [
+    "dna",
+    "gibson",
+    "overlap",
+    "assembly",
+    "offline"
+  ],
+  "workflow": {
+    "run_id": "example_gibson_two_fragment_overlap_preview",
+    "ops": [
+      {
+        "LoadFile": {
+          "path": "test_files/pGEX_3X.fa",
+          "as_id": "pgex_fasta"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "pgex_fasta",
+          "from": 0,
+          "to": 320,
+          "output_id": "gibson_left"
+        }
+      },
+      {
+        "ExtractRegion": {
+          "input": "pgex_fasta",
+          "from": 300,
+          "to": 620,
+          "output_id": "gibson_right"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "gibson_left",
+            "gibson_right"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "gibson_preview",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "gibson_preview_1",
+          "output_id": "gibson_forward_preview"
+        }
+      }
+    ]
+  }
+}

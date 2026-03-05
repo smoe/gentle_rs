@@ -6,9 +6,11 @@ use crate::{
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
         CandidateRecord, CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode,
-        ExportFormat, GenomeAnchorSide, GentleEngine, LigationProtocol,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PcrPrimerSpec,
-        RenderSvgMode, SnpMutationSpec, TfThresholdOverride, TfbsProgress, Workflow,
+        ExportFormat, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
+        LigationProtocol, LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress,
+        PcrPrimerSpec, PrimerDesignBaseLock, PrimerDesignPairConstraint,
+        PrimerDesignSideConstraint, RenderSvgMode, SequenceGenomeAnchorSummary, SnpMutationSpec,
+        TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -42,7 +44,7 @@ use eframe::egui::{self, Frame, PointerState, Vec2};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::{
@@ -67,6 +69,159 @@ impl PrimaryMapMode {
             Self::Splicing => "Splicing map",
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct PrimerSideConstraintUiState {
+    min_length: String,
+    max_length: String,
+    location_0based: String,
+    start_0based: String,
+    end_0based: String,
+    min_tm_c: String,
+    max_tm_c: String,
+    min_gc_fraction: String,
+    max_gc_fraction: String,
+    max_anneal_hits: String,
+    fixed_5prime: String,
+    fixed_3prime: String,
+    required_motifs: String,
+    forbidden_motifs: String,
+    locked_positions: String,
+}
+
+impl Default for PrimerSideConstraintUiState {
+    fn default() -> Self {
+        Self {
+            min_length: "18".to_string(),
+            max_length: "24".to_string(),
+            location_0based: String::new(),
+            start_0based: String::new(),
+            end_0based: String::new(),
+            min_tm_c: "55.0".to_string(),
+            max_tm_c: "68.0".to_string(),
+            min_gc_fraction: "0.35".to_string(),
+            max_gc_fraction: "0.70".to_string(),
+            max_anneal_hits: "1".to_string(),
+            fixed_5prime: String::new(),
+            fixed_3prime: String::new(),
+            required_motifs: String::new(),
+            forbidden_motifs: String::new(),
+            locked_positions: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct PrimerPairConstraintUiState {
+    require_roi_flanking: bool,
+    required_amplicon_motifs: String,
+    forbidden_amplicon_motifs: String,
+    fixed_amplicon_start_0based: String,
+    fixed_amplicon_end_0based_exclusive: String,
+}
+
+impl Default for PrimerPairConstraintUiState {
+    fn default() -> Self {
+        Self {
+            require_roi_flanking: false,
+            required_amplicon_motifs: String::new(),
+            forbidden_amplicon_motifs: String::new(),
+            fixed_amplicon_start_0based: String::new(),
+            fixed_amplicon_end_0based_exclusive: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct PrimerDesignOpsUiState {
+    roi_start_0based: String,
+    roi_end_0based: String,
+    forward: PrimerSideConstraintUiState,
+    reverse: PrimerSideConstraintUiState,
+    pair_constraints: PrimerPairConstraintUiState,
+    min_amplicon_bp: String,
+    max_amplicon_bp: String,
+    max_tm_delta_c: String,
+    max_pairs: String,
+    report_id: String,
+}
+
+impl Default for PrimerDesignOpsUiState {
+    fn default() -> Self {
+        Self {
+            roi_start_0based: "0".to_string(),
+            roi_end_0based: "0".to_string(),
+            forward: PrimerSideConstraintUiState::default(),
+            reverse: PrimerSideConstraintUiState::default(),
+            pair_constraints: PrimerPairConstraintUiState::default(),
+            min_amplicon_bp: "120".to_string(),
+            max_amplicon_bp: "1200".to_string(),
+            max_tm_delta_c: "2.0".to_string(),
+            max_pairs: "200".to_string(),
+            report_id: "primer_report_gui".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct QpcrDesignOpsUiState {
+    roi_start_0based: String,
+    roi_end_0based: String,
+    forward: PrimerSideConstraintUiState,
+    reverse: PrimerSideConstraintUiState,
+    probe: PrimerSideConstraintUiState,
+    pair_constraints: PrimerPairConstraintUiState,
+    min_amplicon_bp: String,
+    max_amplicon_bp: String,
+    max_tm_delta_c: String,
+    max_probe_tm_delta_c: String,
+    max_assays: String,
+    report_id: String,
+}
+
+impl Default for QpcrDesignOpsUiState {
+    fn default() -> Self {
+        Self {
+            roi_start_0based: "0".to_string(),
+            roi_end_0based: "0".to_string(),
+            forward: PrimerSideConstraintUiState::default(),
+            reverse: PrimerSideConstraintUiState::default(),
+            probe: PrimerSideConstraintUiState::default(),
+            pair_constraints: PrimerPairConstraintUiState::default(),
+            min_amplicon_bp: "120".to_string(),
+            max_amplicon_bp: "1200".to_string(),
+            max_tm_delta_c: "2.0".to_string(),
+            max_probe_tm_delta_c: "10.0".to_string(),
+            max_assays: "200".to_string(),
+            report_id: "qpcr_report_gui".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum PendingGenomeAnchorAction {
+    Extend {
+        seq_id: String,
+        side: GenomeAnchorSide,
+        length_bp: usize,
+        output_id: Option<String>,
+    },
+    Verify {
+        seq_id: String,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct GenomeAnchorPreparedChoiceDialog {
+    requested_genome_id: String,
+    options: Vec<String>,
+    selected_index: usize,
+    action: PendingGenomeAnchorAction,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -119,6 +274,10 @@ struct EngineOpsUiState {
     pcr_mut_position: String,
     pcr_mut_ref: String,
     pcr_mut_alt: String,
+    #[serde(default)]
+    primer_design_ui: PrimerDesignOpsUiState,
+    #[serde(default)]
+    qpcr_design_ui: QpcrDesignOpsUiState,
     #[serde(default)]
     extract_from: String,
     #[serde(default)]
@@ -378,14 +537,18 @@ mod tests {
     use super::{MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
     use crate::{
         dna_sequence::DNAsequence,
-        engine::{GentleEngine, LinearSequenceLetterLayoutMode, ProjectState},
+        engine::{Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation, ProjectState},
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
+    use serde_json::json;
     use std::{
         collections::BTreeSet,
+        fs,
+        path::Path,
         sync::{Arc, RwLock},
     };
+    use tempfile::{TempDir, tempdir};
 
     fn make_feature(kind: &str, qualifiers: Vec<(&str, &str)>) -> Feature {
         Feature {
@@ -396,6 +559,146 @@ mod tests {
                 .map(|(key, value)| (key.into(), Some(value.to_string())))
                 .collect(),
         }
+    }
+
+    fn sanitize_for_path_for_test(s: &str) -> String {
+        let mut out = String::new();
+        for c in s.chars() {
+            if c.is_ascii_alphanumeric() {
+                out.push(c.to_ascii_lowercase());
+            } else if matches!(c, ' ' | '-' | '_' | '.') && !out.ends_with('_') {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "genome".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn write_single_line_fasta_index(path: &Path, sequence_len: usize) {
+        let line = format!(
+            "chr1\t{}\t6\t{}\t{}\n",
+            sequence_len,
+            sequence_len,
+            sequence_len + 1
+        );
+        fs::write(path, line).expect("write fasta index");
+    }
+
+    fn make_area_with_unique_compatible_anchor(
+        fallback_policy: &str,
+    ) -> (MainAreaDna, TempDir, String, String) {
+        let td = tempdir().expect("tempdir");
+        let root = td.path();
+        let fasta = root.join("grch38.fa");
+        let gtf = root.join("grch38.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGT\n").expect("write fasta");
+        fs::write(
+            &gtf,
+            "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .expect("write gtf");
+
+        let cache_dir = root.join("cache");
+        fs::create_dir_all(&cache_dir).expect("create cache dir");
+
+        let prepared_genome_id = "Human GRCh38 Ensembl 116".to_string();
+        let alias_catalog_key = "Human GRCh38 NCBI RefSeq GCF_000001405.40";
+        let requested_alias = "GRCh38.p14".to_string();
+        let seq_id = "alias_slice".to_string();
+
+        // Seed one prepared install deterministically (without requiring external tools).
+        let install_dir = cache_dir.join(sanitize_for_path_for_test(&prepared_genome_id));
+        fs::create_dir_all(&install_dir).expect("create install dir");
+        let installed_sequence = install_dir.join("sequence.fa");
+        let installed_annotation = install_dir.join("annotation.gtf");
+        let installed_fai = install_dir.join("sequence.fa.fai");
+        fs::copy(&fasta, &installed_sequence).expect("copy sequence");
+        fs::copy(&gtf, &installed_annotation).expect("copy annotation");
+        write_single_line_fasta_index(&installed_fai, 12);
+        let manifest = json!({
+            "genome_id": prepared_genome_id,
+            "sequence_source": installed_sequence.to_string_lossy(),
+            "annotation_source": installed_annotation.to_string_lossy(),
+            "sequence_source_type": "local",
+            "annotation_source_type": "local",
+            "sequence_sha1": null,
+            "annotation_sha1": null,
+            "sequence_path": installed_sequence.to_string_lossy(),
+            "annotation_path": installed_annotation.to_string_lossy(),
+            "fasta_index_path": installed_fai.to_string_lossy(),
+            "gene_index_path": null,
+            "blast_db_prefix": null,
+            "blast_index_executable": null,
+            "blast_indexed_at_unix_ms": null,
+            "installed_at_unix_ms": 1
+        });
+        fs::write(
+            install_dir.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).expect("serialize manifest"),
+        )
+        .expect("write manifest");
+
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = json!({
+            prepared_genome_id.clone(): {
+                "ncbi_taxonomy_id": 9606,
+                "ncbi_assembly_accession": "GCF_000001405.40",
+                "ncbi_assembly_name": "GRCh38",
+                "sequence_local": fasta.to_string_lossy(),
+                "annotations_local": gtf.to_string_lossy(),
+                "cache_dir": cache_dir.to_string_lossy()
+            },
+            alias_catalog_key: {
+                "ncbi_taxonomy_id": 9606,
+                "ncbi_assembly_accession": "GCF_000001405.40",
+                "ncbi_assembly_name": "GRCh38.p14",
+                "sequence_local": fasta.to_string_lossy(),
+                "annotations_local": gtf.to_string_lossy(),
+                "cache_dir": cache_dir.to_string_lossy()
+            }
+        });
+        fs::write(
+            &catalog_path,
+            serde_json::to_string_pretty(&catalog_json).expect("serialize catalog"),
+        )
+        .expect("write catalog");
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: requested_alias.clone(),
+                chromosome: "chr1".to_string(),
+                start_1based: 3,
+                end_1based: 10,
+                output_id: Some(seq_id.clone()),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .expect("extract region through compatibility fallback");
+        engine
+            .apply(Operation::SetParameter {
+                name: "genome_anchor_prepared_fallback_policy".to_string(),
+                value: json!(fallback_policy),
+            })
+            .expect("set fallback policy");
+        let dna = engine
+            .state()
+            .sequences
+            .get(&seq_id)
+            .cloned()
+            .expect("sequence created by extract");
+        let engine = Arc::new(RwLock::new(engine));
+        (
+            MainAreaDna::new(dna, Some(seq_id.clone()), Some(engine)),
+            td,
+            seq_id,
+            prepared_genome_id,
+        )
     }
 
     #[test]
@@ -478,6 +781,61 @@ mod tests {
                 .unwrap_err()
                 .contains("expected an integer")
         );
+    }
+
+    #[test]
+    fn prepared_genome_choice_dialog_opens_for_verify_when_always_explicit() {
+        let (mut area, _td, seq_id, prepared_genome_id) =
+            make_area_with_unique_compatible_anchor("always_explicit");
+        let opened =
+            area.maybe_prompt_prepared_genome_choice(super::PendingGenomeAnchorAction::Verify {
+                seq_id,
+            });
+        assert!(
+            opened,
+            "always_explicit should force explicit prepared choice"
+        );
+        let dialog = area
+            .anchor_prepared_choice_dialog
+            .as_ref()
+            .expect("prepared-choice dialog should exist");
+        assert_eq!(dialog.options, vec![prepared_genome_id]);
+        assert_eq!(dialog.selected_index, 0);
+    }
+
+    #[test]
+    fn prepared_genome_choice_dialog_stays_closed_for_verify_when_single_compatible() {
+        let (mut area, _td, seq_id, _prepared_genome_id) =
+            make_area_with_unique_compatible_anchor("single_compatible");
+        let opened =
+            area.maybe_prompt_prepared_genome_choice(super::PendingGenomeAnchorAction::Verify {
+                seq_id,
+            });
+        assert!(
+            !opened,
+            "single_compatible should auto-resolve unique compatible prepared genome"
+        );
+        assert!(area.anchor_prepared_choice_dialog.is_none());
+    }
+
+    #[test]
+    fn parse_primer_locked_positions_accepts_offset_base_entries() {
+        let locks = MainAreaDna::parse_primer_locked_positions("0:A,3:R,10:T", "locks")
+            .expect("locked positions");
+        assert_eq!(locks.len(), 3);
+        assert_eq!(locks[0].offset_0based, 0);
+        assert_eq!(locks[0].base, "A");
+        assert_eq!(locks[1].offset_0based, 3);
+        assert_eq!(locks[1].base, "R");
+        assert_eq!(locks[2].offset_0based, 10);
+        assert_eq!(locks[2].base, "T");
+    }
+
+    #[test]
+    fn parse_primer_locked_positions_rejects_duplicate_offsets() {
+        let err = MainAreaDna::parse_primer_locked_positions("2:A,2:G", "locks")
+            .expect_err("duplicate offsets should fail");
+        assert!(err.contains("duplicate offset"));
     }
 
     #[test]
@@ -1355,6 +1713,8 @@ pub struct MainAreaDna {
     pcr_mut_position: String,
     pcr_mut_ref: String,
     pcr_mut_alt: String,
+    primer_design_ui: PrimerDesignOpsUiState,
+    qpcr_design_ui: QpcrDesignOpsUiState,
     extract_from: String,
     extract_to: String,
     extract_output_id: String,
@@ -1445,6 +1805,7 @@ pub struct MainAreaDna {
     declutter_snapshot: Option<DeclutterSnapshot>,
     op_status: String,
     op_error_popup: Option<String>,
+    anchor_prepared_choice_dialog: Option<GenomeAnchorPreparedChoiceDialog>,
     opened_from_pool_context: bool,
     last_created_seq_ids: Vec<String>,
     container_digest_id: String,
@@ -1595,6 +1956,8 @@ impl MainAreaDna {
             pcr_mut_position: "0".to_string(),
             pcr_mut_ref: "A".to_string(),
             pcr_mut_alt: "G".to_string(),
+            primer_design_ui: PrimerDesignOpsUiState::default(),
+            qpcr_design_ui: QpcrDesignOpsUiState::default(),
             extract_from: "0".to_string(),
             extract_to: "0".to_string(),
             extract_output_id: String::new(),
@@ -1686,6 +2049,7 @@ impl MainAreaDna {
             declutter_snapshot: None,
             op_status: String::new(),
             op_error_popup: None,
+            anchor_prepared_choice_dialog: None,
             opened_from_pool_context: false,
             last_created_seq_ids: vec![],
             container_digest_id: String::new(),
@@ -1812,6 +2176,13 @@ impl MainAreaDna {
                 false,
             )),
         }
+    }
+
+    fn active_sequence_anchor_summary(&self) -> Option<SequenceGenomeAnchorSummary> {
+        let seq_id = self.seq_id.as_deref()?;
+        let engine = self.engine.as_ref()?;
+        let guard = engine.read().ok()?;
+        guard.sequence_genome_anchor_summary(seq_id).ok()
     }
 
     fn active_sequence_has_gene_annotations(&self) -> bool {
@@ -2438,6 +2809,7 @@ impl MainAreaDna {
             });
         }
         self.render_error_popup(ctx);
+        self.render_anchor_prepared_choice_popup(ctx);
     }
 
     pub fn render_top_panel(&mut self, ui: &mut egui::Ui) {
@@ -3473,13 +3845,46 @@ impl MainAreaDna {
             } else {
                 egui::Color32::from_rgb(90, 90, 90)
             };
-            ui.add(
-                egui::Label::new(egui::RichText::new(anchor_status).color(color).monospace())
-                    .wrap(),
-            )
-            .on_hover_text(
-                "Genome anchor provenance for this sequence. Anchored sequences keep chromosome/genome coordinates through supported operations.",
-            );
+            let anchor_summary = if is_anchored {
+                self.active_sequence_anchor_summary()
+            } else {
+                None
+            };
+            ui.horizontal_wrapped(|ui| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(anchor_status).color(color).monospace())
+                        .wrap(),
+                )
+                .on_hover_text(
+                    "Genome anchor provenance for this sequence. Anchored sequences keep chromosome/genome coordinates through supported operations.",
+                );
+                if let Some(summary) = anchor_summary.clone() {
+                    let (label, badge_color, hover_text) = match summary.anchor_verified {
+                        Some(true) => (
+                            "verified",
+                            egui::Color32::from_rgb(24, 120, 52),
+                            "Anchor sequence was verified against the prepared reference genome.",
+                        ),
+                        Some(false) => (
+                            "unverified",
+                            egui::Color32::from_rgb(176, 46, 42),
+                            "Anchor sequence does not match the prepared reference genome at recorded coordinates.",
+                        ),
+                        None => (
+                            "n/a",
+                            egui::Color32::from_rgb(96, 96, 96),
+                            "Anchor verification has not been recorded for this sequence yet.",
+                        ),
+                    };
+                    ui.label(
+                        egui::RichText::new(format!("anchor check: {label}"))
+                            .color(badge_color)
+                            .monospace()
+                            .strong(),
+                    )
+                    .on_hover_text(hover_text);
+                }
+            });
             if is_anchored {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Extend anchored span by");
@@ -3523,6 +3928,15 @@ impl MainAreaDna {
                         .clicked()
                     {
                         self.extend_active_genome_anchor(GenomeAnchorSide::ThreePrime);
+                    }
+                    if ui
+                        .small_button("Re-verify anchor")
+                        .on_hover_text(
+                            "Re-check this sequence against the prepared genome and refresh anchor verification status.",
+                        )
+                        .clicked()
+                    {
+                        self.verify_active_genome_anchor();
                     }
                 });
                 ui.small(
@@ -3895,6 +4309,12 @@ impl MainAreaDna {
                     }
                 });
                             });
+
+                egui::CollapsingHeader::new("Primer and qPCR design reports")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        self.render_primer_design_ops(ui);
+                    });
 
                 egui::CollapsingHeader::new("Region extraction and engine settings")
                     .default_open(true)
@@ -6765,6 +7185,80 @@ impl MainAreaDna {
         }
     }
 
+    fn maybe_prompt_prepared_genome_choice(&mut self, action: PendingGenomeAnchorAction) -> bool {
+        let requested_seq_id = match &action {
+            PendingGenomeAnchorAction::Extend { seq_id, .. } => seq_id,
+            PendingGenomeAnchorAction::Verify { seq_id } => seq_id,
+        };
+        let Some(engine) = self.engine.as_ref() else {
+            return false;
+        };
+        let guard = engine.read().expect("Engine lock poisoned");
+        let inspection =
+            match guard.sequence_anchor_prepared_genome_options(requested_seq_id, None, None) {
+                Ok(v) => v,
+                Err(_) => return false,
+            };
+        let fallback_policy = guard
+            .state()
+            .parameters
+            .genome_anchor_prepared_fallback_policy;
+        if inspection.exact_prepared || inspection.compatible_prepared_options.is_empty() {
+            return false;
+        }
+        let requires_explicit_choice = matches!(
+            fallback_policy,
+            GenomeAnchorPreparedFallbackPolicy::AlwaysExplicit
+        );
+        if !requires_explicit_choice && inspection.compatible_prepared_options.len() <= 1 {
+            return false;
+        }
+        self.anchor_prepared_choice_dialog = Some(GenomeAnchorPreparedChoiceDialog {
+            requested_genome_id: inspection.requested_genome_id.clone(),
+            options: inspection.compatible_prepared_options,
+            selected_index: 0,
+            action,
+        });
+        self.op_status = format!(
+            "Select prepared genome for anchored operation (requested='{}')",
+            inspection.requested_genome_id
+        );
+        true
+    }
+
+    fn run_pending_genome_anchor_action(
+        &mut self,
+        action: PendingGenomeAnchorAction,
+        prepared_genome_id: Option<String>,
+    ) {
+        match action {
+            PendingGenomeAnchorAction::Extend {
+                seq_id,
+                side,
+                length_bp,
+                output_id,
+            } => {
+                self.apply_operation_with_feedback(Operation::ExtendGenomeAnchor {
+                    seq_id,
+                    side,
+                    length_bp,
+                    output_id,
+                    catalog_path: None,
+                    cache_dir: None,
+                    prepared_genome_id,
+                });
+            }
+            PendingGenomeAnchorAction::Verify { seq_id } => {
+                self.apply_operation_with_feedback(Operation::VerifyGenomeAnchor {
+                    seq_id,
+                    catalog_path: None,
+                    cache_dir: None,
+                    prepared_genome_id,
+                });
+            }
+        }
+    }
+
     fn extend_active_genome_anchor(&mut self, side: GenomeAnchorSide) {
         let Some(seq_id) = self.seq_id.clone() else {
             self.op_status = "No active sequence selected".to_string();
@@ -6786,14 +7280,28 @@ impl MainAreaDna {
         } else {
             Some(self.genome_anchor_extend_output_id.trim().to_string())
         };
-        self.apply_operation_with_feedback(Operation::ExtendGenomeAnchor {
+        let action = PendingGenomeAnchorAction::Extend {
             seq_id,
             side,
             length_bp,
             output_id,
-            catalog_path: None,
-            cache_dir: None,
-        });
+        };
+        if self.maybe_prompt_prepared_genome_choice(action.clone()) {
+            return;
+        }
+        self.run_pending_genome_anchor_action(action, None);
+    }
+
+    fn verify_active_genome_anchor(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected".to_string();
+            return;
+        };
+        let action = PendingGenomeAnchorAction::Verify { seq_id };
+        if self.maybe_prompt_prepared_genome_choice(action.clone()) {
+            return;
+        }
+        self.run_pending_genome_anchor_action(action, None);
     }
 
     fn handle_operation_success(&mut self, result: OpResult, started: Instant) {
@@ -8005,6 +8513,501 @@ impl MainAreaDna {
         }
     }
 
+    fn parse_required_usize_text(raw: &str, field_name: &str) -> Result<usize, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(format!("Invalid {field_name}: expected an integer"));
+        }
+        trimmed
+            .parse::<usize>()
+            .map_err(|_| format!("Invalid {field_name}: expected an integer"))
+    }
+
+    fn parse_required_f64_text(raw: &str, field_name: &str) -> Result<f64, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(format!("Invalid {field_name}: expected a number"));
+        }
+        trimmed
+            .parse::<f64>()
+            .map_err(|_| format!("Invalid {field_name}: expected a number"))
+    }
+
+    fn parse_primer_locked_positions(
+        raw: &str,
+        field_name: &str,
+    ) -> Result<Vec<PrimerDesignBaseLock>, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut seen_offsets: HashSet<usize> = HashSet::new();
+        let mut locks: Vec<PrimerDesignBaseLock> = vec![];
+        for token in trimmed.split(',') {
+            let entry = token.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            let (offset_raw, base_raw) = entry.split_once(':').ok_or_else(|| {
+                format!("Invalid {field_name} entry '{entry}' (expected offset:base)")
+            })?;
+            let offset = offset_raw.trim().parse::<usize>().map_err(|_| {
+                format!(
+                    "Invalid {field_name} offset '{}' (expected integer)",
+                    offset_raw.trim()
+                )
+            })?;
+            if !seen_offsets.insert(offset) {
+                return Err(format!(
+                    "Invalid {field_name}: duplicate offset {} is not allowed",
+                    offset
+                ));
+            }
+            let base = base_raw.trim().to_string();
+            if base.is_empty() {
+                return Err(format!(
+                    "Invalid {field_name} entry '{entry}': base must not be empty"
+                ));
+            }
+            locks.push(PrimerDesignBaseLock {
+                offset_0based: offset,
+                base,
+            });
+        }
+        Ok(locks)
+    }
+
+    fn parse_primer_side_constraint_ui(
+        side: &PrimerSideConstraintUiState,
+        label: &str,
+    ) -> Result<PrimerDesignSideConstraint, String> {
+        let min_length =
+            Self::parse_positive_usize_text(&side.min_length, &format!("{label}.min_length"))?;
+        let max_length =
+            Self::parse_positive_usize_text(&side.max_length, &format!("{label}.max_length"))?;
+        if min_length > max_length {
+            return Err(format!(
+                "Invalid {label}: min_length ({min_length}) must be <= max_length ({max_length})"
+            ));
+        }
+        let max_anneal_hits = Self::parse_positive_usize_text(
+            &side.max_anneal_hits,
+            &format!("{label}.max_anneal_hits"),
+        )?;
+        let min_tm_c = Self::parse_required_f64_text(&side.min_tm_c, &format!("{label}.min_tm_c"))?;
+        let max_tm_c = Self::parse_required_f64_text(&side.max_tm_c, &format!("{label}.max_tm_c"))?;
+        let min_gc_fraction = Self::parse_required_f64_text(
+            &side.min_gc_fraction,
+            &format!("{label}.min_gc_fraction"),
+        )?;
+        let max_gc_fraction = Self::parse_required_f64_text(
+            &side.max_gc_fraction,
+            &format!("{label}.max_gc_fraction"),
+        )?;
+        let fixed_5prime = if side.fixed_5prime.trim().is_empty() {
+            None
+        } else {
+            Some(side.fixed_5prime.trim().to_string())
+        };
+        let fixed_3prime = if side.fixed_3prime.trim().is_empty() {
+            None
+        } else {
+            Some(side.fixed_3prime.trim().to_string())
+        };
+        Ok(PrimerDesignSideConstraint {
+            min_length,
+            max_length,
+            location_0based: Self::parse_optional_usize_text(
+                &side.location_0based,
+                &format!("{label}.location_0based"),
+            )?,
+            start_0based: Self::parse_optional_usize_text(
+                &side.start_0based,
+                &format!("{label}.start_0based"),
+            )?,
+            end_0based: Self::parse_optional_usize_text(
+                &side.end_0based,
+                &format!("{label}.end_0based"),
+            )?,
+            min_tm_c,
+            max_tm_c,
+            min_gc_fraction,
+            max_gc_fraction,
+            max_anneal_hits,
+            fixed_5prime,
+            fixed_3prime,
+            required_motifs: Self::parse_ids(&side.required_motifs),
+            forbidden_motifs: Self::parse_ids(&side.forbidden_motifs),
+            locked_positions: Self::parse_primer_locked_positions(
+                &side.locked_positions,
+                &format!("{label}.locked_positions"),
+            )?,
+        })
+    }
+
+    fn parse_primer_pair_constraint_ui(
+        pair: &PrimerPairConstraintUiState,
+    ) -> Result<PrimerDesignPairConstraint, String> {
+        Ok(PrimerDesignPairConstraint {
+            require_roi_flanking: pair.require_roi_flanking,
+            required_amplicon_motifs: Self::parse_ids(&pair.required_amplicon_motifs),
+            forbidden_amplicon_motifs: Self::parse_ids(&pair.forbidden_amplicon_motifs),
+            fixed_amplicon_start_0based: Self::parse_optional_usize_text(
+                &pair.fixed_amplicon_start_0based,
+                "pair_constraints.fixed_amplicon_start_0based",
+            )?,
+            fixed_amplicon_end_0based_exclusive: Self::parse_optional_usize_text(
+                &pair.fixed_amplicon_end_0based_exclusive,
+                "pair_constraints.fixed_amplicon_end_0based_exclusive",
+            )?,
+        })
+    }
+
+    fn build_design_primer_pairs_operation(&self, template: &str) -> Result<Operation, String> {
+        let ui = &self.primer_design_ui;
+        let max_pairs = Self::parse_optional_usize_text(&ui.max_pairs, "max_pairs")?;
+        if matches!(max_pairs, Some(0)) {
+            return Err("Invalid max_pairs: expected >= 1 when provided".to_string());
+        }
+        Ok(Operation::DesignPrimerPairs {
+            template: template.to_string(),
+            roi_start_0based: Self::parse_required_usize_text(
+                &ui.roi_start_0based,
+                "roi_start_0based",
+            )?,
+            roi_end_0based: Self::parse_required_usize_text(&ui.roi_end_0based, "roi_end_0based")?,
+            forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
+            reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
+            pair_constraints: Self::parse_primer_pair_constraint_ui(&ui.pair_constraints)?,
+            min_amplicon_bp: Self::parse_positive_usize_text(
+                &ui.min_amplicon_bp,
+                "min_amplicon_bp",
+            )?,
+            max_amplicon_bp: Self::parse_positive_usize_text(
+                &ui.max_amplicon_bp,
+                "max_amplicon_bp",
+            )?,
+            max_tm_delta_c: Self::parse_optional_f64_text(&ui.max_tm_delta_c, "max_tm_delta_c")?,
+            max_pairs,
+            report_id: if ui.report_id.trim().is_empty() {
+                None
+            } else {
+                Some(ui.report_id.trim().to_string())
+            },
+        })
+    }
+
+    fn build_design_qpcr_operation(&self, template: &str) -> Result<Operation, String> {
+        let ui = &self.qpcr_design_ui;
+        let max_assays = Self::parse_optional_usize_text(&ui.max_assays, "max_assays")?;
+        if matches!(max_assays, Some(0)) {
+            return Err("Invalid max_assays: expected >= 1 when provided".to_string());
+        }
+        Ok(Operation::DesignQpcrAssays {
+            template: template.to_string(),
+            roi_start_0based: Self::parse_required_usize_text(
+                &ui.roi_start_0based,
+                "roi_start_0based",
+            )?,
+            roi_end_0based: Self::parse_required_usize_text(&ui.roi_end_0based, "roi_end_0based")?,
+            forward: Self::parse_primer_side_constraint_ui(&ui.forward, "forward")?,
+            reverse: Self::parse_primer_side_constraint_ui(&ui.reverse, "reverse")?,
+            probe: Self::parse_primer_side_constraint_ui(&ui.probe, "probe")?,
+            pair_constraints: Self::parse_primer_pair_constraint_ui(&ui.pair_constraints)?,
+            min_amplicon_bp: Self::parse_positive_usize_text(
+                &ui.min_amplicon_bp,
+                "min_amplicon_bp",
+            )?,
+            max_amplicon_bp: Self::parse_positive_usize_text(
+                &ui.max_amplicon_bp,
+                "max_amplicon_bp",
+            )?,
+            max_tm_delta_c: Self::parse_optional_f64_text(&ui.max_tm_delta_c, "max_tm_delta_c")?,
+            max_probe_tm_delta_c: Self::parse_optional_f64_text(
+                &ui.max_probe_tm_delta_c,
+                "max_probe_tm_delta_c",
+            )?,
+            max_assays,
+            report_id: if ui.report_id.trim().is_empty() {
+                None
+            } else {
+                Some(ui.report_id.trim().to_string())
+            },
+        })
+    }
+
+    fn render_primer_side_constraint_editor(
+        ui: &mut egui::Ui,
+        id_prefix: &str,
+        label: &str,
+        side: &mut PrimerSideConstraintUiState,
+    ) {
+        ui.group(|ui| {
+            ui.label(label);
+            egui::Grid::new(format!("{id_prefix}_grid_basic"))
+                .num_columns(8)
+                .show(ui, |ui| {
+                    ui.label("len min");
+                    ui.add(egui::TextEdit::singleline(&mut side.min_length).desired_width(56.0));
+                    ui.label("len max");
+                    ui.add(egui::TextEdit::singleline(&mut side.max_length).desired_width(56.0));
+                    ui.label("max anneal hits");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut side.max_anneal_hits).desired_width(70.0),
+                    );
+                    ui.end_row();
+
+                    ui.label("location");
+                    ui.add(egui::TextEdit::singleline(&mut side.location_0based).desired_width(76.0));
+                    ui.label("start");
+                    ui.add(egui::TextEdit::singleline(&mut side.start_0based).desired_width(76.0));
+                    ui.label("end");
+                    ui.add(egui::TextEdit::singleline(&mut side.end_0based).desired_width(76.0));
+                    ui.end_row();
+
+                    ui.label("Tm min");
+                    ui.add(egui::TextEdit::singleline(&mut side.min_tm_c).desired_width(64.0));
+                    ui.label("Tm max");
+                    ui.add(egui::TextEdit::singleline(&mut side.max_tm_c).desired_width(64.0));
+                    ui.label("GC min");
+                    ui.add(egui::TextEdit::singleline(&mut side.min_gc_fraction).desired_width(64.0));
+                    ui.label("GC max");
+                    ui.add(egui::TextEdit::singleline(&mut side.max_gc_fraction).desired_width(64.0));
+                    ui.end_row();
+                });
+            ui.horizontal(|ui| {
+                ui.label("fixed 5'");
+                ui.add(egui::TextEdit::singleline(&mut side.fixed_5prime).desired_width(120.0));
+                ui.label("fixed 3'");
+                ui.add(egui::TextEdit::singleline(&mut side.fixed_3prime).desired_width(120.0));
+            });
+            ui.horizontal(|ui| {
+                ui.label("required motifs");
+                ui.add(egui::TextEdit::singleline(&mut side.required_motifs).desired_width(260.0));
+            });
+            ui.horizontal(|ui| {
+                ui.label("forbidden motifs");
+                ui.add(egui::TextEdit::singleline(&mut side.forbidden_motifs).desired_width(260.0));
+            });
+            ui.horizontal(|ui| {
+                ui.label("locked positions");
+                ui.add(
+                    egui::TextEdit::singleline(&mut side.locked_positions)
+                        .desired_width(300.0)
+                        .hint_text("offset:base,offset:base"),
+                );
+            });
+            ui.small(
+                "Motif fields are comma-separated IUPAC strings. Locked positions format: offset:base (e.g. 0:A,3:R).",
+            );
+        });
+    }
+
+    fn render_primer_pair_constraint_editor(
+        ui: &mut egui::Ui,
+        id_prefix: &str,
+        pair: &mut PrimerPairConstraintUiState,
+    ) {
+        ui.group(|ui| {
+            ui.label("Pair constraints");
+            ui.checkbox(&mut pair.require_roi_flanking, "require ROI flanking");
+            egui::Grid::new(format!("{id_prefix}_grid"))
+                .num_columns(4)
+                .show(ui, |ui| {
+                    ui.label("fixed amplicon start");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut pair.fixed_amplicon_start_0based)
+                            .desired_width(96.0),
+                    );
+                    ui.label("fixed amplicon end (exclusive)");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut pair.fixed_amplicon_end_0based_exclusive)
+                            .desired_width(96.0),
+                    );
+                    ui.end_row();
+                });
+            ui.horizontal(|ui| {
+                ui.label("required amplicon motifs");
+                ui.add(
+                    egui::TextEdit::singleline(&mut pair.required_amplicon_motifs)
+                        .desired_width(300.0),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label("forbidden amplicon motifs");
+                ui.add(
+                    egui::TextEdit::singleline(&mut pair.forbidden_amplicon_motifs)
+                        .desired_width(300.0),
+                );
+            });
+        });
+    }
+
+    fn render_primer_design_ops(&mut self, ui: &mut egui::Ui) {
+        let template = self.seq_id.clone().unwrap_or_default();
+        if template.trim().is_empty() {
+            ui.small("No active sequence selected.");
+            return;
+        }
+        ui.small(format!(
+            "Template: {} (reports are persisted in project metadata)",
+            template
+        ));
+
+        egui::CollapsingHeader::new("Design primer pairs")
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("ROI start");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.roi_start_0based)
+                            .desired_width(80.0),
+                    );
+                    ui.label("ROI end");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.roi_end_0based)
+                            .desired_width(80.0),
+                    );
+                    ui.label("min amplicon");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.min_amplicon_bp)
+                            .desired_width(80.0),
+                    );
+                    ui.label("max amplicon");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.max_amplicon_bp)
+                            .desired_width(80.0),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("max Tm delta");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.max_tm_delta_c)
+                            .desired_width(80.0),
+                    );
+                    ui.label("max pairs");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.max_pairs)
+                            .desired_width(80.0),
+                    );
+                    ui.label("report_id");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.primer_design_ui.report_id)
+                            .desired_width(180.0),
+                    );
+                });
+                Self::render_primer_pair_constraint_editor(
+                    ui,
+                    "primer_pairs_pair_constraints",
+                    &mut self.primer_design_ui.pair_constraints,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "primer_pairs_forward",
+                    "Forward side",
+                    &mut self.primer_design_ui.forward,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "primer_pairs_reverse",
+                    "Reverse side",
+                    &mut self.primer_design_ui.reverse,
+                );
+                if ui
+                    .button("Design Primer Pairs")
+                    .on_hover_text("Run DesignPrimerPairs with current GUI constraints")
+                    .clicked()
+                {
+                    match self.build_design_primer_pairs_operation(&template) {
+                        Ok(op) => self.apply_operation_with_feedback(op),
+                        Err(err) => self.op_status = err,
+                    }
+                }
+            });
+
+        egui::CollapsingHeader::new("Design qPCR assays")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("ROI start");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_start_0based)
+                            .desired_width(80.0),
+                    );
+                    ui.label("ROI end");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.roi_end_0based)
+                            .desired_width(80.0),
+                    );
+                    ui.label("min amplicon");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.min_amplicon_bp)
+                            .desired_width(80.0),
+                    );
+                    ui.label("max amplicon");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_amplicon_bp)
+                            .desired_width(80.0),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("max primer Tm delta");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_tm_delta_c)
+                            .desired_width(80.0),
+                    );
+                    ui.label("max probe Tm delta");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_probe_tm_delta_c)
+                            .desired_width(80.0),
+                    );
+                    ui.label("max assays");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.max_assays)
+                            .desired_width(80.0),
+                    );
+                    ui.label("report_id");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.qpcr_design_ui.report_id)
+                            .desired_width(180.0),
+                    );
+                });
+                Self::render_primer_pair_constraint_editor(
+                    ui,
+                    "qpcr_pair_constraints",
+                    &mut self.qpcr_design_ui.pair_constraints,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "qpcr_forward",
+                    "Forward side",
+                    &mut self.qpcr_design_ui.forward,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "qpcr_reverse",
+                    "Reverse side",
+                    &mut self.qpcr_design_ui.reverse,
+                );
+                Self::render_primer_side_constraint_editor(
+                    ui,
+                    "qpcr_probe",
+                    "Probe side",
+                    &mut self.qpcr_design_ui.probe,
+                );
+                if ui
+                    .button("Design qPCR Assays")
+                    .on_hover_text("Run DesignQpcrAssays with current GUI constraints")
+                    .clicked()
+                {
+                    match self.build_design_qpcr_operation(&template) {
+                        Ok(op) => self.apply_operation_with_feedback(op),
+                        Err(err) => self.op_status = err,
+                    }
+                }
+            });
+    }
+
     fn parse_candidate_local_anchor(
         mode_position: bool,
         position: &str,
@@ -9163,6 +10166,8 @@ impl MainAreaDna {
             pcr_mut_position: self.pcr_mut_position.clone(),
             pcr_mut_ref: self.pcr_mut_ref.clone(),
             pcr_mut_alt: self.pcr_mut_alt.clone(),
+            primer_design_ui: self.primer_design_ui.clone(),
+            qpcr_design_ui: self.qpcr_design_ui.clone(),
             extract_from: self.extract_from.clone(),
             extract_to: self.extract_to.clone(),
             extract_output_id: self.extract_output_id.clone(),
@@ -9347,6 +10352,8 @@ impl MainAreaDna {
         self.pcr_mut_position = s.pcr_mut_position;
         self.pcr_mut_ref = s.pcr_mut_ref;
         self.pcr_mut_alt = s.pcr_mut_alt;
+        self.primer_design_ui = s.primer_design_ui;
+        self.qpcr_design_ui = s.qpcr_design_ui;
         self.extract_from = s.extract_from;
         self.extract_to = s.extract_to;
         self.extract_output_id = s.extract_output_id;
@@ -9555,6 +10562,83 @@ impl MainAreaDna {
             });
         if !open {
             self.op_error_popup = None;
+        }
+    }
+
+    fn render_anchor_prepared_choice_popup(&mut self, ctx: &egui::Context) {
+        let mut open = true;
+        let mut apply_clicked = false;
+        let mut cancel_clicked = false;
+        {
+            let Some(dialog) = self.anchor_prepared_choice_dialog.as_mut() else {
+                return;
+            };
+            egui::Window::new("Select Prepared Genome")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.label(format!(
+                        "Requested genome '{}' has multiple compatible prepared references.",
+                        dialog.requested_genome_id
+                    ));
+                    let selected_text = dialog
+                        .options
+                        .get(dialog.selected_index)
+                        .cloned()
+                        .unwrap_or_else(|| "<none>".to_string());
+                    egui::ComboBox::from_id_salt(format!(
+                        "prepared_genome_choice_{}",
+                        dialog.requested_genome_id
+                    ))
+                    .selected_text(selected_text)
+                    .show_ui(ui, |ui| {
+                        for (idx, option) in dialog.options.iter().enumerate() {
+                            ui.selectable_value(&mut dialog.selected_index, idx, option.as_str());
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button("Use selected genome")
+                            .on_hover_text("Continue operation with selected prepared genome")
+                            .clicked()
+                        {
+                            apply_clicked = true;
+                        }
+                        if ui
+                            .button("Cancel")
+                            .on_hover_text("Cancel pending anchored operation")
+                            .clicked()
+                        {
+                            cancel_clicked = true;
+                        }
+                    });
+                });
+        }
+
+        if !open || cancel_clicked {
+            self.anchor_prepared_choice_dialog = None;
+            if cancel_clicked {
+                self.op_status = "Cancelled genome-anchor operation".to_string();
+            }
+            return;
+        }
+
+        if apply_clicked {
+            let Some(dialog) = self.anchor_prepared_choice_dialog.clone() else {
+                return;
+            };
+            let selected = dialog
+                .options
+                .get(dialog.selected_index)
+                .cloned()
+                .or_else(|| dialog.options.first().cloned());
+            self.anchor_prepared_choice_dialog = None;
+            if let Some(prepared_genome_id) = selected {
+                self.run_pending_genome_anchor_action(dialog.action, Some(prepared_genome_id));
+            } else {
+                self.op_status = "No prepared genome option selected".to_string();
+            }
         }
     }
 

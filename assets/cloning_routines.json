@@ -12,7 +12,7 @@
         "ligation",
         "digest"
       ],
-      "summary": "Digest one sequence with two enzymes, ligate selected fragments using sticky-end semantics, and extract one output region.",
+      "summary": "Digest one sequence with two enzymes, ligate selected fragments using sticky-end semantics, and extract one output region with restriction-family preflight checks.",
       "details_url": "https://www.addgene.org/protocols/restriction-digest/",
       "template_name": "digest_ligate_extract_sticky",
       "template_path": "assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json",
@@ -23,15 +23,127 @@
           "required": true,
           "cardinality": "one",
           "description": "Input sequence to digest."
+        },
+        {
+          "port_id": "enzyme_a",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Primary restriction enzyme name."
+        },
+        {
+          "port_id": "enzyme_b",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Secondary restriction enzyme name."
+        },
+        {
+          "port_id": "left_fragment",
+          "kind": "number",
+          "required": false,
+          "cardinality": "one",
+          "description": "1-based digest fragment index for ligation left input."
+        },
+        {
+          "port_id": "right_fragment",
+          "kind": "number",
+          "required": false,
+          "cardinality": "one",
+          "description": "1-based digest fragment index for ligation right input."
+        },
+        {
+          "port_id": "extract_from",
+          "kind": "number",
+          "required": false,
+          "cardinality": "one",
+          "description": "Extract start coordinate from first ligation product."
+        },
+        {
+          "port_id": "extract_to",
+          "kind": "number",
+          "required": false,
+          "cardinality": "one",
+          "description": "Extract end coordinate from first ligation product."
         }
       ],
       "output_ports": [
+        {
+          "port_id": "digest_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Digest product prefix namespace."
+        },
+        {
+          "port_id": "ligation_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Ligation product prefix namespace."
+        },
         {
           "port_id": "output_id",
           "kind": "sequence",
           "required": false,
           "cardinality": "one",
           "description": "Extracted ligation product output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "gibson.two_fragment_overlap_preview",
+      "title": "Gibson Two-Fragment Overlap Preview",
+      "family": "gibson",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "gibson",
+        "overlap",
+        "homology",
+        "assembly",
+        "planning"
+      ],
+      "summary": "Validate two-fragment overlap compatibility with Gibson-specific preflight checks and generate deterministic forward-order preview products.",
+      "details_url": "https://www.neb.com/en-us/applications/cloning-and-synthetic-biology/gibson-assembly",
+      "template_name": "gibson_two_fragment_overlap_preview",
+      "template_path": "assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json",
+      "input_ports": [
+        {
+          "port_id": "left_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Left fragment sequence ID in intended assembly order."
+        },
+        {
+          "port_id": "right_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Right fragment sequence ID in intended assembly order."
+        },
+        {
+          "port_id": "overlap_bp",
+          "kind": "number",
+          "required": true,
+          "cardinality": "one",
+          "description": "Homology overlap length used for Gibson preflight validation."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Preview ligation-product prefix namespace."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Deterministic forward-order preview sequence ID."
         }
       ]
     },

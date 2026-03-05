@@ -219,6 +219,12 @@ Patterns menu:
   - routine discovery is grouped by `family` and `status`.
   - selecting a routine imports its linked template file when the routine
     manifest provides `template_path`.
+  - Gibson baseline is available as:
+    - `gibson.two_fragment_overlap_preview`
+    - template: `gibson_two_fragment_overlap_preview`
+  - current execution path for imported routines is the shared shell panel:
+    - `macros template-run TEMPLATE_NAME --bind ... --validate-only`
+    - then run again without `--validate-only` for a mutating execution.
   - manifest source: `assets/cloning_routines.json`
     (`gentle.cloning_routines.v1`).
 
@@ -934,6 +940,47 @@ Defaults in the GUI form:
 Execution calls engine operation `FilterByDesignConstraints` and creates filtered
 in-silico selection outputs.
 
+## Primer and qPCR Design (Engine Ops)
+
+The Engine Ops panel includes `Primer and qPCR design reports` for explicit
+`DesignPrimerPairs` and `DesignQpcrAssays` execution on the active sequence.
+
+Primer pairs form:
+
+- ROI and amplicon controls:
+  - `ROI start`, `ROI end`
+  - `min amplicon`, `max amplicon`
+  - `max Tm delta`, `max pairs`
+  - `report_id`
+- side constraints (`Forward side`, `Reverse side`):
+  - core fields: length bounds, optional location/start/end, Tm bounds, GC bounds,
+    `max anneal hits`
+  - sequence constraints:
+    - `fixed 5'`, `fixed 3'`
+    - `required motifs`, `forbidden motifs` (comma-separated IUPAC motifs)
+    - `locked positions` as `offset:base,offset:base`
+- pair constraints:
+  - `require ROI flanking`
+  - `fixed amplicon start`
+  - `fixed amplicon end (exclusive)`
+  - required/forbidden amplicon motifs
+
+qPCR form:
+
+- same ROI/amplicon + pair constraints as primer-pair design
+- adds:
+  - `Probe side` with the same side-constraint fields
+  - `max probe Tm delta`
+  - `max assays`
+
+Buttons:
+
+- `Design Primer Pairs`
+- `Design qPCR Assays`
+
+Both operations persist reports into project metadata (same report store used by
+CLI/shared-shell `primers ...` commands).
+
 ## Anchored Region Extraction (Engine Ops)
 
 The Engine Ops panel includes an `Extract Anchored` form for promoter-like
@@ -1193,11 +1240,20 @@ How to enlarge the genomic span after extraction:
   - next to `Genome anchor: ...`, set extension length in bp
   - optionally set `output_id`
   - click `Extend 5'` or `Extend 3'`
+  - if multiple compatible prepared assemblies are available, GENtle opens a
+    chooser popup (`Select Prepared Genome`) and only proceeds after explicit selection
+- Anchor verification in GUI:
+  - each anchored sequence shows `anchor check: verified|unverified|n/a` next
+    to the genome-anchor status line
+  - `Re-verify anchor` re-runs verification against the currently resolved
+    prepared genome and records a new provenance entry
 - Shell fallback path (same engine operation):
   - click `Shell` in the sequence toolbar
   - run one of these commands:
-    - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
-    - `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
+    - `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
+    - `genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
+    - `helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
 - Example:
   - `genomes extend-anchor grch38_tp53 5p 2000 --output-id grch38_tp53_plus2kb_5p`
 - Result behavior:
@@ -1329,6 +1385,7 @@ Use the top application menu:
 - `File -> Open Project...`
 - `File -> Open Recent Project...`
 - `File -> Open Tutorial Project...`
+- `File -> Close Project`
 - `File -> Prepare Reference Genome...`
 - `File -> Prepared References...`
 - `File -> Retrieve Genome Sequence...`
@@ -1340,6 +1397,12 @@ Use the top application menu:
 - `File -> Import JASPAR Data...`
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
+
+`Close Project` availability:
+
+- disabled when the app is on an untouched untitled project
+  (no loaded project path and no user content yet)
+- enabled once a project is loaded or any sequence/container content exists
 
 Tutorial projects:
 
@@ -1363,6 +1426,8 @@ UniProt mapping behavior:
   - online fetch by accession/ID (`FetchUniprotSwissProt`)
   - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
   - projection to selected sequence/transcript (`ProjectUniprotToGenome`)
+- The dialog shows a compact table of recent imported UniProt entries
+  (entry/accession/source/import timestamp) and `Use` buttons to prefill `entry_id`.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 
 Resource import behavior:
