@@ -227,6 +227,7 @@ struct CloningRoutineDefinition {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Validation status for one typed preflight port check row.
 enum RoutinePortValidationStatus {
     Ok,
     Missing,
@@ -236,12 +237,17 @@ enum RoutinePortValidationStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+/// Port direction in typed routine/template contracts.
 enum RoutinePortDirection {
     Input,
     Output,
 }
 
 #[derive(Debug, Clone, Serialize)]
+/// Deterministic validation record for one routine/template port binding.
+///
+/// This row is emitted in `gentle.macro_template_preflight.v1` reports so GUI,
+/// CLI, and automation adapters can render equivalent diagnostics.
 struct RoutinePortValidationRow {
     direction: RoutinePortDirection,
     source: String,
@@ -255,6 +261,11 @@ struct RoutinePortValidationRow {
 }
 
 #[derive(Debug, Clone, Serialize)]
+/// Preflight report emitted by `macros template-run` (including `--validate-only`).
+///
+/// This report is intentionally adapter-neutral and machine-readable. It carries
+/// typed port diagnostics, warnings, and hard errors that determine whether a
+/// macro template can execute safely.
 struct MacroTemplatePreflightReport {
     schema: String,
     template_name: String,
@@ -270,6 +281,7 @@ struct MacroTemplatePreflightReport {
 }
 
 impl MacroTemplatePreflightReport {
+    /// Returns true when no hard preflight errors are present.
     fn can_execute(&self) -> bool {
         self.errors.is_empty()
     }
@@ -1916,6 +1928,7 @@ fn validate_sequence_anchor_against_sequence(
 }
 
 fn apply_cross_port_semantics(engine: &GentleEngine, report: &mut MacroTemplatePreflightReport) {
+    // Cross-port checks stay family-agnostic; they run for any typed contract.
     let checked_rows = report
         .checked_ports
         .iter()
@@ -2167,6 +2180,7 @@ fn apply_gibson_family_preflight_semantics(
     engine: &GentleEngine,
     report: &mut MacroTemplatePreflightReport,
 ) {
+    // Gibson-specific semantic checks are applied after generic typed-port checks.
     let checked_rows = report
         .checked_ports
         .iter()
@@ -2272,6 +2286,8 @@ fn apply_restriction_family_preflight_semantics(
     report: &mut MacroTemplatePreflightReport,
     bindings: &HashMap<String, String>,
 ) {
+    // Restriction-family checks focus on enzyme resolution/site presence and
+    // digest parameter sanity before any mutating macro execution.
     let checked_rows = report
         .checked_ports
         .iter()
@@ -2445,6 +2461,7 @@ fn apply_family_specific_preflight_semantics(
     report: &mut MacroTemplatePreflightReport,
     bindings: &HashMap<String, String>,
 ) {
+    // Family hooks remain explicit to avoid hidden adapter-side semantics.
     let Some(family) = report.routine_family.as_deref() else {
         return;
     };
@@ -17551,6 +17568,56 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             op_text, expert_text,
             "RenderIsoformArchitectureSvg and render-feature-expert-svg isoform outputs must match"
         );
+    }
+
+    #[test]
+    fn execute_splicing_feature_expert_svg_shell_and_operation_routes_match() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+
+        let tmp = tempdir().expect("temp dir");
+        let op_svg = tmp.path().join("splicing.op.svg");
+        let shell_svg = tmp.path().join("splicing.shell.svg");
+        let op_path = op_svg.display().to_string();
+        let shell_path = shell_svg.display().to_string();
+
+        engine
+            .apply(Operation::RenderFeatureExpertSvg {
+                seq_id: "seq_a".to_string(),
+                target: FeatureExpertTarget::SplicingFeature { feature_id },
+                path: op_path.clone(),
+            })
+            .expect("render splicing op route");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::RenderFeatureExpertSvg {
+                seq_id: "seq_a".to_string(),
+                target: FeatureExpertTarget::SplicingFeature { feature_id },
+                output: shell_path.clone(),
+            },
+        )
+        .expect("render splicing shell route");
+
+        let op_text = fs::read_to_string(op_path).expect("read op svg");
+        let shell_text = fs::read_to_string(shell_path).expect("read shell svg");
+        assert_eq!(
+            op_text, shell_text,
+            "RenderFeatureExpertSvg operation and shell routes must match for splicing"
+        );
+        assert!(op_text.contains("cell color intensity encodes exon support frequency"));
     }
 
     #[test]

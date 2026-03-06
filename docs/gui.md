@@ -156,6 +156,9 @@ Feature tree grouping:
   (including short features), improving disambiguation.
 - The feature-tree pane is horizontally resizable; when narrowed, the tree uses
   horizontal scrolling for long labels.
+- For large/feature-dense sequences, initial feature-tree/detail rendering can
+  be deferred to improve window-open responsiveness; use `Load feature tree now`
+  in the left pane to enable full tree/details rendering on demand.
 - Feature detail text remains below the feature tree in the left pane and uses
   the configurable feature-detail font size.
 - When multi-selection is active, the feature-tree header shows a
@@ -178,8 +181,24 @@ Feature tree grouping:
   dedicated, resizable window instead of the inline description pane.
 - The splicing expert window is a free-standing top-level window and can be
   moved outside the DNA sequence window bounds.
+- The splicing expert window content is vertically scrollable, so very large
+  transcript sets no longer hide the `Transcript x exon matrix` section.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
+- Splicing support frequencies are shown explicitly:
+  - exon columns include support as `n/N (%)` (plus `const` for constitutive
+    exons)
+  - exon columns also expose `len%3` color cues (`0/1/2`) based on genomic
+    exon length modulo 3 (heuristic frame cue)
+  - transcript-vs-exon matrix cells are color-coded by exon support frequency
+    (higher support => stronger color intensity)
+  - an `Exon -> exon transition matrix` shows predicted transition support
+    counts with frequency-coded cells; row/column exon headers reuse `len%3`
+    colors
+  - a `Junction transition support` table lists donor/acceptor transitions with
+    support counts and percentages
+  - arc-width encoding remains active and arcs also show support-count labels
+    in the lane canvas
 
 Circular map label behavior:
 

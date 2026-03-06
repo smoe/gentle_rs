@@ -2779,16 +2779,18 @@ Error: `{err}`"
         if self.find_pending_sequence_window_mut(seq_id).is_some() {
             return;
         }
-        let dna = self
+        let exists = self
             .engine
             .read()
             .unwrap()
             .state()
             .sequences
-            .get(seq_id)
-            .cloned();
-        if let Some(dna) = dna {
-            self.new_dna_window(seq_id.to_string(), dna);
+            .contains_key(seq_id);
+        if exists {
+            self.new_windows.push(Window::new_dna_lazy(
+                seq_id.to_string(),
+                self.engine.clone(),
+            ));
         }
     }
 
@@ -2806,17 +2808,16 @@ Error: `{err}`"
             window.set_pool_context(pool_seq_ids);
             return;
         }
-        let dna = self
+        let exists = self
             .engine
             .read()
             .unwrap()
             .state()
             .sequences
-            .get(representative_seq_id)
-            .cloned();
-        if let Some(dna) = dna {
+            .contains_key(representative_seq_id);
+        if exists {
             let mut window =
-                Window::new_dna(dna, representative_seq_id.to_string(), self.engine.clone());
+                Window::new_dna_lazy(representative_seq_id.to_string(), self.engine.clone());
             window.set_pool_context(pool_seq_ids);
             self.new_windows.push(window);
         }
@@ -17408,6 +17409,26 @@ mod tests {
             "fallback help markdown",
         );
         assert_eq!(loaded, "fallback help markdown");
+    }
+
+    #[test]
+    fn open_sequence_window_enqueues_lazy_window_for_existing_sequence() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_lazy".to_string(),
+            DNAsequence::from_sequence("ACGT").expect("sequence"),
+        );
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let mut app = GENtleApp::default();
+        app.engine = engine;
+
+        app.open_sequence_window("seq_lazy");
+
+        assert_eq!(app.new_windows.len(), 1);
+        assert_eq!(
+            app.new_windows[0].sequence_id().as_deref(),
+            Some("seq_lazy")
+        );
     }
 
     #[test]

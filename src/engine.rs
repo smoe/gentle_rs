@@ -25249,6 +25249,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         let text = std::fs::read_to_string(path_text).unwrap();
         assert!(text.contains("<svg"));
         assert!(text.contains("Splicing expert"));
+        assert!(text.contains("Junction transition support"));
+        assert!(text.contains("cell color intensity encodes exon support frequency"));
+        assert!(text.contains("exon transition matrix"));
+        assert!(text.contains("length %3"));
     }
 
     #[test]

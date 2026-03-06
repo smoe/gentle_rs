@@ -2,7 +2,8 @@
 
 use crate::feature_expert::{
     FeatureExpertView, IsoformArchitectureExpertView, RestrictionSiteExpertView,
-    SplicingExpertView, TfbsExpertView,
+    SplicingExonSummary, SplicingExpertView, TfbsExpertView,
+    compute_splicing_exon_transition_matrix,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
@@ -57,6 +58,103 @@ fn match_base_to_idx(base: Option<char>) -> Option<usize> {
         Some('G') => Some(2),
         Some('T') => Some(3),
         _ => None,
+    }
+}
+
+fn mix_rgb(from: [u8; 3], to: [u8; 3], t: f32) -> [u8; 3] {
+    let t = t.clamp(0.0, 1.0);
+    let lerp = |a: u8, b: u8| -> u8 {
+        ((a as f32) + ((b as f32) - (a as f32)) * t)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    [
+        lerp(from[0], to[0]),
+        lerp(from[1], to[1]),
+        lerp(from[2], to[2]),
+    ]
+}
+
+fn rgb_hex(rgb: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])
+}
+
+fn support_ratio_percent(support_count: usize, transcript_total: usize) -> f64 {
+    if transcript_total == 0 {
+        return 0.0;
+    }
+    support_count as f64 * 100.0 / transcript_total as f64
+}
+
+fn format_support_fraction(support_count: usize, transcript_total: usize) -> String {
+    format!(
+        "{}/{} ({:.1}%)",
+        support_count,
+        transcript_total,
+        support_ratio_percent(support_count, transcript_total)
+    )
+}
+
+fn splicing_matrix_cell_fill_hex(present: bool, support_ratio: f32) -> String {
+    let ratio = support_ratio.clamp(0.0, 1.0);
+    if present {
+        rgb_hex(mix_rgb([191, 219, 254], [30, 64, 175], ratio))
+    } else {
+        rgb_hex(mix_rgb([248, 250, 252], [219, 234, 254], ratio))
+    }
+}
+
+fn splicing_matrix_cell_text_hex(present: bool, support_ratio: f32) -> &'static str {
+    if present && support_ratio >= 0.42 {
+        "#ffffff"
+    } else {
+        "#0f172a"
+    }
+}
+
+fn splicing_transition_cell_fill_hex(support_ratio: f32) -> String {
+    let ratio = support_ratio.clamp(0.0, 1.0);
+    if ratio > 0.0 {
+        rgb_hex(mix_rgb([220, 252, 231], [22, 101, 52], ratio))
+    } else {
+        "#f8fafc".to_string()
+    }
+}
+
+fn splicing_transition_cell_text_hex(support_ratio: f32) -> &'static str {
+    if support_ratio >= 0.42 {
+        "#ffffff"
+    } else if support_ratio > 0.0 {
+        "#14532d"
+    } else {
+        "#64748b"
+    }
+}
+
+fn splicing_exon_length_bp(exon: &SplicingExonSummary) -> usize {
+    exon.end_1based
+        .max(exon.start_1based)
+        .saturating_sub(exon.end_1based.min(exon.start_1based))
+        + 1
+}
+
+fn splicing_exon_mod3(exon: &SplicingExonSummary) -> usize {
+    splicing_exon_length_bp(exon) % 3
+}
+
+fn splicing_exon_mod3_fill_hex(mod3: usize) -> &'static str {
+    match mod3 % 3 {
+        0 => "#dbeafe",
+        1 => "#fef3c7",
+        _ => "#ffe4e6",
+    }
+}
+
+fn splicing_exon_mod3_text_hex(mod3: usize) -> &'static str {
+    match mod3 % 3 {
+        0 => "#1e40af",
+        1 => "#92400e",
+        _ => "#9f1239",
     }
 }
 
@@ -474,7 +572,10 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
 
 fn render_splicing(view: &SplicingExpertView) -> String {
     let lane_count = view.transcripts.len().max(1);
-    let exon_count = view.unique_exons.len().max(1);
+    let unique_exon_total = view.unique_exons.len();
+    let exon_count = unique_exon_total.max(1);
+    let transcript_total = view.transcript_count.max(1);
+    let exon_transitions = compute_splicing_exon_transition_matrix(view);
     let lane_height = 30.0_f32;
     let lane_gap = 14.0_f32;
     let chart_top = 126.0_f32;
@@ -482,8 +583,37 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         lane_count as f32 * lane_height + (lane_count.saturating_sub(1) as f32) * lane_gap;
     let matrix_top = chart_top + chart_height + 78.0;
     let matrix_row_h = 17.0_f32;
-    let matrix_h = lane_count as f32 * matrix_row_h + 28.0;
-    let footer_top = matrix_top + matrix_h + 36.0;
+    let matrix_support_row_h = 16.0_f32;
+    let matrix_mod_row_h = 15.0_f32;
+    let matrix_h =
+        lane_count as f32 * matrix_row_h + matrix_support_row_h + matrix_mod_row_h + 38.0;
+    let transition_top = matrix_top + matrix_h + 24.0;
+    let transition_h = if unique_exon_total >= 2 {
+        45.0 + unique_exon_total as f32 * 14.0
+    } else {
+        0.0
+    };
+    let junction_table_top = transition_top + transition_h + 24.0;
+    let mut junction_rows = view.junctions.clone();
+    junction_rows.sort_by(|left, right| {
+        right
+            .support_transcript_count
+            .cmp(&left.support_transcript_count)
+            .then_with(|| left.donor_1based.cmp(&right.donor_1based))
+            .then_with(|| left.acceptor_1based.cmp(&right.acceptor_1based))
+    });
+    let junction_rows_rendered: Vec<_> = junction_rows.iter().take(24).cloned().collect();
+    let junction_h = if junction_rows_rendered.is_empty() {
+        0.0
+    } else {
+        let base = 34.0 + junction_rows_rendered.len() as f32 * 14.0;
+        if view.junctions.len() > junction_rows_rendered.len() {
+            base + 13.0
+        } else {
+            base
+        }
+    };
+    let footer_top = junction_table_top + junction_h + 28.0;
     let dyn_h = (footer_top + 126.0).max(H);
     let left = 240.0_f32;
     let right = W - 56.0_f32;
@@ -598,6 +728,19 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                 .set("stroke", "#64748b")
                 .set("stroke-width", stroke_w),
         );
+        let show_support_label =
+            view.junctions.len() <= 48 || junction.support_transcript_count > 1;
+        if show_support_label {
+            doc = doc.add(
+                Text::new(format!("{}", junction.support_transcript_count))
+                    .set("x", mid_x)
+                    .set("y", apex_y - 4.0)
+                    .set("text-anchor", "middle")
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#1d4ed8"),
+            );
+        }
     }
 
     for (lane_idx, lane) in view.transcripts.iter().enumerate() {
@@ -740,6 +883,9 @@ fn render_splicing(view: &SplicingExpertView) -> String {
     let matrix_left = 250.0_f32;
     let matrix_cell_w = ((right - matrix_left - 6.0) / exon_count as f32).clamp(7.0, 16.0);
     let matrix_cell_h = 12.0_f32;
+    let matrix_support_y = matrix_top + 12.0;
+    let matrix_mod_y = matrix_support_y + matrix_support_row_h;
+    let matrix_rows_top = matrix_mod_y + matrix_mod_row_h - 1.0;
     doc = doc.add(
         Text::new("Transcript vs exon matrix")
             .set("x", matrix_label_x)
@@ -748,20 +894,90 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             .set("font-size", 12)
             .set("fill", "#111827"),
     );
-    for (col_idx, _) in view.unique_exons.iter().enumerate() {
-        let x = matrix_left + col_idx as f32 * matrix_cell_w + matrix_cell_w * 0.5;
+    doc = doc.add(
+        Text::new("cell color intensity encodes exon support frequency")
+            .set("x", matrix_left)
+            .set("y", matrix_top - 14.0)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#475569"),
+    );
+    for (col_idx, exon) in view.unique_exons.iter().enumerate() {
+        let mod3 = splicing_exon_mod3(exon);
+        let x = matrix_left + col_idx as f32 * matrix_cell_w;
+        doc = doc
+            .add(
+                Rectangle::new()
+                    .set("x", x)
+                    .set("y", matrix_top - 10.5)
+                    .set("width", (matrix_cell_w - 1.0).max(4.0))
+                    .set("height", 9.5)
+                    .set("fill", splicing_exon_mod3_fill_hex(mod3))
+                    .set("stroke", "#cbd5e1")
+                    .set("stroke-width", 0.4),
+            )
+            .add(
+                Text::new(format!("E{}", col_idx + 1))
+                    .set("x", x + (matrix_cell_w - 1.0) * 0.5)
+                    .set("y", matrix_top - 2.2)
+                    .set("text-anchor", "middle")
+                    .set("font-family", "monospace")
+                    .set("font-size", 7)
+                    .set("fill", splicing_exon_mod3_text_hex(mod3)),
+            );
+    }
+    doc = doc.add(
+        Text::new("support")
+            .set("x", matrix_label_x)
+            .set("y", matrix_support_y)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#334155"),
+    );
+    doc = doc.add(
+        Text::new("len%3")
+            .set("x", matrix_label_x)
+            .set("y", matrix_mod_y)
+            .set("font-family", "monospace")
+            .set("font-size", 9)
+            .set("fill", "#334155"),
+    );
+    for (col_idx, exon) in view.unique_exons.iter().enumerate() {
+        let x = matrix_left + col_idx as f32 * matrix_cell_w + 0.5;
+        let support_ratio =
+            support_ratio_percent(exon.support_transcript_count, transcript_total) as f32 / 100.0;
+        let label = if exon.constitutive {
+            format!(
+                "{} const",
+                format_support_fraction(exon.support_transcript_count, transcript_total)
+            )
+        } else {
+            format_support_fraction(exon.support_transcript_count, transcript_total)
+        };
         doc = doc.add(
-            Text::new(format!("{}", col_idx + 1))
+            Text::new(label)
                 .set("x", x)
-                .set("y", matrix_top - 2.0)
+                .set("y", matrix_support_y)
+                .set("font-family", "monospace")
+                .set("font-size", 7)
+                .set(
+                    "fill",
+                    rgb_hex(mix_rgb([100, 116, 139], [30, 64, 175], support_ratio)),
+                ),
+        );
+        let mod3 = splicing_exon_mod3(exon);
+        doc = doc.add(
+            Text::new(format!("{mod3}"))
+                .set("x", x + (matrix_cell_w - 1.0) * 0.5)
+                .set("y", matrix_mod_y)
                 .set("text-anchor", "middle")
                 .set("font-family", "monospace")
                 .set("font-size", 8)
-                .set("fill", "#475569"),
+                .set("fill", splicing_exon_mod3_text_hex(mod3)),
         );
     }
     for (row_idx, row) in view.matrix_rows.iter().enumerate() {
-        let y = matrix_top + row_idx as f32 * matrix_row_h;
+        let y = matrix_rows_top + row_idx as f32 * matrix_row_h;
         doc = doc.add(
             Text::new(row.transcript_id.clone())
                 .set("x", matrix_label_x)
@@ -772,15 +988,281 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         );
         for (col_idx, present) in row.exon_presence.iter().copied().enumerate() {
             let x = matrix_left + col_idx as f32 * matrix_cell_w;
+            let support_count = view
+                .unique_exons
+                .get(col_idx)
+                .map(|exon| exon.support_transcript_count)
+                .unwrap_or(0);
+            let support_ratio =
+                support_ratio_percent(support_count, transcript_total) as f32 / 100.0;
+            let fill = splicing_matrix_cell_fill_hex(present, support_ratio);
             doc = doc.add(
                 Rectangle::new()
                     .set("x", x)
                     .set("y", y)
                     .set("width", matrix_cell_w - 1.0)
                     .set("height", matrix_cell_h)
-                    .set("fill", if present { "#334155" } else { "#f1f5f9" })
+                    .set("fill", fill)
                     .set("stroke", "#cbd5e1")
                     .set("stroke-width", 0.5),
+            );
+            doc = doc.add(
+                Text::new(if present { "X" } else { "·" })
+                    .set("x", x + (matrix_cell_w - 1.0) * 0.5)
+                    .set("y", y + matrix_cell_h - 2.0)
+                    .set("text-anchor", "middle")
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set(
+                        "fill",
+                        splicing_matrix_cell_text_hex(present, support_ratio),
+                    ),
+            );
+        }
+    }
+
+    if unique_exon_total >= 2 {
+        let transition_label_x = 88.0_f32;
+        let transition_axis_w = 58.0_f32;
+        let transition_matrix_left = 250.0_f32 + transition_axis_w;
+        let transition_cell_w =
+            ((right - transition_matrix_left - 6.0) / exon_count as f32).clamp(7.0, 16.0);
+        let transition_cell_h = 11.0_f32;
+        let transition_header_y = transition_top + 13.0;
+        let transition_rows_top = transition_top + 22.0;
+        doc = doc
+            .add(
+                Text::new("Exon -> exon transition matrix")
+                    .set("x", transition_label_x)
+                    .set("y", transition_top)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("fill", "#111827"),
+            )
+            .add(
+                Text::new(
+                    "frequency color: transition support; E# color: exon genomic length %3 (heuristic frame cue)",
+                )
+                .set("x", transition_matrix_left - transition_axis_w)
+                .set("y", transition_top + 12.5)
+                .set("font-family", "monospace")
+                .set("font-size", 8)
+                .set("fill", "#475569"),
+            );
+        for (to_idx, exon) in view.unique_exons.iter().enumerate() {
+            let mod3 = splicing_exon_mod3(exon);
+            let x = transition_matrix_left + to_idx as f32 * transition_cell_w;
+            doc = doc
+                .add(
+                    Rectangle::new()
+                        .set("x", x)
+                        .set("y", transition_header_y - 8.5)
+                        .set("width", (transition_cell_w - 1.0).max(4.0))
+                        .set("height", 9.5)
+                        .set("fill", splicing_exon_mod3_fill_hex(mod3))
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 0.4),
+                )
+                .add(
+                    Text::new(format!("E{}", to_idx + 1))
+                        .set("x", x + (transition_cell_w - 1.0) * 0.5)
+                        .set("y", transition_header_y - 1.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 7)
+                        .set("fill", splicing_exon_mod3_text_hex(mod3)),
+                );
+        }
+        for (from_idx, exon) in view.unique_exons.iter().enumerate() {
+            let y = transition_rows_top + from_idx as f32 * 14.0;
+            let mod3 = splicing_exon_mod3(exon);
+            doc = doc
+                .add(
+                    Rectangle::new()
+                        .set("x", transition_matrix_left - transition_axis_w)
+                        .set("y", y)
+                        .set("width", transition_axis_w - 4.0)
+                        .set("height", transition_cell_h)
+                        .set("fill", splicing_exon_mod3_fill_hex(mod3))
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 0.4),
+                )
+                .add(
+                    Text::new(format!("E{}", from_idx + 1))
+                        .set("x", transition_matrix_left - transition_axis_w + 5.0)
+                        .set("y", y + transition_cell_h - 2.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", splicing_exon_mod3_text_hex(mod3)),
+                );
+            for to_idx in 0..view.unique_exons.len() {
+                let support_count = exon_transitions
+                    .counts
+                    .get(from_idx)
+                    .and_then(|row| row.get(to_idx))
+                    .copied()
+                    .unwrap_or(0);
+                let support_ratio =
+                    support_ratio_percent(support_count, transcript_total) as f32 / 100.0;
+                let fill = splicing_transition_cell_fill_hex(support_ratio);
+                let x = transition_matrix_left + to_idx as f32 * transition_cell_w;
+                doc = doc
+                    .add(
+                        Rectangle::new()
+                            .set("x", x)
+                            .set("y", y)
+                            .set("width", transition_cell_w - 1.0)
+                            .set("height", transition_cell_h)
+                            .set("fill", fill)
+                            .set("stroke", "#cbd5e1")
+                            .set("stroke-width", 0.5),
+                    )
+                    .add(
+                        Text::new(if support_count > 0 {
+                            support_count.to_string()
+                        } else {
+                            "·".to_string()
+                        })
+                        .set("x", x + (transition_cell_w - 1.0) * 0.5)
+                        .set("y", y + transition_cell_h - 2.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", splicing_transition_cell_text_hex(support_ratio)),
+                    );
+            }
+        }
+    }
+
+    if !junction_rows_rendered.is_empty() {
+        let table_left = 88.0_f32;
+        let donor_x = table_left;
+        let acceptor_x = table_left + 88.0;
+        let span_x = table_left + 176.0;
+        let support_x = table_left + 246.0;
+        let transcripts_x = table_left + 362.0;
+        let mut y = junction_table_top;
+        doc = doc
+            .add(
+                Text::new("Junction transition support")
+                    .set("x", table_left)
+                    .set("y", y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 12)
+                    .set("fill", "#111827"),
+            )
+            .add(
+                Text::new("donor")
+                    .set("x", donor_x)
+                    .set("y", y + 13.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#334155"),
+            )
+            .add(
+                Text::new("acceptor")
+                    .set("x", acceptor_x)
+                    .set("y", y + 13.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#334155"),
+            )
+            .add(
+                Text::new("span")
+                    .set("x", span_x)
+                    .set("y", y + 13.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#334155"),
+            )
+            .add(
+                Text::new("support")
+                    .set("x", support_x)
+                    .set("y", y + 13.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#334155"),
+            )
+            .add(
+                Text::new("transcripts")
+                    .set("x", transcripts_x)
+                    .set("y", y + 13.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#334155"),
+            );
+        y += 26.0;
+
+        for junction in &junction_rows_rendered {
+            let span_bp = junction
+                .acceptor_1based
+                .max(junction.donor_1based)
+                .saturating_sub(junction.acceptor_1based.min(junction.donor_1based));
+            let mut transcript_labels = junction
+                .transcript_feature_ids
+                .iter()
+                .map(|feature_id| format!("n-{feature_id}"))
+                .collect::<Vec<_>>();
+            if transcript_labels.len() > 10 {
+                let hidden = transcript_labels.len() - 10;
+                transcript_labels.truncate(10);
+                transcript_labels.push(format!("+{hidden}"));
+            }
+            doc = doc
+                .add(
+                    Text::new(junction.donor_1based.to_string())
+                        .set("x", donor_x)
+                        .set("y", y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#1f2937"),
+                )
+                .add(
+                    Text::new(junction.acceptor_1based.to_string())
+                        .set("x", acceptor_x)
+                        .set("y", y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#1f2937"),
+                )
+                .add(
+                    Text::new(span_bp.to_string())
+                        .set("x", span_x)
+                        .set("y", y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#1f2937"),
+                )
+                .add(
+                    Text::new(format_support_fraction(
+                        junction.support_transcript_count,
+                        transcript_total,
+                    ))
+                    .set("x", support_x)
+                    .set("y", y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set("fill", "#1f2937"),
+                )
+                .add(
+                    Text::new(transcript_labels.join(", "))
+                        .set("x", transcripts_x)
+                        .set("y", y)
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set("fill", "#475569"),
+                );
+            y += 13.0;
+        }
+        if view.junctions.len() > junction_rows_rendered.len() {
+            let hidden = view.junctions.len() - junction_rows_rendered.len();
+            doc = doc.add(
+                Text::new(format!("... {} additional transitions omitted", hidden))
+                    .set("x", table_left)
+                    .set("y", y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#6b7280"),
             );
         }
     }

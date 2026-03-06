@@ -11,21 +11,90 @@ use crate::{
 };
 use eframe::egui;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::{Arc, RwLock};
+use std::sync::{
+    Arc, Mutex, RwLock,
+    mpsc::{self, Receiver, TryRecvError},
+};
+use std::thread;
 
 #[derive(Clone, Debug)]
 pub struct WindowDna {
     main_area: MainAreaDna,
+    pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
+    deferred_load_message: Option<String>,
 }
 
 impl WindowDna {
     pub fn new(dna: DNAsequence, seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
         Self {
             main_area: MainAreaDna::new(dna, Some(seq_id), Some(engine)),
+            pending_dna_load: None,
+            deferred_load_message: None,
+        }
+    }
+
+    pub fn new_lazy(seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
+        let (tx, rx) = mpsc::channel::<Result<DNAsequence, String>>();
+        let thread_engine = engine.clone();
+        let thread_seq_id = seq_id.clone();
+        thread::spawn(move || {
+            let result = thread_engine
+                .read()
+                .map_err(|_| "Engine lock poisoned during deferred load".to_string())
+                .and_then(|guard| {
+                    guard
+                        .state()
+                        .sequences
+                        .get(&thread_seq_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            format!(
+                                "Sequence '{}' no longer exists while opening window",
+                                thread_seq_id
+                            )
+                        })
+                });
+            let _ = tx.send(result);
+        });
+        let placeholder = DNAsequence::from_sequence("").expect("valid empty sequence");
+        let mut main_area = MainAreaDna::new(placeholder, Some(seq_id), Some(engine));
+        main_area.defer_feature_tree_until_interaction();
+        Self {
+            main_area,
+            pending_dna_load: Some(Arc::new(Mutex::new(rx))),
+            deferred_load_message: None,
         }
     }
 
     pub fn update(&mut self, ctx: &egui::Context) {
+        if let Some(rx) = self.pending_dna_load.as_ref() {
+            let recv_result = rx
+                .lock()
+                .map(|guard| guard.try_recv())
+                .map_err(|_| "Deferred sequence load lock poisoned".to_string());
+            match recv_result {
+                Ok(Ok(Ok(dna))) => {
+                    self.main_area.replace_loaded_sequence(dna);
+                    self.pending_dna_load = None;
+                    self.deferred_load_message = None;
+                }
+                Ok(Ok(Err(message))) => {
+                    self.pending_dna_load = None;
+                    self.deferred_load_message = Some(message);
+                }
+                Ok(Err(TryRecvError::Empty)) => {}
+                Ok(Err(TryRecvError::Disconnected)) => {
+                    self.pending_dna_load = None;
+                    self.deferred_load_message = Some(
+                        "Deferred sequence load channel disconnected unexpectedly".to_string(),
+                    );
+                }
+                Err(message) => {
+                    self.pending_dna_load = None;
+                    self.deferred_load_message = Some(message);
+                }
+            }
+        }
         let result = catch_unwind(AssertUnwindSafe(|| {
             let open_help_f1 = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
             let open_help_ctrl_f1 =
@@ -81,7 +150,21 @@ impl WindowDna {
                 };
                 let settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, kind, &settings);
-                self.main_area.render(ctx, ui);
+                if self.pending_dna_load.is_some() {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(48.0);
+                        ui.add(egui::Spinner::new());
+                        ui.add_space(6.0);
+                        ui.label(
+                            "Opening sequence window: loading sequence content in background...",
+                        );
+                    });
+                    ctx.request_repaint();
+                } else if let Some(message) = self.deferred_load_message.as_deref() {
+                    ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
+                } else {
+                    self.main_area.render(ctx, ui);
+                }
             });
         }));
         if result.is_err() {

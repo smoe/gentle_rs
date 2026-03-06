@@ -1073,3 +1073,11 @@ Deferred-scope rules:
 - Unify configuration editing contract with explicit staged-change signaling and
   always-visible commit footer controls (`Cancel`/`Apply`) for configuration
   viewports: accepted and implemented.
+- Adopt contract-first source documentation policy to support
+  human/Codex maintainability without high-noise churn:
+  accepted and in progress.
+  - Add concise rustdoc comments (`//!`, `///`) on core modules/types/functions
+    that define contracts, invariants, and non-obvious semantics.
+  - Prefer "why/invariant/edge-case" documentation over line-by-line narration.
+  - Keep documentation updates in focused low-noise passes so delivery and
+    rebases stay stable.

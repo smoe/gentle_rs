@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -44,6 +44,11 @@ order. Durable architecture constraints and decisions remain in
     references exist,
   - `Re-verify anchor` action (engine `VerifyGenomeAnchor`),
   - visible `anchor check: verified|unverified|n/a` badge.
+- Sequence-window open path is now lazy:
+  - sequence payload is loaded asynchronously on window open,
+  - feature-tree/details rendering can be deferred per window and enabled
+    interactively (`Load feature tree now`) to keep first paint responsive on
+    very feature-dense entries.
 - `PrepareGenome` now detects source-path/URL drift for existing manifests and
   rebuilds from configured sources instead of silently reusing stale caches.
 - Genome track import operations (BED, BigWig via conversion, VCF, BLAST hits)
@@ -517,6 +522,9 @@ Status:
      (`FeatureExpertTarget::SplicingFeature`) are in place.
    - boundary markers, event summaries, transcript-vs-exon matrix, and
      junction-support arcs are rendered from the shared payload.
+   - predicted exon->exon transition matrix is rendered in GUI and SVG, with
+     frequency-coded support cells and exon `len%3` header cues (heuristic
+     frame signal).
    - sequence-window primary `Splicing map` mode (read-only) is now available
      and uses the same shared payload/geometry path as the expert view.
    - GUI expert panel and SVG export use the same payload; shell/CLI/JS/Lua
@@ -847,6 +855,11 @@ Repeated multi-tool gaps to prioritize:
      - optional Primer3 backend selection (`auto|internal|primer3`) with
        deterministic fallback and backend provenance in reports
    - next:
+    - add nested-PCR primer design workflow contracts:
+      - outer + inner primer-pair design in one deterministic request/report
+      - explicit nesting constraints (inner amplicon must lie within outer
+        amplicon with configurable margin)
+      - adapter-equivalent export/inspection routes for outer/inner pair sets
      - expand Primer3 constraint-mapping parity and fixture-backed equivalence
        coverage versus internal backend normalization
      - add richer Primer3 preflight diagnostics/UI surfacing
@@ -1001,6 +1014,10 @@ Phase 4 (primer-pair UI and specificity tier):
 
 - Expand GUI around `DesignPrimerPairs` with explicit amplicon intent, pair
   constraints, and specificity tiers.
+- Add nested-PCR mode in the same primer-pair specialist flow:
+  - design/report outer and inner primer pairs together
+  - expose nesting margin/amplicon-span constraints with deterministic
+    validation
 - Route pair-specificity BLAST fan-out through the same async BLAST service
   contract used by standalone BLAST.
 - Keep report/provenance schema adapter-equivalent.
@@ -1190,6 +1207,7 @@ Planned upgrades:
   Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
 - Start repeated cross-tool cloning UX gaps after routine packs land:
   - primer design/validation workflow contracts
+  - nested-PCR primer workflow contract + UI/report parity
   - Primer3 wrapper integration + backend-equivalence test matrix
   - auto-annotation library scan contracts
   - interactive cloning workspace/clipboard model

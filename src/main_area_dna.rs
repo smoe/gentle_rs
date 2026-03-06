@@ -18,7 +18,8 @@ use crate::{
     },
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
-        RestrictionSiteExpertView, SplicingExpertView, TfbsExpertView,
+        RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, TfbsExpertView,
+        compute_splicing_exon_transition_matrix,
     },
     feature_location::collect_location_ranges_usize,
     gc_contents::GcContents,
@@ -781,6 +782,35 @@ mod tests {
                 .unwrap_err()
                 .contains("expected an integer")
         );
+    }
+
+    #[test]
+    fn defer_feature_tree_until_interaction_sets_runtime_flag() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        assert!(!area.feature_tree_deferred_until_interaction);
+        area.defer_feature_tree_until_interaction();
+        assert!(area.feature_tree_deferred_until_interaction);
+    }
+
+    #[test]
+    fn replace_loaded_sequence_replaces_active_sequence_content() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        let replacement = DNAsequence::from_sequence("TTTT").expect("replacement sequence");
+        area.replace_loaded_sequence(replacement);
+        let loaded = area.dna().read().expect("dna lock").get_forward_string();
+        assert_eq!(loaded, "TTTT");
+    }
+
+    #[test]
+    fn support_ratio_percent_handles_zero_total() {
+        assert_eq!(MainAreaDna::support_ratio_percent(5, 0), 0.0);
+    }
+
+    #[test]
+    fn format_support_fraction_formats_percent() {
+        assert_eq!(MainAreaDna::format_support_fraction(3, 8), "3/8 (37.5%)");
     }
 
     #[test]
@@ -1829,6 +1859,7 @@ pub struct MainAreaDna {
     pool_gel_ladders: String,
     feature_tree_grouping_mode: FeatureTreeGroupingMode,
     feature_tree_filter: String,
+    feature_tree_deferred_until_interaction: bool,
     feature_tree_panel_width: f32,
     pending_feature_tree_scroll_to: Option<usize>,
     focused_feature_id: Option<usize>,
@@ -2073,6 +2104,7 @@ impl MainAreaDna {
             pool_gel_ladders: String::new(),
             feature_tree_grouping_mode: FeatureTreeGroupingMode::Off,
             feature_tree_filter: String::new(),
+            feature_tree_deferred_until_interaction: false,
             feature_tree_panel_width: FEATURE_TREE_DEFAULT_WIDTH_PX,
             pending_feature_tree_scroll_to: None,
             focused_feature_id: None,
@@ -2116,6 +2148,17 @@ impl MainAreaDna {
 
     pub fn opened_from_pool_context(&self) -> bool {
         self.opened_from_pool_context
+    }
+
+    pub fn replace_loaded_sequence(&mut self, dna: DNAsequence) {
+        *self.dna.write().expect("DNA lock poisoned") = dna;
+        self.clear_feature_focus();
+        self.description_cache_initialized = false;
+        self.update_dna_map();
+    }
+
+    pub fn defer_feature_tree_until_interaction(&mut self) {
+        self.feature_tree_deferred_until_interaction = true;
     }
 
     pub fn refresh_from_engine_sequence_state(&mut self) {
@@ -6585,6 +6628,19 @@ impl MainAreaDna {
                     pts,
                     egui::Stroke::new((0.9 + support * 0.45).clamp(0.9, 3.2), color),
                 ));
+                let show_support_label =
+                    view.junctions.len() <= 48 || junction.support_transcript_count > 1;
+                if show_support_label {
+                    let mid_x = (x1 + x2) * 0.5;
+                    let apex_y = axis_y - height;
+                    painter.text(
+                        egui::pos2(mid_x, apex_y - 2.0),
+                        egui::Align2::CENTER_BOTTOM,
+                        format!("{}", junction.support_transcript_count),
+                        egui::FontId::monospace(8.0),
+                        egui::Color32::from_rgb(29, 78, 216),
+                    );
+                }
             }
 
             let lane_index: HashMap<usize, usize> = view
@@ -6711,6 +6767,106 @@ impl MainAreaDna {
         clicked_feature_id
     }
 
+    fn support_ratio_percent(support_count: usize, transcript_total: usize) -> f64 {
+        if transcript_total == 0 {
+            return 0.0;
+        }
+        support_count as f64 * 100.0 / transcript_total as f64
+    }
+
+    fn format_support_fraction(support_count: usize, transcript_total: usize) -> String {
+        format!(
+            "{}/{} ({:.1}%)",
+            support_count,
+            transcript_total,
+            Self::support_ratio_percent(support_count, transcript_total)
+        )
+    }
+
+    fn mix_rgb(from: [u8; 3], to: [u8; 3], t: f32) -> [u8; 3] {
+        let t = t.clamp(0.0, 1.0);
+        let lerp = |a: u8, b: u8| -> u8 {
+            ((a as f32) + ((b as f32) - (a as f32)) * t)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        [
+            lerp(from[0], to[0]),
+            lerp(from[1], to[1]),
+            lerp(from[2], to[2]),
+        ]
+    }
+
+    fn splicing_matrix_cell_colors(
+        present: bool,
+        support_ratio: f32,
+    ) -> (egui::Color32, egui::Color32) {
+        let ratio = support_ratio.clamp(0.0, 1.0);
+        if present {
+            let rgb = Self::mix_rgb([191, 219, 254], [30, 64, 175], ratio);
+            let bg = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            let fg = if ratio >= 0.42 {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_rgb(15, 23, 42)
+            };
+            (bg, fg)
+        } else {
+            let rgb = Self::mix_rgb([248, 250, 252], [219, 234, 254], ratio);
+            (
+                egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]),
+                egui::Color32::from_rgb(71, 85, 105),
+            )
+        }
+    }
+
+    fn splicing_transition_cell_colors(support_ratio: f32) -> (egui::Color32, egui::Color32) {
+        let ratio = support_ratio.clamp(0.0, 1.0);
+        if ratio > 0.0 {
+            let rgb = Self::mix_rgb([220, 252, 231], [22, 101, 52], ratio);
+            let bg = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            let fg = if ratio >= 0.42 {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_rgb(20, 83, 45)
+            };
+            (bg, fg)
+        } else {
+            (
+                egui::Color32::from_rgb(248, 250, 252),
+                egui::Color32::from_rgb(100, 116, 139),
+            )
+        }
+    }
+
+    fn splicing_exon_length_bp(exon: &SplicingExonSummary) -> usize {
+        exon.end_1based
+            .max(exon.start_1based)
+            .saturating_sub(exon.end_1based.min(exon.start_1based))
+            + 1
+    }
+
+    fn splicing_exon_length_mod3(exon: &SplicingExonSummary) -> usize {
+        Self::splicing_exon_length_bp(exon) % 3
+    }
+
+    fn splicing_exon_mod3_colors(mod3: usize) -> (egui::Color32, egui::Color32) {
+        match mod3 % 3 {
+            0 => (
+                egui::Color32::from_rgb(219, 234, 254),
+                egui::Color32::from_rgb(30, 64, 175),
+            ),
+            1 => (
+                egui::Color32::from_rgb(254, 243, 199),
+                egui::Color32::from_rgb(146, 64, 14),
+            ),
+            _ => (
+                egui::Color32::from_rgb(255, 228, 230),
+                egui::Color32::from_rgb(159, 18, 57),
+            ),
+        }
+    }
+
     fn current_splicing_expert_view_for_primary_map(&mut self) -> Option<SplicingExpertView> {
         self.refresh_description_cache();
         match self.description_cache_expert_view.clone() {
@@ -6793,6 +6949,7 @@ impl MainAreaDna {
                     .monospace()
                     .size(self.feature_details_font_size()),
             );
+            let transcript_total = view.transcript_count.max(1);
             egui::ScrollArea::horizontal().show(ui, |ui| {
                 scroll_input_policy::apply_scrollarea_keyboard_navigation(
                     ui,
@@ -6803,14 +6960,76 @@ impl MainAreaDna {
                     .show(ui, |ui| {
                         ui.label(egui::RichText::new("transcript").monospace().strong());
                         for exon in &view.unique_exons {
+                            let mod3 = Self::splicing_exon_length_mod3(exon);
+                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
                             ui.label(
                                 egui::RichText::new(format!(
                                     "{}..{}",
                                     exon.start_1based, exon.end_1based
                                 ))
                                 .monospace()
-                                .size(9.0),
+                                .size(9.0)
+                                .background_color(bg)
+                                .color(fg),
+                            )
+                            .on_hover_text(format!(
+                                "len={} bp, len%3={mod3} (heuristic frame cue)",
+                                Self::splicing_exon_length_bp(exon)
+                            ));
+                        }
+                        ui.end_row();
+                        ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong());
+                        for exon in &view.unique_exons {
+                            let mod3 = Self::splicing_exon_length_mod3(exon);
+                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                            ui.label(
+                                egui::RichText::new(format!("{mod3}"))
+                                    .monospace()
+                                    .size(8.5)
+                                    .background_color(bg)
+                                    .color(fg),
+                            )
+                            .on_hover_text(format!(
+                                "len={} bp, len%3={mod3} (heuristic frame cue)",
+                                Self::splicing_exon_length_bp(exon)
+                            ));
+                        }
+                        ui.end_row();
+                        ui.label(
+                            egui::RichText::new("support")
+                                .monospace()
+                                .size(9.0)
+                                .strong(),
+                        );
+                        for exon in &view.unique_exons {
+                            let support_ratio = Self::support_ratio_percent(
+                                exon.support_transcript_count,
+                                transcript_total,
+                            ) as f32
+                                / 100.0;
+                            let support_label = Self::format_support_fraction(
+                                exon.support_transcript_count,
+                                transcript_total,
                             );
+                            let label = if exon.constitutive {
+                                format!("{support_label} const")
+                            } else {
+                                support_label
+                            };
+                            ui.label(egui::RichText::new(label).monospace().size(8.5).color(
+                                if exon.constitutive {
+                                    let rgb =
+                                        Self::mix_rgb([59, 130, 246], [30, 64, 175], support_ratio);
+                                    egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+                                } else {
+                                    let rgb = Self::mix_rgb(
+                                        [107, 114, 128],
+                                        [30, 64, 175],
+                                        support_ratio,
+                                    );
+                                    egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+                                },
+                            ));
                         }
                         ui.end_row();
                         for row in &view.matrix_rows {
@@ -6822,13 +7041,233 @@ impl MainAreaDna {
                                 .monospace()
                                 .size(9.0),
                             );
-                            for present in &row.exon_presence {
+                            for (col_idx, present) in row.exon_presence.iter().enumerate() {
+                                let support_count = view
+                                    .unique_exons
+                                    .get(col_idx)
+                                    .map(|exon| exon.support_transcript_count)
+                                    .unwrap_or(0);
+                                let support_ratio =
+                                    Self::support_ratio_percent(support_count, transcript_total)
+                                        as f32
+                                        / 100.0;
+                                let (bg, fg) =
+                                    Self::splicing_matrix_cell_colors(*present, support_ratio);
+                                let marker = if *present { "X" } else { "·" };
                                 ui.label(
-                                    egui::RichText::new(if *present { "X" } else { "." })
+                                    egui::RichText::new(marker)
                                         .monospace()
-                                        .size(9.0),
-                                );
+                                        .size(9.0)
+                                        .color(fg)
+                                        .background_color(bg),
+                                )
+                                .on_hover_text(format!(
+                                    "Support {}",
+                                    Self::format_support_fraction(support_count, transcript_total)
+                                ));
                             }
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+
+        if view.unique_exons.len() >= 2 {
+            let transitions = compute_splicing_exon_transition_matrix(view);
+            let transcript_total = view.transcript_count.max(1);
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Exon -> exon transition matrix")
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Cell color encodes transition support frequency; exon header color encodes exon genomic length %3 (heuristic frame cue).",
+                )
+                .size(9.0)
+                .color(egui::Color32::from_rgb(71, 85, 105)),
+            );
+            egui::ScrollArea::horizontal().show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
+                egui::Grid::new("splicing_exon_transition_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new("from \\ to")
+                                .monospace()
+                                .size(9.0)
+                                .strong(),
+                        );
+                        for (to_idx, exon) in view.unique_exons.iter().enumerate() {
+                            let mod3 = Self::splicing_exon_length_mod3(exon);
+                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                            ui.label(
+                                egui::RichText::new(format!("E{}", to_idx + 1))
+                                    .monospace()
+                                    .size(9.0)
+                                    .background_color(bg)
+                                    .color(fg),
+                            )
+                            .on_hover_text(format!(
+                                "{}..{} (len={} bp, len%3={mod3})",
+                                exon.start_1based,
+                                exon.end_1based,
+                                Self::splicing_exon_length_bp(exon),
+                            ));
+                        }
+                        ui.end_row();
+                        for (from_idx, from_exon) in view.unique_exons.iter().enumerate() {
+                            let mod3 = Self::splicing_exon_length_mod3(from_exon);
+                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                            ui.label(
+                                egui::RichText::new(format!("E{}", from_idx + 1))
+                                    .monospace()
+                                    .size(9.0)
+                                    .background_color(bg)
+                                    .color(fg),
+                            )
+                            .on_hover_text(format!(
+                                "{}..{} (len={} bp, len%3={mod3})",
+                                from_exon.start_1based,
+                                from_exon.end_1based,
+                                Self::splicing_exon_length_bp(from_exon),
+                            ));
+                            for to_idx in 0..view.unique_exons.len() {
+                                let support_count = transitions
+                                    .counts
+                                    .get(from_idx)
+                                    .and_then(|row| row.get(to_idx))
+                                    .copied()
+                                    .unwrap_or(0);
+                                let support_ratio =
+                                    Self::support_ratio_percent(support_count, transcript_total)
+                                        as f32
+                                        / 100.0;
+                                let (bg, fg) = Self::splicing_transition_cell_colors(support_ratio);
+                                let marker = if support_count > 0 {
+                                    support_count.to_string()
+                                } else {
+                                    "·".to_string()
+                                };
+                                let participants = transitions
+                                    .transcript_feature_ids
+                                    .get(from_idx)
+                                    .and_then(|row| row.get(to_idx))
+                                    .cloned()
+                                    .unwrap_or_default();
+                                let mut labels = participants
+                                    .iter()
+                                    .map(|feature_id| format!("n-{feature_id}"))
+                                    .collect::<Vec<_>>();
+                                if labels.len() > 12 {
+                                    let hidden = labels.len() - 12;
+                                    labels.truncate(12);
+                                    labels.push(format!("+{hidden} more"));
+                                }
+                                ui.label(
+                                    egui::RichText::new(marker)
+                                        .monospace()
+                                        .size(9.0)
+                                        .background_color(bg)
+                                        .color(fg),
+                                )
+                                .on_hover_text(format!(
+                                    "E{} -> E{} support {}{}",
+                                    from_idx + 1,
+                                    to_idx + 1,
+                                    Self::format_support_fraction(support_count, transcript_total),
+                                    if labels.is_empty() {
+                                        "".to_string()
+                                    } else {
+                                        format!("\nTranscripts: {}", labels.join(", "))
+                                    }
+                                ));
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+        }
+
+        if !view.junctions.is_empty() {
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Junction transition support")
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+            );
+            let transcript_total = view.transcript_count.max(1);
+            let mut junctions = view.junctions.clone();
+            junctions.sort_by(|left, right| {
+                right
+                    .support_transcript_count
+                    .cmp(&left.support_transcript_count)
+                    .then_with(|| left.donor_1based.cmp(&right.donor_1based))
+                    .then_with(|| left.acceptor_1based.cmp(&right.acceptor_1based))
+            });
+            egui::ScrollArea::horizontal().show(ui, |ui| {
+                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                    ui,
+                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                );
+                egui::Grid::new("splicing_junction_support_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("donor").monospace().strong());
+                        ui.label(egui::RichText::new("acceptor").monospace().strong());
+                        ui.label(egui::RichText::new("span").monospace().strong());
+                        ui.label(egui::RichText::new("support").monospace().strong());
+                        ui.label(egui::RichText::new("transcripts").monospace().strong());
+                        ui.end_row();
+                        for junction in &junctions {
+                            ui.label(
+                                egui::RichText::new(junction.donor_1based.to_string())
+                                    .monospace()
+                                    .size(9.0),
+                            );
+                            ui.label(
+                                egui::RichText::new(junction.acceptor_1based.to_string())
+                                    .monospace()
+                                    .size(9.0),
+                            );
+                            let span_bp = junction
+                                .acceptor_1based
+                                .max(junction.donor_1based)
+                                .saturating_sub(
+                                    junction.acceptor_1based.min(junction.donor_1based),
+                                );
+                            ui.label(
+                                egui::RichText::new(span_bp.to_string())
+                                    .monospace()
+                                    .size(9.0),
+                            );
+                            ui.label(
+                                egui::RichText::new(Self::format_support_fraction(
+                                    junction.support_transcript_count,
+                                    transcript_total,
+                                ))
+                                .monospace()
+                                .size(9.0),
+                            );
+                            let mut transcript_labels = junction
+                                .transcript_feature_ids
+                                .iter()
+                                .map(|feature_id| format!("n-{feature_id}"))
+                                .collect::<Vec<_>>();
+                            if transcript_labels.len() > 10 {
+                                let hidden = transcript_labels.len() - 10;
+                                transcript_labels.truncate(10);
+                                transcript_labels.push(format!("+{hidden} more"));
+                            }
+                            ui.label(
+                                egui::RichText::new(transcript_labels.join(", "))
+                                    .monospace()
+                                    .size(9.0),
+                            );
                             ui.end_row();
                         }
                     });
@@ -7069,7 +7508,19 @@ impl MainAreaDna {
                     .show(ctx, |ui| {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                        self.render_splicing_expert_view_ui(ui, &view);
+                        egui::ScrollArea::vertical()
+                            .id_salt(format!(
+                                "splicing_expert_scroll_embedded_{}_{}",
+                                view.seq_id, view.target_feature_id
+                            ))
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                    ui,
+                                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                );
+                                self.render_splicing_expert_view_ui(ui, &view);
+                            });
                     });
                 self.show_splicing_expert_window = open;
                 return;
@@ -7078,7 +7529,19 @@ impl MainAreaDna {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
-                self.render_splicing_expert_view_ui(ui, &view);
+                egui::ScrollArea::vertical()
+                    .id_salt(format!(
+                        "splicing_expert_scroll_viewport_{}_{}",
+                        view.seq_id, view.target_feature_id
+                    ))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        self.render_splicing_expert_view_ui(ui, &view);
+                    });
             });
 
             let close_shortcut = ctx.input(|i| i.key_pressed(egui::Key::W) && i.modifiers.command);
@@ -12393,25 +12856,50 @@ impl MainAreaDna {
                         ui.vertical(|ui| {
                             resized_tree_width =
                                 Self::clamp_feature_tree_panel_width(ui.max_rect().width());
-                            let tree_height = (ui.available_height() * 0.55).max(180.0);
-                            egui::ScrollArea::both()
-                                .id_salt(format!(
-                                    "feature_tree_scroll_{}",
-                                    self.seq_id.as_deref().unwrap_or("<no-seq-id>")
-                                ))
-                                .auto_shrink([false, false])
-                                .max_height(tree_height)
-                                .show(ui, |ui| {
-                                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                        ui,
-                                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                            if self.feature_tree_deferred_until_interaction {
+                                let feature_count = self
+                                    .dna
+                                    .read()
+                                    .map(|dna| dna.features().len())
+                                    .unwrap_or(0);
+                                ui.group(|ui| {
+                                    ui.label(
+                                        "Feature tree/details deferred to speed up initial window opening.",
                                     );
-                                    ui.vertical(|ui| {
-                                        self.render_features(ui);
-                                    });
+                                    ui.small(format!(
+                                        "{feature_count} feature(s) available for this sequence."
+                                    ));
+                                    if ui
+                                        .button("Load feature tree now")
+                                        .on_hover_text(
+                                            "Enable feature-tree and detail rendering for this window",
+                                        )
+                                        .clicked()
+                                    {
+                                        self.feature_tree_deferred_until_interaction = false;
+                                    }
                                 });
-                            ui.separator();
-                            self.render_description(ui);
+                            } else {
+                                let tree_height = (ui.available_height() * 0.55).max(180.0);
+                                egui::ScrollArea::both()
+                                    .id_salt(format!(
+                                        "feature_tree_scroll_{}",
+                                        self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                                    ))
+                                    .auto_shrink([false, false])
+                                    .max_height(tree_height)
+                                    .show(ui, |ui| {
+                                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                                            ui,
+                                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                                        );
+                                        ui.vertical(|ui| {
+                                            self.render_features(ui);
+                                        });
+                                    });
+                                ui.separator();
+                                self.render_description(ui);
+                            }
                         });
                     });
                 let clamped_tree_width =

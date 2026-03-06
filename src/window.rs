@@ -14,6 +14,10 @@ impl Window {
         Self::Dna(WindowDna::new(dna, seq_id, engine))
     }
 
+    pub fn new_dna_lazy(seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
+        Self::Dna(WindowDna::new_lazy(seq_id, engine))
+    }
+
     pub fn update(&mut self, ctx: &egui::Context) {
         match self {
             Self::Dna(window) => window.update(ctx),

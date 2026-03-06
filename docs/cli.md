@@ -81,6 +81,23 @@ Primer-design report capability status:
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
 
+Feature-expert SVG parity status:
+
+- `gentle_cli`: supported via direct commands and shared-shell command path
+  (`inspect-feature-expert`, `render-feature-expert-svg`)
+- `gentle_js`: supported via `render_feature_expert_svg(...)` wrapper over
+  shared engine operation `RenderFeatureExpertSvg`
+- `gentle_lua`: supported via `render_feature_expert_svg(...)` wrapper over
+  shared engine operation `RenderFeatureExpertSvg`
+- splicing expert SVG now includes:
+  - explicit junction transition support labels/table
+  - frequency-encoded transcript-vs-exon matrix cell coloring
+  - predicted exon-to-exon transition matrix with frequency-encoded cell
+    coloring
+  - exon-length modulo-3 (`len%3`) cues on exon headers (heuristic frame cue)
+  - shared output semantics across CLI/JS/Lua because all routes call the same
+    engine renderer
+
 UniProt mapping capability status:
 
 - shared shell (`gentle_cli shell`, GUI shell): supported via `uniprot ...` commands
@@ -814,6 +831,9 @@ Isoform architecture panel workflow:
 - direct expert route:
   - `inspect-feature-expert SEQ_ID isoform PANEL_ID`
   - `render-feature-expert-svg SEQ_ID isoform PANEL_ID OUTPUT.svg`
+  - same command family for splicing:
+    - `inspect-feature-expert SEQ_ID splicing FEATURE_ID`
+    - `render-feature-expert-svg SEQ_ID splicing FEATURE_ID OUTPUT.svg`
 
 Pool exchange commands:
 

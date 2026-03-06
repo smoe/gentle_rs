@@ -94,6 +94,8 @@ Current draft operations:
 - `SaveFile { seq_id, path, format }`
 - `RenderSequenceSvg { seq_id, mode, path }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
+  - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
+  - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, and exon `len%3` (genomic-length modulo 3) cues
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
