@@ -508,6 +508,10 @@ pub enum ShellCommand {
         output: String,
         human_id: Option<String>,
     },
+    ExportRunBundle {
+        output: String,
+        run_id: Option<String>,
+    },
     ImportPool {
         input: String,
         prefix: String,
@@ -3043,6 +3047,14 @@ impl ShellCommand {
                     "export pool with {} input(s) to '{output}' (human_id={human})",
                     inputs.len()
                 )
+            }
+            Self::ExportRunBundle { output, run_id } => {
+                let run_id = run_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("all");
+                format!("export process run bundle to '{output}' (run_id={run_id})")
             }
             Self::ImportPool { input, prefix } => {
                 format!("import pool from '{input}' with prefix '{prefix}'")
@@ -8724,6 +8736,34 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 human_id: tokens.get(3).cloned(),
             })
         }
+        "export-run-bundle" => {
+            if tokens.len() < 2 {
+                return Err(
+                    "export-run-bundle requires: OUTPUT.json [--run-id RUN_ID]".to_string(),
+                );
+            }
+            let output = tokens[1].clone();
+            let mut run_id: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--run-id" => {
+                        if idx + 1 >= tokens.len() {
+                            return Err("Missing value after --run-id".to_string());
+                        }
+                        let value = tokens[idx + 1].trim();
+                        if !value.is_empty() {
+                            run_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!("Unknown argument '{other}' for export-run-bundle"));
+                    }
+                }
+            }
+            Ok(ShellCommand::ExportRunBundle { output, run_id })
+        }
         "import-pool" => {
             if tokens.len() > 3 {
                 return Err(token_error(cmd));
@@ -10228,6 +10268,18 @@ pub fn execute_shell_command_with_options(
                     path: output.clone(),
                     pool_id: Some("pool_export".to_string()),
                     human_id: human_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({ "result": op_result }),
+            }
+        }
+        ShellCommand::ExportRunBundle { output, run_id } => {
+            let op_result = engine
+                .apply(Operation::ExportProcessRunBundle {
+                    path: output.clone(),
+                    run_id: run_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
             ShellRunResult {
@@ -13073,6 +13125,20 @@ mod tests {
                 assert_eq!(molecule, LadderMolecule::Dna);
                 assert_eq!(output, "ladders.json".to_string());
                 assert_eq!(name_filter, Some("ruler".to_string()));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_export_run_bundle_with_run_id() {
+        let cmd =
+            parse_shell_line("export-run-bundle run_bundle.json --run-id demo_run")
+                .expect("parse command");
+        match cmd {
+            ShellCommand::ExportRunBundle { output, run_id } => {
+                assert_eq!(output, "run_bundle.json");
+                assert_eq!(run_id.as_deref(), Some("demo_run"));
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -16063,6 +16129,48 @@ filter set1 set2 --metric score --min 10
             matches!(terminal_state.as_str(), "failed" | "cancelled"),
             "unexpected async blast terminal state: {}",
             terminal_state
+        );
+    }
+
+    #[test]
+    fn execute_export_run_bundle_writes_schema_json() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seqA".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(crate::engine::Operation::Reverse {
+                input: "seqA".to_string(),
+                output_id: Some("seqA_rev".to_string()),
+            })
+            .expect("reverse");
+
+        let tmp = tempfile::NamedTempFile::new().expect("tmp file");
+        let path = tmp.path().with_extension("shell.run_bundle.json");
+        let path_text = path.display().to_string();
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::ExportRunBundle {
+                output: path_text.clone(),
+                run_id: Some("interactive".to_string()),
+            },
+        )
+        .expect("export run bundle");
+        assert!(!out.state_changed);
+        let text = fs::read_to_string(path_text).expect("read bundle");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("parse bundle");
+        assert_eq!(
+            value.get("schema").and_then(|v| v.as_str()),
+            Some("gentle.process_run_bundle.v1")
+        );
+        assert_eq!(
+            value
+                .get("run_id_filter")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+            "interactive"
         );
     }
 

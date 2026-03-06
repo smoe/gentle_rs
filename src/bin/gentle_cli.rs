@@ -464,6 +464,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] ladders list [--molecule dna|rna] [--filter TEXT]\n  \
   gentle_cli [--state PATH|--project PATH] ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]\n\n  \
   gentle_cli [--state PATH|--project PATH] export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]\n  \
   gentle_cli [--state PATH|--project PATH] import-pool INPUT.pool.gentle.json [PREFIX]\n\n  \
   gentle_cli genomes list [--catalog PATH]\n  \
   gentle_cli genomes validate-catalog [--catalog PATH]\n  \
@@ -1990,6 +1991,49 @@ fn run() -> Result<(), String> {
                     path: output.to_string(),
                     pool_id: Some("pool_export".to_string()),
                     human_id,
+                })
+                .map_err(|e| e.to_string())?;
+            engine
+                .state()
+                .save_to_path(&state_path)
+                .map_err(|e| e.to_string())?;
+            print_json(&result)
+        }
+        "export-run-bundle" => {
+            if args.len() <= cmd_idx + 1 {
+                usage();
+                return Err(
+                    "export-run-bundle requires: OUTPUT.run_bundle.json [--run-id RUN_ID]"
+                        .to_string(),
+                );
+            }
+            let output = args[cmd_idx + 1].clone();
+            let mut run_id: Option<String> = None;
+            let mut idx = cmd_idx + 2;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--run-id" => {
+                        if idx + 1 >= args.len() {
+                            return Err("Missing value after --run-id".to_string());
+                        }
+                        let value = args[idx + 1].trim();
+                        if !value.is_empty() {
+                            run_id = Some(value.to_string());
+                        }
+                        idx += 2;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown argument '{other}' for export-run-bundle (expected --run-id)"
+                        ));
+                    }
+                }
+            }
+            let mut engine = GentleEngine::from_state(load_state(&state_path)?);
+            let result = engine
+                .apply(Operation::ExportProcessRunBundle {
+                    path: output,
+                    run_id,
                 })
                 .map_err(|e| e.to_string())?;
             engine

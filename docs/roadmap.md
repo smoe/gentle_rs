@@ -133,6 +133,16 @@ order. Durable architecture constraints and decisions remain in
     `macros instance-list`, `macros instance-show`
 - Ladder-aware virtual gel rendering and SVG export routes, including
   container-based and arrangement-based serial gel export surfaces.
+- Deterministic process run-bundle export baseline is now implemented:
+  - engine operation `ExportProcessRunBundle { path, run_id? }`
+  - shared-shell/CLI command
+    `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
+  - exported schema `gentle.process_run_bundle.v1` includes:
+    - extracted operation inputs
+    - chronological `SetParameter` overrides
+    - selected immutable operation log records
+    - output summaries (created/changed entities + exported artifacts)
+    - full parameter snapshot
 - Primer-design report baseline:
   - engine operation `DesignPrimerPairs` now persists deterministic report
     payloads (`gentle.primer_design_report.v1`) in project metadata
@@ -1230,8 +1240,10 @@ Planned upgrades:
 
 - Keep adapter-level helpers thin and aligned with engine operations.
 - Promote remaining adapter-level utilities into first-class engine operations.
-- Add process-protocol export contract and richer versioned schema/error
-  policy.
+- Extend process-protocol export beyond the shipped run-bundle baseline:
+  - workflow-scoped artifact packaging (optional input/output file copies and
+    checksums)
+  - stricter schema evolution and compatibility reporting for protocol bundles.
 - Define shared frontend-neutral view-model schema for tracks/features/overlays.
 - Complete XML follow-up (`INSDSet/INSDSeq`) without semantic divergence.
 - Add sequencing-confirmation evidence contracts (read-aligned construct

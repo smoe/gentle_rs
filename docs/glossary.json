@@ -1,5 +1,5 @@
 {
-   "command_count": 181,
+   "command_count": 182,
    "commands": [
       {
          "aliases": [
@@ -274,6 +274,20 @@
          "path": "export-pool",
          "summary": "Export selected sequence IDs as a pool artifact.",
          "usage": "export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportProcessRunBundle"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "export-run-bundle",
+         "summary": "Export deterministic process run bundle JSON for reproducibility/audit.",
+         "usage": "export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]"
       },
       {
          "aliases": [],

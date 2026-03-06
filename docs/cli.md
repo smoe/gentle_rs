@@ -706,6 +706,7 @@ Shared shell command:
     - `ladders list [--molecule dna|rna] [--filter TEXT]`
     - `ladders export OUTPUT.json [--molecule dna|rna] [--filter TEXT]`
     - `export-pool IDS OUTPUT.pool.gentle.json [HUMAN_ID]`
+    - `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
     - `import-pool INPUT.pool.gentle.json [PREFIX]`
     - `resources sync-rebase INPUT.withrefm_or_URL [OUTPUT.rebase.json] [--commercial-only]`
     - `resources sync-jaspar INPUT.jaspar_or_URL [OUTPUT.motifs.json]`
@@ -845,6 +846,15 @@ Pool exchange commands:
   - Adds `human_id` at pool level and per-member `human_id`.
 - `import-pool INPUT.pool.gentle.json [PREFIX]`
   - Imports pool members into current state; generated IDs are prefixed.
+- `export-run-bundle OUTPUT.run_bundle.json [--run-id RUN_ID]`
+  - Calls engine operation `ExportProcessRunBundle`.
+  - Writes a deterministic process/audit bundle JSON
+    (`gentle.process_run_bundle.v1`) with:
+    - extracted operation inputs
+    - chronological parameter overrides
+    - selected operation log records
+    - output summaries (created/changed ids, exported artifact paths)
+  - Omitting `--run-id` exports all operation-log rows.
 
 Rendering export commands:
 

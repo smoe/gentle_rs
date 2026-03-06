@@ -121,6 +121,7 @@ const UNIPROT_ENTRIES_SCHEMA: &str = "gentle.uniprot_entries.v1";
 const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projections";
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
+const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
@@ -2502,6 +2503,11 @@ pub enum Operation {
         pool_id: Option<String>,
         human_id: Option<String>,
     },
+    ExportProcessRunBundle {
+        path: String,
+        #[serde(default)]
+        run_id: Option<RunId>,
+    },
     PrepareGenome {
         genome_id: String,
         catalog_path: Option<String>,
@@ -2976,6 +2982,77 @@ struct PoolExport {
     human_id: String,
     member_count: usize,
     members: Vec<PoolMember>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessRunBundleOperationInputSummary {
+    pub op_id: String,
+    pub run_id: String,
+    pub operation: String,
+    pub record_index: usize,
+    #[serde(default)]
+    pub sequence_ids: Vec<String>,
+    #[serde(default)]
+    pub container_ids: Vec<String>,
+    #[serde(default)]
+    pub arrangement_ids: Vec<String>,
+    #[serde(default)]
+    pub candidate_set_ids: Vec<String>,
+    #[serde(default)]
+    pub guide_set_ids: Vec<String>,
+    #[serde(default)]
+    pub genome_ids: Vec<String>,
+    #[serde(default)]
+    pub file_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProcessRunBundleInputs {
+    pub root_sequence_ids: Vec<String>,
+    pub referenced_sequence_ids: Vec<String>,
+    pub referenced_container_ids: Vec<String>,
+    pub referenced_arrangement_ids: Vec<String>,
+    pub referenced_candidate_set_ids: Vec<String>,
+    pub referenced_guide_set_ids: Vec<String>,
+    pub referenced_genome_ids: Vec<String>,
+    pub file_inputs: Vec<String>,
+    pub operation_inputs: Vec<ProcessRunBundleOperationInputSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessRunBundleParameterOverride {
+    pub op_id: String,
+    pub run_id: String,
+    pub record_index: usize,
+    pub name: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ProcessRunBundleOutputs {
+    pub created_seq_ids: Vec<String>,
+    pub changed_seq_ids: Vec<String>,
+    pub final_sequences: Vec<EngineSequenceSummary>,
+    pub created_container_ids: Vec<String>,
+    pub created_arrangement_ids: Vec<String>,
+    pub exported_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessRunBundleExport {
+    pub schema: String,
+    pub generated_at_unix_ms: u128,
+    #[serde(default)]
+    pub run_id_filter: Option<String>,
+    pub selected_record_count: usize,
+    pub inputs: ProcessRunBundleInputs,
+    #[serde(default)]
+    pub parameter_overrides: Vec<ProcessRunBundleParameterOverride>,
+    pub operation_log: Vec<OperationRecord>,
+    pub outputs: ProcessRunBundleOutputs,
+    pub parameter_snapshot: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3841,6 +3918,7 @@ impl GentleEngine {
                 "ExportDnaLadders".to_string(),
                 "ExportRnaLadders".to_string(),
                 "ExportPool".to_string(),
+                "ExportProcessRunBundle".to_string(),
                 "PrepareGenome".to_string(),
                 "ExtractGenomeRegion".to_string(),
                 "ExtractGenomeGene".to_string(),
@@ -7412,6 +7490,7 @@ impl GentleEngine {
                 | Operation::ExportDnaLadders { .. }
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
+                | Operation::ExportProcessRunBundle { .. }
         )
     }
 
@@ -15108,6 +15187,408 @@ impl GentleEngine {
         Ok((pool_id, human_id, export.member_count))
     }
 
+    fn push_unique_token(values: &mut Vec<String>, token: &str) {
+        let trimmed = token.trim();
+        if trimmed.is_empty() || values.iter().any(|existing| existing == trimmed) {
+            return;
+        }
+        values.push(trimmed.to_string());
+    }
+
+    fn operation_variant_name(op: &Operation) -> String {
+        serde_json::to_value(op)
+            .ok()
+            .and_then(|value| {
+                value
+                    .as_object()
+                    .and_then(|obj| obj.keys().next().cloned())
+            })
+            .unwrap_or_else(|| "UnknownOperation".to_string())
+    }
+
+    fn summarize_run_bundle_operation_inputs(
+        op: &Operation,
+        op_id: &str,
+        run_id: &str,
+        record_index: usize,
+    ) -> ProcessRunBundleOperationInputSummary {
+        let mut summary = ProcessRunBundleOperationInputSummary {
+            op_id: op_id.to_string(),
+            run_id: run_id.to_string(),
+            operation: Self::operation_variant_name(op),
+            record_index,
+            sequence_ids: vec![],
+            container_ids: vec![],
+            arrangement_ids: vec![],
+            candidate_set_ids: vec![],
+            guide_set_ids: vec![],
+            genome_ids: vec![],
+            file_paths: vec![],
+        };
+        match op {
+            Operation::LoadFile { path, .. } => {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::SaveFile { seq_id, .. }
+            | Operation::RenderSequenceSvg { seq_id, .. }
+            | Operation::RenderFeatureExpertSvg { seq_id, .. }
+            | Operation::RenderIsoformArchitectureSvg { seq_id, .. }
+            | Operation::RenderRnaStructureSvg { seq_id, .. }
+            | Operation::ExtendGenomeAnchor { seq_id, .. }
+            | Operation::VerifyGenomeAnchor { seq_id, .. }
+            | Operation::ImportGenomeBedTrack { seq_id, .. }
+            | Operation::ImportGenomeBigWigTrack { seq_id, .. }
+            | Operation::ImportGenomeVcfTrack { seq_id, .. }
+            | Operation::ImportIsoformPanel { seq_id, .. }
+            | Operation::ProjectUniprotToGenome { seq_id, .. }
+            | Operation::ImportBlastHitsTrack { seq_id, .. }
+            | Operation::GenerateCandidateSet { seq_id, .. }
+            | Operation::GenerateCandidateSetBetweenAnchors { seq_id, .. }
+            | Operation::SetTopology { seq_id, .. }
+            | Operation::RecomputeFeatures { seq_id, .. }
+            | Operation::AnnotateTfbs { seq_id, .. } => {
+                Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+            }
+            Operation::RenderPoolGelSvg {
+                inputs,
+                container_ids,
+                arrangement_id,
+                ..
+            } => {
+                for seq_id in inputs {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(container_ids) = container_ids {
+                    for container_id in container_ids {
+                        Self::push_unique_token(&mut summary.container_ids, container_id);
+                    }
+                }
+                if let Some(arrangement_id) = arrangement_id.as_deref() {
+                    Self::push_unique_token(&mut summary.arrangement_ids, arrangement_id);
+                }
+            }
+            Operation::CreateArrangementSerial { container_ids, .. }
+            | Operation::MergeContainersById { container_ids, .. } => {
+                for container_id in container_ids {
+                    Self::push_unique_token(&mut summary.container_ids, container_id);
+                }
+            }
+            Operation::ExportPool { inputs, .. }
+            | Operation::MergeContainers { inputs, .. }
+            | Operation::Ligation { inputs, .. }
+            | Operation::FilterByMolecularWeight { inputs, .. }
+            | Operation::FilterByDesignConstraints { inputs, .. } => {
+                for seq_id in inputs {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+            }
+            Operation::PrepareGenome { genome_id, .. }
+            | Operation::ExtractGenomeRegion { genome_id, .. }
+            | Operation::ExtractGenomeGene { genome_id, .. } => {
+                Self::push_unique_token(&mut summary.genome_ids, genome_id);
+            }
+            Operation::ImportUniprotSwissProt { path, .. } => {
+                Self::push_unique_token(&mut summary.file_paths, path);
+            }
+            Operation::DigestContainer { container_id, .. }
+            | Operation::LigationContainer { container_id, .. }
+            | Operation::FilterContainerByMolecularWeight { container_id, .. } => {
+                Self::push_unique_token(&mut summary.container_ids, container_id);
+            }
+            Operation::Digest { input, .. }
+            | Operation::Pcr { template: input, .. }
+            | Operation::PcrAdvanced {
+                template: input, ..
+            }
+            | Operation::PcrMutagenesis {
+                template: input, ..
+            }
+            | Operation::DesignPrimerPairs {
+                template: input, ..
+            }
+            | Operation::DesignQpcrAssays {
+                template: input, ..
+            }
+            | Operation::ExtractRegion { input, .. }
+            | Operation::ExtractAnchoredRegion { input, .. }
+            | Operation::SelectCandidate { input, .. }
+            | Operation::Reverse { input, .. }
+            | Operation::Complement { input, .. }
+            | Operation::ReverseComplement { input, .. }
+            | Operation::Branch { input, .. } => {
+                Self::push_unique_token(&mut summary.sequence_ids, input);
+            }
+            Operation::DeleteCandidateSet { set_name }
+            | Operation::ScoreCandidateSetExpression { set_name, .. }
+            | Operation::ScoreCandidateSetDistance { set_name, .. }
+            | Operation::ScoreCandidateSetWeightedObjective { set_name, .. } => {
+                Self::push_unique_token(&mut summary.candidate_set_ids, set_name);
+            }
+            Operation::FilterCandidateSet {
+                input_set,
+                output_set,
+                ..
+            }
+            | Operation::CandidateSetOp {
+                left_set: input_set,
+                right_set: output_set,
+                ..
+            }
+            | Operation::TopKCandidateSet {
+                input_set,
+                output_set,
+                ..
+            }
+            | Operation::ParetoFrontierCandidateSet {
+                input_set,
+                output_set,
+                ..
+            } => {
+                Self::push_unique_token(&mut summary.candidate_set_ids, input_set);
+                Self::push_unique_token(&mut summary.candidate_set_ids, output_set);
+            }
+            Operation::UpsertGuideSet { guide_set_id, .. }
+            | Operation::DeleteGuideSet { guide_set_id }
+            | Operation::FilterGuidesPractical { guide_set_id, .. }
+            | Operation::GenerateGuideOligos { guide_set_id, .. }
+            | Operation::ExportGuideOligos { guide_set_id, .. }
+            | Operation::ExportGuideProtocolText { guide_set_id, .. } => {
+                Self::push_unique_token(&mut summary.guide_set_ids, guide_set_id);
+            }
+            _ => {}
+        }
+        if let Operation::ImportGenomeBedTrack { path, .. }
+        | Operation::ImportGenomeBigWigTrack { path, .. }
+        | Operation::ImportGenomeVcfTrack { path, .. }
+        | Operation::ImportIsoformPanel {
+            panel_path: path, ..
+        } = op
+        {
+            Self::push_unique_token(&mut summary.file_paths, path);
+        }
+        summary
+    }
+
+    fn collect_run_bundle_export_paths(op: &Operation) -> Vec<String> {
+        let mut paths: Vec<String> = vec![];
+        let mut push = |path: &str| Self::push_unique_token(&mut paths, path);
+        match op {
+            Operation::SaveFile { path, .. }
+            | Operation::RenderSequenceSvg { path, .. }
+            | Operation::RenderFeatureExpertSvg { path, .. }
+            | Operation::RenderIsoformArchitectureSvg { path, .. }
+            | Operation::RenderRnaStructureSvg { path, .. }
+            | Operation::RenderLineageSvg { path }
+            | Operation::RenderPoolGelSvg { path, .. }
+            | Operation::ExportDnaLadders { path, .. }
+            | Operation::ExportRnaLadders { path, .. }
+            | Operation::ExportPool { path, .. }
+            | Operation::ExportProcessRunBundle { path, .. }
+            | Operation::ExportGuideOligos { path, .. }
+            | Operation::ExportGuideProtocolText { path, .. } => {
+                push(path);
+            }
+            _ => {}
+        }
+        paths
+    }
+
+    fn export_process_run_bundle_file(
+        &self,
+        path: &str,
+        run_id_filter: Option<&str>,
+    ) -> Result<ProcessRunBundleExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ExportProcessRunBundle requires non-empty path".to_string(),
+            });
+        }
+        let normalized_run_id = run_id_filter.map(str::trim).filter(|value| !value.is_empty());
+        let selected_records: Vec<OperationRecord> = self
+            .journal
+            .iter()
+            .filter(|record| {
+                normalized_run_id
+                    .map(|run_id| record.run_id == run_id)
+                    .unwrap_or(true)
+            })
+            .cloned()
+            .collect();
+        if normalized_run_id.is_some() && selected_records.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No operation records found for run_id '{}'",
+                    normalized_run_id.unwrap_or_default()
+                ),
+            });
+        }
+
+        let mut created_seq_ids: BTreeSet<String> = BTreeSet::new();
+        let mut changed_seq_ids: BTreeSet<String> = BTreeSet::new();
+        let mut op_ids: BTreeSet<String> = BTreeSet::new();
+        for record in &selected_records {
+            op_ids.insert(record.result.op_id.clone());
+            for seq_id in &record.result.created_seq_ids {
+                created_seq_ids.insert(seq_id.clone());
+            }
+            for seq_id in &record.result.changed_seq_ids {
+                changed_seq_ids.insert(seq_id.clone());
+            }
+        }
+
+        let operation_inputs: Vec<ProcessRunBundleOperationInputSummary> = selected_records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| {
+                Self::summarize_run_bundle_operation_inputs(
+                    &record.op,
+                    &record.result.op_id,
+                    &record.run_id,
+                    index + 1,
+                )
+            })
+            .collect();
+        let mut referenced_sequence_ids: BTreeSet<String> = BTreeSet::new();
+        let mut referenced_container_ids: BTreeSet<String> = BTreeSet::new();
+        let mut referenced_arrangement_ids: BTreeSet<String> = BTreeSet::new();
+        let mut referenced_candidate_set_ids: BTreeSet<String> = BTreeSet::new();
+        let mut referenced_guide_set_ids: BTreeSet<String> = BTreeSet::new();
+        let mut referenced_genome_ids: BTreeSet<String> = BTreeSet::new();
+        let mut file_inputs: BTreeSet<String> = BTreeSet::new();
+        for summary in &operation_inputs {
+            referenced_sequence_ids.extend(summary.sequence_ids.iter().cloned());
+            referenced_container_ids.extend(summary.container_ids.iter().cloned());
+            referenced_arrangement_ids.extend(summary.arrangement_ids.iter().cloned());
+            referenced_candidate_set_ids.extend(summary.candidate_set_ids.iter().cloned());
+            referenced_guide_set_ids.extend(summary.guide_set_ids.iter().cloned());
+            referenced_genome_ids.extend(summary.genome_ids.iter().cloned());
+            file_inputs.extend(summary.file_paths.iter().cloned());
+        }
+        let root_sequence_ids = referenced_sequence_ids
+            .iter()
+            .filter(|seq_id| !created_seq_ids.contains(*seq_id))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut parameter_overrides: Vec<ProcessRunBundleParameterOverride> = vec![];
+        for (index, record) in selected_records.iter().enumerate() {
+            if let Operation::SetParameter { name, value } = &record.op {
+                parameter_overrides.push(ProcessRunBundleParameterOverride {
+                    op_id: record.result.op_id.clone(),
+                    run_id: record.run_id.clone(),
+                    record_index: index + 1,
+                    name: name.clone(),
+                    value: value.clone(),
+                });
+            }
+        }
+
+        let mut created_container_ids: Vec<String> = self
+            .state
+            .container_state
+            .containers
+            .iter()
+            .filter_map(|(container_id, container)| {
+                container
+                    .created_by_op
+                    .as_deref()
+                    .filter(|op_id| op_ids.contains(*op_id))
+                    .map(|_| container_id.clone())
+            })
+            .collect();
+        created_container_ids.sort_by_key(|value| value.to_ascii_lowercase());
+
+        let mut created_arrangement_ids: Vec<String> = self
+            .state
+            .container_state
+            .arrangements
+            .iter()
+            .filter_map(|(arrangement_id, arrangement)| {
+                arrangement
+                    .created_by_op
+                    .as_deref()
+                    .filter(|op_id| op_ids.contains(*op_id))
+                    .map(|_| arrangement_id.clone())
+            })
+            .collect();
+        created_arrangement_ids.sort_by_key(|value| value.to_ascii_lowercase());
+
+        let mut exported_paths: BTreeSet<String> = BTreeSet::new();
+        for record in &selected_records {
+            for path in Self::collect_run_bundle_export_paths(&record.op) {
+                exported_paths.insert(path);
+            }
+        }
+
+        let final_sequence_ids: BTreeSet<String> =
+            created_seq_ids.union(&changed_seq_ids).cloned().collect();
+        let mut final_sequences: Vec<EngineSequenceSummary> = vec![];
+        for seq_id in final_sequence_ids {
+            let Some(dna) = self.state.sequences.get(&seq_id) else {
+                continue;
+            };
+            final_sequences.push(EngineSequenceSummary {
+                id: seq_id,
+                name: dna.name().clone(),
+                length: dna.len(),
+                circular: dna.is_circular(),
+            });
+        }
+        final_sequences.sort_by(|left, right| {
+            left.id
+                .to_ascii_lowercase()
+                .cmp(&right.id.to_ascii_lowercase())
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        let bundle = ProcessRunBundleExport {
+            schema: PROCESS_RUN_BUNDLE_SCHEMA.to_string(),
+            generated_at_unix_ms: Self::now_unix_ms(),
+            run_id_filter: normalized_run_id.map(|value| value.to_string()),
+            selected_record_count: selected_records.len(),
+            inputs: ProcessRunBundleInputs {
+                root_sequence_ids,
+                referenced_sequence_ids: referenced_sequence_ids.into_iter().collect(),
+                referenced_container_ids: referenced_container_ids.into_iter().collect(),
+                referenced_arrangement_ids: referenced_arrangement_ids.into_iter().collect(),
+                referenced_candidate_set_ids: referenced_candidate_set_ids.into_iter().collect(),
+                referenced_guide_set_ids: referenced_guide_set_ids.into_iter().collect(),
+                referenced_genome_ids: referenced_genome_ids.into_iter().collect(),
+                file_inputs: file_inputs.into_iter().collect(),
+                operation_inputs,
+            },
+            parameter_overrides,
+            operation_log: selected_records,
+            outputs: ProcessRunBundleOutputs {
+                created_seq_ids: created_seq_ids.into_iter().collect(),
+                changed_seq_ids: changed_seq_ids.into_iter().collect(),
+                final_sequences,
+                created_container_ids,
+                created_arrangement_ids,
+                exported_paths: exported_paths.into_iter().collect(),
+            },
+            parameter_snapshot: serde_json::to_value(&self.state.parameters).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!("Could not serialize engine parameter snapshot: {e}"),
+                }
+            })?,
+        };
+
+        let text = serde_json::to_string_pretty(&bundle).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize run bundle JSON: {e}"),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write run bundle file '{path}': {e}"),
+        })?;
+        Ok(bundle)
+    }
+
     fn reverse_complement(seq: &str) -> String {
         seq.as_bytes()
             .iter()
@@ -17511,6 +17992,19 @@ impl GentleEngine {
                 result.messages.push(format!(
                     "Wrote pool export '{}' ({}) with {} members to '{}'",
                     pool_id, human_id, count, path
+                ));
+            }
+            Operation::ExportProcessRunBundle { path, run_id } => {
+                let bundle = self.export_process_run_bundle_file(&path, run_id.as_deref())?;
+                let run_scope = bundle
+                    .run_id_filter
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("all");
+                result.messages.push(format!(
+                    "Wrote process run bundle '{}' with {} record(s) (run_id={}) to '{}'",
+                    bundle.schema, bundle.selected_record_count, run_scope, path
                 ));
             }
             Operation::PrepareGenome {
@@ -26077,6 +26571,97 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         assert_eq!(v["pool_id"], "pool_1");
         assert_eq!(v["human_id"], "test pool");
         assert_eq!(v["member_count"], 2);
+    }
+
+    #[test]
+    fn test_export_process_run_bundle_operation() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), seq("ATGCCA"));
+        let mut engine = GentleEngine::from_state(state);
+        let reverse = engine
+            .apply(Operation::Reverse {
+                input: "s".to_string(),
+                output_id: Some("s_rev".to_string()),
+            })
+            .expect("reverse");
+        let _set_param = engine
+            .apply(Operation::SetParameter {
+                name: "max_fragments_per_container".to_string(),
+                value: serde_json::json!(12345),
+            })
+            .expect("set parameter");
+        let tmp = tempfile::NamedTempFile::new().expect("tmp");
+        let path = tmp.path().with_extension("run.bundle.json");
+        let path_text = path.display().to_string();
+        let export = engine
+            .apply(Operation::ExportProcessRunBundle {
+                path: path_text.clone(),
+                run_id: Some("interactive".to_string()),
+            })
+            .expect("export run bundle");
+        assert!(
+            export
+                .messages
+                .iter()
+                .any(|line| line.contains("process run bundle"))
+        );
+
+        let text = std::fs::read_to_string(path_text).expect("read bundle");
+        let bundle: ProcessRunBundleExport =
+            serde_json::from_str(&text).expect("parse run bundle json");
+        assert_eq!(bundle.schema, PROCESS_RUN_BUNDLE_SCHEMA);
+        assert_eq!(bundle.run_id_filter.as_deref(), Some("interactive"));
+        assert!(bundle.selected_record_count >= 2);
+        assert!(
+            bundle
+                .operation_log
+                .iter()
+                .any(|record| record.result.op_id == reverse.op_id)
+        );
+        assert!(
+            bundle
+                .parameter_overrides
+                .iter()
+                .any(|row| row.name == "max_fragments_per_container" && row.value == serde_json::json!(12345))
+        );
+        assert!(
+            bundle
+                .outputs
+                .created_seq_ids
+                .iter()
+                .any(|seq_id| seq_id == "s_rev")
+        );
+        assert!(
+            bundle
+                .inputs
+                .root_sequence_ids
+                .iter()
+                .any(|seq_id| seq_id == "s")
+        );
+    }
+
+    #[test]
+    fn test_export_process_run_bundle_run_id_not_found_fails() {
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), seq("ATGCCA"));
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::Reverse {
+                input: "s".to_string(),
+                output_id: Some("s_rev".to_string()),
+            })
+            .expect("reverse");
+        let tmp = tempfile::NamedTempFile::new().expect("tmp");
+        let path = tmp.path().with_extension("run.bundle.none.json");
+        let path_text = path.display().to_string();
+        let err = engine
+            .apply(Operation::ExportProcessRunBundle {
+                path: path_text,
+                run_id: Some("missing_run".to_string()),
+            })
+            .expect_err("missing run should fail");
+        assert!(matches!(err.code, ErrorCode::NotFound));
+        assert!(err.message.contains("No operation records found"));
     }
 
     #[test]

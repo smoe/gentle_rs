@@ -102,6 +102,8 @@ Current draft operations:
 - `RenderPoolGelSvg { inputs, path, ladders? }`
 - `ExportDnaLadders { path, name_filter? }`
 - `ExportRnaLadders { path, name_filter? }`
+- `ExportPool { inputs, path, pool_id?, human_id? }`
+- `ExportProcessRunBundle { path, run_id? }`
 - `Digest { input, enzymes, output_prefix? }`
 - `Ligation { inputs, circularize_if_possible, protocol, output_id?, output_prefix?, unique? }`
 - `MergeContainers { inputs, output_prefix? }`
@@ -848,6 +850,36 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - from explicit `ladders` list when provided
   - otherwise from built-in ladder catalog (auto mode)
 - Renders ladder lanes plus pooled band lane as SVG artifact.
+
+`ExportProcessRunBundle` semantics:
+
+- Exports a deterministic JSON run bundle artifact (`gentle.process_run_bundle.v1`)
+  for reproducibility/audit.
+- Inputs:
+  - `path` (required): output JSON file
+  - `run_id` (optional): when set, only operation-log rows for that `run_id`
+    are exported; when omitted, all operation-log rows are exported.
+- Payload sections:
+  - `inputs`:
+    - per-operation extracted input references
+      (`sequence_ids`, `container_ids`, `arrangement_ids`, candidate/guide sets,
+      genome ids, file inputs)
+    - aggregated referenced ids and inferred `root_sequence_ids`
+  - `parameter_overrides`:
+    - chronological `SetParameter` overrides with `op_id`, `record_index`,
+      parameter `name`, and exact JSON `value`
+  - `operation_log`:
+    - selected immutable operation records (`run_id`, operation payload, result)
+  - `outputs`:
+    - created/changed sequence ids
+    - final sequence summaries for affected ids
+    - container/arrangement ids created by selected operations
+    - file artifact paths produced by selected operations
+  - `parameter_snapshot`:
+    - full current engine parameter snapshot at export time.
+- Failure modes:
+  - empty `path` => `InvalidInput`
+  - unknown filtered `run_id` (no selected rows) => `NotFound`
 
 RNA secondary-structure semantics:
 
