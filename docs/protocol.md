@@ -95,7 +95,7 @@ Current draft operations:
 - `RenderSequenceSvg { seq_id, mode, path }`
 - `RenderFeatureExpertSvg { seq_id, target, path }`
   - shared renderer contract across GUI/CLI/JS/Lua for TFBS/restriction/splicing/isoform expert exports
-  - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, and exon `len%3` (genomic-length modulo 3) cues
+  - splicing SVG includes explicit junction-support counts, frequency-encoded transcript-vs-exon matrix coloring, predicted exon->exon transition matrix support coloring, exon `len%3` (genomic-length modulo 3) cues, and CDS flank phase edge coloring (`0/1/2`) when transcript `cds_ranges_1based` are available
 - `RenderIsoformArchitectureSvg { seq_id, panel_id, path }`
 - `RenderRnaStructureSvg { seq_id, path }`
 - `RenderLineageSvg { path }`
@@ -1139,8 +1139,19 @@ Async BLAST shell contract (agent/MCP-ready baseline):
   - `gentle.blast_async_list.v1`
 - Job status contract:
   - `job_id` stable per process
+  - non-terminal states: `queued | running`
   - terminal states: `completed | failed | cancelled`
+  - scheduler metadata:
+    - `max_concurrent_jobs`
+    - `running_jobs`
+    - `queued_jobs`
+    - `queue_position` (present while state is `queued`)
   - optional final `report` on `blast-status --with-report`
+- Scheduler policy:
+  - async BLAST jobs are executed by a bounded FIFO scheduler (queue + worker slots)
+  - default concurrency uses host CPU parallelism
+  - optional override via environment variable
+    `GENTLE_BLAST_ASYNC_MAX_CONCURRENT` (clamped to `1..256`)
 - `gentle_mcp` exposes equivalent tool routes:
   - `blast_async_start`
   - `blast_async_status`

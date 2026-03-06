@@ -570,6 +570,9 @@ Execution safety model:
   - `genomes/helpers blast-status`
   - `genomes/helpers blast-cancel`
   - `genomes/helpers blast-list`
+- Async BLAST execution is now scheduler-backed (bounded FIFO queue with
+  configurable max-concurrency), exposing explicit `queued`/`running` states
+  before terminal outcomes.
 - The same async BLAST surface is exposed through MCP tools
   (`blast_async_start|status|cancel|list`) with shared parser/executor parity.
 - Remaining limitation:

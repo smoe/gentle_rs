@@ -94,6 +94,8 @@ Feature-expert SVG parity status:
   - frequency-encoded transcript-vs-exon matrix cell coloring
   - predicted exon-to-exon transition matrix with frequency-encoded cell
     coloring
+  - CDS flank phase coloring (`0/1/2`) on exon left/right edges when
+    transcript `cds_ranges_1based` are available
   - exon-length modulo-3 (`len%3`) cues on exon headers (heuristic frame cue)
   - shared output semantics across CLI/JS/Lua because all routes call the same
     engine renderer
@@ -1012,8 +1014,12 @@ Genome convenience commands:
   - `--options-json` / `--options-file` accept a JSON object that can override quick options and include thresholds (`max_evalue`, `min_identity_percent`, `min_query_coverage_percent`, `min_alignment_length_bp`, `min_bit_score`, `unique_best_hit`).
 - `genomes blast-start GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE | --options-file PATH] [--catalog PATH] [--cache-dir PATH]`
   - Starts one async BLAST job and returns a stable `job_id`.
+  - Jobs run through a bounded FIFO scheduler and may return initial state
+    `queued` or `running` depending on current slot availability.
 - `genomes blast-status JOB_ID [--with-report]`
   - Polls async BLAST job status; `--with-report` includes final report payload when available.
+  - Status includes scheduler metadata (`max_concurrent_jobs`, `running_jobs`,
+    `queued_jobs`, and `queue_position` while queued).
 - `genomes blast-cancel JOB_ID`
   - Requests cooperative cancellation for one async BLAST job.
 - `genomes blast-list`
@@ -1701,6 +1707,10 @@ Notes:
   - BLAST+ does not provide a native percent-progress CLI flag for `blastn`.
   - GENtle surfaces deterministic progress at orchestration level (query counts,
     running elapsed time, and invocation context in adapters that support live status).
+  - Async BLAST jobs additionally expose queue/scheduler state:
+    `queued|running|completed|failed|cancelled` and scheduler counters.
+  - Scheduler concurrency defaults to available CPU parallelism and can be
+    overridden with `GENTLE_BLAST_ASYNC_MAX_CONCURRENT` (`1..256`).
 - BLAST options layering (engine contract):
   - built-in defaults (`task=blastn-short`, `max_hits=25`)
   - optional defaults file (`assets/blast_defaults.json` or path set by parameter)

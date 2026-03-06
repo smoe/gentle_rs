@@ -186,8 +186,12 @@ Feature tree grouping:
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - Splicing support frequencies are shown explicitly:
+  - hovering exon glyphs in the lane canvas shows transcript/exon coordinates,
+    support, `len%3`, and CDS flank phase details (when available)
   - exon columns include support as `n/N (%)` (plus `const` for constitutive
     exons)
+  - exon lane glyphs can show CDS flank phase coloring on the left/right exon
+    edges (`0/1/2`) when transcript `cds_ranges_1based` are available
   - exon columns also expose `len%3` color cues (`0/1/2`) based on genomic
     exon length modulo 3 (heuristic frame cue)
   - transcript-vs-exon matrix cells are color-coded by exon support frequency

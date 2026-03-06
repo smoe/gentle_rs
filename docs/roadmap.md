@@ -325,6 +325,9 @@ order. Durable architecture constraints and decisions remain in
   - status/result views show explicit invocation template and resolved command line.
   - BLAST-hit import operations now persist invocation metadata in
     `ImportBlastHitsTrack.blast_provenance` for operation history/lineage context.
+  - Async BLAST scheduler now uses bounded FIFO dispatch with explicit
+    `queued`/`running` job-state transitions and scheduler metadata in
+    `blast-start|status|list` responses.
   - agent-suggested shell commands can execute shared BLAST routes
     (`genomes/helpers blast`, `genomes/helpers blast-track`); recursion guardrail
     blocks only nested `agents ask`
@@ -420,6 +423,8 @@ Notes:
    - BLAST async job-handle/progress/cancel baseline is now available through
      shared shell (`genomes/helpers blast-start|status|cancel|list`) and MCP
      (`blast_async_start|status|cancel|list`)
+   - async BLAST queueing/concurrency baseline is now implemented (bounded FIFO
+     scheduler with configurable max concurrency)
    - agent auto-execution still needs higher-level orchestration for polling and
      multi-step async flows (it currently executes one suggested command at a
      time)
@@ -525,6 +530,9 @@ Status:
    - predicted exon->exon transition matrix is rendered in GUI and SVG, with
      frequency-coded support cells and exon `len%3` header cues (heuristic
      frame signal).
+   - CDS-aware exon flank phase coloring (`0/1/2`) is rendered in GUI and SVG
+     from shared splicing payload data when transcript `cds_ranges_1based`
+     qualifiers are present.
    - sequence-window primary `Splicing map` mode (read-only) is now available
      and uses the same shared payload/geometry path as the expert view.
    - GUI expert panel and SVG export use the same payload; shell/CLI/JS/Lua
@@ -923,12 +931,18 @@ Phase 3 (async specificity tier + agent/MCP parity): baseline started
 - Shared shell/CLI + MCP now expose async BLAST primitives:
   - `genomes/helpers blast-start|status|cancel|list`
   - MCP `blast_async_start|status|cancel|list`
+- Async BLAST now runs through a bounded FIFO scheduler with explicit
+  queue/running metadata in job status payloads.
 - Deterministic parity test baseline now covers MCP-vs-shared-shell async
   BLAST status routing.
 - Remaining:
   - primer-pair-specific multi-BLAST orchestration on top of these primitives
   - richer progress granularity and GUI binding for agent-triggered async jobs
   - broader cross-adapter integration tests for cancellation/progress semantics
+  - optional shared-shell scheduler control command
+    (`genomes/helpers blast-scheduler`) to inspect effective async BLAST
+    concurrency and set per-process overrides without relying on environment
+    variables
 
 ### Unified BLAST abstraction + primer UI track (new)
 

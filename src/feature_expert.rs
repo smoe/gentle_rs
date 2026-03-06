@@ -73,6 +73,16 @@ pub struct SplicingRange {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplicingExonCdsPhase {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    #[serde(default)]
+    pub left_cds_phase: Option<u8>,
+    #[serde(default)]
+    pub right_cds_phase: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplicingExonSummary {
     pub start_1based: usize,
     pub end_1based: usize,
@@ -105,6 +115,8 @@ pub struct SplicingTranscriptLane {
     pub label: String,
     pub strand: String,
     pub exons: Vec<SplicingRange>,
+    #[serde(default)]
+    pub exon_cds_phases: Vec<SplicingExonCdsPhase>,
     pub introns: Vec<SplicingRange>,
     pub has_target_feature: bool,
 }
@@ -341,6 +353,7 @@ mod tests {
                     label: "tx_plus_1".to_string(),
                     strand: "+".to_string(),
                     exons: vec![range(100, 150), range(200, 250), range(300, 330)],
+                    exon_cds_phases: vec![],
                     introns: vec![range(151, 199), range(251, 299)],
                     has_target_feature: true,
                 },
@@ -350,6 +363,7 @@ mod tests {
                     label: "tx_plus_2".to_string(),
                     strand: "+".to_string(),
                     exons: vec![range(100, 150), range(300, 330)],
+                    exon_cds_phases: vec![],
                     introns: vec![range(151, 299)],
                     has_target_feature: false,
                 },
@@ -359,6 +373,7 @@ mod tests {
                     label: "tx_minus".to_string(),
                     strand: "-".to_string(),
                     exons: vec![range(100, 150), range(200, 250), range(300, 330)],
+                    exon_cds_phases: vec![],
                     introns: vec![range(151, 199), range(251, 299)],
                     has_target_feature: false,
                 },

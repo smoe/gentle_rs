@@ -158,6 +158,14 @@ fn splicing_exon_mod3_text_hex(mod3: usize) -> &'static str {
     }
 }
 
+fn splicing_cds_phase_fill_hex(phase: u8) -> &'static str {
+    match phase % 3 {
+        0 => "#2563eb",
+        1 => "#d97706",
+        _ => "#e11d48",
+    }
+}
+
 fn render_tfbs(view: &TfbsExpertView) -> String {
     let mut doc = Document::new()
         .set("viewBox", (0, 0, W, H))
@@ -680,6 +688,14 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             .set("fill", "#4b5563"),
         )
         .add(
+            Text::new("CDS flank phase colors: 0=blue 1=amber 2=rose (drawn on exon left/right edges when CDS ranges exist)")
+                .set("x", 88)
+                .set("y", 76)
+                .set("font-family", "monospace")
+                .set("font-size", 9)
+                .set("fill", "#64748b"),
+        )
+        .add(
             Line::new()
                 .set("x1", left)
                 .set("y1", chart_top - 16.0)
@@ -798,7 +814,7 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             );
         }
 
-        for exon in &lane.exons {
+        for (exon_idx, exon) in lane.exons.iter().enumerate() {
             let x1 = x_for(exon.start_1based);
             let x2 = x_for(exon.end_1based);
             if x2 <= x1 {
@@ -836,6 +852,41 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                         .set("font-size", 8)
                         .set("fill", "#334155"),
                 );
+            let phase_info = lane
+                .exon_cds_phases
+                .get(exon_idx)
+                .filter(|phase| {
+                    phase.start_1based == exon.start_1based && phase.end_1based == exon.end_1based
+                })
+                .or_else(|| {
+                    lane.exon_cds_phases.iter().find(|phase| {
+                        phase.start_1based == exon.start_1based
+                            && phase.end_1based == exon.end_1based
+                    })
+                });
+            if let Some(phase_info) = phase_info {
+                let flank_w = ((x2 - x1) * 0.15).clamp(1.5, 3.5);
+                if let Some(left_phase) = phase_info.left_cds_phase {
+                    doc = doc.add(
+                        Rectangle::new()
+                            .set("x", x1)
+                            .set("y", y - 9.5)
+                            .set("width", flank_w)
+                            .set("height", 19.0)
+                            .set("fill", splicing_cds_phase_fill_hex(left_phase)),
+                    );
+                }
+                if let Some(right_phase) = phase_info.right_cds_phase {
+                    doc = doc.add(
+                        Rectangle::new()
+                            .set("x", (x2 - flank_w).max(x1))
+                            .set("y", y - 9.5)
+                            .set("width", flank_w)
+                            .set("height", 19.0)
+                            .set("fill", splicing_cds_phase_fill_hex(right_phase)),
+                    );
+                }
+            }
         }
     }
 

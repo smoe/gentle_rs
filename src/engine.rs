@@ -79,9 +79,10 @@ pub use crate::feature_expert::{
     IsoformArchitectureCdsAaSegment, IsoformArchitectureExpertView,
     IsoformArchitectureProteinDomain, IsoformArchitectureProteinLane,
     IsoformArchitectureTranscriptLane, RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView,
-    SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary, SplicingExonSummary,
-    SplicingExpertView, SplicingJunctionArc, SplicingMatrixRow, SplicingRange,
-    SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
+    SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary,
+    SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
+    SplicingMatrixRow, SplicingRange, SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION,
+    TfbsExpertColumn, TfbsExpertView,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
@@ -6017,6 +6018,89 @@ impl GentleEngine {
         out
     }
 
+    fn range_intersection_0based(
+        left: (usize, usize),
+        right: (usize, usize),
+    ) -> Option<(usize, usize)> {
+        let start = left.0.max(right.0);
+        let end = left.1.min(right.1);
+        (end > start).then_some((start, end))
+    }
+
+    fn exon_cds_phases_for_transcript(
+        feature: &gb_io::seq::Feature,
+        exon_ranges: &[(usize, usize)],
+        is_reverse: bool,
+    ) -> Vec<SplicingExonCdsPhase> {
+        let mut phases = exon_ranges
+            .iter()
+            .map(|(start, end)| SplicingExonCdsPhase {
+                start_1based: start + 1,
+                end_1based: *end,
+                left_cds_phase: None,
+                right_cds_phase: None,
+            })
+            .collect::<Vec<_>>();
+        if exon_ranges.is_empty() {
+            return phases;
+        }
+        let mut cds_ranges = Self::feature_qualifier_ranges_0based(feature, "cds_ranges_1based");
+        if cds_ranges.is_empty() {
+            return phases;
+        }
+        cds_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        cds_ranges.dedup();
+
+        let mut consumed_cds_bp = 0usize;
+        let exon_indices = if is_reverse {
+            (0..exon_ranges.len()).rev().collect::<Vec<_>>()
+        } else {
+            (0..exon_ranges.len()).collect::<Vec<_>>()
+        };
+
+        for exon_idx in exon_indices {
+            let exon = exon_ranges[exon_idx];
+            let mut coding_segments = cds_ranges
+                .iter()
+                .filter_map(|cds| Self::range_intersection_0based(exon, *cds))
+                .collect::<Vec<_>>();
+            if coding_segments.is_empty() {
+                continue;
+            }
+            if is_reverse {
+                coding_segments.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+            } else {
+                coding_segments.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            }
+
+            for (seg_start, seg_end) in coding_segments {
+                let seg_len = seg_end.saturating_sub(seg_start);
+                if seg_len == 0 {
+                    continue;
+                }
+                let entry_phase = (consumed_cds_bp % 3) as u8;
+                let exit_phase = ((consumed_cds_bp + seg_len - 1) % 3) as u8;
+                if is_reverse {
+                    if seg_end == exon.1 && phases[exon_idx].right_cds_phase.is_none() {
+                        phases[exon_idx].right_cds_phase = Some(entry_phase);
+                    }
+                    if seg_start == exon.0 {
+                        phases[exon_idx].left_cds_phase = Some(exit_phase);
+                    }
+                } else {
+                    if seg_start == exon.0 && phases[exon_idx].left_cds_phase.is_none() {
+                        phases[exon_idx].left_cds_phase = Some(entry_phase);
+                    }
+                    if seg_end == exon.1 {
+                        phases[exon_idx].right_cds_phase = Some(exit_phase);
+                    }
+                }
+                consumed_cds_bp += seg_len;
+            }
+        }
+        phases
+    }
+
     fn build_splicing_expert_view(
         &self,
         seq_id: &str,
@@ -6057,6 +6141,7 @@ impl GentleEngine {
             label: String,
             is_reverse: bool,
             exon_ranges: Vec<(usize, usize)>,
+            exon_cds_phases: Vec<SplicingExonCdsPhase>,
             intron_ranges: Vec<(usize, usize)>,
         }
 
@@ -6068,7 +6153,8 @@ impl GentleEngine {
             if Self::splicing_group_label(feature, idx) != target_group {
                 continue;
             }
-            if feature_is_reverse(feature) != target_is_reverse {
+            let is_reverse = feature_is_reverse(feature);
+            if is_reverse != target_is_reverse {
                 continue;
             }
             let mut exon_ranges = vec![];
@@ -6095,12 +6181,15 @@ impl GentleEngine {
                     introns.push((left.1, right.0));
                 }
             }
+            let exon_cds_phases =
+                Self::exon_cds_phases_for_transcript(feature, &exon_ranges, is_reverse);
             transcripts.push(TranscriptWork {
                 feature_id: idx,
                 transcript_id: Self::feature_transcript_id(feature, idx),
                 label: Self::feature_display_label(feature, idx),
-                is_reverse: feature_is_reverse(feature),
+                is_reverse,
                 exon_ranges,
+                exon_cds_phases,
                 intron_ranges: introns,
             });
         }
@@ -6176,6 +6265,7 @@ impl GentleEngine {
                     "+".to_string()
                 },
                 exons: Self::range_vec_to_splicing(transcript.exon_ranges.clone()),
+                exon_cds_phases: transcript.exon_cds_phases.clone(),
                 introns: Self::range_vec_to_splicing(transcript.intron_ranges.clone()),
                 has_target_feature: transcript.feature_id == feature_id,
             })
@@ -25228,6 +25318,84 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             }
             other => panic!("expected splicing expert view, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_splicing_expert_view_reports_cds_flank_phase_forward() {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, 5),
+                gb_io::seq::Location::simple_range(10, 14),
+                gb_io::seq::Location::simple_range(20, 26),
+            ]),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("TX_PHASE_PLUS".to_string())),
+                ("label".into(), Some("TX_PHASE_PLUS".to_string())),
+                (
+                    "cds_ranges_1based".into(),
+                    Some("1-5,11-14,21-26".to_string()),
+                ),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), dna);
+        let engine = GentleEngine::from_state(state);
+        let view = engine
+            .inspect_feature_expert("s", &FeatureExpertTarget::SplicingFeature { feature_id: 0 })
+            .expect("inspect splicing");
+        let FeatureExpertView::Splicing(splicing) = view else {
+            panic!("expected splicing view");
+        };
+        let lane = &splicing.transcripts[0];
+        assert_eq!(lane.exon_cds_phases.len(), 3);
+        assert_eq!(lane.exon_cds_phases[0].left_cds_phase, Some(0));
+        assert_eq!(lane.exon_cds_phases[0].right_cds_phase, Some(1));
+        assert_eq!(lane.exon_cds_phases[1].left_cds_phase, Some(2));
+        assert_eq!(lane.exon_cds_phases[1].right_cds_phase, Some(2));
+        assert_eq!(lane.exon_cds_phases[2].left_cds_phase, Some(0));
+        assert_eq!(lane.exon_cds_phases[2].right_cds_phase, Some(2));
+    }
+
+    #[test]
+    fn test_splicing_expert_view_reports_cds_flank_phase_reverse() {
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(64)).expect("sequence");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("mRNA"),
+            location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, 5),
+                gb_io::seq::Location::simple_range(10, 14),
+                gb_io::seq::Location::simple_range(20, 26),
+            ]))),
+            qualifiers: vec![
+                ("gene".into(), Some("GENE1".to_string())),
+                ("transcript_id".into(), Some("TX_PHASE_MINUS".to_string())),
+                ("label".into(), Some("TX_PHASE_MINUS".to_string())),
+                (
+                    "cds_ranges_1based".into(),
+                    Some("1-5,11-14,21-26".to_string()),
+                ),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), dna);
+        let engine = GentleEngine::from_state(state);
+        let view = engine
+            .inspect_feature_expert("s", &FeatureExpertTarget::SplicingFeature { feature_id: 0 })
+            .expect("inspect splicing");
+        let FeatureExpertView::Splicing(splicing) = view else {
+            panic!("expected splicing view");
+        };
+        let lane = &splicing.transcripts[0];
+        assert_eq!(lane.exon_cds_phases.len(), 3);
+        assert_eq!(lane.exon_cds_phases[0].left_cds_phase, Some(2));
+        assert_eq!(lane.exon_cds_phases[0].right_cds_phase, Some(1));
+        assert_eq!(lane.exon_cds_phases[1].left_cds_phase, Some(0));
+        assert_eq!(lane.exon_cds_phases[1].right_cds_phase, Some(0));
+        assert_eq!(lane.exon_cds_phases[2].left_cds_phase, Some(2));
+        assert_eq!(lane.exon_cds_phases[2].right_cds_phase, Some(0));
     }
 
     #[test]

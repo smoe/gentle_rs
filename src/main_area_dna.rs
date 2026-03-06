@@ -6541,6 +6541,17 @@ impl MainAreaDna {
     ) -> Option<usize> {
         let transcript_count = view.transcripts.len();
         let lane_count = transcript_count.max(1);
+        let transcript_total = view.transcript_count.max(1);
+        let exon_support_by_range = view
+            .unique_exons
+            .iter()
+            .map(|exon| {
+                (
+                    (exon.start_1based, exon.end_1based),
+                    exon.support_transcript_count,
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let max_junction_support = view
             .junctions
             .iter()
@@ -6702,7 +6713,7 @@ impl MainAreaDna {
                         egui::Stroke::new(1.0, egui::Color32::from_gray(110)),
                     );
                 }
-                for exon in &transcript.exons {
+                for (exon_idx, exon) in transcript.exons.iter().enumerate() {
                     let x1 = to_x(exon.start_1based);
                     let x2 = to_x(exon.end_1based);
                     let rect = egui::Rect::from_min_max(
@@ -6727,27 +6738,165 @@ impl MainAreaDna {
                             egui::Color32::from_rgb(120, 53, 15),
                         ),
                     );
+                    let phase_info = transcript
+                        .exon_cds_phases
+                        .get(exon_idx)
+                        .filter(|phase| {
+                            phase.start_1based == exon.start_1based
+                                && phase.end_1based == exon.end_1based
+                        })
+                        .or_else(|| {
+                            transcript.exon_cds_phases.iter().find(|phase| {
+                                phase.start_1based == exon.start_1based
+                                    && phase.end_1based == exon.end_1based
+                            })
+                        });
+                    if let Some(phase_info) = phase_info {
+                        let bar_width = (rect.width() * 0.15).clamp(1.4, 3.2);
+                        if let Some(left_phase) = phase_info.left_cds_phase {
+                            let left_rect = egui::Rect::from_min_max(
+                                rect.left_top(),
+                                egui::pos2(
+                                    (rect.left() + bar_width).min(rect.right()),
+                                    rect.bottom(),
+                                ),
+                            );
+                            painter.rect_filled(
+                                left_rect,
+                                0.0,
+                                Self::splicing_cds_phase_color(left_phase),
+                            );
+                        }
+                        if let Some(right_phase) = phase_info.right_cds_phase {
+                            let right_rect = egui::Rect::from_min_max(
+                                egui::pos2((rect.right() - bar_width).max(rect.left()), rect.top()),
+                                rect.right_bottom(),
+                            );
+                            painter.rect_filled(
+                                right_rect,
+                                0.0,
+                                Self::splicing_cds_phase_color(right_phase),
+                            );
+                        }
+                    }
+                }
+            }
+
+            let mut has_exon_hover = false;
+            if let Some(pointer_pos) = response.hover_pos() {
+                let mut hovered_exon = None;
+                for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
+                    let y = lanes_top
+                        + lane_idx as f32 * style.lane_height_px
+                        + style.lane_height_px * 0.5;
+                    for (exon_idx, exon) in transcript.exons.iter().enumerate() {
+                        let x1 = to_x(exon.start_1based);
+                        let x2 = to_x(exon.end_1based);
+                        let rect = egui::Rect::from_min_max(
+                            egui::pos2(x1, y - 6.5),
+                            egui::pos2((x2).max(x1 + 1.0), y + 6.5),
+                        );
+                        if !rect.expand(1.0).contains(pointer_pos) {
+                            continue;
+                        }
+                        let phase_info = transcript
+                            .exon_cds_phases
+                            .get(exon_idx)
+                            .filter(|phase| {
+                                phase.start_1based == exon.start_1based
+                                    && phase.end_1based == exon.end_1based
+                            })
+                            .or_else(|| {
+                                transcript.exon_cds_phases.iter().find(|phase| {
+                                    phase.start_1based == exon.start_1based
+                                        && phase.end_1based == exon.end_1based
+                                })
+                            });
+                        hovered_exon = Some((
+                            transcript.transcript_feature_id,
+                            transcript.transcript_id.as_str(),
+                            exon.start_1based,
+                            exon.end_1based,
+                            phase_info.and_then(|phase| phase.left_cds_phase),
+                            phase_info.and_then(|phase| phase.right_cds_phase),
+                        ));
+                        break;
+                    }
+                    if hovered_exon.is_some() {
+                        break;
+                    }
+                }
+                if let Some((
+                    feature_id,
+                    transcript_id,
+                    start_1based,
+                    end_1based,
+                    left_phase,
+                    right_phase,
+                )) = hovered_exon
+                {
+                    has_exon_hover = true;
+                    let exon_len = end_1based
+                        .max(start_1based)
+                        .saturating_sub(end_1based.min(start_1based))
+                        + 1;
+                    let support_count = exon_support_by_range
+                        .get(&(start_1based, end_1based))
+                        .copied()
+                        .unwrap_or(0);
+                    response.clone().on_hover_ui_at_pointer(|ui| {
+                        ui.monospace(format!("n-{feature_id} {transcript_id}"));
+                        ui.monospace(format!(
+                            "exon {}..{}  len={} bp  len%3={}",
+                            start_1based,
+                            end_1based,
+                            exon_len,
+                            exon_len % 3
+                        ));
+                        ui.label(format!(
+                            "Support {}",
+                            Self::format_support_fraction(support_count, transcript_total)
+                        ));
+                        ui.label(format!(
+                            "CDS flank phase: left={} right={} (0=blue, 1=amber, 2=rose)",
+                            left_phase
+                                .map(|phase| phase.to_string())
+                                .unwrap_or_else(|| "n/a".to_string()),
+                            right_phase
+                                .map(|phase| phase.to_string())
+                                .unwrap_or_else(|| "n/a".to_string()),
+                        ));
+                        if interactive {
+                            ui.label(
+                                "Click lane to focus this transcript feature in sequence view",
+                            );
+                        }
+                    });
                 }
             }
 
             if interactive {
                 if let Some(pointer_pos) = response.hover_pos() {
-                    if let Some(lane_idx) = Self::splicing_lane_index_at_y(
-                        pointer_pos.y,
-                        lanes_top,
-                        style.lane_height_px,
-                        transcript_count,
-                    ) {
-                        let transcript = &view.transcripts[lane_idx];
-                        response.clone().on_hover_ui_at_pointer(|ui| {
-                            ui.monospace(format!(
-                                "n-{} {}",
-                                transcript.transcript_feature_id, transcript.transcript_id
-                            ));
-                            ui.label("Click to focus this transcript feature in the sequence view");
-                        });
-                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                    if !has_exon_hover {
+                        if let Some(lane_idx) = Self::splicing_lane_index_at_y(
+                            pointer_pos.y,
+                            lanes_top,
+                            style.lane_height_px,
+                            transcript_count,
+                        ) {
+                            let transcript = &view.transcripts[lane_idx];
+                            response.clone().on_hover_ui_at_pointer(|ui| {
+                                ui.monospace(format!(
+                                    "n-{} {}",
+                                    transcript.transcript_feature_id, transcript.transcript_id
+                                ));
+                                ui.label(
+                                    "Click to focus this transcript feature in the sequence view",
+                                );
+                            });
+                        }
                     }
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                 }
                 if response.clicked() {
                     if let Some(pointer_pos) = response.interact_pointer_pos() {
@@ -6867,6 +7016,14 @@ impl MainAreaDna {
         }
     }
 
+    fn splicing_cds_phase_color(phase: u8) -> egui::Color32 {
+        match phase % 3 {
+            0 => egui::Color32::from_rgb(37, 99, 235),
+            1 => egui::Color32::from_rgb(217, 119, 6),
+            _ => egui::Color32::from_rgb(225, 29, 72),
+        }
+    }
+
     fn current_splicing_expert_view_for_primary_map(&mut self) -> Option<SplicingExpertView> {
         self.refresh_description_cache();
         match self.description_cache_expert_view.clone() {
@@ -6941,6 +7098,33 @@ impl MainAreaDna {
         ui.add_space(2.0);
         let _ =
             self.render_splicing_lane_canvas_ui(ui, view, SplicingLaneCanvasStyle::expert(), false);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new("CDS flank phase colors (left/right exon edges):")
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+            )
+            .on_hover_text(
+                "Flank colors indicate CDS phase at exon entry/exit points when cds_ranges_1based is available",
+            );
+            for phase in 0_u8..=2 {
+                ui.label(
+                    egui::RichText::new(format!("{phase}"))
+                        .monospace()
+                        .size(8.5)
+                        .background_color(Self::splicing_cds_phase_color(phase))
+                        .color(egui::Color32::WHITE),
+                )
+                .on_hover_text(format!(
+                    "CDS phase {phase} at exon flank (0=blue, 1=amber, 2=rose)"
+                ));
+            }
+            ui.label(
+                egui::RichText::new("only shown when CDS ranges are available")
+                    .size(8.5)
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
             ui.separator();
@@ -6978,7 +7162,10 @@ impl MainAreaDna {
                             ));
                         }
                         ui.end_row();
-                        ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong());
+                        ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong())
+                            .on_hover_text(
+                                "Genomic exon length modulo 3 (heuristic reading-frame cue)",
+                            );
                         for exon in &view.unique_exons {
                             let mod3 = Self::splicing_exon_length_mod3(exon);
                             let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
