@@ -125,6 +125,9 @@ pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
+///
+/// Adapters should treat these as the canonical shared display toggles.
 pub enum DisplayTarget {
     SequencePanel,
     MapPanel,
@@ -141,6 +144,10 @@ pub enum DisplayTarget {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 #[serde(rename_all = "snake_case")]
+/// Rendering mode selector for linear DNA letter layout.
+///
+/// `AutoAdaptive` is the default policy and should be preferred for parity
+/// unless the caller explicitly requests one fixed layout mode.
 pub enum LinearSequenceLetterLayoutMode {
     #[default]
     AutoAdaptive,
@@ -157,6 +164,10 @@ pub enum LinearSequenceLetterLayoutMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+/// Project-level display settings persisted in `ProjectState`.
+///
+/// These settings are consumed by GUI renderers and export paths, and are kept
+/// in engine state so behavior is adapter-equivalent.
 pub struct DisplaySettings {
     pub show_sequence_panel: bool,
     pub auto_hide_sequence_panel_when_linear_bases_visible: bool,
@@ -295,6 +306,8 @@ impl Default for DisplaySettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// High-level provenance class for how a sequence entered/was derived in the
+/// project graph.
 pub enum SequenceOrigin {
     ImportedGenomic,
     ImportedCdna,
@@ -306,6 +319,7 @@ pub enum SequenceOrigin {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// One sequence node in lineage DAG state.
 pub struct LineageNode {
     pub node_id: NodeId,
     pub seq_id: SeqId,
@@ -315,6 +329,7 @@ pub struct LineageNode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Directed lineage edge linking one parent node to one derived node.
 pub struct LineageEdge {
     pub from_node_id: NodeId,
     pub to_node_id: NodeId,
@@ -324,6 +339,7 @@ pub struct LineageEdge {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+/// Terminal status for one recorded macro instance expansion.
 pub enum MacroInstanceStatus {
     #[default]
     Ok,
@@ -333,6 +349,7 @@ pub enum MacroInstanceStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Captured binding payload for one typed macro input/output port.
 pub struct LineageMacroPortBinding {
     pub port_id: String,
     pub kind: String,
@@ -344,6 +361,10 @@ pub struct LineageMacroPortBinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Persistent lineage record for one macro execution attempt.
+///
+/// Stored in `ProjectState.lineage.macro_instances` for audit/debug and graph
+/// visualization.
 pub struct LineageMacroInstance {
     pub macro_instance_id: String,
     pub routine_id: Option<String>,
@@ -360,6 +381,7 @@ pub struct LineageMacroInstance {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Lineage DAG plus macro-instance records.
 pub struct LineageGraph {
     pub nodes: HashMap<NodeId, LineageNode>,
     pub seq_to_node: HashMap<SeqId, NodeId>,
@@ -370,6 +392,7 @@ pub struct LineageGraph {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Container semantic class used by container-aware operations.
 pub enum ContainerKind {
     Singleton,
     Pool,
@@ -377,6 +400,7 @@ pub enum ContainerKind {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Group of sequence ids participating in container-aware workflows.
 pub struct Container {
     pub container_id: ContainerId,
     pub kind: ContainerKind,
@@ -388,12 +412,14 @@ pub struct Container {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+/// Arrangement layout mode for gel-style or plate-style workflows.
 pub enum ArrangementMode {
     Serial,
     Plate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Named arrangement definition referencing container lanes.
 pub struct Arrangement {
     pub arrangement_id: String,
     pub mode: ArrangementMode,
@@ -407,6 +433,7 @@ pub struct Arrangement {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+/// Container/arrangement state persisted with the project.
 pub struct ContainerState {
     pub containers: HashMap<ContainerId, Container>,
     pub arrangements: HashMap<String, Arrangement>,
@@ -417,6 +444,7 @@ pub struct ContainerState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+/// Engine-level behavioral parameters (non-rendering).
 pub struct EngineParameters {
     pub max_fragments_per_container: usize,
     pub require_verified_genome_anchor_for_extension: bool,
@@ -440,6 +468,7 @@ impl Default for EngineParameters {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+/// Prepared-genome fallback policy when an anchor references a non-prepared id.
 pub enum GenomeAnchorPreparedFallbackPolicy {
     Off,
     SingleCompatible,
@@ -457,6 +486,10 @@ impl GenomeAnchorPreparedFallbackPolicy {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Complete persisted project state consumed by `GentleEngine`.
+///
+/// `metadata` stores versioned extension payloads; critical shared keys are
+/// defined as constants in this module.
 pub struct ProjectState {
     pub sequences: HashMap<SeqId, DNAsequence>,
     pub metadata: HashMap<String, serde_json::Value>,
@@ -496,6 +529,9 @@ enum CandidateSidecarCommitted {
 }
 
 impl ProjectState {
+    /// Load project state JSON from disk.
+    ///
+    /// This also hydrates candidate-set sidecar references when present.
     pub fn load_from_path(path: &str) -> Result<Self, EngineError> {
         let text = std::fs::read_to_string(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -526,6 +562,10 @@ impl ProjectState {
         Ok(state)
     }
 
+    /// Save project state JSON to disk using atomic replacement semantics.
+    ///
+    /// Candidate-set sidecar data is staged/committed in lockstep to avoid
+    /// partially-written project metadata.
     pub fn save_to_path(&self, path: &str) -> Result<(), EngineError> {
         let mut state_for_disk = self.clone();
         let project_path = Path::new(path);
@@ -2363,6 +2403,7 @@ impl BlastRunOptions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Resolved BLAST options after defaults/project/request layering.
 pub struct BlastResolvedOptions {
     pub task: String,
     pub max_hits: usize,
@@ -2372,6 +2413,10 @@ pub struct BlastResolvedOptions {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+/// Strand-contextual anchor extension side.
+///
+/// Interpretation is biological 5'/3' relative to anchor strand, not absolute
+/// genomic coordinate direction.
 pub enum GenomeAnchorSide {
     FivePrime,
     ThreePrime,
@@ -2387,6 +2432,11 @@ impl GenomeAnchorSide {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Canonical engine operation contract.
+///
+/// All adapters (GUI/CLI/JS/Lua/MCP) should map user intent to this enum and
+/// rely on `GentleEngine::apply` for execution. This preserves one deterministic
+/// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
     LoadFile {
         path: String,
@@ -3331,12 +3381,15 @@ impl MetricExpressionParser {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// One deterministic workflow run: ordered operations with a caller-supplied
+/// `run_id`.
 pub struct Workflow {
     pub run_id: RunId,
     pub ops: Vec<Operation>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Canonical result payload returned after one operation completes.
 pub struct OpResult {
     pub op_id: OpId,
     pub created_seq_ids: Vec<SeqId>,
@@ -3346,6 +3399,7 @@ pub struct OpResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Progress payload emitted by TFBS annotation operations.
 pub struct TfbsProgress {
     pub seq_id: String,
     pub motif_id: String,
@@ -3358,6 +3412,7 @@ pub struct TfbsProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Progress payload emitted by genome track import operations.
 pub struct GenomeTrackImportProgress {
     pub seq_id: String,
     pub source: String,
@@ -3369,6 +3424,7 @@ pub struct GenomeTrackImportProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Union of long-running operation progress events.
 pub enum OperationProgress {
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),
@@ -3376,6 +3432,7 @@ pub enum OperationProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Immutable operation journal row.
 pub struct OperationRecord {
     pub run_id: RunId,
     pub op: Operation,
@@ -3383,6 +3440,7 @@ pub struct OperationRecord {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// Stable high-level error class for engine operation failures.
 pub enum ErrorCode {
     InvalidInput,
     NotFound,
@@ -3392,6 +3450,7 @@ pub enum ErrorCode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Shared structured error payload returned by engine operations/adapters.
 pub struct EngineError {
     pub code: ErrorCode,
     pub message: String,
