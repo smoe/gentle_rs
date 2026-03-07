@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "topo_ta_single_insert",
+  "description": "TOPO TA cloning baseline with TA end-compatibility preflight checks.",
+  "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/topo-cloning.html",
+  "parameters": [
+    { "name": "vector_seq_id", "required": true },
+    { "name": "insert_seq_id", "required": true },
+    { "name": "topo_mode", "default_value": "ta", "required": false },
+    { "name": "assembly_prefix", "default_value": "topo_ta", "required": false },
+    { "name": "output_id", "default_value": "topo_ta_product", "required": false }
+  ],
+  "input_ports": [
+    { "port_id": "vector_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "TOPO TA vector sequence ID." },
+    { "port_id": "insert_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Insert sequence ID for TOPO TA cloning." },
+    { "port_id": "topo_mode", "kind": "string", "required": true, "cardinality": "one", "description": "TOPO mode token (ta|blunt|directional_cacc)." }
+  ],
+  "output_ports": [
+    { "port_id": "assembly_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "TOPO TA ligation output namespace prefix." },
+    { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic TOPO TA output sequence ID." }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${vector_seq_id}\",\"${insert_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

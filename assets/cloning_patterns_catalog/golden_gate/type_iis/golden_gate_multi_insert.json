@@ -1,0 +1,101 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "golden_gate_multi_insert",
+  "description": "Golden Gate multi-insert baseline (vector + two inserts) with explicit junction overhang token preflight.",
+  "details_url": "https://www.neb.com/en-us/tools-and-resources/selection-charts/golden-gate-assembly-cloning-method-selection-chart",
+  "parameters": [
+    { "name": "vector_seq_id", "required": true },
+    { "name": "insert_a_seq_id", "required": true },
+    { "name": "insert_b_seq_id", "required": true },
+    { "name": "type_iis_enzyme", "default_value": "Eco31", "required": false },
+    { "name": "junction_overhangs", "default_value": "AATG,GCTT", "required": true },
+    { "name": "digest_prefix", "default_value": "ggm_digest", "required": false },
+    { "name": "vector_fragment", "default_value": "1", "required": false },
+    { "name": "insert_a_fragment", "default_value": "1", "required": false },
+    { "name": "insert_b_fragment", "default_value": "1", "required": false },
+    { "name": "ligation_prefix", "default_value": "ggm_lig", "required": false },
+    { "name": "output_id", "default_value": "ggm_product", "required": false }
+  ],
+  "input_ports": [
+    {
+      "port_id": "vector_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Golden Gate destination vector sequence ID."
+    },
+    {
+      "port_id": "insert_a_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "First insert sequence ID in intended assembly order."
+    },
+    {
+      "port_id": "insert_b_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Second insert sequence ID in intended assembly order."
+    },
+    {
+      "port_id": "type_iis_enzyme",
+      "kind": "string",
+      "required": true,
+      "cardinality": "one",
+      "description": "Type IIS enzyme name."
+    },
+    {
+      "port_id": "junction_overhangs",
+      "kind": "string",
+      "required": true,
+      "cardinality": "many",
+      "description": "Comma-separated overhang token list (expected count: number of adjacent junctions)."
+    },
+    {
+      "port_id": "vector_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Selected 1-based vector digest fragment index."
+    },
+    {
+      "port_id": "insert_a_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Selected 1-based insert A digest fragment index."
+    },
+    {
+      "port_id": "insert_b_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Selected 1-based insert B digest fragment index."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "digest_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Digest fragment namespace prefix."
+    },
+    {
+      "port_id": "ligation_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Ligation product namespace prefix."
+    },
+    {
+      "port_id": "output_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Deterministic multi-insert Golden Gate preview output ID."
+    }
+  ],
+  "script": "op {\"Digest\":{\"input\":\"${vector_seq_id}\",\"enzymes\":[\"${type_iis_enzyme}\"],\"output_prefix\":\"${digest_prefix}_vec\"}}\nop {\"Digest\":{\"input\":\"${insert_a_seq_id}\",\"enzymes\":[\"${type_iis_enzyme}\"],\"output_prefix\":\"${digest_prefix}_insa\"}}\nop {\"Digest\":{\"input\":\"${insert_b_seq_id}\",\"enzymes\":[\"${type_iis_enzyme}\"],\"output_prefix\":\"${digest_prefix}_insb\"}}\nop {\"Ligation\":{\"inputs\":[\"${digest_prefix}_vec_${vector_fragment}\",\"${digest_prefix}_insa_${insert_a_fragment}\",\"${digest_prefix}_insb_${insert_b_fragment}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${ligation_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${ligation_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

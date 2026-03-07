@@ -1,0 +1,85 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "golden_gate_single_insert",
+  "description": "Golden Gate single-insert assembly baseline using one Type IIS digest per input and sticky-end ligation preview.",
+  "details_url": "https://www.addgene.org/protocols/golden-gate/",
+  "parameters": [
+    { "name": "vector_seq_id", "required": true },
+    { "name": "insert_seq_id", "required": true },
+    { "name": "type_iis_enzyme", "default_value": "Eco31", "required": false },
+    { "name": "junction_overhangs", "default_value": "AATG", "required": false },
+    { "name": "digest_prefix", "default_value": "gg_digest", "required": false },
+    { "name": "vector_fragment", "default_value": "1", "required": false },
+    { "name": "insert_fragment", "default_value": "1", "required": false },
+    { "name": "ligation_prefix", "default_value": "gg_lig", "required": false },
+    { "name": "output_id", "default_value": "gg_product", "required": false }
+  ],
+  "input_ports": [
+    {
+      "port_id": "vector_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Golden Gate destination vector sequence ID."
+    },
+    {
+      "port_id": "insert_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Insert sequence ID for single-fragment insertion."
+    },
+    {
+      "port_id": "type_iis_enzyme",
+      "kind": "string",
+      "required": true,
+      "cardinality": "one",
+      "description": "Type IIS enzyme name (for example Eco31/BsaI class)."
+    },
+    {
+      "port_id": "junction_overhangs",
+      "kind": "string",
+      "required": false,
+      "cardinality": "many",
+      "description": "Comma-separated junction overhang token list (single-insert typically one token)."
+    },
+    {
+      "port_id": "vector_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "1-based digest fragment index selected from vector digest output."
+    },
+    {
+      "port_id": "insert_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "1-based digest fragment index selected from insert digest output."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "digest_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Digest fragment namespace prefix."
+    },
+    {
+      "port_id": "ligation_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Ligation product namespace prefix."
+    },
+    {
+      "port_id": "output_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Deterministic Golden Gate preview output sequence ID."
+    }
+  ],
+  "script": "op {\"Digest\":{\"input\":\"${vector_seq_id}\",\"enzymes\":[\"${type_iis_enzyme}\"],\"output_prefix\":\"${digest_prefix}_vec\"}}\nop {\"Digest\":{\"input\":\"${insert_seq_id}\",\"enzymes\":[\"${type_iis_enzyme}\"],\"output_prefix\":\"${digest_prefix}_ins\"}}\nop {\"Ligation\":{\"inputs\":[\"${digest_prefix}_vec_${vector_fragment}\",\"${digest_prefix}_ins_${insert_fragment}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${ligation_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${ligation_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

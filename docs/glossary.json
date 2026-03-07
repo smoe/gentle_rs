@@ -1012,7 +1012,45 @@
          ],
          "path": "primers design",
          "summary": "Generate and persist a ranked primer-pair report from a DesignPrimerPairs operation payload.",
-         "usage": "primers design REQUEST_JSON_OR_@FILE"
+         "usage": "primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "DesignQpcrAssays"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers design-qpcr",
+         "summary": "Generate and persist a ranked qPCR assay report from a DesignQpcrAssays operation payload.",
+         "usage": "primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers seed-from-feature",
+         "summary": "Resolve one feature ROI and emit seeded DesignPrimerPairs/DesignQpcrAssays operation payloads.",
+         "usage": "primers seed-from-feature SEQ_ID FEATURE_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers seed-from-splicing",
+         "summary": "Resolve one splicing-group ROI and emit seeded DesignPrimerPairs/DesignQpcrAssays operation payloads.",
+         "usage": "primers seed-from-splicing SEQ_ID FEATURE_ID"
       },
       {
          "aliases": [],
@@ -1049,6 +1087,42 @@
          "path": "primers export-report",
          "summary": "Write one persisted primer-design report to JSON.",
          "usage": "primers export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers list-qpcr-reports",
+         "summary": "List persisted qPCR assay design reports.",
+         "usage": "primers list-qpcr-reports"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers show-qpcr-report",
+         "summary": "Inspect one persisted qPCR assay report by report ID.",
+         "usage": "primers show-qpcr-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "primers export-qpcr-report",
+         "summary": "Write one persisted qPCR assay report to JSON.",
+         "usage": "primers export-qpcr-report REPORT_ID OUTPUT.json"
       },
       {
          "aliases": [],
@@ -1353,6 +1427,30 @@
          "path": "routines list",
          "summary": "List cloning routines from the typed routine catalog with optional filters.",
          "usage": "routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "routines explain",
+         "summary": "Return a structured explanation for one cloning routine, including requirements, failure modes, and likely confusing alternatives.",
+         "usage": "routines explain ROUTINE_ID [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "routines compare",
+         "summary": "Compare two cloning routines with deterministic difference axes and shared/unique vocabulary tags.",
+         "usage": "routines compare ROUTINE_A ROUTINE_B [--catalog PATH]"
       },
       {
          "aliases": [],

@@ -77,7 +77,7 @@ Guide-design capability status:
 
 Primer-design report capability status:
 
-- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs` and `DesignQpcrAssays` plus persisted report inspect/export helpers
+- `gentle_cli`: supported via shared-shell `primers ...` commands and direct forwarding (`gentle_cli primers ...`), backed by `DesignPrimerPairs` and `DesignQpcrAssays` plus non-mutating ROI seed helpers (`primers seed-from-feature`, `primers seed-from-splicing`) and persisted report inspect/export helpers
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
 
@@ -749,6 +749,8 @@ Shared shell command:
     - `macros template-import PATH`
     - `macros template-run TEMPLATE_NAME [--bind KEY=VALUE ...] [--transactional] [--validate-only]`
     - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+    - `routines explain ROUTINE_ID [--catalog PATH]`
+    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
     - `candidates list`
     - `candidates delete SET_NAME`
     - `candidates generate SET_NAME SEQ_ID --length N [--step N] [--feature-kind KIND] [--feature-label-regex REGEX] [--max-distance N] [--feature-geometry feature_span|feature_parts|feature_boundaries] [--feature-boundary any|five_prime|three_prime|start|end] [--strand-relation any|same|opposite] [--limit N]`
@@ -781,6 +783,8 @@ Shared shell command:
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers seed-from-feature SEQ_ID FEATURE_ID`
+    - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers list-reports`
     - `primers show-report REPORT_ID`
     - `primers export-report REPORT_ID OUTPUT.json`
@@ -795,6 +799,13 @@ Shared shell command:
       - `pair_constraints` is optional and supports:
         `require_roi_flanking`, amplicon motif filters, and fixed amplicon
         start/end coordinates.
+    - Primer ROI seed helper notes (`primers seed-from-feature` / `primers seed-from-splicing`):
+      - returns non-mutating schema `gentle.primer_seed_request.v1`
+      - includes `template`, source metadata, `roi_start_0based`,
+        `roi_end_0based_exclusive`
+      - includes ready-to-run operations:
+        `operations.design_primer_pairs` (`DesignPrimerPairs`) and
+        `operations.design_qpcr_assays` (`DesignQpcrAssays`)
     - `panels import-isoform SEQ_ID PANEL_PATH [--panel-id ID] [--strict]`
     - `panels inspect-isoform SEQ_ID PANEL_ID`
     - `panels render-isoform-svg SEQ_ID PANEL_ID OUTPUT.svg`
@@ -1146,8 +1157,16 @@ Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'r
 - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
   - Lists typed cloning routines from catalog JSON (`gentle.cloning_routines.v1`).
   - `--family`, `--status`, `--tag`: exact case-insensitive filters.
-  - `--query`: case-insensitive substring match across id/title/family/status/template/tags/summary.
+  - `--query`: case-insensitive substring match across id/title/family/status/template/tags/summary plus explainability metadata fields.
   - Default catalog path: `assets/cloning_routines.json`.
+- `routines explain ROUTINE_ID [--catalog PATH]`
+  - Returns structured explainability payload for one routine.
+  - Response schema: `gentle.cloning_routine_explain.v1`.
+  - Includes resolved alternatives plus purpose/mechanism/requirements, contraindications, disambiguation questions, and failure modes.
+- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+  - Returns deterministic side-by-side comparison payload for two routines.
+  - Response schema: `gentle.cloning_routine_compare.v1`.
+  - Includes shared/unique vocabulary tags, difference-matrix rows, and merged disambiguation questions.
 
 Shipped starter assets:
 

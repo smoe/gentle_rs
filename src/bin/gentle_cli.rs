@@ -535,15 +535,19 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] guides oligos-show OLIGO_SET_ID\n  \
   gentle_cli [--state PATH|--project PATH] guides oligos-export GUIDE_SET_ID OUTPUT_PATH [--format csv_table|plate_csv|fasta] [--plate 96|384] [--oligo-set ID]\n  \
   gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
-  gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE\n  \
-  gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE\n  \
+  gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
+  gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-report REPORT_ID OUTPUT.json\n  \
   gentle_cli [--state PATH|--project PATH] primers list-qpcr-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
-  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n\n  \
+  gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n  \
+  gentle_cli routines explain ROUTINE_ID [--catalog PATH]\n  \
+  gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -2418,6 +2422,29 @@ T [ 0 0 0 10 ]
         .expect("parse routines list");
         assert!(matches!(routines_list, ShellCommand::RoutinesList { .. }));
 
+        let routines_explain = parse_shell_tokens(&[
+            "routines".to_string(),
+            "explain".to_string(),
+            "golden_gate.type_iis_single_insert".to_string(),
+        ])
+        .expect("parse routines explain");
+        assert!(matches!(
+            routines_explain,
+            ShellCommand::RoutinesExplain { .. }
+        ));
+
+        let routines_compare = parse_shell_tokens(&[
+            "routines".to_string(),
+            "compare".to_string(),
+            "golden_gate.type_iis_single_insert".to_string(),
+            "gibson.two_fragment_overlap_preview".to_string(),
+        ])
+        .expect("parse routines compare");
+        assert!(matches!(
+            routines_compare,
+            ShellCommand::RoutinesCompare { .. }
+        ));
+
         let ui_open = parse_shell_tokens(&[
             "ui".to_string(),
             "open".to_string(),
@@ -2449,6 +2476,61 @@ T [ 0 0 0 10 ]
         assert!(matches!(
             panels_validate,
             ShellCommand::PanelsValidateIsoform { .. }
+        ));
+
+        let primers_design_qpcr = parse_shell_tokens(&[
+            "primers".to_string(),
+            "design-qpcr".to_string(),
+            "{\"DesignQpcrAssays\":{}}".to_string(),
+            "--backend".to_string(),
+            "internal".to_string(),
+            "--primer3-exec".to_string(),
+            "primer3_core".to_string(),
+        ])
+        .expect("parse primers design-qpcr");
+        assert!(matches!(
+            primers_design_qpcr,
+            ShellCommand::PrimersDesignQpcr {
+                backend: Some(_),
+                primer3_executable: Some(_),
+                ..
+            }
+        ));
+
+        let primers_seed_feature = parse_shell_tokens(&[
+            "primers".to_string(),
+            "seed-from-feature".to_string(),
+            "seqA".to_string(),
+            "5".to_string(),
+        ])
+        .expect("parse primers seed-from-feature");
+        assert!(matches!(
+            primers_seed_feature,
+            ShellCommand::PrimersSeedFromFeature { .. }
+        ));
+
+        let primers_seed_splicing = parse_shell_tokens(&[
+            "primers".to_string(),
+            "seed-from-splicing".to_string(),
+            "seqA".to_string(),
+            "7".to_string(),
+        ])
+        .expect("parse primers seed-from-splicing");
+        assert!(matches!(
+            primers_seed_splicing,
+            ShellCommand::PrimersSeedFromSplicing { .. }
+        ));
+
+        let primers_export_qpcr = parse_shell_tokens(&[
+            "primers".to_string(),
+            "export-qpcr-report".to_string(),
+            "report_a".to_string(),
+            "out.json".to_string(),
+        ])
+        .expect("parse primers export-qpcr-report");
+        assert!(matches!(
+            primers_export_qpcr,
+            ShellCommand::PrimersExportQpcrReport { .. }
         ));
     }
 
@@ -2626,6 +2708,66 @@ T [ 0 0 0 10 ]
     }
 
     #[test]
+    fn test_forwarded_primers_list_dispatch_matches_shared_shell_execution() {
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "list-reports".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_primers_list_qpcr_dispatch_matches_shared_shell_execution() {
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "list-qpcr-reports".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
     fn test_parse_forwarded_shell_command_routes_macros_template_run() {
         let args = vec![
             "gentle_cli".to_string(),
@@ -2701,6 +2843,29 @@ T [ 0 0 0 10 ]
         match parsed {
             Some(ShellCommand::RoutinesList { family, .. }) => {
                 assert_eq!(family.as_deref(), Some("crispr"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_routines_compare() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "routines".to_string(),
+            "compare".to_string(),
+            "golden_gate.type_iis_single_insert".to_string(),
+            "gibson.two_fragment_overlap_preview".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::RoutinesCompare {
+                left_routine_id,
+                right_routine_id,
+                ..
+            }) => {
+                assert_eq!(left_routine_id, "golden_gate.type_iis_single_insert");
+                assert_eq!(right_routine_id, "gibson.two_fragment_overlap_preview");
             }
             other => panic!("unexpected parsed shell command: {other:?}"),
         }

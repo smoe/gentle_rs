@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -85,8 +85,22 @@ order. Durable architecture constraints and decisions remain in
     persists resulting sequences/containers via regular operation persistence
 - Typed cloning-routine catalog baseline is now available:
   - versioned manifest at `assets/cloning_routines.json`
+  - additive explainability metadata baseline is now supported in catalog rows:
+    - `purpose`, `mechanism`, `requires`, `contraindications`
+    - `confusing_alternatives`, `difference_matrix`
+    - `disambiguation_questions`, `failure_modes`
   - shared-shell/CLI discovery command:
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+  - shared-shell/CLI explainability commands:
+    - `routines explain ROUTINE_ID [--catalog PATH]`
+    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+  - GUI staged Routine Assistant baseline is now available
+    (`Patterns -> Routine Assistant...`) with:
+    - goal/candidate selection
+    - compare stage (`routines compare`)
+    - typed binding form
+    - preflight stage (`macros template-run --validate-only`)
+    - transactional run + run-bundle export
   - GUI `Patterns` menu now exposes routine browsing grouped by family/status
     and routine-level template import actions
   - workflow template preflight baseline is now wired into
@@ -166,6 +180,11 @@ order. Durable architecture constraints and decisions remain in
   - GUI Engine Ops now exposes dedicated primer/qPCR forms for those operations,
     including explicit side-sequence constraints and pair constraints (no raw
     JSON required for common interactive use)
+  - GUI Engine Ops now also exposes report-management helpers in the same
+    primer/qPCR panel:
+    - list persisted report IDs
+    - show report summary for current `report_id`
+    - export current `report_id` to JSON via save dialog
   - backend selection is now available through engine parameters and shell
     command options:
     - `primer_design_backend=auto|internal|primer3`
@@ -326,6 +345,22 @@ order. Durable architecture constraints and decisions remain in
     - `Fit Features` for vertical recenter of current subsequence
 - Help-window shell command reference generated from `docs/glossary.json` with
   interface filter controls (`All`, GUI shell, CLI shell, CLI direct, JS, Lua).
+- Help open-path latency hardening:
+  - opening help now reuses already-loaded markdown/glossary payloads
+    (no unconditional disk reload/parse on each open)
+  - explicit `Reload` in help remains the deterministic path for on-disk doc refresh
+  - help search/render paths no longer clone full markdown buffers on each
+    refresh/frame
+- Window-backdrop load path now uses a stable texture-size hint so opening
+  differently sized windows does not trigger per-window-size image reload paths.
+- Slow-open diagnostics now emit status-bar timing hints when:
+  - Configuration runtime sync exceeds a threshold
+  - Help payload load exceeds a threshold
+  - first-frame Help/Configuration render exceeds a threshold
+  - total Help/Configuration window activation exceeds a threshold
+  - native macOS open-window menu synchronization exceeds a threshold
+  - native macOS window-menu synchronization is now deferred while an
+    in-progress Help/Configuration open probe is active (sync resumes on next frame)
 - Help menu now includes a dedicated `Reviewer Quickstart` guide with internal
   preview warnings, known limitations, and deterministic colleague walkthrough
   steps.
@@ -702,8 +737,22 @@ Current baseline:
   routine-family/status/tag metadata and typed input/output port declarations.
 - shared-shell/CLI discovery now supports routine list/filter/search via
   `routines list ...`.
+- shared-shell/CLI explainability baseline is now implemented:
+  - `routines explain ROUTINE_ID [--catalog PATH]`
+  - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+  - response schemas:
+    `gentle.cloning_routine_explain.v1`,
+    `gentle.cloning_routine_compare.v1`
+- routine catalog rows now support additive explainability metadata
+  (`purpose`, `mechanism`, `requires`, `contraindications`,
+  `confusing_alternatives`, `difference_matrix`,
+  `disambiguation_questions`, `failure_modes`), with initial curation for core
+  cloning families.
 - GUI routine discovery baseline is now exposed under `Patterns` with grouped
   family/status browsing.
+- GUI staged Routine Assistant baseline is implemented at
+  `Patterns -> Routine Assistant...`, backed by shared-shell explain/compare +
+  template-run command paths.
 - workflow template preflight baseline is implemented in shared shell:
   - `macros template-run ... --validate-only` reports typed preflight without
     mutating state
@@ -736,8 +785,95 @@ Planned work:
    compact operation summaries for large projects).
 3. Fill protocol-family packs incrementally (restriction and Gibson baseline
    shipped; next: Golden Gate, Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
-4. Postponed: add replay helpers for recorded macro instances only after
+4. Harden GUI Routine Assistant:
+   - decision-trace capture/export integration
+   - richer comparison guidance for missing/weak metadata rows
+   - adapter-parity tests for staged flow output contracts.
+5. Postponed: add replay helpers for recorded macro instances only after
    routine-family preflight models and protocol-family packs are stabilized.
+
+Concrete patch plan (architecture-aligned): routine-application assistant +
+self-describing alternatives
+
+Status (2026-03-07): metadata schema extension + shared `routines explain` /
+`routines compare` command surfaces are implemented; GUI staged Routine
+Assistant baseline is implemented; decision-trace export wiring remains in
+progress.
+
+1. Metadata contract extension (`assets/cloning_routines.json`)
+- Add additive explanation fields for routine-selection clarity:
+  - `purpose`, `mechanism`, `requires[]`, `contraindications[]`
+  - `confusing_alternatives[]`
+  - `difference_matrix[]`
+  - `disambiguation_questions[]`
+  - `failure_modes[]`
+- Keep schema additive and backward-compatible.
+
+2. Shared explanation commands (non-mutating, adapter-neutral)
+- Add:
+  - `routines explain ROUTINE_ID`
+  - `routines compare ROUTINE_A ROUTINE_B`
+- Output one deterministic JSON payload family used unchanged by
+  GUI/CLI/JS/Lua/AI/MCP renderers.
+
+3. GUI Routine Assistant (apply flow)
+- Add a dedicated assistant panel with fixed stages:
+  1) goal capture,
+  2) candidate routines,
+  3) alternative comparison (`why this / why not`),
+  4) typed parameter form (from routine ports),
+  5) preflight preview (`--validate-only` equivalent),
+  6) transactional execute,
+  7) protocol/run-bundle export.
+- Keep execution routed through existing macro/template operations only.
+
+4. Decision-trace export for reproducibility
+- Deliver a first-class deterministic trace payload for routine choice:
+  - schema:
+    - `gentle.routine_decision_trace.v1` (additive metadata object)
+    - embedded in `gentle.process_run_bundle.v1` as `decision_traces[]`
+  - capture lifecycle (ordered):
+    1) assistant start + source adapter,
+    2) intent/query capture,
+    3) candidate snapshot,
+    4) selected routine + alternatives presented,
+    5) compare events,
+    6) disambiguation answers,
+    7) binding snapshot,
+    8) preflight snapshot/history,
+    9) execution attempt/outcome,
+    10) export event(s).
+  - status model:
+    - `draft`, `preflight_failed`, `ready`, `executed`,
+      `execution_failed`, `aborted`, `exported`
+  - deterministic serialization guarantees:
+    - stable ordering for candidate lists/comparisons/questions/answers/op IDs
+    - explicit `null`/`[]` field encoding (no adapter-specific omissions)
+    - normalized text capture (trim outer whitespace, preserve case/content)
+  - retention/redaction baseline:
+    - include explicit user-facing inputs and engine outputs only
+    - avoid implicit secret/env capture
+  - integration rollout:
+    - phase 1 producer: GUI Routine Assistant
+    - phase 2 parity: CLI/JS/Lua assistant-equivalent flows
+  - acceptance tests:
+    - success trace snapshot (full lifecycle)
+    - preflight-failed partial trace snapshot
+    - execution-failed trace snapshot
+    - aborted trace snapshot (no execution attempted)
+    - run-bundle inclusion + deterministic ordering snapshot
+    - adapter-parity fixture asserting schema-equivalent payloads for
+      equivalent staged decisions.
+
+5. Milestone order and acceptance gates
+- M1: Golden Gate pack + family preflight + explain/compare rows.
+- M2: Gateway/TOPO/TA-GC packs + family preflight + confusion mapping.
+- M3: In-Fusion/NEBuilder packs + overlap-family preflight + confusion mapping.
+- M4: GUI Routine Assistant + decision-trace export wiring.
+- Gate per milestone:
+  - one validate-only success + one deterministic failure per family/mode
+  - one transactional run creating outputs + macro-instance lineage rows
+  - `routines list`/`explain`/`compare` payload consistency checks.
 
 Postponed item detail (deferred): macro-instance replay helpers
 
@@ -873,11 +1009,26 @@ Repeated multi-tool gaps to prioritize:
      - optional Primer3 backend selection (`auto|internal|primer3`) with
        deterministic fallback and backend provenance in reports
    - next:
-    - add nested-PCR primer design workflow contracts:
-      - outer + inner primer-pair design in one deterministic request/report
-      - explicit nesting constraints (inner amplicon must lie within outer
-        amplicon with configurable margin)
-      - adapter-equivalent export/inspection routes for outer/inner pair sets
+     - add nested-PCR primer design workflow contracts:
+       - outer + inner primer-pair design in one deterministic request/report
+       - explicit nesting constraints (inner amplicon must lie within outer
+         amplicon with configurable margin)
+       - adapter-equivalent export/inspection routes for outer/inner pair sets
+     - add explicit long-range PCR workflow mode:
+       - support primer-pair design where target amplicons can exceed one
+         viewport span in sequence GUI (far-apart anchors/primers)
+       - preserve deterministic reporting and GUI guidance for very long
+         amplicons.
+     - add chromosomal-translocation PCR workflow mode:
+       - support primer-pair intent where forward and reverse primers target
+         different chromosomes in the reference genome model
+       - produce deterministic fusion-aware report payloads for breakpoint
+         tests.
+     - add deferred genome-translocation modeling track (depends on genome-view):
+       - allow users to declare/simulate translocation events in-genome view.
+       - define how synthetic fusion loci are represented for primer design.
+       - evaluate BLAST indexing implications for fusion references and
+         breakpoint-spanning primer specificity checks.
      - expand Primer3 constraint-mapping parity and fixture-backed equivalence
        coverage versus internal backend normalization
      - add richer Primer3 preflight diagnostics/UI surfacing
@@ -1229,6 +1380,11 @@ Planned upgrades:
 - Add protocol macro template packs for the cloning modes listed in Section 2
   (restriction + Gibson baseline already shipped; next focus on Golden Gate,
   Gateway, TOPO, TA/GC, In-Fusion, NEBuilder HiFi).
+- Implement routine-application assistant surfaces on top of the same routine
+  catalog/preflight contracts:
+  - shared `routines explain` / `routines compare` payloads
+  - GUI staged apply flow with explicit alternative disambiguation
+  - optional decision-trace export in process protocol/run-bundle artifacts.
 - Start repeated cross-tool cloning UX gaps after routine packs land:
   - primer design/validation workflow contracts
   - nested-PCR primer workflow contract + UI/report parity

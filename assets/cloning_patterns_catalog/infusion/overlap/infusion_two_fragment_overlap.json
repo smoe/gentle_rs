@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "infusion_two_fragment_overlap",
+  "description": "In-Fusion two-fragment overlap planning baseline with overlap preflight checks.",
+  "details_url": "https://www.takarabio.com/products/cloning/in-fusion-cloning",
+  "parameters": [
+    { "name": "left_seq_id", "required": true },
+    { "name": "right_seq_id", "required": true },
+    { "name": "overlap_bp", "default_value": "15", "required": false },
+    { "name": "assembly_prefix", "default_value": "infusion_preview", "required": false },
+    { "name": "output_id", "default_value": "infusion_product", "required": false }
+  ],
+  "input_ports": [
+    { "port_id": "left_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Left fragment sequence ID in intended assembly order." },
+    { "port_id": "right_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Right fragment sequence ID in intended assembly order." },
+    { "port_id": "overlap_bp", "kind": "number", "required": true, "cardinality": "one", "description": "Overlap length used for In-Fusion preflight checks." }
+  ],
+  "output_ports": [
+    { "port_id": "assembly_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "In-Fusion preview output namespace prefix." },
+    { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic In-Fusion output sequence ID." }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${left_seq_id}\",\"${right_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

@@ -19,6 +19,12 @@ Current family examples in this hierarchical catalog:
 
 - `restriction/.../digest_ligate_extract_sticky.json`
 - `gibson/.../gibson_two_fragment_overlap_preview.json`
+- `golden_gate/.../golden_gate_single_insert.json`
+- `gateway/.../gateway_bp_single_insert.json`
+- `topo/.../topo_ta_single_insert.json`
+- `ta_gc/.../ta_clone_single_insert.json`
+- `infusion/.../infusion_two_fragment_overlap.json`
+- `nebuilder_hifi/.../nebuilder_two_fragment_overlap.json`
 - `pcr/.../pcr_site_insertion_then_digest.json`
 - `crispr/...` guide candidate/oligo workflows
 - `sequence/.../branch_reverse_complement.json`

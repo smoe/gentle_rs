@@ -1,0 +1,69 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "golden_gate_destination_cleanup",
+  "description": "Golden Gate destination cleanup baseline: Type IIS digest, optional extraction, deterministic product branch.",
+  "details_url": "https://www.addgene.org/protocols/golden-gate/",
+  "parameters": [
+    { "name": "destination_seq_id", "required": true },
+    { "name": "type_iis_enzyme", "default_value": "Eco31", "required": false },
+    { "name": "digest_prefix", "default_value": "ggd_digest", "required": false },
+    { "name": "keep_fragment", "default_value": "1", "required": false },
+    { "name": "extract_from", "default_value": "0", "required": false },
+    { "name": "extract_to", "default_value": "200", "required": false },
+    { "name": "output_id", "default_value": "ggd_product", "required": false }
+  ],
+  "input_ports": [
+    {
+      "port_id": "destination_seq_id",
+      "kind": "sequence",
+      "required": true,
+      "cardinality": "one",
+      "description": "Destination backbone sequence ID."
+    },
+    {
+      "port_id": "type_iis_enzyme",
+      "kind": "string",
+      "required": true,
+      "cardinality": "one",
+      "description": "Type IIS enzyme name for destination cleanup digest."
+    },
+    {
+      "port_id": "keep_fragment",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "1-based digest fragment index to keep."
+    },
+    {
+      "port_id": "extract_from",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Optional extraction start on kept fragment."
+    },
+    {
+      "port_id": "extract_to",
+      "kind": "number",
+      "required": false,
+      "cardinality": "one",
+      "description": "Optional extraction end on kept fragment."
+    }
+  ],
+  "output_ports": [
+    {
+      "port_id": "digest_prefix",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "many",
+      "description": "Digest output namespace prefix."
+    },
+    {
+      "port_id": "output_id",
+      "kind": "sequence",
+      "required": false,
+      "cardinality": "one",
+      "description": "Destination-cleanup output sequence ID."
+    }
+  ],
+  "script": "op {\"Digest\":{\"input\":\"${destination_seq_id}\",\"enzymes\":[\"${type_iis_enzyme}\"],\"output_prefix\":\"${digest_prefix}\"}}\nop {\"ExtractRegion\":{\"input\":\"${digest_prefix}_${keep_fragment}\",\"from\":${extract_from},\"to\":${extract_to},\"output_id\":\"${output_id}\"}}"
+}

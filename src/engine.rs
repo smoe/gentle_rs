@@ -2588,6 +2588,10 @@ pub enum Operation {
         query: String,
         entry_id: Option<String>,
     },
+    ImportUniprotEntrySequence {
+        entry_id: String,
+        output_id: Option<SeqId>,
+    },
     ProjectUniprotToGenome {
         seq_id: SeqId,
         entry_id: String,
@@ -3929,6 +3933,7 @@ impl GentleEngine {
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
+                "ImportUniprotEntrySequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
                 "ImportBlastHitsTrack".to_string(),
                 "DigestContainer".to_string(),
@@ -5066,13 +5071,21 @@ impl GentleEngine {
             message: format!("Could not fetch UniProt entry '{query}': {e}"),
         })?;
         if !response.status().is_success() {
+            let status = response.status();
+            let detail = if status == reqwest::StatusCode::NOT_FOUND {
+                format!(
+                    "UniProt query '{}' was not found (HTTP {}) at '{}'; verify accession/entry ID",
+                    query, status, url
+                )
+            } else {
+                format!(
+                    "UniProt query '{}' returned HTTP status {} at '{}'",
+                    query, status, url
+                )
+            };
             return Err(EngineError {
                 code: ErrorCode::NotFound,
-                message: format!(
-                    "UniProt query '{}' returned HTTP status {}",
-                    query,
-                    response.status()
-                ),
+                message: detail,
             });
         }
         let text = response.text().map_err(|e| EngineError {
@@ -5094,6 +5107,110 @@ impl GentleEngine {
                 message: format!("Could not parse SWISS-PROT text: {e}"),
             }
         })
+    }
+
+    fn import_uniprot_entry_sequence(
+        &mut self,
+        result: &mut OpResult,
+        entry_id: &str,
+        output_id: Option<&str>,
+    ) -> Result<SeqId, EngineError> {
+        let entry = self.get_uniprot_entry(entry_id)?;
+        let sequence = entry.sequence.trim().to_ascii_uppercase();
+        if sequence.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("UniProt entry '{}' has an empty sequence", entry.entry_id),
+            });
+        }
+        let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not construct sequence from UniProt entry '{}': {e}",
+                entry.entry_id
+            ),
+        })?;
+
+        for feature in &entry.features {
+            let Some(start_aa) = feature.interval.start_aa else {
+                continue;
+            };
+            let Some(end_aa) = feature.interval.end_aa else {
+                continue;
+            };
+            if start_aa == 0 || end_aa == 0 {
+                continue;
+            }
+            let start = start_aa.min(end_aa);
+            if start > entry.sequence_length {
+                continue;
+            }
+            let end = end_aa.max(start_aa).min(entry.sequence_length.max(1));
+            let kind = feature.key.trim();
+            let feature_kind = if kind.is_empty() {
+                "misc_feature"
+            } else {
+                kind
+            };
+            let start_zero_based = start.saturating_sub(1);
+            let end_one_based = end;
+            let mut qualifiers: Vec<(String, Option<String>)> = vec![
+                ("source".to_string(), Some("UniProt".to_string())),
+                ("uniprot_entry_id".to_string(), Some(entry.entry_id.clone())),
+                (
+                    "uniprot_accession".to_string(),
+                    Some(entry.accession.clone()),
+                ),
+                (
+                    "uniprot_raw_location".to_string(),
+                    Some(feature.interval.raw_location.clone()),
+                ),
+            ];
+            if let Some(note) = feature
+                .note
+                .as_deref()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+            {
+                qualifiers.push(("note".to_string(), Some(note.to_string())));
+            }
+            for (key, value) in &feature.qualifiers {
+                if key.trim().is_empty() {
+                    continue;
+                }
+                qualifiers.push((key.trim().to_string(), Some(value.clone())));
+            }
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: gb_io::seq::FeatureKind::from(feature_kind),
+                location: gb_io::seq::Location::simple_range(
+                    start_zero_based as i64,
+                    end_one_based as i64,
+                ),
+                qualifiers: qualifiers
+                    .into_iter()
+                    .map(|(key, value)| (key.into(), value))
+                    .collect(),
+            });
+        }
+
+        Self::prepare_sequence(&mut dna);
+        let requested_id = output_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&entry.entry_id);
+        let seq_id = self.unique_seq_id(requested_id);
+        self.state.sequences.insert(seq_id.clone(), dna);
+        self.add_lineage_node(
+            &seq_id,
+            SequenceOrigin::ImportedUnknown,
+            Some(&result.op_id),
+        );
+        result.created_seq_ids.push(seq_id.clone());
+        result.messages.push(format!(
+            "Imported UniProt sequence '{}' into sequence '{}'",
+            entry.entry_id, seq_id
+        ));
+        Ok(seq_id)
     }
 
     fn aa_interval_to_genomic_segments(
@@ -14561,6 +14678,9 @@ impl GentleEngine {
         };
         let name = match op {
             Operation::LoadFile { .. } => Some("Imported sequence".to_string()),
+            Operation::ImportUniprotEntrySequence { .. } => {
+                Some("Imported UniProt sequence".to_string())
+            }
             Operation::Digest { .. } => Some("Digest products".to_string()),
             Operation::DigestContainer { .. } => Some("Digest products".to_string()),
             Operation::MergeContainers { .. } => Some("Merged container".to_string()),
@@ -15198,11 +15318,7 @@ impl GentleEngine {
     fn operation_variant_name(op: &Operation) -> String {
         serde_json::to_value(op)
             .ok()
-            .and_then(|value| {
-                value
-                    .as_object()
-                    .and_then(|obj| obj.keys().next().cloned())
-            })
+            .and_then(|value| value.as_object().and_then(|obj| obj.keys().next().cloned()))
             .unwrap_or_else(|| "UnknownOperation".to_string())
     }
 
@@ -15296,7 +15412,9 @@ impl GentleEngine {
                 Self::push_unique_token(&mut summary.container_ids, container_id);
             }
             Operation::Digest { input, .. }
-            | Operation::Pcr { template: input, .. }
+            | Operation::Pcr {
+                template: input, ..
+            }
             | Operation::PcrAdvanced {
                 template: input, ..
             }
@@ -15405,7 +15523,9 @@ impl GentleEngine {
                 message: "ExportProcessRunBundle requires non-empty path".to_string(),
             });
         }
-        let normalized_run_id = run_id_filter.map(str::trim).filter(|value| !value.is_empty());
+        let normalized_run_id = run_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let selected_records: Vec<OperationRecord> = self
             .journal
             .iter()
@@ -19126,6 +19246,24 @@ impl GentleEngine {
                     "Fetched UniProt entry '{}' (accession '{}') from '{}'",
                     resolved_entry_id, accession, source_url
                 ));
+            }
+            Operation::ImportUniprotEntrySequence {
+                entry_id,
+                output_id,
+            } => {
+                let entry_id = entry_id.trim();
+                if entry_id.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: "ImportUniprotEntrySequence requires a non-empty entry_id"
+                            .to_string(),
+                    });
+                }
+                let _ = self.import_uniprot_entry_sequence(
+                    &mut result,
+                    entry_id,
+                    output_id.as_deref(),
+                )?;
             }
             Operation::ProjectUniprotToGenome {
                 seq_id,
@@ -25303,6 +25441,56 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn test_import_uniprot_entry_sequence_creates_project_sequence() {
+        let dir = tempfile::tempdir().unwrap();
+        let swiss_path = dir.path().join("toy_uniprot_use.txt");
+        let swiss_text = r#"ID   TOY2_HUMAN              Reviewed;         12 AA.
+AC   PUSE1;
+DE   RecName: Full=Toy use protein;
+GN   Name=TOY2;
+OS   Homo sapiens (Human).
+FT   DOMAIN          2..6
+FT                   /note="toy segment"
+SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEP
+//
+"#;
+        std::fs::write(&swiss_path, swiss_text).unwrap();
+
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::ImportUniprotSwissProt {
+                path: swiss_path.display().to_string(),
+                entry_id: Some("TOY_USE".to_string()),
+            })
+            .expect("import uniprot swiss");
+
+        let import_sequence = engine
+            .apply(Operation::ImportUniprotEntrySequence {
+                entry_id: "TOY_USE".to_string(),
+                output_id: None,
+            })
+            .expect("import uniprot entry sequence");
+        assert_eq!(import_sequence.created_seq_ids, vec!["TOY_USE".to_string()]);
+
+        let dna = engine
+            .state()
+            .sequences
+            .get("TOY_USE")
+            .expect("sequence imported from UniProt entry");
+        assert_eq!(dna.get_forward_string(), "MEEPQSDPSVEP".to_string());
+        assert!(
+            !dna.features().is_empty(),
+            "expected UniProt features to map into sequence features"
+        );
+        assert!(
+            dna.features()[0].location.to_gb_format().contains("2..6"),
+            "unexpected feature location: {}",
+            dna.features()[0].location.to_gb_format()
+        );
+    }
+
+    #[test]
     fn test_fasta_roundtrip_synthetic_dsdna_blunt() {
         let expected = synth_oligo("molecule=dsdna topology=linear", b"ATGCATGC");
         assert_fasta_roundtrip(expected);
@@ -26622,7 +26810,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             bundle
                 .parameter_overrides
                 .iter()
-                .any(|row| row.name == "max_fragments_per_container" && row.value == serde_json::json!(12345))
+                .any(|row| row.name == "max_fragments_per_container"
+                    && row.value == serde_json::json!(12345))
         );
         assert!(
             bundle

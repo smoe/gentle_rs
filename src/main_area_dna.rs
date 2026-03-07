@@ -538,7 +538,11 @@ mod tests {
     use super::{MainAreaDna, PrimaryMapMode, ViewSvgExportProfile};
     use crate::{
         dna_sequence::DNAsequence,
-        engine::{Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation, ProjectState},
+        engine::{
+            Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation,
+            PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+        },
+        feature_expert::SplicingExpertView,
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
@@ -866,6 +870,184 @@ mod tests {
         let err = MainAreaDna::parse_primer_locked_positions("2:A,2:G", "locks")
             .expect_err("duplicate offsets should fail");
         assert!(err.contains("duplicate offset"));
+    }
+
+    #[test]
+    fn seed_primer_roi_updates_both_primer_and_qpcr_forms() {
+        let dna = DNAsequence::from_sequence(&"ACGT".repeat(100)).expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        assert!(!area.show_engine_ops);
+        area.seed_primer_design_roi_0based(25, 150, "test");
+        assert_eq!(area.primer_design_ui.roi_start_0based, "25");
+        assert_eq!(area.primer_design_ui.roi_end_0based, "150");
+        assert_eq!(area.qpcr_design_ui.roi_start_0based, "25");
+        assert_eq!(area.qpcr_design_ui.roi_end_0based, "150");
+        assert!(area.show_engine_ops);
+    }
+
+    #[test]
+    fn splicing_group_roi_range_converts_to_zero_based_end_exclusive() {
+        let view = SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 7,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 101,
+            region_end_1based: 640,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: String::new(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        };
+        assert_eq!(
+            MainAreaDna::splicing_group_roi_range_0based(&view),
+            Some((100, 640))
+        );
+    }
+
+    #[test]
+    fn list_primer_design_reports_updates_status_line() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 10,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_pairs: Some(10),
+                report_id: Some("primer_ui_test".to_string()),
+            })
+            .expect("design primer pairs");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+        area.list_primer_design_reports();
+        assert!(area.op_status.contains("Primer reports: 1 total"));
+        assert!(area.op_status.contains("primer_ui_test"));
+    }
+
+    #[test]
+    fn show_qpcr_design_report_updates_status_line() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine
+            .apply(Operation::DesignQpcrAssays {
+                template: "tpl".to_string(),
+                roi_start_0based: 30,
+                roi_end_0based: 70,
+                forward: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(5),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    ..Default::default()
+                },
+                reverse: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(60),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    ..Default::default()
+                },
+                probe: PrimerDesignSideConstraint {
+                    min_length: 20,
+                    max_length: 20,
+                    location_0based: Some(35),
+                    start_0based: None,
+                    end_0based: None,
+                    min_tm_c: 40.0,
+                    max_tm_c: 90.0,
+                    min_gc_fraction: 0.0,
+                    max_gc_fraction: 1.0,
+                    max_anneal_hits: 100,
+                    ..Default::default()
+                },
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 130,
+                max_tm_delta_c: Some(50.0),
+                max_probe_tm_delta_c: Some(50.0),
+                max_assays: Some(10),
+                report_id: Some("qpcr_ui_test".to_string()),
+            })
+            .expect("design qpcr assays");
+        let dna = engine
+            .state()
+            .sequences
+            .get("tpl")
+            .cloned()
+            .expect("template sequence");
+        let engine = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("tpl".to_string()), Some(engine));
+        area.show_qpcr_design_report("qpcr_ui_test");
+        assert!(area.op_status.contains("qPCR report 'qpcr_ui_test'"));
+        assert!(area.op_status.contains("assays="));
     }
 
     #[test]
@@ -3768,6 +3950,61 @@ impl MainAreaDna {
             {
                 self.extract_current_selection_as_sequence();
             }
+            ui.menu_button("PCR ROI", |ui| {
+                let selection_roi = self.current_selection_range_0based();
+                let selection_response = ui.add_enabled(
+                    selection_roi.is_some(),
+                    egui::Button::new("From current selection"),
+                );
+                let selection_response = if selection_roi.is_some() {
+                    selection_response.on_hover_text(
+                        "Seed Primer/qPCR design ROI from current linear selection and open Engine Ops",
+                    )
+                } else {
+                    selection_response.on_hover_text(
+                        "Requires a non-empty linear map/sequence selection",
+                    )
+                };
+                if selection_response.clicked() {
+                    if let Some((start, end_exclusive)) = selection_roi {
+                        self.seed_primer_design_roi_0based(
+                            start,
+                            end_exclusive,
+                            "current sequence selection",
+                        );
+                    }
+                    ui.close_menu();
+                }
+
+                let selected_feature_id = self
+                    .get_selected_feature_id()
+                    .or_else(|| self.multi_selected_feature_ids.iter().next_back().copied());
+                let feature_roi = selected_feature_id.and_then(|feature_id| {
+                    self.feature_roi_range_0based(feature_id)
+                        .map(|roi| (feature_id, roi))
+                });
+                let feature_response = ui.add_enabled(
+                    feature_roi.is_some(),
+                    egui::Button::new("From selected feature"),
+                );
+                let feature_response = if feature_roi.is_some() {
+                    feature_response.on_hover_text(
+                        "Seed Primer/qPCR design ROI from currently selected feature bounds",
+                    )
+                } else {
+                    feature_response.on_hover_text("Requires one selected feature")
+                };
+                if feature_response.clicked() {
+                    if let Some((feature_id, (start, end_exclusive))) = feature_roi {
+                        self.seed_primer_design_roi_0based(
+                            start,
+                            end_exclusive,
+                            &format!("feature n-{feature_id}"),
+                        );
+                    }
+                    ui.close_menu();
+                }
+            });
             if ui
                 .button("Rev")
                 .on_hover_text("Create a reversed branch sequence")
@@ -5894,6 +6131,96 @@ impl MainAreaDna {
             .select(Selection::new(from, to, sequence_length));
     }
 
+    fn current_selection_range_0based(&self) -> Option<(usize, usize)> {
+        let selection = self
+            .dna_display
+            .read()
+            .ok()
+            .and_then(|display| display.selection())?;
+        let from = selection.from();
+        let to = selection.to();
+        if to <= from {
+            return None;
+        }
+        Some((from, to))
+    }
+
+    fn feature_roi_range_0based(&self, feature_id: usize) -> Option<(usize, usize)> {
+        let dna = self.dna.read().ok()?;
+        let feature = dna.features().get(feature_id)?;
+        let mut ranges: Vec<(usize, usize)> = Vec::new();
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        if ranges.is_empty() {
+            let (from, to) = feature.location.find_bounds().ok()?;
+            if from < 0 || to < 0 {
+                return None;
+            }
+            ranges.push((from as usize, to as usize));
+        }
+        let seq_len = dna.len();
+        if seq_len == 0 {
+            return None;
+        }
+        let start = ranges.iter().map(|(start, _)| *start).min()?;
+        if start >= seq_len {
+            return None;
+        }
+        let end = ranges
+            .iter()
+            .map(|(_, end_exclusive)| *end_exclusive)
+            .max()?
+            .min(seq_len);
+        if end <= start {
+            return None;
+        }
+        Some((start, end))
+    }
+
+    fn normalize_roi_range_0based(
+        &self,
+        start: usize,
+        end_exclusive: usize,
+    ) -> Option<(usize, usize)> {
+        let seq_len = self.dna.read().ok()?.len();
+        if seq_len == 0 || start >= seq_len {
+            return None;
+        }
+        let end_exclusive = end_exclusive.min(seq_len);
+        if end_exclusive <= start {
+            return None;
+        }
+        Some((start, end_exclusive))
+    }
+
+    fn seed_primer_design_roi_0based(&mut self, start: usize, end_exclusive: usize, source: &str) {
+        let Some((start, end_exclusive)) = self.normalize_roi_range_0based(start, end_exclusive)
+        else {
+            self.op_status = format!(
+                "Could not seed primer ROI from {source}: invalid 0-based range {start}..{end_exclusive}"
+            );
+            return;
+        };
+        self.primer_design_ui.roi_start_0based = start.to_string();
+        self.primer_design_ui.roi_end_0based = end_exclusive.to_string();
+        self.qpcr_design_ui.roi_start_0based = start.to_string();
+        self.qpcr_design_ui.roi_end_0based = end_exclusive.to_string();
+        self.show_engine_ops = true;
+        self.op_status = format!(
+            "Seeded primer/qPCR ROI from {source}: {start}..{end_exclusive} (0-based, end-exclusive)"
+        );
+        self.save_engine_ops_state();
+    }
+
+    fn splicing_group_roi_range_0based(view: &SplicingExpertView) -> Option<(usize, usize)> {
+        if view.region_start_1based == 0 || view.region_end_1based < view.region_start_1based {
+            return None;
+        }
+        Some((
+            view.region_start_1based.saturating_sub(1),
+            view.region_end_1based,
+        ))
+    }
+
     fn extract_current_selection_as_sequence(&mut self) {
         let template = self.seq_id.clone().unwrap_or_default();
         if template.is_empty() {
@@ -7695,6 +8022,7 @@ impl MainAreaDna {
                     .show(ctx, |ui| {
                         let backdrop_settings = current_window_backdrop_settings();
                         paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                        self.render_splicing_expert_quick_actions(ui, &view);
                         egui::ScrollArea::vertical()
                             .id_salt(format!(
                                 "splicing_expert_scroll_embedded_{}_{}",
@@ -7716,6 +8044,7 @@ impl MainAreaDna {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let backdrop_settings = current_window_backdrop_settings();
                 paint_window_backdrop(ui, WindowBackdropKind::Splicing, &backdrop_settings);
+                self.render_splicing_expert_quick_actions(ui, &view);
                 egui::ScrollArea::vertical()
                     .id_salt(format!(
                         "splicing_expert_scroll_viewport_{}_{}",
@@ -7736,6 +8065,36 @@ impl MainAreaDna {
                 self.show_splicing_expert_window = false;
             }
         });
+    }
+
+    fn render_splicing_expert_quick_actions(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &SplicingExpertView,
+    ) {
+        ui.horizontal_wrapped(|ui| {
+            let action = ui.button("Send Group ROI -> Primer/qPCR").on_hover_text(
+                "Seed Primer/qPCR design ROI from current splicing-group genomic interval and open Engine Ops",
+            );
+            if action.clicked() {
+                if let Some((start, end_exclusive)) = Self::splicing_group_roi_range_0based(view) {
+                    self.seed_primer_design_roi_0based(
+                        start,
+                        end_exclusive,
+                        &format!("splicing group '{}'", view.group_label),
+                    );
+                } else {
+                    self.op_status = "Could not derive a valid ROI from splicing group bounds"
+                        .to_string();
+                }
+            }
+            ui.label(
+                egui::RichText::new("Quick action: seeds ROI only; run Design Primer Pairs or Design qPCR Assays in Engine Ops.")
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+            );
+        });
+        ui.separator();
     }
 
     fn isoform_expert_viewport_id(seq_id: &str, panel_id: &str) -> egui::ViewportId {
@@ -9386,6 +9745,244 @@ impl MainAreaDna {
         })
     }
 
+    fn list_primer_design_reports(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let reports = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .list_primer_design_reports();
+        if reports.is_empty() {
+            self.op_status = "No persisted primer-design reports".to_string();
+            return;
+        }
+        let preview_ids = reports
+            .iter()
+            .take(8)
+            .map(|row| row.report_id.clone())
+            .collect::<Vec<_>>();
+        let suffix = if reports.len() > preview_ids.len() {
+            ", ..."
+        } else {
+            ""
+        };
+        self.op_status = format!(
+            "Primer reports: {} total [{}{}]",
+            reports.len(),
+            preview_ids.join(", "),
+            suffix
+        );
+    }
+
+    fn show_primer_design_report(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Primer report_id is empty".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let report = match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_primer_design_report(report_id)
+        {
+            Ok(report) => report,
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not load primer report '{report_id}': {}",
+                    err.message
+                );
+                return;
+            }
+        };
+        let top = report
+            .pairs
+            .first()
+            .map(|pair| {
+                format!(
+                    "top amplicon={}..{} len={} score={:.3}",
+                    pair.amplicon_start_0based,
+                    pair.amplicon_end_0based_exclusive,
+                    pair.amplicon_length_bp,
+                    pair.score
+                )
+            })
+            .unwrap_or_else(|| "no accepted primer pairs".to_string());
+        self.op_status = format!(
+            "Primer report '{}' template='{}' roi={}..{} pairs={} backend={}->{}; {}",
+            report.report_id,
+            report.template,
+            report.roi_start_0based,
+            report.roi_end_0based,
+            report.pair_count,
+            report.backend.requested,
+            report.backend.used,
+            top
+        );
+    }
+
+    fn export_primer_design_report_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "Primer report_id is empty".to_string();
+            return;
+        }
+        let default_name = format!("{report_id}.primer_report.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "Primer report export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        let exported = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_primer_design_report(report_id, &path_text);
+        match exported {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported primer report '{}' (pairs={}) to {}",
+                    report.report_id, report.pair_count, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export primer report '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
+    fn list_qpcr_design_reports(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let reports = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .list_qpcr_design_reports();
+        if reports.is_empty() {
+            self.op_status = "No persisted qPCR design reports".to_string();
+            return;
+        }
+        let preview_ids = reports
+            .iter()
+            .take(8)
+            .map(|row| row.report_id.clone())
+            .collect::<Vec<_>>();
+        let suffix = if reports.len() > preview_ids.len() {
+            ", ..."
+        } else {
+            ""
+        };
+        self.op_status = format!(
+            "qPCR reports: {} total [{}{}]",
+            reports.len(),
+            preview_ids.join(", "),
+            suffix
+        );
+    }
+
+    fn show_qpcr_design_report(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "qPCR report_id is empty".to_string();
+            return;
+        }
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let report = match engine
+            .read()
+            .expect("Engine lock poisoned")
+            .get_qpcr_design_report(report_id)
+        {
+            Ok(report) => report,
+            Err(err) => {
+                self.op_status =
+                    format!("Could not load qPCR report '{report_id}': {}", err.message);
+                return;
+            }
+        };
+        let top = report
+            .assays
+            .first()
+            .map(|assay| {
+                format!(
+                    "top amplicon={}..{} len={} score={:.3}",
+                    assay.amplicon_start_0based,
+                    assay.amplicon_end_0based_exclusive,
+                    assay.amplicon_length_bp,
+                    assay.score
+                )
+            })
+            .unwrap_or_else(|| "no accepted qPCR assays".to_string());
+        self.op_status = format!(
+            "qPCR report '{}' template='{}' roi={}..{} assays={} backend={}->{}; {}",
+            report.report_id,
+            report.template,
+            report.roi_start_0based,
+            report.roi_end_0based,
+            report.assay_count,
+            report.backend.requested,
+            report.backend.used,
+            top
+        );
+    }
+
+    fn export_qpcr_design_report_dialog(&mut self, report_id: &str) {
+        let report_id = report_id.trim();
+        if report_id.is_empty() {
+            self.op_status = "qPCR report_id is empty".to_string();
+            return;
+        }
+        let default_name = format!("{report_id}.qpcr_report.json");
+        let path = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .save_file();
+        let Some(path) = path else {
+            self.op_status = "qPCR report export canceled".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let path_text = path.to_string_lossy().to_string();
+        let exported = engine
+            .read()
+            .expect("Engine lock poisoned")
+            .export_qpcr_design_report(report_id, &path_text);
+        match exported {
+            Ok(report) => {
+                self.op_status = format!(
+                    "Exported qPCR report '{}' (assays={}) to {}",
+                    report.report_id, report.assay_count, path_text
+                );
+            }
+            Err(err) => {
+                self.op_status = format!(
+                    "Could not export qPCR report '{report_id}': {}",
+                    err.message
+                );
+            }
+        }
+    }
+
     fn render_primer_side_constraint_editor(
         ui: &mut egui::Ui,
         id_prefix: &str,
@@ -9573,6 +10170,31 @@ impl MainAreaDna {
                         Err(err) => self.op_status = err,
                     }
                 }
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("List Primer Reports")
+                        .on_hover_text("List persisted primer-design report IDs")
+                        .clicked()
+                    {
+                        self.list_primer_design_reports();
+                    }
+                    if ui
+                        .button("Show report_id")
+                        .on_hover_text("Show summary for report_id from this form")
+                        .clicked()
+                    {
+                        let report_id = self.primer_design_ui.report_id.clone();
+                        self.show_primer_design_report(&report_id);
+                    }
+                    if ui
+                        .button("Export report_id...")
+                        .on_hover_text("Export report_id from this form to JSON")
+                        .clicked()
+                    {
+                        let report_id = self.primer_design_ui.report_id.clone();
+                        self.export_primer_design_report_dialog(&report_id);
+                    }
+                });
             });
 
         egui::CollapsingHeader::new("Design qPCR assays")
@@ -9655,6 +10277,31 @@ impl MainAreaDna {
                         Err(err) => self.op_status = err,
                     }
                 }
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("List qPCR Reports")
+                        .on_hover_text("List persisted qPCR report IDs")
+                        .clicked()
+                    {
+                        self.list_qpcr_design_reports();
+                    }
+                    if ui
+                        .button("Show report_id")
+                        .on_hover_text("Show summary for qPCR report_id from this form")
+                        .clicked()
+                    {
+                        let report_id = self.qpcr_design_ui.report_id.clone();
+                        self.show_qpcr_design_report(&report_id);
+                    }
+                    if ui
+                        .button("Export report_id...")
+                        .on_hover_text("Export qPCR report_id from this form to JSON")
+                        .clicked()
+                    {
+                        let report_id = self.qpcr_design_ui.report_id.clone();
+                        self.export_qpcr_design_report_dialog(&report_id);
+                    }
+                });
             });
     }
 

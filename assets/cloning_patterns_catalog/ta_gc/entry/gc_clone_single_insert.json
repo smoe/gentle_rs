@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "gc_clone_single_insert",
+  "description": "GC cloning baseline with terminal-base compatibility preflight.",
+  "details_url": "https://www.neb.com/en-us/tools-and-resources/usage-guidelines/ta-cloning",
+  "parameters": [
+    { "name": "vector_seq_id", "required": true },
+    { "name": "insert_seq_id", "required": true },
+    { "name": "tail_mode", "default_value": "gc", "required": false },
+    { "name": "assembly_prefix", "default_value": "gc_clone", "required": false },
+    { "name": "output_id", "default_value": "gc_clone_product", "required": false }
+  ],
+  "input_ports": [
+    { "port_id": "vector_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "GC vector sequence ID (C overhang context)." },
+    { "port_id": "insert_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Insert sequence ID (G overhang context)." },
+    { "port_id": "tail_mode", "kind": "string", "required": true, "cardinality": "one", "description": "Overhang mode token (ta|gc)." }
+  ],
+  "output_ports": [
+    { "port_id": "assembly_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "GC clone output namespace prefix." },
+    { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic GC clone output sequence ID." }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${vector_seq_id}\",\"${insert_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

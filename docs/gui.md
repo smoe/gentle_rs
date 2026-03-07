@@ -203,6 +203,10 @@ Feature tree grouping:
     support counts and percentages
   - arc-width encoding remains active and arcs also show support-count labels
     in the lane canvas
+- The splicing expert window includes a quick action:
+  - `Send Group ROI -> Primer/qPCR`
+  - seeds ROI start/end fields in Engine Ops primer and qPCR design forms from
+    the current splicing-group genomic bounds.
 
 Circular map label behavior:
 
@@ -219,6 +223,9 @@ Global productivity controls:
   - hovered control stable name (when available)
   - undo/redo availability counters
   - latest app/job status message
+    (including slow-open timing diagnostics for help/configuration windows:
+    configuration runtime sync, help payload load, first-frame render, total
+    open latency, and native window-menu sync when those exceed threshold)
 - `Edit -> Undo` / `Redo` and `Window -> Show Operation History` expose
   operation-level history controls.
 - `Window -> Show Background Jobs` opens a centralized progress panel for
@@ -238,6 +245,22 @@ Patterns menu:
     `assets/cloning_patterns_catalog`.
 - `Patterns` submenu hierarchy mirrors the directory hierarchy under
   `assets/cloning_patterns_catalog` (one JSON template file per leaf entry).
+- `Patterns -> Routine Assistant...`
+  - opens a dedicated staged workflow window for routine application:
+    1. goal + candidate search
+    2. routine alternative comparison
+    3. typed binding form from routine input ports
+    4. shared-engine preflight preview (`--validate-only`)
+    5. transactional run + process run-bundle export
+  - explainability and comparison data are loaded via shared shell commands:
+    - `routines explain ROUTINE_ID`
+    - `routines compare ROUTINE_A ROUTINE_B`
+  - execution is routed through shared macro paths:
+    - `macros template-import PATH` (auto-import linked template)
+    - `macros template-run TEMPLATE_NAME --bind ... --validate-only`
+    - `macros template-run TEMPLATE_NAME --bind ... --transactional`
+  - export stage uses shared process artifact route:
+    - `export-run-bundle OUTPUT.run_bundle.json`
 - `Patterns -> Routine catalog`
   - routine discovery is grouped by `family` and `status`.
   - selecting a routine imports its linked template file when the routine
@@ -320,12 +343,21 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Toggles open reading frame overlays.
 12. Show/Hide methylation sites
    - Toggles methylation-site markers.
-13. Export Seq
+13. Extract Sel
+   - Extracts current map/text selection into a new sequence via
+     `ExtractRegion`.
+14. PCR ROI
+   - `PCR ROI` menu seeds Primer/qPCR design ROI fields directly from:
+     - current map/text selection
+     - selected feature bounds
+   - opens Engine Ops so the user can run `Design Primer Pairs` or
+     `Design qPCR Assays`.
+15. Export Seq
    - Exports the active sequence via engine `SaveFile`.
    - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
-14. Export SVG
+16. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
-15. Export View SVG
+17. Export View SVG
    - Exports the currently shown sequence-window view composition as SVG
      using the default `screen` profile (map panel + sequence panel extract).
    - When linear `Splicing map` mode is active, export uses the same splicing
@@ -337,12 +369,12 @@ The top toolbar in each DNA window provides these controls (left to right):
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
    - Debug builds include adaptive routing-tier diagnostics in the SVG header.
-16. Export RNA SVG (ssRNA only)
+18. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
-17. Engine Ops
+19. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
-18. Shell
+20. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
 
@@ -654,6 +686,8 @@ GENtle tracks open native windows and can raise a selected one to front.
 - macOS native mirrors:
   - `Window -> GENtle Open Windows… -> <window name>`
   - `GENtle -> GENtle Windows… -> <window name>`
+- Native macOS window-menu synchronization is deferred while a new Help or
+  Configuration open probe is active to reduce first-frame contention.
 - `Windows` includes project, sequence/pool, and auxiliary windows
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
   Agent Assistant, UniProt Mapping, Operation History)
@@ -691,6 +725,12 @@ The `Help` menu now includes:
 
 Help content loading behavior:
 
+- opening Help reuses already-loaded markdown/glossary payloads for faster
+  window activation
+- opening Help can emit status-bar slow-path timing hints for:
+  - help payload load
+  - first-frame help render
+  - total help-window open time
 - if `docs/gui.md` / `docs/cli.md` / `docs/agent_interface.md` / `docs/reviewer_preview.md` exists at
   runtime, GUI loads those files
 - otherwise GUI falls back to embedded copies compiled into the app binary
@@ -1000,6 +1040,14 @@ Buttons:
 
 - `Design Primer Pairs`
 - `Design qPCR Assays`
+- primer-report helpers (uses current primer `report_id` field):
+  - `List Primer Reports`
+  - `Show report_id`
+  - `Export report_id...`
+- qPCR-report helpers (uses current qPCR `report_id` field):
+  - `List qPCR Reports`
+  - `Show report_id`
+  - `Export report_id...`
 
 Both operations persist reports into project metadata (same report store used by
 CLI/shared-shell `primers ...` commands).
@@ -1448,9 +1496,11 @@ UniProt mapping behavior:
 - `UniProt Mapping...` opens a specialist window for:
   - online fetch by accession/ID (`FetchUniprotSwissProt`)
   - offline SWISS-PROT text import (`ImportUniprotSwissProt`)
+  - import of stored UniProt entry sequence into project sequences (`ImportUniprotEntrySequence`)
   - projection to selected sequence/transcript (`ProjectUniprotToGenome`)
 - The dialog shows a compact table of recent imported UniProt entries
-  (entry/accession/source/import timestamp) and `Use` buttons to prefill `entry_id`.
+  (entry/accession/source/import timestamp) and `Use` buttons to import/open
+  the selected UniProt entry sequence in the project.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
 
 Resource import behavior:

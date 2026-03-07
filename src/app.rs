@@ -88,6 +88,7 @@ const DEFAULT_CLONING_PATTERN_PACK_PATH: &str = "assets/cloning_patterns.json";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
+const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -466,6 +467,7 @@ pub struct GENtleApp {
     last_native_active_window_key: Option<u64>,
     native_window_key_to_viewport: HashMap<u64, ViewportId>,
     active_window_menu_key: Option<u64>,
+    pending_window_open_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
@@ -527,6 +529,7 @@ pub struct GENtleApp {
     genome_blast_selected_result: usize,
     genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
+    show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
     genome_track_seq_id: String,
     genome_track_source_selection: GenomeTrackSourceSelection,
@@ -552,6 +555,18 @@ pub struct GENtleApp {
     show_history_panel: bool,
     hover_status_name: String,
     app_status: String,
+    routine_assistant_stage: RoutineAssistantStage,
+    routine_assistant_goal: String,
+    routine_assistant_query: String,
+    routine_assistant_candidates: Vec<CloningRoutineCatalogRow>,
+    routine_assistant_selected_routine_id: String,
+    routine_assistant_compare_routine_id: String,
+    routine_assistant_bindings: BTreeMap<String, String>,
+    routine_assistant_explain_output: Option<serde_json::Value>,
+    routine_assistant_compare_output: Option<serde_json::Value>,
+    routine_assistant_preflight_output: Option<serde_json::Value>,
+    routine_assistant_execute_output: Option<serde_json::Value>,
+    routine_assistant_status: String,
     next_background_job_id: u64,
     job_event_log: Vec<BackgroundJobEvent>,
     genome_track_preflight_track_subscription: bool,
@@ -1017,7 +1032,15 @@ struct CloningPatternCatalogEntry {
     children: Vec<CloningPatternCatalogEntry>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Default)]
+#[serde(default)]
+struct CloningRoutineDifferenceAxisRow {
+    axis: String,
+    value: String,
+}
+
+#[derive(Clone, Deserialize, Default)]
+#[serde(default)]
 struct CloningRoutineCatalogRow {
     routine_id: String,
     title: String,
@@ -1025,11 +1048,41 @@ struct CloningRoutineCatalogRow {
     status: String,
     vocabulary_tags: Vec<String>,
     summary: Option<String>,
+    purpose: Option<String>,
+    mechanism: Option<String>,
+    requires: Vec<String>,
+    contraindications: Vec<String>,
+    confusing_alternatives: Vec<String>,
+    difference_matrix: Vec<CloningRoutineDifferenceAxisRow>,
+    disambiguation_questions: Vec<String>,
+    failure_modes: Vec<String>,
     details_url: Option<String>,
     template_name: String,
     template_path: Option<String>,
     input_ports: Vec<serde_json::Value>,
     output_ports: Vec<serde_json::Value>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum RoutineAssistantStage {
+    #[default]
+    GoalAndCandidates,
+    Compare,
+    Parameters,
+    Preflight,
+    ExecuteAndExport,
+}
+
+impl RoutineAssistantStage {
+    fn label(self) -> &'static str {
+        match self {
+            Self::GoalAndCandidates => "1. Goal",
+            Self::Compare => "2. Compare",
+            Self::Parameters => "3. Parameters",
+            Self::Preflight => "4. Preflight",
+            Self::ExecuteAndExport => "5. Run/Export",
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1052,6 +1105,7 @@ enum CommandPaletteAction {
     OpenRetrieveGenome,
     OpenBlastGenome,
     OpenGenomeTracks,
+    OpenRoutineAssistant,
     OpenAgentAssistant,
     OpenPreparedInspector,
     OpenGuiManual,
@@ -1181,6 +1235,7 @@ impl Default for GENtleApp {
             last_native_active_window_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
             native_window_key_to_viewport: HashMap::new(),
             active_window_menu_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
+            pending_window_open_timestamps: HashMap::new(),
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
@@ -1244,6 +1299,7 @@ impl Default for GENtleApp {
             genome_blast_import_track_name: "blast_hits".to_string(),
             genome_blast_import_clear_existing: false,
             show_genome_bed_track_dialog: false,
+            show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
             genome_track_seq_id: String::new(),
             genome_track_source_selection: GenomeTrackSourceSelection::Auto,
@@ -1267,6 +1323,18 @@ impl Default for GENtleApp {
             show_history_panel: false,
             hover_status_name: String::new(),
             app_status: String::new(),
+            routine_assistant_stage: RoutineAssistantStage::GoalAndCandidates,
+            routine_assistant_goal: String::new(),
+            routine_assistant_query: String::new(),
+            routine_assistant_candidates: vec![],
+            routine_assistant_selected_routine_id: String::new(),
+            routine_assistant_compare_routine_id: String::new(),
+            routine_assistant_bindings: BTreeMap::new(),
+            routine_assistant_explain_output: None,
+            routine_assistant_compare_output: None,
+            routine_assistant_preflight_output: None,
+            routine_assistant_execute_output: None,
+            routine_assistant_status: String::new(),
             next_background_job_id: 1,
             job_event_log: vec![],
             genome_track_preflight_track_subscription: true,
@@ -1319,6 +1387,10 @@ impl GENtleApp {
 
     fn bed_track_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle BED Tracks Viewport")
+    }
+
+    fn routine_assistant_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Routine Assistant Viewport")
     }
 
     fn agent_assistant_viewport_id() -> ViewportId {
@@ -1906,6 +1978,17 @@ Error: `{err}`"
             Self::generate_shell_help_markdown_for(self.help_shell_interface);
     }
 
+    fn ensure_help_docs_loaded(&mut self) {
+        if self.help_gui_markdown.is_empty()
+            || self.help_cli_markdown.is_empty()
+            || self.help_agent_interface_markdown.is_empty()
+            || self.help_reviewer_preview_markdown.is_empty()
+            || self.help_shell_markdown.is_empty()
+        {
+            self.refresh_help_docs();
+        }
+    }
+
     fn consume_native_help_request(&mut self) {
         if NATIVE_HELP_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
             self.open_help_doc(HelpDoc::Gui);
@@ -2162,7 +2245,13 @@ Error: `{err}`"
             self.queue_focus_viewport(Self::configuration_viewport_id());
             return;
         }
+        self.mark_viewport_open_requested(Self::configuration_viewport_id());
+        let sync_started = Instant::now();
         self.sync_configuration_from_runtime();
+        self.note_slow_phase(
+            "Configuration runtime sync",
+            sync_started.elapsed().as_millis(),
+        );
         self.configuration_tab = tab;
         self.show_configuration_dialog = true;
         self.configuration_status.clear();
@@ -2500,6 +2589,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGenomeTracks,
             },
             CommandPaletteEntry {
+                title: "Routine Assistant".to_string(),
+                detail: "Compare routine families and run semantic preflight".to_string(),
+                keywords: "routine assistant cloning preflight".to_string(),
+                action: CommandPaletteAction::OpenRoutineAssistant,
+            },
+            CommandPaletteEntry {
                 title: "Agent Assistant".to_string(),
                 detail: "Ask configured agent systems and run suggested commands".to_string(),
                 keywords: "agent assistant chat automation support".to_string(),
@@ -2591,6 +2686,7 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
             CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
+            CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
             CommandPaletteAction::OpenAgentAssistant => self.open_agent_assistant_dialog(),
             CommandPaletteAction::OpenPreparedInspector => {
                 self.open_reference_genome_inspector_dialog()
@@ -2620,11 +2716,17 @@ Error: `{err}`"
     }
 
     fn open_help_doc(&mut self, doc: HelpDoc) {
-        self.refresh_help_docs();
+        if !self.show_help_dialog {
+            self.mark_viewport_open_requested(Self::help_viewport_id());
+        }
+        let help_load_started = Instant::now();
+        self.ensure_help_docs_loaded();
+        self.note_slow_phase("Help payload load", help_load_started.elapsed().as_millis());
         self.help_doc = doc;
         self.refresh_help_search_matches();
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
+        self.queue_focus_viewport(Self::help_viewport_id());
     }
 
     fn active_help_title(&self) -> &'static str {
@@ -2648,27 +2750,33 @@ Error: `{err}`"
     }
 
     fn refresh_help_search_matches(&mut self) {
-        self.help_search_matches.clear();
         let needle = self.help_search_query.trim();
         if needle.is_empty() {
+            self.help_search_matches.clear();
             self.help_search_selected = 0;
             return;
         }
         let needle_lower = needle.to_ascii_lowercase();
-        let markdown = self.active_help_markdown().to_string();
-        for (idx, line) in markdown.lines().enumerate() {
-            if line.to_ascii_lowercase().contains(&needle_lower) {
+        let matches = self
+            .active_help_markdown()
+            .lines()
+            .enumerate()
+            .filter_map(|(idx, line)| {
+                if !line.to_ascii_lowercase().contains(&needle_lower) {
+                    return None;
+                }
                 let snippet = line.trim();
-                self.help_search_matches.push(HelpSearchMatch {
+                Some(HelpSearchMatch {
                     line_number: idx + 1,
                     snippet: if snippet.is_empty() {
                         "(empty line)".to_string()
                     } else {
                         snippet.chars().take(140).collect()
                     },
-                });
-            }
-        }
+                })
+            })
+            .collect::<Vec<_>>();
+        self.help_search_matches = matches;
         if self.help_search_matches.is_empty() {
             self.help_search_selected = 0;
         } else if self.help_search_selected >= self.help_search_matches.len() {
@@ -2769,6 +2877,38 @@ Error: `{err}`"
         if !self.pending_focus_viewports.contains(&viewport_id) {
             self.pending_focus_viewports.push(viewport_id);
         }
+    }
+
+    fn mark_viewport_open_requested(&mut self, viewport_id: ViewportId) {
+        self.pending_window_open_timestamps
+            .insert(viewport_id, Instant::now());
+    }
+
+    fn note_slow_phase(&mut self, label: &str, elapsed_ms: u128) {
+        if elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
+            self.app_status = format!("{label} took {elapsed_ms} ms");
+        }
+    }
+
+    fn note_slow_open_phase(&mut self, viewport_id: ViewportId, label: &str, elapsed_ms: u128) {
+        if self
+            .pending_window_open_timestamps
+            .contains_key(&viewport_id)
+        {
+            self.note_slow_phase(label, elapsed_ms);
+        }
+    }
+
+    fn native_window_menu_sync_blocked_by_open_probe(&self) -> bool {
+        !self.pending_window_open_timestamps.is_empty()
+    }
+
+    fn finalize_viewport_open_probe(&mut self, viewport_id: ViewportId, label: &str) {
+        let Some(started) = self.pending_window_open_timestamps.remove(&viewport_id) else {
+            return;
+        };
+        let elapsed_ms = started.elapsed().as_millis();
+        self.note_slow_phase(&format!("{label} window open"), elapsed_ms);
     }
 
     fn open_sequence_window(&mut self, seq_id: &str) {
@@ -3140,8 +3280,21 @@ Error: `{err}`"
         self.genome_blast_selected_result = 0;
         self.genome_blast_status.clear();
         self.show_genome_bed_track_dialog = false;
+        self.show_routine_assistant_dialog = false;
         self.show_agent_assistant_dialog = false;
         self.show_uniprot_dialog = false;
+        self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
+        self.routine_assistant_goal.clear();
+        self.routine_assistant_query.clear();
+        self.routine_assistant_candidates.clear();
+        self.routine_assistant_selected_routine_id.clear();
+        self.routine_assistant_compare_routine_id.clear();
+        self.routine_assistant_bindings.clear();
+        self.routine_assistant_explain_output = None;
+        self.routine_assistant_compare_output = None;
+        self.routine_assistant_preflight_output = None;
+        self.routine_assistant_execute_output = None;
+        self.routine_assistant_status.clear();
         self.genome_track_status.clear();
         self.genome_track_import_task = None;
         self.genome_track_import_progress = None;
@@ -3477,6 +3630,17 @@ Error: `{err}`"
     fn open_genome_bed_track_dialog(&mut self) {
         self.load_bed_track_subscriptions_from_state();
         self.show_genome_bed_track_dialog = true;
+    }
+
+    fn open_routine_assistant_dialog(&mut self) {
+        if self.show_routine_assistant_dialog {
+            self.queue_focus_viewport(Self::routine_assistant_viewport_id());
+            return;
+        }
+        self.show_routine_assistant_dialog = true;
+        if self.routine_assistant_candidates.is_empty() {
+            self.refresh_routine_assistant_candidates();
+        }
     }
 
     fn open_agent_assistant_dialog(&mut self) {
@@ -7098,6 +7262,38 @@ Error: `{err}`"
         }
     }
 
+    fn use_uniprot_entry_from_dialog(&mut self, entry_id: &str) {
+        let entry_id = entry_id.trim().to_string();
+        if entry_id.is_empty() {
+            self.uniprot_status = "UniProt entry_id cannot be empty".to_string();
+            return;
+        }
+        let op = Operation::ImportUniprotEntrySequence {
+            entry_id: entry_id.clone(),
+            output_id: None,
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                if let Some(seq_id) = result.created_seq_ids.first() {
+                    self.uniprot_map_seq_id = seq_id.clone();
+                }
+                self.uniprot_status = Self::format_op_result_status(
+                    "UniProt use: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.uniprot_status = format!("UniProt use failed: {}", err.message);
+            }
+        }
+    }
+
     fn render_uniprot_dialog(&mut self, ctx: &egui::Context) {
         if !self.show_uniprot_dialog {
             return;
@@ -7110,6 +7306,7 @@ Error: `{err}`"
             }
         }
         let mut open = self.show_uniprot_dialog;
+        let mut close_requested = false;
         egui::Window::new("UniProt Mapping")
             .open(&mut open)
             .collapsible(false)
@@ -7117,13 +7314,31 @@ Error: `{err}`"
             .default_size(Vec2::new(940.0, 520.0))
             .min_size(Vec2::new(780.0, 420.0))
             .show(ctx, |ui| {
-                self.render_specialist_window_nav(ui);
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Help")
+                        .on_hover_text("Open GUI help and bring it to the front")
+                        .clicked()
+                    {
+                        self.open_help_doc(HelpDoc::Gui);
+                    }
+                    if ui
+                        .button("Close")
+                        .on_hover_text("Close this UniProt window (Cmd/Ctrl+W)")
+                        .clicked()
+                    {
+                        close_requested = true;
+                    }
+                });
+                ui.separator();
                 ui.label(
                     "Fetch/import UniProt SWISS-PROT entries and project annotated features onto transcript/CDS coordinates.",
                 );
                 ui.horizontal(|ui| {
                     ui.label("entry_id");
-                    ui.text_edit_singleline(&mut self.uniprot_entry_id);
+                    ui.text_edit_singleline(&mut self.uniprot_entry_id).on_hover_text(
+                        "Stable entry identifier in this project (used by projection and Use)",
+                    );
                 });
                 ui.small(
                     "Optional override for fetch/import. Required for projection; if empty after fetch, query is used.",
@@ -7132,10 +7347,14 @@ Error: `{err}`"
                 ui.label("Online fetch");
                 ui.horizontal(|ui| {
                     ui.label("query");
-                    ui.text_edit_singleline(&mut self.uniprot_query);
+                    ui.text_edit_singleline(&mut self.uniprot_query).on_hover_text(
+                        "UniProt accession or entry ID to fetch (for example P04637 or TP53_HUMAN)",
+                    );
                     if ui
                         .button("Fetch")
-                        .on_hover_text("Fetch UniProt SWISS-PROT text by accession or UniProt ID")
+                        .on_hover_text(
+                            "Fetch UniProt SWISS-PROT text by accession or UniProt entry ID",
+                        )
                         .clicked()
                     {
                         self.fetch_uniprot_entry_from_dialog();
@@ -7146,7 +7365,9 @@ Error: `{err}`"
                 ui.label("Offline import (SWISS-PROT text)");
                 ui.horizontal(|ui| {
                     ui.label("path");
-                    ui.text_edit_singleline(&mut self.uniprot_swiss_path);
+                    ui.text_edit_singleline(&mut self.uniprot_swiss_path).on_hover_text(
+                        "Local path to a SWISS-PROT text file (.txt/.dat)",
+                    );
                     if ui
                         .button("Browse...")
                         .on_hover_text("Pick a local SWISS-PROT text file")
@@ -7177,7 +7398,9 @@ Error: `{err}`"
                     );
                     ui.horizontal(|ui| {
                         ui.label("seq_id");
-                        ui.text_edit_singleline(&mut self.uniprot_map_seq_id);
+                        ui.text_edit_singleline(&mut self.uniprot_map_seq_id).on_hover_text(
+                            "Target sequence ID for projection (must exist in project)",
+                        );
                     });
                 } else {
                     egui::ComboBox::from_label("seq_id")
@@ -7190,13 +7413,17 @@ Error: `{err}`"
                                     seq_id,
                                 );
                             }
-                        });
+                        })
+                        .response
+                        .on_hover_text("Select the target sequence for UniProt projection");
                 }
                 ui.horizontal(|ui| {
                     ui.label("projection_id");
-                    ui.text_edit_singleline(&mut self.uniprot_map_projection_id);
+                    ui.text_edit_singleline(&mut self.uniprot_map_projection_id)
+                        .on_hover_text("Optional projection record ID (auto-generated when empty)");
                     ui.label("transcript");
-                    ui.text_edit_singleline(&mut self.uniprot_map_transcript_id);
+                    ui.text_edit_singleline(&mut self.uniprot_map_transcript_id)
+                        .on_hover_text("Optional transcript filter (for example ENST... )");
                 });
                 if ui
                     .button("Project To Sequence")
@@ -7241,7 +7468,7 @@ Error: `{err}`"
                                         if ui
                                             .small_button("Use")
                                             .on_hover_text(
-                                                "Use this entry_id for projection and downstream actions",
+                                                "Import this UniProt sequence into the project and open it",
                                             )
                                             .clicked()
                                         {
@@ -7251,10 +7478,7 @@ Error: `{err}`"
                                             {
                                                 self.uniprot_query = row.accession.clone();
                                             }
-                                            self.uniprot_status = format!(
-                                                "Selected UniProt entry '{}'",
-                                                row.entry_id
-                                            );
+                                            self.use_uniprot_entry_from_dialog(&row.entry_id);
                                         }
                                         ui.end_row();
                                     }
@@ -7266,6 +7490,12 @@ Error: `{err}`"
                     ui.monospace(self.uniprot_status.clone());
                 }
             });
+        if close_requested {
+            open = false;
+        }
+        if Self::viewport_close_requested_or_shortcut(ctx) {
+            open = false;
+        }
         self.show_uniprot_dialog = open;
     }
 
@@ -9157,6 +9387,493 @@ Error: `{err}`"
         });
     }
 
+    fn render_routine_assistant_contents(&mut self, ui: &mut Ui) {
+        self.render_specialist_window_nav(ui);
+        ui.label(
+            "Apply cloning routines through one staged flow driven by shared engine commands.",
+        );
+        ui.small(
+            "Flow: goal -> candidate routines -> compare alternatives -> parameter bindings -> preflight -> transactional run -> run-bundle export",
+        );
+        ui.separator();
+
+        let selected_routine = self.routine_assistant_selected_routine();
+        let has_selected = selected_routine.is_some();
+        let has_preflight = self.routine_assistant_preflight_output.is_some();
+        let has_execute = self.routine_assistant_execute_output.is_some();
+
+        let stage_order = [
+            RoutineAssistantStage::GoalAndCandidates,
+            RoutineAssistantStage::Compare,
+            RoutineAssistantStage::Parameters,
+            RoutineAssistantStage::Preflight,
+            RoutineAssistantStage::ExecuteAndExport,
+        ];
+        ui.horizontal_wrapped(|ui| {
+            for stage in stage_order {
+                let enabled = match stage {
+                    RoutineAssistantStage::GoalAndCandidates => true,
+                    RoutineAssistantStage::Compare => has_selected,
+                    RoutineAssistantStage::Parameters => has_selected,
+                    RoutineAssistantStage::Preflight => has_preflight,
+                    RoutineAssistantStage::ExecuteAndExport => has_execute,
+                };
+                let resp = ui.add_enabled(
+                    enabled,
+                    egui::Button::new(stage.label())
+                        .selected(self.routine_assistant_stage == stage),
+                );
+                if resp.clicked() {
+                    self.routine_assistant_stage = stage;
+                }
+            }
+        });
+        if !self.routine_assistant_status.trim().is_empty() {
+            ui.separator();
+            ui.monospace(self.routine_assistant_status.trim());
+        }
+        ui.separator();
+
+        match self.routine_assistant_stage {
+            RoutineAssistantStage::GoalAndCandidates => {
+                ui.horizontal(|ui| {
+                    ui.label("goal");
+                    ui.text_edit_singleline(&mut self.routine_assistant_goal);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("query");
+                    ui.text_edit_singleline(&mut self.routine_assistant_query);
+                    if ui
+                        .button("Find Candidates")
+                        .on_hover_text(
+                            "Query routine catalog by goal/query text and load candidate routines",
+                        )
+                        .clicked()
+                    {
+                        self.refresh_routine_assistant_candidates();
+                    }
+                    if ui
+                        .button("Reset")
+                        .on_hover_text("Clear selected routine and staged assistant outputs")
+                        .clicked()
+                    {
+                        self.routine_assistant_selected_routine_id.clear();
+                        self.routine_assistant_compare_routine_id.clear();
+                        self.routine_assistant_bindings.clear();
+                        self.routine_assistant_explain_output = None;
+                        self.routine_assistant_compare_output = None;
+                        self.routine_assistant_preflight_output = None;
+                        self.routine_assistant_execute_output = None;
+                        self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
+                        self.routine_assistant_status =
+                            "Routine Assistant: reset staged state".to_string();
+                    }
+                });
+                ui.separator();
+                if self.routine_assistant_candidates.is_empty() {
+                    ui.small("No routine candidates loaded. Use 'Find Candidates'.");
+                } else {
+                    let mut choose_routine: Option<String> = None;
+                    egui::ScrollArea::vertical()
+                        .max_height(360.0)
+                        .show(ui, |ui| {
+                            for routine in &self.routine_assistant_candidates {
+                                ui.group(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.strong(format!(
+                                            "{} ({})",
+                                            routine.title, routine.routine_id
+                                        ));
+                                        ui.label(format!(
+                                            "[family: {}, status: {}]",
+                                            routine.family, routine.status
+                                        ));
+                                        if ui
+                                            .button("Select")
+                                            .on_hover_text(
+                                                "Choose this routine as primary candidate and move to alternative comparison",
+                                            )
+                                            .clicked()
+                                        {
+                                            choose_routine = Some(routine.routine_id.clone());
+                                        }
+                                    });
+                                    if let Some(summary) = routine.summary.as_deref() {
+                                        ui.small(summary);
+                                    }
+                                    if let Some(purpose) = routine.purpose.as_deref() {
+                                        ui.small(format!("purpose: {purpose}"));
+                                    }
+                                });
+                            }
+                        });
+                    if let Some(routine_id) = choose_routine {
+                        self.routine_assistant_selected_routine_id = routine_id;
+                        self.routine_assistant_compare_routine_id.clear();
+                        self.routine_assistant_explain_output = None;
+                        self.routine_assistant_compare_output = None;
+                        self.routine_assistant_preflight_output = None;
+                        self.routine_assistant_execute_output = None;
+                        self.sync_routine_assistant_bindings_for_selected();
+                        self.load_routine_assistant_explain();
+                        self.routine_assistant_stage = RoutineAssistantStage::Compare;
+                    }
+                }
+            }
+            RoutineAssistantStage::Compare => {
+                let Some(routine) = selected_routine else {
+                    ui.small("Select a primary routine first in stage 1.");
+                    return;
+                };
+                ui.strong(format!(
+                    "Primary routine: {} ({})",
+                    routine.title, routine.routine_id
+                ));
+                if let Some(summary) = routine.summary.as_deref() {
+                    ui.small(summary);
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Reload Explanation")
+                        .on_hover_text(
+                            "Fetch routine explainability payload from shared routines explain command",
+                        )
+                        .clicked()
+                    {
+                        self.load_routine_assistant_explain();
+                    }
+                    if ui
+                        .button("Continue to Parameters")
+                        .on_hover_text("Proceed with typed parameter binding form")
+                        .clicked()
+                    {
+                        self.routine_assistant_stage = RoutineAssistantStage::Parameters;
+                    }
+                });
+                ui.separator();
+                let alternatives = self
+                    .routine_assistant_explain_output
+                    .as_ref()
+                    .and_then(|value| value.get("alternatives"))
+                    .and_then(|value| value.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                if alternatives.is_empty() {
+                    ui.small("No explicit alternatives listed for this routine.");
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label("compare against");
+                        egui::ComboBox::from_id_salt("routine_assistant_compare_combo")
+                            .selected_text(if self.routine_assistant_compare_routine_id.is_empty() {
+                                "(select alternative)"
+                            } else {
+                                self.routine_assistant_compare_routine_id.as_str()
+                            })
+                            .show_ui(ui, |ui| {
+                                for row in &alternatives {
+                                    if let Some(routine_id) =
+                                        row.get("routine_id").and_then(|value| value.as_str())
+                                    {
+                                        let title = row
+                                            .get("title")
+                                            .and_then(|value| value.as_str())
+                                            .unwrap_or(routine_id);
+                                        let label = format!("{title} ({routine_id})");
+                                        if ui
+                                            .selectable_label(
+                                                self.routine_assistant_compare_routine_id
+                                                    .eq_ignore_ascii_case(routine_id),
+                                                label,
+                                            )
+                                            .clicked()
+                                        {
+                                            self.routine_assistant_compare_routine_id =
+                                                routine_id.to_string();
+                                        }
+                                    }
+                                }
+                            });
+                        if ui
+                            .button("Compare")
+                            .on_hover_text(
+                                "Run shared routines compare command and display deterministic difference matrix",
+                            )
+                            .clicked()
+                        {
+                            self.load_routine_assistant_compare();
+                        }
+                    });
+                }
+                if let Some(compare) = &self.routine_assistant_compare_output {
+                    ui.separator();
+                    if let Some(rows) = compare
+                        .get("comparison")
+                        .and_then(|value| value.get("difference_matrix"))
+                        .and_then(|value| value.as_array())
+                    {
+                        ui.strong("Difference matrix");
+                        egui::Grid::new("routine_assistant_compare_grid")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("axis");
+                                ui.strong("primary");
+                                ui.strong("alternative");
+                                ui.end_row();
+                                for row in rows {
+                                    let axis = row
+                                        .get("axis")
+                                        .and_then(|value| value.as_str())
+                                        .unwrap_or("-");
+                                    let left = row
+                                        .get("left")
+                                        .and_then(|value| value.as_str())
+                                        .unwrap_or("-");
+                                    let right = row
+                                        .get("right")
+                                        .and_then(|value| value.as_str())
+                                        .unwrap_or("-");
+                                    ui.monospace(axis);
+                                    ui.label(left);
+                                    ui.label(right);
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                }
+            }
+            RoutineAssistantStage::Parameters => {
+                let Some(routine) = selected_routine else {
+                    ui.small("Select a primary routine first in stage 1.");
+                    return;
+                };
+                self.sync_routine_assistant_bindings_for_selected();
+                ui.strong(format!(
+                    "Template: {} (routine: {})",
+                    routine.template_name, routine.routine_id
+                ));
+                if !routine.requires.is_empty() {
+                    ui.label("requires");
+                    for req in &routine.requires {
+                        ui.small(format!("- {req}"));
+                    }
+                }
+                ui.separator();
+                egui::Grid::new("routine_assistant_bindings_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.strong("input");
+                        ui.strong("value");
+                        ui.strong("type");
+                        ui.end_row();
+                        for port in &routine.input_ports {
+                            let port_id = port
+                                .get("port_id")
+                                .and_then(|value| value.as_str())
+                                .map(str::trim)
+                                .unwrap_or("");
+                            if port_id.is_empty() {
+                                continue;
+                            }
+                            let kind = port
+                                .get("kind")
+                                .and_then(|value| value.as_str())
+                                .unwrap_or("-");
+                            let required = port
+                                .get("required")
+                                .and_then(|value| value.as_bool())
+                                .unwrap_or(false);
+                            let description = port
+                                .get("description")
+                                .and_then(|value| value.as_str())
+                                .unwrap_or("");
+                            let label = if required {
+                                format!("{port_id} *")
+                            } else {
+                                port_id.to_string()
+                            };
+                            ui.label(label).on_hover_text(description);
+                            let entry = self
+                                .routine_assistant_bindings
+                                .entry(port_id.to_string())
+                                .or_default();
+                            ui.text_edit_singleline(entry);
+                            ui.monospace(kind);
+                            ui.end_row();
+                        }
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Back to Compare")
+                        .on_hover_text("Return to routine alternative comparison")
+                        .clicked()
+                    {
+                        self.routine_assistant_stage = RoutineAssistantStage::Compare;
+                    }
+                    if ui
+                        .button("Run Preflight")
+                        .on_hover_text(
+                            "Run macros template-run --validate-only through shared shell executor",
+                        )
+                        .clicked()
+                    {
+                        self.run_routine_assistant_preflight();
+                    }
+                });
+            }
+            RoutineAssistantStage::Preflight => {
+                if let Some(output) = &self.routine_assistant_preflight_output {
+                    let can_execute = output
+                        .get("can_execute")
+                        .and_then(|value| value.as_bool())
+                        .unwrap_or(false);
+                    ui.strong(format!(
+                        "Preflight status: {}",
+                        if can_execute {
+                            "can execute"
+                        } else {
+                            "blocking errors"
+                        }
+                    ));
+                    if let Some(preflight) = output.get("preflight") {
+                        if let Some(errors) =
+                            preflight.get("errors").and_then(|value| value.as_array())
+                        {
+                            if !errors.is_empty() {
+                                ui.label("errors");
+                                for err in errors {
+                                    if let Some(text) = err.as_str() {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(190, 70, 70),
+                                            format!("- {text}"),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(warnings) =
+                            preflight.get("warnings").and_then(|value| value.as_array())
+                        {
+                            if !warnings.is_empty() {
+                                ui.label("warnings");
+                                for warning in warnings {
+                                    if let Some(text) = warning.as_str() {
+                                        ui.small(format!("- {text}"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    ui.small("No preflight output yet. Run preflight in stage 3.");
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Back to Parameters")
+                        .on_hover_text("Edit typed bindings before running again")
+                        .clicked()
+                    {
+                        self.routine_assistant_stage = RoutineAssistantStage::Parameters;
+                    }
+                    let exec_resp = ui.add_enabled(
+                        self.routine_assistant_can_execute(),
+                        egui::Button::new("Run Transactional"),
+                    );
+                    if exec_resp
+                        .on_hover_text(
+                            "Execute macros template-run --transactional using current bindings",
+                        )
+                        .clicked()
+                    {
+                        self.run_routine_assistant_execute();
+                    }
+                });
+            }
+            RoutineAssistantStage::ExecuteAndExport => {
+                if let Some(output) = &self.routine_assistant_execute_output {
+                    let macro_instance = output
+                        .get("macro_instance_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("-");
+                    ui.strong("Transactional run completed");
+                    ui.monospace(format!("macro_instance_id: {macro_instance}"));
+                    if let Some(run) = output.get("run") {
+                        let created = run
+                            .get("created")
+                            .and_then(|value| value.as_array())
+                            .map(|rows| rows.len())
+                            .unwrap_or(0);
+                        let changed = run
+                            .get("changed")
+                            .and_then(|value| value.as_array())
+                            .map(|rows| rows.len())
+                            .unwrap_or(0);
+                        ui.small(format!("created: {created}, changed: {changed}"));
+                    }
+                } else {
+                    ui.small("No transactional run output yet.");
+                }
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Back to Preflight")
+                        .on_hover_text("Inspect or re-run preflight checks")
+                        .clicked()
+                    {
+                        self.routine_assistant_stage = RoutineAssistantStage::Preflight;
+                    }
+                    if ui
+                        .button("Export Run Bundle")
+                        .on_hover_text(
+                            "Export deterministic process run bundle (inputs, parameter changes, operation log, outputs)",
+                        )
+                        .clicked()
+                    {
+                        self.export_routine_assistant_run_bundle();
+                    }
+                });
+            }
+        }
+    }
+
+    fn render_routine_assistant_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_routine_assistant_dialog {
+            return;
+        }
+        let mut open = self.show_routine_assistant_dialog;
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Routine Assistant")
+            .with_inner_size([980.0, 720.0])
+            .with_min_inner_size([720.0, 480.0]);
+        ctx.show_viewport_immediate(
+            Self::routine_assistant_viewport_id(),
+            builder,
+            |ctx, class| {
+                self.note_viewport_focus_if_active(ctx, Self::routine_assistant_viewport_id());
+                if class == egui::ViewportClass::Embedded {
+                    egui::Window::new("Routine Assistant")
+                        .open(&mut open)
+                        .collapsible(false)
+                        .resizable(true)
+                        .default_size(Vec2::new(980.0, 720.0))
+                        .show(ctx, |ui| self.render_routine_assistant_contents(ui));
+                } else {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        self.render_routine_assistant_contents(ui);
+                    });
+                    if Self::viewport_close_requested_or_shortcut(ctx) {
+                        open = false;
+                    }
+                }
+            },
+        );
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_routine_assistant_dialog = open;
+    }
+
     fn render_agent_assistant_contents(&mut self, ui: &mut Ui) {
         self.refresh_agent_system_catalog();
         self.render_specialist_window_nav(ui);
@@ -9957,6 +10674,21 @@ Error: `{err}`"
         }
     }
 
+    fn execute_shared_shell_command_json(
+        &mut self,
+        command: &ShellCommand,
+    ) -> std::result::Result<(serde_json::Value, bool), String> {
+        let options = ShellExecutionOptions::from_env();
+        let run = {
+            let mut engine = self.engine.write().expect("Engine lock poisoned");
+            execute_shell_command_with_options(&mut engine, command, &options)
+        }?;
+        if run.state_changed {
+            self.lineage_cache_valid = false;
+        }
+        Ok((run.output, run.state_changed))
+    }
+
     fn list_cloning_routines(
         &mut self,
         family: Option<&str>,
@@ -9979,18 +10711,300 @@ Error: `{err}`"
                 .filter(|value| !value.is_empty())
                 .map(|value| value.to_string()),
         };
-        let options = ShellExecutionOptions::from_env();
-        let run = {
-            let mut engine = self.engine.write().expect("Engine lock poisoned");
-            execute_shell_command_with_options(&mut engine, &command, &options)
-        }?;
-        let routines_json = run
-            .output
+        let (output, _) = self.execute_shared_shell_command_json(&command)?;
+        let routines_json = output
             .get("routines")
             .cloned()
             .unwrap_or_else(|| serde_json::json!([]));
         serde_json::from_value::<Vec<CloningRoutineCatalogRow>>(routines_json)
             .map_err(|e| format!("Could not parse routine catalog output: {e}"))
+    }
+
+    fn refresh_routine_assistant_candidates(&mut self) {
+        let query = self.routine_assistant_query.trim().to_string();
+        let fallback = self.routine_assistant_goal.trim().to_string();
+        let effective_query = if query.is_empty() { fallback } else { query };
+        match self.list_cloning_routines(
+            None,
+            None,
+            if effective_query.is_empty() {
+                None
+            } else {
+                Some(effective_query.as_str())
+            },
+        ) {
+            Ok(rows) => {
+                self.routine_assistant_candidates = rows;
+                if !self.routine_assistant_selected_routine_id.trim().is_empty()
+                    && !self.routine_assistant_candidates.iter().any(|row| {
+                        row.routine_id
+                            .eq_ignore_ascii_case(self.routine_assistant_selected_routine_id.trim())
+                    })
+                {
+                    self.routine_assistant_selected_routine_id.clear();
+                    self.routine_assistant_compare_routine_id.clear();
+                    self.routine_assistant_bindings.clear();
+                    self.routine_assistant_explain_output = None;
+                    self.routine_assistant_compare_output = None;
+                    self.routine_assistant_preflight_output = None;
+                    self.routine_assistant_execute_output = None;
+                }
+                self.routine_assistant_status = format!(
+                    "Routine Assistant: loaded {} candidate routine(s)",
+                    self.routine_assistant_candidates.len()
+                );
+            }
+            Err(err) => {
+                self.routine_assistant_candidates.clear();
+                self.routine_assistant_status =
+                    format!("Routine Assistant: could not list routines: {err}");
+            }
+        }
+    }
+
+    fn routine_assistant_selected_routine(&self) -> Option<CloningRoutineCatalogRow> {
+        let selected_id = self.routine_assistant_selected_routine_id.trim();
+        if selected_id.is_empty() {
+            return None;
+        }
+        self.routine_assistant_candidates
+            .iter()
+            .find(|row| row.routine_id.eq_ignore_ascii_case(selected_id))
+            .cloned()
+    }
+
+    fn routine_assistant_input_port_ids(routine: &CloningRoutineCatalogRow) -> Vec<String> {
+        routine
+            .input_ports
+            .iter()
+            .filter_map(|port| {
+                port.get("port_id")
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn sync_routine_assistant_bindings_for_selected(&mut self) {
+        let Some(routine) = self.routine_assistant_selected_routine() else {
+            self.routine_assistant_bindings.clear();
+            return;
+        };
+        let allowed = Self::routine_assistant_input_port_ids(&routine)
+            .into_iter()
+            .collect::<HashSet<_>>();
+        self.routine_assistant_bindings
+            .retain(|key, _| allowed.contains(key));
+        for key in allowed {
+            self.routine_assistant_bindings.entry(key).or_default();
+        }
+    }
+
+    fn routine_assistant_bindings_compact(&self) -> HashMap<String, String> {
+        self.routine_assistant_bindings
+            .iter()
+            .filter_map(|(key, value)| {
+                let compact = value.trim();
+                if compact.is_empty() {
+                    None
+                } else {
+                    Some((key.clone(), compact.to_string()))
+                }
+            })
+            .collect::<HashMap<_, _>>()
+    }
+
+    fn load_routine_assistant_explain(&mut self) {
+        let selected_id = self
+            .routine_assistant_selected_routine_id
+            .trim()
+            .to_string();
+        if selected_id.is_empty() {
+            self.routine_assistant_status =
+                "Routine Assistant: select a primary routine first".to_string();
+            return;
+        }
+        let command = ShellCommand::RoutinesExplain {
+            catalog_path: Some(DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
+            routine_id: selected_id.clone(),
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => {
+                self.routine_assistant_explain_output = Some(output.clone());
+                if self.routine_assistant_compare_routine_id.trim().is_empty() {
+                    if let Some(alt_id) = output
+                        .get("alternatives")
+                        .and_then(|value| value.as_array())
+                        .and_then(|rows| rows.first())
+                        .and_then(|row| row.get("routine_id"))
+                        .and_then(|value| value.as_str())
+                    {
+                        self.routine_assistant_compare_routine_id = alt_id.trim().to_string();
+                    }
+                }
+                self.routine_assistant_status =
+                    format!("Routine Assistant: loaded explanation for '{selected_id}'");
+            }
+            Err(err) => {
+                self.routine_assistant_status = format!("Routine Assistant explain failed: {err}");
+            }
+        }
+    }
+
+    fn load_routine_assistant_compare(&mut self) {
+        let left = self
+            .routine_assistant_selected_routine_id
+            .trim()
+            .to_string();
+        let right = self.routine_assistant_compare_routine_id.trim().to_string();
+        if left.is_empty() || right.is_empty() {
+            self.routine_assistant_status =
+                "Routine Assistant: select both primary and comparison routines".to_string();
+            return;
+        }
+        let command = ShellCommand::RoutinesCompare {
+            catalog_path: Some(DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string()),
+            left_routine_id: left.clone(),
+            right_routine_id: right.clone(),
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => {
+                self.routine_assistant_compare_output = Some(output);
+                self.routine_assistant_status =
+                    format!("Routine Assistant: compared '{left}' vs '{right}'");
+            }
+            Err(err) => {
+                self.routine_assistant_status = format!("Routine Assistant compare failed: {err}");
+            }
+        }
+    }
+
+    fn ensure_routine_assistant_template_imported(
+        &mut self,
+        routine: &CloningRoutineCatalogRow,
+    ) -> std::result::Result<(), String> {
+        let Some(path) = routine
+            .template_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Err(format!(
+                "Routine '{}' has no template_path configured",
+                routine.routine_id
+            ));
+        };
+        let command = ShellCommand::MacrosTemplateImport {
+            path: path.to_string(),
+        };
+        self.execute_shared_shell_command_json(&command).map(|_| ())
+    }
+
+    fn run_routine_assistant_preflight(&mut self) {
+        let Some(routine) = self.routine_assistant_selected_routine() else {
+            self.routine_assistant_status =
+                "Routine Assistant: select a routine before preflight".to_string();
+            return;
+        };
+        if let Err(err) = self.ensure_routine_assistant_template_imported(&routine) {
+            self.routine_assistant_status = format!("Routine Assistant preflight failed: {err}");
+            return;
+        }
+        let command = ShellCommand::MacrosTemplateRun {
+            name: routine.template_name.clone(),
+            bindings: self.routine_assistant_bindings_compact(),
+            transactional: false,
+            validate_only: true,
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => {
+                self.routine_assistant_preflight_output = Some(output.clone());
+                self.routine_assistant_execute_output = None;
+                self.routine_assistant_stage = RoutineAssistantStage::Preflight;
+                let can_execute = output
+                    .get("can_execute")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false);
+                self.routine_assistant_status = if can_execute {
+                    "Routine Assistant: preflight passed".to_string()
+                } else {
+                    "Routine Assistant: preflight reported blocking errors".to_string()
+                };
+            }
+            Err(err) => {
+                self.routine_assistant_status =
+                    format!("Routine Assistant preflight failed: {err}");
+            }
+        }
+    }
+
+    fn run_routine_assistant_execute(&mut self) {
+        let Some(routine) = self.routine_assistant_selected_routine() else {
+            self.routine_assistant_status =
+                "Routine Assistant: select a routine before execution".to_string();
+            return;
+        };
+        if let Err(err) = self.ensure_routine_assistant_template_imported(&routine) {
+            self.routine_assistant_status = format!("Routine Assistant execution failed: {err}");
+            return;
+        }
+        let command = ShellCommand::MacrosTemplateRun {
+            name: routine.template_name.clone(),
+            bindings: self.routine_assistant_bindings_compact(),
+            transactional: true,
+            validate_only: false,
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok((output, _)) => {
+                self.routine_assistant_execute_output = Some(output);
+                self.routine_assistant_stage = RoutineAssistantStage::ExecuteAndExport;
+                self.routine_assistant_status =
+                    "Routine Assistant: transactional run completed".to_string();
+            }
+            Err(err) => {
+                self.routine_assistant_status =
+                    format!("Routine Assistant execution failed: {err}");
+            }
+        }
+    }
+
+    fn export_routine_assistant_run_bundle(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name("run_bundle.routine_assistant.json")
+            .add_filter("JSON", &["json"])
+            .save_file()
+        else {
+            self.routine_assistant_status =
+                "Routine Assistant: run-bundle export canceled".to_string();
+            return;
+        };
+        let path_text = path.display().to_string();
+        let command = ShellCommand::ExportRunBundle {
+            output: path_text.clone(),
+            run_id: None,
+        };
+        match self.execute_shared_shell_command_json(&command) {
+            Ok(_) => {
+                self.routine_assistant_status =
+                    format!("Routine Assistant: exported run bundle to '{path_text}'");
+            }
+            Err(err) => {
+                self.routine_assistant_status = format!(
+                    "Routine Assistant: could not export run bundle '{}': {}",
+                    path_text, err
+                );
+            }
+        }
+    }
+
+    fn routine_assistant_can_execute(&self) -> bool {
+        self.routine_assistant_preflight_output
+            .as_ref()
+            .and_then(|value| value.get("can_execute"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
     }
 
     fn render_cloning_routine_menu_entries(
@@ -10133,6 +11147,19 @@ Error: `{err}`"
         self.windows.clear();
         self.windows_to_close.write().unwrap().clear();
         self.pending_focus_viewports.clear();
+        self.show_routine_assistant_dialog = false;
+        self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
+        self.routine_assistant_goal.clear();
+        self.routine_assistant_query.clear();
+        self.routine_assistant_candidates.clear();
+        self.routine_assistant_selected_routine_id.clear();
+        self.routine_assistant_compare_routine_id.clear();
+        self.routine_assistant_bindings.clear();
+        self.routine_assistant_explain_output = None;
+        self.routine_assistant_compare_output = None;
+        self.routine_assistant_preflight_output = None;
+        self.routine_assistant_execute_output = None;
+        self.routine_assistant_status.clear();
         self.agent_task = None;
         self.agent_model_discovery_task = None;
         self.agent_status.clear();
@@ -10377,6 +11404,16 @@ Error: `{err}`"
                 detail: "Import BED/BigWig/VCF track overlays".to_string(),
             });
         }
+        if self.show_routine_assistant_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(
+                    Self::routine_assistant_viewport_id(),
+                ),
+                viewport_id: Self::routine_assistant_viewport_id(),
+                title: "Routine Assistant".to_string(),
+                detail: "Staged routine selection, preflight, and execution".to_string(),
+            });
+        }
         if self.show_agent_assistant_dialog {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(
@@ -10433,6 +11470,8 @@ Error: `{err}`"
             self.show_reference_genome_blast_dialog = true;
         } else if viewport_id == Self::bed_track_viewport_id() {
             self.show_genome_bed_track_dialog = true;
+        } else if viewport_id == Self::routine_assistant_viewport_id() {
+            self.show_routine_assistant_dialog = true;
         } else if viewport_id == Self::agent_assistant_viewport_id() {
             self.show_agent_assistant_dialog = true;
         } else if viewport_id == Self::uniprot_viewport_id() {
@@ -10480,9 +11519,19 @@ Error: `{err}`"
         if self.last_native_window_entries != native_window_entries
             || self.last_native_active_window_key != active_window_key
         {
-            about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
-            self.last_native_window_entries = native_window_entries;
-            self.last_native_active_window_key = active_window_key;
+            if !self.native_window_menu_sync_blocked_by_open_probe() {
+                let sync_started = Instant::now();
+                about::sync_native_open_windows_menu(&native_window_entries, active_window_key);
+                let sync_elapsed_ms = sync_started.elapsed().as_millis();
+                if sync_elapsed_ms >= WINDOW_OPEN_SLOW_THRESHOLD_MS {
+                    self.app_status = format!(
+                        "Native windows menu sync took {sync_elapsed_ms} ms (entries={})",
+                        native_window_entries.len()
+                    );
+                }
+                self.last_native_window_entries = native_window_entries;
+                self.last_native_active_window_key = active_window_key;
+            }
         }
         let (undo_count, redo_count) = {
             let engine = self.engine.read().expect("Engine lock poisoned");
@@ -10957,6 +12006,17 @@ Error: `{err}`"
                     }
                 }
 
+                ui.separator();
+                if ui
+                    .button("Routine Assistant...")
+                    .on_hover_text(
+                        "Open staged routine-selection workflow (goal, compare, parameters, preflight, run, export)",
+                    )
+                    .clicked()
+                {
+                    self.open_routine_assistant_dialog();
+                    ui.close_menu();
+                }
                 ui.separator();
                 ui.small("Routine catalog");
                 match self.list_cloning_routines(None, None, None) {
@@ -15873,31 +16933,45 @@ Error: `{err}`"
         if !self.show_configuration_dialog {
             return;
         }
+        let viewport_id = Self::configuration_viewport_id();
         let builder = egui::ViewportBuilder::default()
             .with_title("Configuration")
             .with_inner_size([720.0, 540.0])
             .with_min_inner_size([460.0, 320.0]);
-        ctx.show_viewport_immediate(Self::configuration_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::configuration_viewport_id());
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_configuration_dialog;
+                let render_started = Instant::now();
                 egui::Window::new("Configuration")
                     .open(&mut open)
                     .resizable(true)
                     .default_size(Vec2::new(720.0, 540.0))
                     .show(ctx, |ui| self.render_configuration_contents(ui));
+                self.note_slow_open_phase(
+                    viewport_id,
+                    "Configuration first-frame render",
+                    render_started.elapsed().as_millis(),
+                );
                 self.show_configuration_dialog = open;
                 return;
             }
 
+            let render_started = Instant::now();
             egui::CentralPanel::default().show(ctx, |ui| {
                 self.render_configuration_contents(ui);
             });
+            self.note_slow_open_phase(
+                viewport_id,
+                "Configuration first-frame render",
+                render_started.elapsed().as_millis(),
+            );
 
             if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_configuration_dialog = false;
             }
         });
+        self.finalize_viewport_open_probe(viewport_id, "Configuration");
     }
 
     fn render_unsaved_changes_dialog(&mut self, ctx: &egui::Context) {
@@ -16409,15 +17483,17 @@ Error: `{err}`"
         if !self.show_help_dialog {
             return;
         }
+        let viewport_id = Self::help_viewport_id();
         let title = format!("Help - {}", self.active_help_title());
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
             .with_inner_size([860.0, 680.0])
             .with_min_inner_size([420.0, 320.0]);
-        ctx.show_viewport_immediate(Self::help_viewport_id(), builder, |ctx, class| {
-            self.note_viewport_focus_if_active(ctx, Self::help_viewport_id());
+        ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, viewport_id);
             if class == egui::ViewportClass::Embedded {
                 let mut open = self.show_help_dialog;
+                let render_started = Instant::now();
                 egui::Window::new(title.clone())
                     .open(&mut open)
                     .collapsible(false)
@@ -16426,18 +17502,30 @@ Error: `{err}`"
                     .show(ctx, |ui| {
                         self.render_help_contents(ui);
                     });
+                self.note_slow_open_phase(
+                    viewport_id,
+                    "Help first-frame render",
+                    render_started.elapsed().as_millis(),
+                );
                 self.show_help_dialog = open;
                 return;
             }
 
+            let render_started = Instant::now();
             egui::CentralPanel::default().show(ctx, |ui| {
                 self.render_help_contents(ui);
             });
+            self.note_slow_open_phase(
+                viewport_id,
+                "Help first-frame render",
+                render_started.elapsed().as_millis(),
+            );
 
             if Self::viewport_close_requested_or_shortcut(ctx) {
                 self.show_help_dialog = false;
             }
         });
+        self.finalize_viewport_open_probe(viewport_id, "Help");
     }
 
     fn render_help_contents(&mut self, ui: &mut Ui) {
@@ -16613,11 +17701,17 @@ Error: `{err}`"
                     ui,
                     scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
                 );
-                let markdown = self.active_help_markdown().to_string();
                 let max_image_width = (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
+                let markdown = match self.help_doc {
+                    HelpDoc::Gui => self.help_gui_markdown.as_str(),
+                    HelpDoc::Cli => self.help_cli_markdown.as_str(),
+                    HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
+                    HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
+                    HelpDoc::Shell => self.help_shell_markdown.as_str(),
+                };
                 CommonMarkViewer::new()
                     .max_image_width(Some(max_image_width as usize))
-                    .show(ui, &mut self.help_markdown_cache, markdown.as_str());
+                    .show(ui, &mut self.help_markdown_cache, markdown);
             });
     }
 
@@ -17299,6 +18393,7 @@ impl eframe::App for GENtleApp {
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
+            self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
             self.render_configuration_dialog(ctx);
             self.render_help_dialog(ctx);
@@ -17350,10 +18445,11 @@ impl eframe::App for GENtleApp {
 mod tests {
     use super::{
         APP_CONFIGURATION_SCHEMA_VERSION, BackgroundJobEventPhase, BackgroundJobKind,
-        ConfigurationTab, EngineError, ErrorCode, GENtleApp, GenomeBlastOptionsPreset,
-        GenomeBlastTask, GenomeBlastTaskMessage, GenomePrepareTask, GenomePrepareTaskMessage,
-        GenomeTrackImportTask, GenomeTrackImportTaskMessage, LineageNodeKind, LineageRow,
-        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageNodeGroup,
+        CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab, EngineError, ErrorCode,
+        GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
+        GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
+        GenomeTrackImportTaskMessage, HelpDoc, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
+        PersistedConfiguration, PersistedLineageNodeGroup,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -17452,6 +18548,27 @@ mod tests {
     }
 
     #[test]
+    fn open_routine_assistant_dialog_focuses_existing_window_without_resetting_state() {
+        let mut app = GENtleApp::default();
+        app.open_routine_assistant_dialog();
+        app.routine_assistant_goal = "Assemble TP53 insert with directional control".to_string();
+        app.routine_assistant_status = "editing".to_string();
+
+        app.open_routine_assistant_dialog();
+
+        assert!(app.show_routine_assistant_dialog);
+        assert_eq!(
+            app.routine_assistant_goal,
+            "Assemble TP53 insert with directional control"
+        );
+        assert_eq!(app.routine_assistant_status, "editing");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::routine_assistant_viewport_id())
+        );
+    }
+
+    #[test]
     fn open_configuration_graphics_dialog_focuses_existing_window_without_resetting_edits() {
         let mut app = GENtleApp::default();
         app.open_configuration_dialog();
@@ -17470,6 +18587,65 @@ mod tests {
             app.pending_focus_viewports
                 .contains(&GENtleApp::configuration_viewport_id())
         );
+    }
+
+    #[test]
+    fn open_help_doc_focuses_help_viewport() {
+        let mut app = GENtleApp::default();
+        app.open_help_doc(HelpDoc::Gui);
+        assert!(app.show_help_dialog);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::help_viewport_id())
+        );
+    }
+
+    #[test]
+    fn open_help_doc_preserves_loaded_markdown_without_forced_reload() {
+        let mut app = GENtleApp::default();
+        app.help_gui_markdown = "custom help text".to_string();
+
+        app.open_help_doc(HelpDoc::Gui);
+
+        assert_eq!(app.help_gui_markdown, "custom help text");
+    }
+
+    #[test]
+    fn command_palette_includes_routine_assistant_entry() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.title == "Routine Assistant")
+        );
+    }
+
+    #[test]
+    fn execute_command_palette_action_opens_routine_assistant_dialog() {
+        let mut app = GENtleApp::default();
+        app.routine_assistant_candidates
+            .push(CloningRoutineCatalogRow::default());
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenRoutineAssistant,
+        );
+
+        assert!(app.show_routine_assistant_dialog);
+    }
+
+    #[test]
+    fn native_window_menu_sync_is_blocked_while_open_probe_pending() {
+        let mut app = GENtleApp::default();
+        let viewport_id = GENtleApp::help_viewport_id();
+        assert!(!app.native_window_menu_sync_blocked_by_open_probe());
+
+        app.mark_viewport_open_requested(viewport_id);
+        assert!(app.native_window_menu_sync_blocked_by_open_probe());
+
+        app.finalize_viewport_open_probe(viewport_id, "Help");
+        assert!(!app.native_window_menu_sync_blocked_by_open_probe());
     }
 
     #[test]
@@ -17796,6 +18972,45 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         let recent = app.recent_uniprot_entries_for_dialog(5);
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].entry_id, "TOY_DIALOG");
+    }
+
+    #[test]
+    fn uniprot_use_imports_entry_sequence_and_opens_window() {
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let swiss_path = temp.path().join("toy_uniprot_dialog_use.txt");
+        let swiss_text = r#"ID   TOY2_HUMAN              Reviewed;         12 AA.
+AC   PUSE1;
+DE   RecName: Full=Toy use protein;
+GN   Name=TOY2;
+OS   Homo sapiens (Human).
+FT   DOMAIN          2..6
+FT                   /note="toy segment"
+SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
+     MEEPQSDPSVEP
+//
+"#;
+        fs::write(&swiss_path, swiss_text).expect("write swiss toy");
+
+        app.uniprot_entry_id = "TOY_USE".to_string();
+        app.uniprot_swiss_path = swiss_path.display().to_string();
+        app.import_uniprot_swiss_prot_from_dialog();
+
+        app.use_uniprot_entry_from_dialog("TOY_USE");
+
+        let state = app.engine.read().unwrap().state().clone();
+        assert!(state.sequences.contains_key("TOY_USE"));
+        assert_eq!(
+            app.new_windows
+                .first()
+                .and_then(|window| window.sequence_id()),
+            Some("TOY_USE".to_string())
+        );
+        assert!(
+            app.uniprot_status.contains("UniProt use: ok"),
+            "status was: {}",
+            app.uniprot_status
+        );
     }
 
     #[test]

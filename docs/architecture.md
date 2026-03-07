@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-03
+Last updated: 2026-03-07
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -625,6 +625,8 @@ Command surface:
 - `macros run [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `macros template-list|template-show|template-put|template-delete|template-import|template-run ...`
 - `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+- `routines explain ROUTINE_ID [--catalog PATH]`
+- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
 - `candidates macro [--transactional] [--file PATH | SCRIPT_OR_@FILE]`
 - `candidates template-list|template-show|template-put|template-delete|template-run ...`
 - `set-param NAME JSON_VALUE`
@@ -664,6 +666,164 @@ Command surface:
     (distinct enzyme inputs, recognition-site presence, fragment-index and
     extract-range checks) before mutation.
 
+Concrete patch plan: routine-application assistant and alternative-awareness
+
+- Extend routine metadata (`gentle.cloning_routines.v1`) with additive
+  explanation fields used by both humans and AI:
+  - `purpose`, `mechanism`, `requires[]`, `contraindications[]`
+  - `confusing_alternatives[]` (routine ids)
+  - `difference_matrix[]` (fixed comparison axes)
+  - `disambiguation_questions[]`
+  - `failure_modes[]`
+- Add non-mutating shared-shell explainability routes:
+  - `routines explain ROUTINE_ID`
+  - `routines compare ROUTINE_A ROUTINE_B`
+- Keep these routes adapter-equivalent (GUI/CLI/JS/Lua/MCP consume the same
+  JSON payload; no adapter-only explanation logic branches).
+- Add a GUI Routine Assistant that applies routines in deterministic stages:
+  - goal capture -> ranked candidates -> compare (`why this / why not`) ->
+    typed parameter form -> preflight preview -> transactional run -> export.
+- Keep preflight semantics authoritative for execution gating; explanation data
+  is guidance and decision context, not an execution shortcut.
+- Extend protocol/run-bundle export with optional routine decision trace:
+  selected routine, considered alternatives, disambiguation answers, and
+  preflight summary at decision time.
+- Add deterministic parity tests for explain/compare payloads and assistant
+  stage mapping (`routine -> form -> preflight -> execution`).
+
+Decision-trace capture/export contract (detailed plan):
+
+- Why this exists:
+  - Routine execution provenance currently captures what ran, but not why one
+    routine was selected over alternatives.
+  - `decision_trace` closes that gap by serializing user/agent intent,
+    alternatives considered, preflight gating, and final execution outcome in
+    one deterministic record.
+- Non-goals for phase 1:
+  - No autonomous recommendation engine.
+  - No hidden ranking logic in adapters.
+  - No mutation of execution behavior based on trace content.
+
+- Scope (phase 1):
+  - Capture routine-selection intent and gating outcomes from GUI
+    `Routine Assistant` runs.
+  - Persist traces in project metadata while a session is active.
+  - Include the finalized trace payload in `ExportProcessRunBundle` output.
+  - Keep all fields additive and optional for backward-compatible loading.
+
+- Lifecycle capture points (ordered):
+  - `assistant_started`: assistant session ID allocated, source adapter recorded.
+  - `intent_captured`: goal text/query text plus routine-list filters recorded.
+  - `candidates_shown`: deterministic ordered candidate IDs snapshot recorded.
+  - `routine_selected`: selected routine ID + presented alternatives snapshot.
+  - `comparison_opened` (0..N): each compare pair and comparison payload hash.
+  - `disambiguation_answered` (0..N): ordered answer commits, no inferred values.
+  - `bindings_committed`: typed input-port bindings frozen for preflight.
+  - `preflight_evaluated` (1..N): latest preflight snapshot retained as
+    canonical gate state, prior snapshots retained in history.
+  - `execution_submitted` (0..1): transactional flag and submission timestamp.
+  - `execution_finished` (0..1): success/failure plus macro-instance and op IDs.
+  - `trace_exported` (0..N): run-bundle path(s) and export timestamps.
+
+- Trace object schema (planned):
+  - schema: `gentle.routine_decision_trace.v1`
+  - identity:
+    - `trace_id` (deterministic per assistant run)
+    - `source` (`gui_routine_assistant`, then `cli/js/lua`)
+    - `status` (`draft`, `preflight_failed`, `ready`, `executed`,
+      `execution_failed`, `aborted`, `exported`)
+    - `created_at_unix_ms`, `updated_at_unix_ms`
+  - intent and search context:
+    - `goal_text`
+    - `query_text`
+    - `candidate_snapshot`:
+      - applied list/search filters
+      - ordered candidate routine IDs displayed to the user
+      - optional `catalog_version`/`catalog_hash`
+  - selection and alternatives context:
+    - `selected_routine` (id/title/family/status/template)
+    - `alternatives_presented` (ordered routine IDs)
+    - `comparisons` (ordered):
+      - `left_id`, `right_id`
+      - shared/left-only/right-only tags
+      - aligned `difference_matrix` rows consumed by UI
+      - optional payload hash for determinism/debug
+  - disambiguation context:
+    - `disambiguation_questions_presented` (ordered IDs/text)
+    - `disambiguation_answers` (ordered by question ID)
+    - free-text allowed now; typed answer schema is additive in later version
+  - parameter and gating context:
+    - `bindings_snapshot` (typed port -> bound value map)
+    - `preflight_history` (ordered snapshots)
+    - `preflight_snapshot` (last snapshot, canonical):
+      - `can_execute`
+      - `warnings[]`
+      - `errors[]`
+      - `contract_source`
+      - optional checked-port summary hash/count
+  - execution context:
+    - `execution_attempted`
+    - `execution_success`
+    - `transactional`
+    - `macro_instance_id` (when available)
+    - `emitted_operation_ids` (ordered)
+    - `execution_error` (structured summary if failed)
+  - export context:
+    - `export_events[]`:
+      - `run_bundle_path`
+      - `exported_at_unix_ms`
+      - optional `bundle_hash`
+
+- Run-bundle placement (planned):
+  - `gentle.process_run_bundle.v1` includes top-level
+    `decision_traces[]` (ordered by `created_at_unix_ms` then `trace_id`).
+  - Bundle export can include:
+    - all traces (default for reproducibility)
+    - selected trace by ID (optional future export filter)
+
+- Determinism and normalization rules:
+  - Stable ordering is mandatory for candidates, comparisons, questions,
+    answers, preflight snapshots, and emitted operation IDs.
+  - Missing optional values are represented explicitly as `null` or empty arrays
+    (no adapter-specific field dropping).
+  - Text normalization at capture time:
+    - trim outer whitespace
+    - preserve user-entered interior whitespace
+    - preserve case (no adapter-side rewriting)
+  - Trace ID generation must be deterministic relative to assistant session
+    identity and monotonic local counter, not wall-clock randomness.
+
+- Failure/cancel behavior:
+  - If execution is never submitted, export partial trace with
+    `execution_attempted=false` and current status (`draft`,
+    `preflight_failed`, or `aborted`).
+  - If preflight fails, trace remains exportable and includes complete
+    `preflight_snapshot` + history.
+  - If execution fails, trace includes structured failure summary and emitted
+    operation IDs up to failure boundary.
+
+- Retention and redaction policy (phase 1):
+  - Trace fields must avoid secret capture by default; only user-visible
+    assistant inputs and deterministic engine outputs are recorded.
+  - File paths may be stored when they are explicit binding inputs; no
+    automatic expansion of unrelated environment paths.
+  - Additive redaction flags may be introduced later, but default export is
+    full trace for reproducibility.
+
+- Adapter-parity target:
+  - GUI is phase-1 producer.
+  - CLI/JS/Lua should submit equivalent payloads through the same schema once
+    routine-assistant flows are exposed there.
+  - Adapters may differ in UX, but not in serialized field meaning or
+    ordering semantics.
+
+- Validation and test expectations:
+  - deterministic snapshot tests for success/failure/aborted traces
+  - round-trip load/save test preserving ordering and null/empty field shape
+  - run-bundle export tests verifying trace inclusion and stable serialization
+  - parity tests where the same staged decisions from different adapters yield
+    schema-equivalent trace payloads.
+
 This enables reusable query composition:
 
 1. generate explicit candidate sets
@@ -672,24 +832,33 @@ This enables reusable query composition:
 4. filter by absolute threshold and/or quantile
 5. intersect/union/subtract with other candidate sets
 
-### Primer design report command contract (baseline)
+### Primer/qPCR design report command contract (baseline)
 
-Primer-pair design is now a first-class engine operation plus shared-shell
-report inspection/export path:
+Primer-pair and qPCR design are first-class engine operations plus shared-shell
+inspection/export paths:
 
 - Engine operation:
   - `DesignPrimerPairs { template, roi_start_0based, roi_end_0based, forward, reverse, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_pairs?, report_id? }`
+  - `DesignQpcrAssays { template, roi_start_0based, roi_end_0based, forward, reverse, probe, pair_constraints?, min_amplicon_bp, max_amplicon_bp, max_tm_delta_c?, max_probe_tm_delta_c?, max_assays?, report_id? }`
   - `forward`/`reverse` side constraints now include optional sequence-level filters:
     `fixed_5prime`, `fixed_3prime`, `required_motifs[]`, `forbidden_motifs[]`,
     and `locked_positions[]` (offset/base locks, IUPAC-aware).
 - Persisted metadata:
   - `primer_design_reports` (`gentle.primer_design_reports.v1`)
+  - `qpcr_design_reports` (`gentle.qpcr_design_reports.v1`)
   - report payload schema: `gentle.primer_design_report.v1`
+  - report payload schema: `gentle.qpcr_design_report.v1`
 - Shared-shell commands:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers seed-from-feature SEQ_ID FEATURE_ID`
+  - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
+  - `primers list-qpcr-reports`
+  - `primers show-qpcr-report REPORT_ID`
+  - `primers export-qpcr-report REPORT_ID OUTPUT.json`
 
 Adapter contract:
 
@@ -698,6 +867,9 @@ Adapter contract:
 - JS/Lua adapters consume the same operation contract via `apply_operation`
   and can use the same shared-shell routes for report inspection/export.
 - No adapter-specific primer-design business logic is permitted.
+- ROI seed helpers are intentionally non-mutating and return seed payload
+  schema `gentle.primer_seed_request.v1` with ready-to-run operation JSON for
+  both pair-PCR and qPCR design.
 
 Primer3 wrapper integration status (baseline implemented):
 

@@ -22,6 +22,7 @@ const DEFAULT_SPLICING_TINT_RGB: [u8; 3] = [113, 135, 86];
 const DEFAULT_POOL_TINT_RGB: [u8; 3] = [148, 95, 58];
 const DEFAULT_CONFIGURATION_TINT_RGB: [u8; 3] = [169, 118, 79];
 const DEFAULT_HELP_TINT_RGB: [u8; 3] = [141, 92, 56];
+const BACKDROP_TEXTURE_HINT_PX: f32 = 1024.0;
 
 fn default_main_image_path() -> String {
     DEFAULT_MAIN_IMAGE_PATH.to_string()
@@ -271,6 +272,10 @@ fn alpha_to_u8(opacity: f32) -> u8 {
     (opacity.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
+fn backdrop_texture_hint() -> Vec2 {
+    Vec2::splat(BACKDROP_TEXTURE_HINT_PX)
+}
+
 fn migrate_legacy_image_path(path: &str) -> String {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -374,7 +379,9 @@ pub fn preload_window_backdrop_images(ctx: &egui::Context, settings: &WindowBack
 
         match egui::Image::new(resolved_uri.clone())
             .show_loading_spinner(false)
-            .load_for_size(ctx, egui::vec2(64.0, 64.0))
+            // Keep one shared texture-size hint across windows to avoid per-window-size
+            // cache misses and repeated image decode/resample work.
+            .load_for_size(ctx, backdrop_texture_hint())
         {
             Ok(egui::load::TexturePoll::Ready { .. })
             | Ok(egui::load::TexturePoll::Pending { .. }) => {
@@ -497,7 +504,9 @@ pub fn paint_window_backdrop(
             let image_tint = Color32::from_rgba_unmultiplied(196, 196, 196, image_alpha);
             match egui::Image::new(resolved_uri)
                 .show_loading_spinner(false)
-                .load_for_size(ui.ctx(), rect.size())
+                // Use a stable texture-size hint instead of current viewport dimensions,
+                // so opening differently sized windows does not trigger extra reload paths.
+                .load_for_size(ui.ctx(), backdrop_texture_hint())
             {
                 Ok(egui::load::TexturePoll::Ready { texture }) => {
                     let uv = cover_uv_rect(texture.size, rect.size());

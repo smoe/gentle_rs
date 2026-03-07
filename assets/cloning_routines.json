@@ -13,6 +13,37 @@
         "digest"
       ],
       "summary": "Digest one sequence with two enzymes, ligate selected fragments using sticky-end semantics, and extract one output region with restriction-family preflight checks.",
+      "purpose": "Assemble or subclone by deterministic restriction-site cuts followed by sticky-end ligation and optional region extraction.",
+      "mechanism": "Site-specific endonuclease digest defines fragment boundaries; ligation joins compatible sticky ends.",
+      "requires": [
+        "Resolvable enzyme names with expected recognition sites in the selected sequence.",
+        "Compatible sticky ends for intended ligation products."
+      ],
+      "contraindications": [
+        "Fragments or enzymes that cannot produce compatible sticky termini for the intended assembly."
+      ],
+      "confusing_alternatives": [
+        "golden_gate.type_iis_single_insert",
+        "gibson.two_fragment_overlap_preview"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "restriction digest + sticky-end ligation"
+        },
+        {
+          "axis": "junction_constraint",
+          "value": "recognition-site and overhang compatibility constrained"
+        }
+      ],
+      "disambiguation_questions": [
+        "Do you want junctions dictated by restriction sites, or by designed overlaps/overhang tokens?",
+        "Is compatible sticky-end ligation acceptable for all intended joins?"
+      ],
+      "failure_modes": [
+        "Unknown enzyme name or missing recognition site in the input sequence.",
+        "Invalid fragment indices or extract bounds after digest/ligation."
+      ],
       "details_url": "https://www.addgene.org/protocols/restriction-digest/",
       "template_name": "digest_ligate_extract_sticky",
       "template_path": "assets/cloning_patterns_catalog/restriction/digest_ligation/digest_ligate_extract_sticky.json",
@@ -104,6 +135,36 @@
         "planning"
       ],
       "summary": "Validate two-fragment overlap compatibility with Gibson-specific preflight checks and generate deterministic forward-order preview products.",
+      "purpose": "Plan overlap-driven two-fragment assembly without relying on restriction enzyme sites.",
+      "mechanism": "Adjacent fragment suffix/prefix homology is validated, then deterministic forward-order preview output is generated.",
+      "requires": [
+        "Two input fragments with sufficient homologous overlap at the intended junction."
+      ],
+      "contraindications": [
+        "Short or mismatched overlap region between adjacent fragments."
+      ],
+      "confusing_alternatives": [
+        "infusion.two_fragment_overlap",
+        "nebuilder_hifi.two_fragment_overlap",
+        "golden_gate.type_iis_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "homology-overlap assembly"
+        },
+        {
+          "axis": "junction_constraint",
+          "value": "overlap sequence identity constrained"
+        }
+      ],
+      "disambiguation_questions": [
+        "Are overlaps already designed and biologically acceptable for this junction?",
+        "Do you need Type IIS overhang grammar instead of overlap homology?"
+      ],
+      "failure_modes": [
+        "Overlap mismatch between adjacent fragments for configured overlap length."
+      ],
       "details_url": "https://www.neb.com/en-us/applications/cloning-and-synthetic-biology/gibson-assembly",
       "template_name": "gibson_two_fragment_overlap_preview",
       "template_path": "assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json",
@@ -334,6 +395,1330 @@
           "required": false,
           "cardinality": "one",
           "description": "Output oligo set ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "golden_gate.type_iis_single_insert",
+      "title": "Golden Gate Type IIS Single Insert",
+      "family": "golden_gate",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "golden gate",
+        "type iis",
+        "sticky",
+        "modular assembly"
+      ],
+      "summary": "Digest vector+insert with one Type IIS enzyme and generate sticky-end ligation preview output.",
+      "purpose": "Assemble one insert into one destination vector using programmable Type IIS overhangs.",
+      "mechanism": "Type IIS digest-ligation cycling enforces user-defined overhang junction grammar.",
+      "requires": [
+        "Type IIS-capable enzyme resolved in the enzyme catalog.",
+        "Explicit non-conflicting overhang plan at intended junctions."
+      ],
+      "contraindications": [
+        "Conflicting or duplicated non-terminal overhang tokens."
+      ],
+      "confusing_alternatives": [
+        "restriction.digest_ligate_extract_sticky",
+        "gibson.two_fragment_overlap_preview"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "Type IIS digest-ligation cycling"
+        },
+        {
+          "axis": "junction_constraint",
+          "value": "explicit overhang token grammar"
+        }
+      ],
+      "disambiguation_questions": [
+        "Do you need explicit short overhang token control at each junction?",
+        "Should assembly avoid homology-overlap style junctions?"
+      ],
+      "failure_modes": [
+        "Unknown or non-Type-IIS enzyme selection.",
+        "Missing required recognition site or invalid overhang token set."
+      ],
+      "details_url": "https://www.addgene.org/protocols/golden-gate/",
+      "template_name": "golden_gate_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/golden_gate/type_iis/golden_gate_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Golden Gate destination vector sequence ID."
+        },
+        {
+          "port_id": "insert_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Insert sequence ID for single-fragment insertion."
+        },
+        {
+          "port_id": "type_iis_enzyme",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Type IIS enzyme name."
+        },
+        {
+          "port_id": "junction_overhangs",
+          "kind": "string",
+          "required": false,
+          "cardinality": "many",
+          "description": "Comma-separated junction overhang token list."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "ligation_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Ligation product namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Deterministic Golden Gate output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "golden_gate.type_iis_multi_insert",
+      "title": "Golden Gate Type IIS Multi Insert",
+      "family": "golden_gate",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "golden gate",
+        "type iis",
+        "multi insert",
+        "overhang"
+      ],
+      "summary": "Golden Gate baseline for vector + two inserts with explicit junction overhang preflight.",
+      "purpose": "Assemble vector plus multiple inserts in one Type IIS-oriented routine with explicit junction overhang choreography.",
+      "mechanism": "Type IIS digest-ligation with ordered multi-junction overhang validation before execution.",
+      "requires": [
+        "Type IIS-capable enzyme and complete junction-overhang token list."
+      ],
+      "contraindications": [
+        "Repeated non-terminal junction-overhang tokens across distinct joins."
+      ],
+      "confusing_alternatives": [
+        "infusion.multi_fragment_overlap",
+        "nebuilder_hifi.multi_fragment_overlap",
+        "restriction.digest_ligate_extract_sticky"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "Type IIS digest-ligation multi-part assembly"
+        },
+        {
+          "axis": "junction_constraint",
+          "value": "explicit ordered overhang token chain"
+        }
+      ],
+      "disambiguation_questions": [
+        "Are all intended joins representable by one ordered overhang-token chain?",
+        "Would overlap-based multi-fragment assembly better fit available fragments?"
+      ],
+      "failure_modes": [
+        "Overhang-token count does not match expected junction count.",
+        "Non-unique internal overhang token detected."
+      ],
+      "details_url": "https://www.addgene.org/protocols/golden-gate/",
+      "template_name": "golden_gate_multi_insert",
+      "template_path": "assets/cloning_patterns_catalog/golden_gate/type_iis/golden_gate_multi_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Golden Gate destination vector sequence ID."
+        },
+        {
+          "port_id": "insert_a_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "First insert sequence ID."
+        },
+        {
+          "port_id": "insert_b_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Second insert sequence ID."
+        },
+        {
+          "port_id": "type_iis_enzyme",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Type IIS enzyme name."
+        },
+        {
+          "port_id": "junction_overhangs",
+          "kind": "string",
+          "required": true,
+          "cardinality": "many",
+          "description": "Comma-separated expected junction overhang token list."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "ligation_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Ligation product namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Deterministic Golden Gate multi-insert output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "golden_gate.type_iis_destination_cleanup",
+      "title": "Golden Gate Type IIS Destination Cleanup",
+      "family": "golden_gate",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "golden gate",
+        "type iis",
+        "destination cleanup",
+        "digest"
+      ],
+      "summary": "Digest destination backbone and keep one deterministic fragment/extract for downstream assembly.",
+      "purpose": "Prepare a destination backbone fragment deterministically before downstream assembly.",
+      "mechanism": "Type IIS digest produces candidate fragments and deterministic keep/extract selection.",
+      "requires": [
+        "Destination sequence and Type IIS enzyme with at least one valid cut site."
+      ],
+      "contraindications": [
+        "No digest fragment matching the intended keep/extract bounds."
+      ],
+      "confusing_alternatives": [
+        "restriction.digest_ligate_extract_sticky"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "destination-backbone cleanup digest"
+        },
+        {
+          "axis": "junction_constraint",
+          "value": "single-fragment retention after digest"
+        }
+      ],
+      "disambiguation_questions": [
+        "Is this step only for destination cleanup, not full insert assembly?"
+      ],
+      "failure_modes": [
+        "Requested keep_fragment is out of digest fragment range."
+      ],
+      "details_url": "https://www.addgene.org/protocols/golden-gate/",
+      "template_name": "golden_gate_destination_cleanup",
+      "template_path": "assets/cloning_patterns_catalog/golden_gate/type_iis/golden_gate_destination_cleanup.json",
+      "input_ports": [
+        {
+          "port_id": "destination_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Destination backbone sequence ID."
+        },
+        {
+          "port_id": "type_iis_enzyme",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Type IIS enzyme name."
+        },
+        {
+          "port_id": "keep_fragment",
+          "kind": "number",
+          "required": false,
+          "cardinality": "one",
+          "description": "1-based digest fragment index to keep."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "digest_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Digest output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Deterministic destination-cleanup output ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "gateway.bp_single_insert",
+      "title": "Gateway BP Single Insert",
+      "family": "gateway",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "gateway",
+        "bp",
+        "attB",
+        "attP"
+      ],
+      "summary": "Gateway BP planning baseline with att-site token preflight.",
+      "purpose": "Model Gateway BP recombination step from attB/attP inputs into entry-clone style outputs.",
+      "mechanism": "Phase-aware att-site token validation gates BP-step execution.",
+      "requires": [
+        "Gateway phase token set to BP with attB/attP-compatible token set."
+      ],
+      "contraindications": [
+        "Mixed BP/LR token sets or incompatible att-site phase selection."
+      ],
+      "confusing_alternatives": [
+        "gateway.lr_single_insert",
+        "gateway.bp_lr_two_step",
+        "topo.directional_cacc_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "recombination_phase",
+          "value": "BP"
+        },
+        {
+          "axis": "site_contract",
+          "value": "attB + attP"
+        }
+      ],
+      "disambiguation_questions": [
+        "Are you performing BP entry reaction now, or LR destination reaction?"
+      ],
+      "failure_modes": [
+        "Gateway phase/site mismatch for BP validation."
+      ],
+      "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/gateway-cloning.html",
+      "template_name": "gateway_bp_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/gateway/bp_lr/gateway_bp_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "donor_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Donor insert sequence."
+        },
+        {
+          "port_id": "entry_vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Entry vector sequence."
+        },
+        {
+          "port_id": "gateway_phase",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Gateway phase token."
+        },
+        {
+          "port_id": "att_tokens",
+          "kind": "string",
+          "required": true,
+          "cardinality": "many",
+          "description": "att-site token list."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Gateway BP output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Gateway BP output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "gateway.lr_single_insert",
+      "title": "Gateway LR Single Insert",
+      "family": "gateway",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "gateway",
+        "lr",
+        "attL",
+        "attR"
+      ],
+      "summary": "Gateway LR planning baseline with att-site token preflight.",
+      "purpose": "Model Gateway LR recombination step from entry clone to destination vector outputs.",
+      "mechanism": "Phase-aware att-site token validation gates LR-step execution.",
+      "requires": [
+        "Gateway phase token set to LR with attL/attR-compatible token set."
+      ],
+      "contraindications": [
+        "Mixed BP/LR token sets or incompatible att-site phase selection."
+      ],
+      "confusing_alternatives": [
+        "gateway.bp_single_insert",
+        "gateway.bp_lr_two_step",
+        "topo.directional_cacc_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "recombination_phase",
+          "value": "LR"
+        },
+        {
+          "axis": "site_contract",
+          "value": "attL + attR"
+        }
+      ],
+      "disambiguation_questions": [
+        "Is the entry clone already available and ready for LR destination transfer?"
+      ],
+      "failure_modes": [
+        "Gateway phase/site mismatch for LR validation."
+      ],
+      "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/gateway-cloning.html",
+      "template_name": "gateway_lr_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/gateway/bp_lr/gateway_lr_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "entry_clone_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Entry clone sequence."
+        },
+        {
+          "port_id": "destination_vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Destination vector sequence."
+        },
+        {
+          "port_id": "gateway_phase",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Gateway phase token."
+        },
+        {
+          "port_id": "att_tokens",
+          "kind": "string",
+          "required": true,
+          "cardinality": "many",
+          "description": "att-site token list."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "Gateway LR output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Gateway LR output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "gateway.bp_lr_two_step",
+      "title": "Gateway BP+LR Two-Step",
+      "family": "gateway",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "gateway",
+        "bp",
+        "lr",
+        "attB",
+        "attP",
+        "attL",
+        "attR"
+      ],
+      "summary": "Gateway two-step BP then LR baseline with phase-aware token preflight.",
+      "purpose": "Execute Gateway planning as an explicit BP then LR staged workflow.",
+      "mechanism": "Per-step att-site token validation is applied for BP and LR phases in sequence.",
+      "requires": [
+        "Inputs for both BP and LR phases with phase-appropriate att tokens."
+      ],
+      "contraindications": [
+        "Only one phase is available but two-step workflow is selected."
+      ],
+      "confusing_alternatives": [
+        "gateway.bp_single_insert",
+        "gateway.lr_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "recombination_phase",
+          "value": "BP then LR"
+        },
+        {
+          "axis": "site_contract",
+          "value": "attB/attP followed by attL/attR"
+        }
+      ],
+      "disambiguation_questions": [
+        "Do you need both Gateway phases now, or only BP or LR?"
+      ],
+      "failure_modes": [
+        "Phase-token mismatch in one of the two Gateway stages."
+      ],
+      "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/gateway-cloning.html",
+      "template_name": "gateway_bp_lr_two_step",
+      "template_path": "assets/cloning_patterns_catalog/gateway/bp_lr/gateway_bp_lr_two_step.json",
+      "input_ports": [
+        {
+          "port_id": "donor_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Donor insert sequence."
+        },
+        {
+          "port_id": "entry_vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Entry vector sequence."
+        },
+        {
+          "port_id": "destination_vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Destination vector sequence."
+        },
+        {
+          "port_id": "gateway_phase",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Gateway phase token."
+        },
+        {
+          "port_id": "att_tokens",
+          "kind": "string",
+          "required": true,
+          "cardinality": "many",
+          "description": "att-site token list."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "bp_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "BP-step output namespace prefix."
+        },
+        {
+          "port_id": "lr_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "LR-step output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "Final BP+LR output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "topo.ta_single_insert",
+      "title": "TOPO TA Single Insert",
+      "family": "topo",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "topo",
+        "ta",
+        "single insert"
+      ],
+      "summary": "TOPO TA baseline with terminal-base compatibility preflight.",
+      "purpose": "Perform TOPO TA-style single-insert cloning with terminal A/T compatibility checks.",
+      "mechanism": "Mode-aware end-compatibility preflight validates TA termini before assembly preview.",
+      "requires": [
+        "Insert/vector termini compatible with TA mode."
+      ],
+      "contraindications": [
+        "Terminal chemistry incompatible with TA mode."
+      ],
+      "confusing_alternatives": [
+        "topo.blunt_single_insert",
+        "topo.directional_cacc_single_insert",
+        "ta_gc.ta_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "end_contract",
+          "value": "A/T-compatible TA termini"
+        },
+        {
+          "axis": "directionality",
+          "value": "non-directional"
+        }
+      ],
+      "disambiguation_questions": [
+        "Do insert/vector ends require TA, blunt, or directional CACC mode?"
+      ],
+      "failure_modes": [
+        "Terminal-base mismatch for TA mode."
+      ],
+      "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/topo-cloning.html",
+      "template_name": "topo_ta_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/topo/entry/topo_ta_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO TA vector sequence ID."
+        },
+        {
+          "port_id": "insert_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO TA insert sequence ID."
+        },
+        {
+          "port_id": "topo_mode",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO mode token."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "TOPO TA output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "TOPO TA output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "topo.blunt_single_insert",
+      "title": "TOPO Blunt Single Insert",
+      "family": "topo",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "topo",
+        "blunt",
+        "single insert"
+      ],
+      "summary": "TOPO blunt baseline with mode-aware end-compatibility preflight.",
+      "purpose": "Perform TOPO blunt-end single-insert cloning with blunt-end compatibility checks.",
+      "mechanism": "Mode-aware end-compatibility preflight validates blunt termini before assembly preview.",
+      "requires": [
+        "Insert/vector termini compatible with blunt mode."
+      ],
+      "contraindications": [
+        "Terminal chemistry incompatible with blunt mode."
+      ],
+      "confusing_alternatives": [
+        "topo.ta_single_insert",
+        "topo.directional_cacc_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "end_contract",
+          "value": "blunt-compatible termini"
+        },
+        {
+          "axis": "directionality",
+          "value": "non-directional"
+        }
+      ],
+      "disambiguation_questions": [
+        "Are fragment termini blunt or do they require TA/CACC-specific chemistry?"
+      ],
+      "failure_modes": [
+        "Terminal-base mismatch for blunt mode."
+      ],
+      "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/topo-cloning.html",
+      "template_name": "topo_blunt_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/topo/entry/topo_blunt_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO blunt vector sequence ID."
+        },
+        {
+          "port_id": "insert_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO blunt insert sequence ID."
+        },
+        {
+          "port_id": "topo_mode",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO mode token."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "TOPO blunt output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "TOPO blunt output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "topo.directional_cacc_single_insert",
+      "title": "TOPO Directional CACC Single Insert",
+      "family": "topo",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "topo",
+        "directional",
+        "cacc",
+        "single insert"
+      ],
+      "summary": "TOPO directional baseline with CACC-prefixed insert preflight.",
+      "purpose": "Perform directional TOPO cloning with CACC-prefixed orientation constraints.",
+      "mechanism": "Mode-aware preflight validates directional CACC insert constraint before assembly preview.",
+      "requires": [
+        "Insert representation compatible with directional CACC mode."
+      ],
+      "contraindications": [
+        "No directional CACC-compatible insert context for intended orientation."
+      ],
+      "confusing_alternatives": [
+        "topo.ta_single_insert",
+        "topo.blunt_single_insert",
+        "gateway.lr_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "end_contract",
+          "value": "directional CACC mode"
+        },
+        {
+          "axis": "directionality",
+          "value": "directional"
+        }
+      ],
+      "disambiguation_questions": [
+        "Is strict orientation control required at cloning entry?"
+      ],
+      "failure_modes": [
+        "Directional CACC mode selected without compatible insert context."
+      ],
+      "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/topo-cloning.html",
+      "template_name": "topo_directional_cacc_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/topo/entry/topo_directional_cacc_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO directional vector sequence ID."
+        },
+        {
+          "port_id": "insert_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO directional insert sequence ID."
+        },
+        {
+          "port_id": "topo_mode",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "TOPO mode token."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "TOPO directional output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "TOPO directional output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "ta_gc.ta_single_insert",
+      "title": "TA Cloning Single Insert",
+      "family": "ta_gc",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "ta cloning",
+        "a overhang",
+        "t overhang",
+        "single insert"
+      ],
+      "summary": "TA cloning baseline with terminal-base compatibility preflight.",
+      "purpose": "Perform TA cloning with explicit A/T terminal compatibility checks.",
+      "mechanism": "Terminal-base compatibility preflight validates TA overhang pairing before assembly preview.",
+      "requires": [
+        "A/T-compatible terminal-base pairing between vector and insert."
+      ],
+      "contraindications": [
+        "Terminal-base pairing incompatible with TA overhang model."
+      ],
+      "confusing_alternatives": [
+        "ta_gc.gc_single_insert",
+        "topo.ta_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "end_contract",
+          "value": "A/T overhang compatibility"
+        },
+        {
+          "axis": "platform_style",
+          "value": "generic TA/GC cloning"
+        }
+      ],
+      "disambiguation_questions": [
+        "Are termini A/T-compatible or G/C-compatible for this insertion?"
+      ],
+      "failure_modes": [
+        "Terminal-base mismatch for TA mode."
+      ],
+      "details_url": "https://www.neb.com/en-us/tools-and-resources/usage-guidelines/ta-cloning",
+      "template_name": "ta_clone_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/ta_gc/entry/ta_clone_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TA vector sequence ID."
+        },
+        {
+          "port_id": "insert_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "TA insert sequence ID."
+        },
+        {
+          "port_id": "tail_mode",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Tail mode token."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "TA clone output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "TA clone output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "ta_gc.gc_single_insert",
+      "title": "GC Cloning Single Insert",
+      "family": "ta_gc",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "gc cloning",
+        "g overhang",
+        "c overhang",
+        "single insert"
+      ],
+      "summary": "GC cloning baseline with terminal-base compatibility preflight.",
+      "purpose": "Perform GC cloning with explicit G/C terminal compatibility checks.",
+      "mechanism": "Terminal-base compatibility preflight validates GC overhang pairing before assembly preview.",
+      "requires": [
+        "G/C-compatible terminal-base pairing between vector and insert."
+      ],
+      "contraindications": [
+        "Terminal-base pairing incompatible with GC overhang model."
+      ],
+      "confusing_alternatives": [
+        "ta_gc.ta_single_insert"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "end_contract",
+          "value": "G/C overhang compatibility"
+        },
+        {
+          "axis": "platform_style",
+          "value": "generic TA/GC cloning"
+        }
+      ],
+      "disambiguation_questions": [
+        "Are termini G/C-compatible rather than A/T-compatible?"
+      ],
+      "failure_modes": [
+        "Terminal-base mismatch for GC mode."
+      ],
+      "details_url": "https://www.neb.com/en-us/tools-and-resources/usage-guidelines/ta-cloning",
+      "template_name": "gc_clone_single_insert",
+      "template_path": "assets/cloning_patterns_catalog/ta_gc/entry/gc_clone_single_insert.json",
+      "input_ports": [
+        {
+          "port_id": "vector_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "GC vector sequence ID."
+        },
+        {
+          "port_id": "insert_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "GC insert sequence ID."
+        },
+        {
+          "port_id": "tail_mode",
+          "kind": "string",
+          "required": true,
+          "cardinality": "one",
+          "description": "Tail mode token."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "GC clone output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "GC clone output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "infusion.two_fragment_overlap",
+      "title": "In-Fusion Two-Fragment Overlap",
+      "family": "infusion",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "in-fusion",
+        "overlap",
+        "two fragment",
+        "assembly"
+      ],
+      "summary": "In-Fusion two-fragment overlap planning baseline with adjacent overlap preflight.",
+      "purpose": "Plan two-fragment overlap assembly with In-Fusion-family overlap checks.",
+      "mechanism": "Adjacent overlap-chain preflight validates suffix/prefix overlap compatibility.",
+      "requires": [
+        "Two fragments with sufficient homologous overlap at the intended junction."
+      ],
+      "contraindications": [
+        "Insufficient or mismatched overlap between adjacent fragments."
+      ],
+      "confusing_alternatives": [
+        "gibson.two_fragment_overlap_preview",
+        "nebuilder_hifi.two_fragment_overlap"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "homology-overlap assembly"
+        },
+        {
+          "axis": "family_profile",
+          "value": "In-Fusion overlap profile"
+        }
+      ],
+      "disambiguation_questions": [
+        "Is In-Fusion-specific overlap workflow required, or is Gibson/NEBuilder acceptable?"
+      ],
+      "failure_modes": [
+        "Overlap mismatch for configured overlap length."
+      ],
+      "details_url": "https://www.takarabio.com/products/cloning/in-fusion-cloning",
+      "template_name": "infusion_two_fragment_overlap",
+      "template_path": "assets/cloning_patterns_catalog/infusion/overlap/infusion_two_fragment_overlap.json",
+      "input_ports": [
+        {
+          "port_id": "left_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Left fragment sequence ID."
+        },
+        {
+          "port_id": "right_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Right fragment sequence ID."
+        },
+        {
+          "port_id": "overlap_bp",
+          "kind": "number",
+          "required": true,
+          "cardinality": "one",
+          "description": "Overlap length for preflight checks."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "In-Fusion output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "In-Fusion output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "infusion.multi_fragment_overlap",
+      "title": "In-Fusion Multi-Fragment Overlap",
+      "family": "infusion",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "in-fusion",
+        "overlap",
+        "multi fragment",
+        "assembly"
+      ],
+      "summary": "In-Fusion three-fragment overlap baseline with adjacent overlap preflight.",
+      "purpose": "Plan multi-fragment overlap assembly with In-Fusion-family overlap checks.",
+      "mechanism": "Adjacent overlap-chain preflight validates each successive overlap junction.",
+      "requires": [
+        "All adjacent fragments have sufficient overlap in intended order."
+      ],
+      "contraindications": [
+        "One or more adjacent overlap junctions are incompatible."
+      ],
+      "confusing_alternatives": [
+        "golden_gate.type_iis_multi_insert",
+        "nebuilder_hifi.multi_fragment_overlap"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "multi-fragment homology-overlap assembly"
+        },
+        {
+          "axis": "family_profile",
+          "value": "In-Fusion overlap profile"
+        }
+      ],
+      "disambiguation_questions": [
+        "Do you prefer overlap-driven multi-fragment assembly over overhang-token choreography?"
+      ],
+      "failure_modes": [
+        "At least one overlap junction fails adjacent homology check."
+      ],
+      "details_url": "https://www.takarabio.com/products/cloning/in-fusion-cloning",
+      "template_name": "infusion_multi_fragment_overlap",
+      "template_path": "assets/cloning_patterns_catalog/infusion/overlap/infusion_multi_fragment_overlap.json",
+      "input_ports": [
+        {
+          "port_id": "left_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Left fragment sequence ID."
+        },
+        {
+          "port_id": "middle_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Middle fragment sequence ID."
+        },
+        {
+          "port_id": "right_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Right fragment sequence ID."
+        },
+        {
+          "port_id": "overlap_bp",
+          "kind": "number",
+          "required": true,
+          "cardinality": "one",
+          "description": "Overlap length for adjacent preflight checks."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "In-Fusion multi-fragment output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "In-Fusion multi-fragment output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "nebuilder_hifi.two_fragment_overlap",
+      "title": "NEBuilder HiFi Two-Fragment Overlap",
+      "family": "nebuilder_hifi",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "nebuilder",
+        "hifi",
+        "overlap",
+        "two fragment"
+      ],
+      "summary": "NEBuilder HiFi two-fragment overlap planning baseline with overlap-chain preflight.",
+      "purpose": "Plan two-fragment overlap assembly with NEBuilder HiFi-family overlap checks.",
+      "mechanism": "Adjacent overlap-chain preflight validates suffix/prefix overlap compatibility.",
+      "requires": [
+        "Two fragments with sufficient homologous overlap at the intended junction."
+      ],
+      "contraindications": [
+        "Insufficient or mismatched overlap between adjacent fragments."
+      ],
+      "confusing_alternatives": [
+        "gibson.two_fragment_overlap_preview",
+        "infusion.two_fragment_overlap"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "homology-overlap assembly"
+        },
+        {
+          "axis": "family_profile",
+          "value": "NEBuilder HiFi overlap profile"
+        }
+      ],
+      "disambiguation_questions": [
+        "Is NEBuilder HiFi workflow required, or is Gibson/In-Fusion acceptable?"
+      ],
+      "failure_modes": [
+        "Overlap mismatch for configured overlap length."
+      ],
+      "details_url": "https://www.neb.com/en-us/products/e2621-nebuilder-hifi-dna-assembly-master-mix",
+      "template_name": "nebuilder_two_fragment_overlap",
+      "template_path": "assets/cloning_patterns_catalog/nebuilder_hifi/overlap/nebuilder_two_fragment_overlap.json",
+      "input_ports": [
+        {
+          "port_id": "left_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Left fragment sequence ID."
+        },
+        {
+          "port_id": "right_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Right fragment sequence ID."
+        },
+        {
+          "port_id": "overlap_bp",
+          "kind": "number",
+          "required": true,
+          "cardinality": "one",
+          "description": "Overlap length for preflight checks."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "NEBuilder output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "NEBuilder output sequence ID."
+        }
+      ]
+    },
+    {
+      "routine_id": "nebuilder_hifi.multi_fragment_overlap",
+      "title": "NEBuilder HiFi Multi-Fragment Overlap",
+      "family": "nebuilder_hifi",
+      "status": "implemented",
+      "vocabulary_tags": [
+        "nebuilder",
+        "hifi",
+        "overlap",
+        "multi fragment"
+      ],
+      "summary": "NEBuilder HiFi three-fragment overlap baseline with adjacent overlap preflight.",
+      "purpose": "Plan multi-fragment overlap assembly with NEBuilder HiFi-family overlap checks.",
+      "mechanism": "Adjacent overlap-chain preflight validates each successive overlap junction.",
+      "requires": [
+        "All adjacent fragments have sufficient overlap in intended order."
+      ],
+      "contraindications": [
+        "One or more adjacent overlap junctions are incompatible."
+      ],
+      "confusing_alternatives": [
+        "golden_gate.type_iis_multi_insert",
+        "infusion.multi_fragment_overlap"
+      ],
+      "difference_matrix": [
+        {
+          "axis": "assembly_principle",
+          "value": "multi-fragment homology-overlap assembly"
+        },
+        {
+          "axis": "family_profile",
+          "value": "NEBuilder HiFi overlap profile"
+        }
+      ],
+      "disambiguation_questions": [
+        "Do you need NEBuilder HiFi for this multi-fragment overlap design?"
+      ],
+      "failure_modes": [
+        "At least one overlap junction fails adjacent homology check."
+      ],
+      "details_url": "https://www.neb.com/en-us/products/e2621-nebuilder-hifi-dna-assembly-master-mix",
+      "template_name": "nebuilder_multi_fragment_overlap",
+      "template_path": "assets/cloning_patterns_catalog/nebuilder_hifi/overlap/nebuilder_multi_fragment_overlap.json",
+      "input_ports": [
+        {
+          "port_id": "left_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Left fragment sequence ID."
+        },
+        {
+          "port_id": "middle_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Middle fragment sequence ID."
+        },
+        {
+          "port_id": "right_seq_id",
+          "kind": "sequence",
+          "required": true,
+          "cardinality": "one",
+          "description": "Right fragment sequence ID."
+        },
+        {
+          "port_id": "overlap_bp",
+          "kind": "number",
+          "required": true,
+          "cardinality": "one",
+          "description": "Overlap length for adjacent preflight checks."
+        }
+      ],
+      "output_ports": [
+        {
+          "port_id": "assembly_prefix",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "many",
+          "description": "NEBuilder multi-fragment output namespace prefix."
+        },
+        {
+          "port_id": "output_id",
+          "kind": "sequence",
+          "required": false,
+          "cardinality": "one",
+          "description": "NEBuilder multi-fragment output sequence ID."
         }
       ]
     }

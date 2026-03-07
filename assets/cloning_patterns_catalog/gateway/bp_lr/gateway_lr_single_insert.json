@@ -1,0 +1,25 @@
+{
+  "schema": "gentle.cloning_pattern_template.v1",
+  "name": "gateway_lr_single_insert",
+  "description": "Gateway LR reaction baseline (single insert planning preview).",
+  "details_url": "https://www.thermofisher.com/us/en/home/life-science/cloning/gateway-cloning.html",
+  "parameters": [
+    { "name": "entry_clone_seq_id", "required": true },
+    { "name": "destination_vector_seq_id", "required": true },
+    { "name": "gateway_phase", "default_value": "lr", "required": false },
+    { "name": "att_tokens", "default_value": "attL,attR", "required": false },
+    { "name": "assembly_prefix", "default_value": "gateway_lr", "required": false },
+    { "name": "output_id", "default_value": "gateway_lr_product", "required": false }
+  ],
+  "input_ports": [
+    { "port_id": "entry_clone_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Entry clone sequence (attL context)." },
+    { "port_id": "destination_vector_seq_id", "kind": "sequence", "required": true, "cardinality": "one", "description": "Destination vector sequence (attR context)." },
+    { "port_id": "gateway_phase", "kind": "string", "required": true, "cardinality": "one", "description": "Gateway phase token (bp|lr|bp_lr)." },
+    { "port_id": "att_tokens", "kind": "string", "required": true, "cardinality": "many", "description": "Comma-separated Gateway att-site token list for preflight checks." }
+  ],
+  "output_ports": [
+    { "port_id": "assembly_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "Gateway LR preview output namespace prefix." },
+    { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic Gateway LR output sequence ID." }
+  ],
+  "script": "op {\"Ligation\":{\"inputs\":[\"${entry_clone_seq_id}\",\"${destination_vector_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+}

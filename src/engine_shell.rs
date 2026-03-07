@@ -30,15 +30,17 @@ use crate::{
         CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
         CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
         CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget, GUIDE_DESIGN_METADATA_KEY,
-        GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription, GentleEngine, GuideCandidate,
-        GuideOligoExportFormat, GuideOligoPlateFormat, GuidePracticalFilterConfig,
-        LineageMacroInstance, LineageMacroPortBinding, MacroInstanceStatus, Operation,
-        PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend, ProjectState, RenderSvgMode,
+        CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget, FeatureExpertView,
+        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription,
+        GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
+        GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
+        MacroInstanceStatus, Operation, PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend,
+        PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState, RenderSvgMode,
         SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
+    feature_location::collect_location_ranges_usize,
     genomes::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord,
@@ -66,6 +68,10 @@ use serde_json::{Value, json};
 use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
+#[cfg(test)]
+use std::time::Duration;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fs,
@@ -78,15 +84,13 @@ use std::{
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
-#[cfg(test)]
-use std::sync::atomic::AtomicUsize;
-#[cfg(test)]
-use std::time::Duration;
 
 const CLONING_PATTERN_FILE_SCHEMA: &str = "gentle.cloning_patterns.v1";
 const CLONING_PATTERN_TEMPLATE_FILE_SCHEMA: &str = "gentle.cloning_pattern_template.v1";
 const CLONING_ROUTINE_CATALOG_SCHEMA: &str = "gentle.cloning_routines.v1";
 const CLONING_ROUTINE_LIST_SCHEMA: &str = "gentle.cloning_routines_list.v1";
+const CLONING_ROUTINE_EXPLAIN_SCHEMA: &str = "gentle.cloning_routine_explain.v1";
+const CLONING_ROUTINE_COMPARE_SCHEMA: &str = "gentle.cloning_routine_compare.v1";
 const DEFAULT_CLONING_ROUTINE_CATALOG_PATH: &str = "assets/cloning_routines.json";
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
 const BLAST_ASYNC_JOB_HISTORY_LIMIT: usize = 200;
@@ -241,6 +245,13 @@ struct CloningRoutinePort {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+struct CloningRoutineDifferenceAxis {
+    axis: String,
+    value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 struct CloningRoutineDefinition {
     routine_id: String,
     title: String,
@@ -248,6 +259,14 @@ struct CloningRoutineDefinition {
     status: String,
     vocabulary_tags: Vec<String>,
     summary: Option<String>,
+    purpose: Option<String>,
+    mechanism: Option<String>,
+    requires: Vec<String>,
+    contraindications: Vec<String>,
+    confusing_alternatives: Vec<String>,
+    difference_matrix: Vec<CloningRoutineDifferenceAxis>,
+    disambiguation_questions: Vec<String>,
+    failure_modes: Vec<String>,
     details_url: Option<String>,
     template_name: String,
     template_path: Option<String>,
@@ -531,6 +550,15 @@ pub enum ShellCommand {
         status: Option<String>,
         tag: Option<String>,
         query: Option<String>,
+    },
+    RoutinesExplain {
+        catalog_path: Option<String>,
+        routine_id: String,
+    },
+    RoutinesCompare {
+        catalog_path: Option<String>,
+        left_routine_id: String,
+        right_routine_id: String,
     },
     AgentsList {
         catalog_path: Option<String>,
@@ -919,6 +947,14 @@ pub enum ShellCommand {
         request_json: String,
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
+    },
+    PrimersSeedFromFeature {
+        seq_id: String,
+        feature_id: usize,
+    },
+    PrimersSeedFromSplicing {
+        seq_id: String,
+        feature_id: usize,
     },
     PrimersDesignQpcr {
         request_json: String,
@@ -1500,7 +1536,7 @@ fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, Str
                 path
             ));
         }
-        if !seen_ids.insert(routine.routine_id.trim().to_string()) {
+        if !seen_ids.insert(routine.routine_id.trim().to_ascii_lowercase()) {
             return Err(format!(
                 "Cloning routine catalog '{}' contains duplicate routine_id '{}'",
                 path, routine.routine_id
@@ -1530,6 +1566,23 @@ fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, Str
                 routine.routine_id, path
             ));
         }
+        normalize_optional_string(&mut routine.summary);
+        normalize_optional_string(&mut routine.purpose);
+        normalize_optional_string(&mut routine.mechanism);
+        normalize_optional_string(&mut routine.details_url);
+        normalize_optional_string(&mut routine.template_path);
+
+        normalize_string_list_ordered(&mut routine.requires);
+        normalize_string_list_ordered(&mut routine.contraindications);
+        normalize_string_list_ordered(&mut routine.confusing_alternatives);
+        normalize_string_list_ordered(&mut routine.disambiguation_questions);
+        normalize_string_list_ordered(&mut routine.failure_modes);
+        normalize_routine_difference_axes(&mut routine.difference_matrix);
+
+        routine
+            .confusing_alternatives
+            .retain(|entry| !entry.eq_ignore_ascii_case(routine.routine_id.as_str()));
+
         routine.vocabulary_tags = routine
             .vocabulary_tags
             .iter()
@@ -1562,7 +1615,112 @@ fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, Str
             }
         }
     }
+    for routine in &catalog.routines {
+        for alt in &routine.confusing_alternatives {
+            if !seen_ids.contains(&alt.to_ascii_lowercase()) {
+                return Err(format!(
+                    "Cloning routine '{}' in '{}' references unknown confusing_alternative '{}'",
+                    routine.routine_id, path, alt
+                ));
+            }
+        }
+    }
     Ok(catalog)
+}
+
+fn normalize_optional_string(value: &mut Option<String>) {
+    *value = value
+        .as_deref()
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToOwned::to_owned);
+}
+
+fn normalize_string_list_ordered(values: &mut Vec<String>) {
+    let mut out = Vec::with_capacity(values.len());
+    let mut seen = HashSet::new();
+    for entry in values
+        .iter()
+        .map(|value| value.trim())
+        .filter(|v| !v.is_empty())
+    {
+        let key = entry.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(entry.to_string());
+        }
+    }
+    *values = out;
+}
+
+fn normalize_routine_difference_axes(values: &mut Vec<CloningRoutineDifferenceAxis>) {
+    let mut out = Vec::with_capacity(values.len());
+    let mut seen = HashSet::new();
+    for row in values.iter() {
+        let axis = row.axis.trim();
+        let value = row.value.trim();
+        if axis.is_empty() || value.is_empty() {
+            continue;
+        }
+        let key = axis.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(CloningRoutineDifferenceAxis {
+                axis: axis.to_string(),
+                value: value.to_string(),
+            });
+        }
+    }
+    *values = out;
+}
+
+fn resolve_catalog_routine<'a>(
+    catalog: &'a CloningRoutineCatalog,
+    routine_id: &str,
+) -> Option<&'a CloningRoutineDefinition> {
+    let needle = routine_id.trim();
+    if needle.is_empty() {
+        return None;
+    }
+    catalog
+        .routines
+        .iter()
+        .find(|routine| routine.routine_id.eq_ignore_ascii_case(needle))
+}
+
+fn build_default_routine_requirements(routine: &CloningRoutineDefinition) -> Vec<String> {
+    routine
+        .input_ports
+        .iter()
+        .filter(|port| port.required)
+        .map(|port| {
+            let desc = port
+                .description
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("required input");
+            format!("{} ({}, {})", port.port_id.trim(), port.kind.trim(), desc)
+        })
+        .collect::<Vec<_>>()
+}
+
+fn routine_summary_row(routine: &CloningRoutineDefinition) -> Value {
+    json!({
+        "routine_id": routine.routine_id,
+        "title": routine.title,
+        "family": routine.family,
+        "status": routine.status,
+        "summary": routine.summary,
+        "template_name": routine.template_name,
+    })
+}
+
+fn build_routine_axis_map(routine: &CloningRoutineDefinition) -> HashMap<String, (String, String)> {
+    let mut map = HashMap::new();
+    for row in &routine.difference_matrix {
+        let key = row.axis.to_ascii_lowercase();
+        map.insert(key, (row.axis.clone(), row.value.clone()));
+    }
+    map
 }
 
 fn routine_matches_filter(
@@ -1607,6 +1765,16 @@ fn routine_matches_filter(
                 .as_deref()
                 .unwrap_or_default()
                 .to_ascii_lowercase(),
+            routine
+                .purpose
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
+            routine
+                .mechanism
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase(),
         ];
         haystack.extend(
             routine
@@ -1614,6 +1782,36 @@ fn routine_matches_filter(
                 .iter()
                 .map(|tag| tag.to_ascii_lowercase()),
         );
+        haystack.extend(
+            routine
+                .requires
+                .iter()
+                .map(|value| value.to_ascii_lowercase()),
+        );
+        haystack.extend(
+            routine
+                .contraindications
+                .iter()
+                .map(|value| value.to_ascii_lowercase()),
+        );
+        haystack.extend(
+            routine
+                .disambiguation_questions
+                .iter()
+                .map(|value| value.to_ascii_lowercase()),
+        );
+        haystack.extend(
+            routine
+                .failure_modes
+                .iter()
+                .map(|value| value.to_ascii_lowercase()),
+        );
+        haystack.extend(routine.difference_matrix.iter().flat_map(|row| {
+            [
+                row.axis.to_ascii_lowercase(),
+                row.value.to_ascii_lowercase(),
+            ]
+        }));
         if !haystack.iter().any(|entry| entry.contains(&query_filter)) {
             return false;
         }
@@ -2147,9 +2345,10 @@ fn summarize_overlap_segment(raw: &str, max_len: usize) -> String {
     format!("{prefix}...")
 }
 
-fn parse_optional_usize_binding(
+fn parse_optional_usize_binding_with_context(
     bindings: &HashMap<String, String>,
     key: &str,
+    context_label: &str,
     errors: &mut Vec<String>,
 ) -> Option<usize> {
     let raw = bindings.get(key)?;
@@ -2161,12 +2360,20 @@ fn parse_optional_usize_binding(
         Ok(parsed) => Some(parsed),
         Err(err) => {
             errors.push(format!(
-                "Restriction preflight expects '{}' to be a non-negative integer, got '{}': {}",
+                "{context_label} expects '{}' to be a non-negative integer, got '{}': {}",
                 key, raw, err
             ));
             None
         }
     }
+}
+
+fn parse_optional_usize_binding(
+    bindings: &HashMap<String, String>,
+    key: &str,
+    errors: &mut Vec<String>,
+) -> Option<usize> {
+    parse_optional_usize_binding_with_context(bindings, key, "Restriction preflight", errors)
 }
 
 fn collect_restriction_enzyme_bindings(bindings: &HashMap<String, String>) -> Vec<String> {
@@ -2210,11 +2417,69 @@ fn collect_restriction_enzyme_bindings(bindings: &HashMap<String, String>) -> Ve
     names
 }
 
-fn apply_gibson_family_preflight_semantics(
+fn collect_sequence_input_values(report: &MacroTemplatePreflightReport) -> Vec<String> {
+    report
+        .checked_ports
+        .iter()
+        .filter(|row| {
+            row.direction == RoutinePortDirection::Input
+                && matches!(row.status, RoutinePortValidationStatus::Ok)
+                && normalize_port_kind(&row.kind) == "sequence"
+        })
+        .flat_map(|row| row.values.iter().cloned())
+        .collect::<Vec<_>>()
+}
+
+fn split_csv_tokens_with_empty_error(raw: &str) -> Result<Vec<String>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut tokens = Vec::new();
+    for token in trimmed.split(',') {
+        let value = token.trim();
+        if value.is_empty() {
+            return Err(format!(
+                "Token list '{}' contains an empty token (double comma or trailing comma)",
+                raw
+            ));
+        }
+        tokens.push(value.to_string());
+    }
+    Ok(tokens)
+}
+
+fn normalize_compact_token(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect::<String>()
+}
+
+fn is_type_iis_capable_enzyme_name(name: &str) -> bool {
+    matches!(
+        normalize_compact_token(name).as_str(),
+        "eco31"
+            | "eco31i"
+            | "bsai"
+            | "bsmbi"
+            | "esp3i"
+            | "bbsi"
+            | "aari"
+            | "sapi"
+            | "btgzi"
+            | "bsmai"
+            | "bfuai"
+    )
+}
+
+fn apply_overlap_family_preflight_semantics(
     engine: &GentleEngine,
     report: &mut MacroTemplatePreflightReport,
+    family_label: &str,
+    recommended_min_overlap: usize,
+    recommended_max_overlap: usize,
 ) {
-    // Gibson-specific semantic checks are applied after generic typed-port checks.
     let checked_rows = report
         .checked_ports
         .iter()
@@ -2227,14 +2492,10 @@ fn apply_gibson_family_preflight_semantics(
         return;
     }
 
-    let sequence_values = checked_rows
-        .iter()
-        .filter(|row| normalize_port_kind(&row.kind) == "sequence")
-        .flat_map(|row| row.values.iter().cloned())
-        .collect::<Vec<_>>();
+    let sequence_values = collect_sequence_input_values(report);
     if sequence_values.len() < 2 {
         report.errors.push(format!(
-            "Gibson preflight requires at least two sequence inputs, found {}",
+            "{family_label} preflight requires at least two sequence inputs, found {}",
             sequence_values.len()
         ));
         return;
@@ -2246,27 +2507,26 @@ fn apply_gibson_family_preflight_semantics(
         .and_then(|row| row.values.first())
         .and_then(|raw| raw.trim().parse::<usize>().ok());
     let Some(overlap_bp) = overlap_bp else {
-        report.errors.push(
-            "Gibson preflight requires one numeric overlap input port (for example overlap_bp)"
-                .to_string(),
-        );
+        report.errors.push(format!(
+            "{family_label} preflight requires one numeric overlap input port (for example overlap_bp)"
+        ));
         return;
     };
     if overlap_bp == 0 {
         report
             .errors
-            .push("Gibson preflight requires overlap_bp >= 1".to_string());
+            .push(format!("{family_label} preflight requires overlap_bp >= 1"));
         return;
     }
-    if overlap_bp < 15 {
+    if overlap_bp < recommended_min_overlap {
         report.warnings.push(format!(
-            "Gibson overlap_bp={} is short for typical assembly design (often >=15 bp)",
-            overlap_bp
+            "{family_label} overlap_bp={} is short for typical design (often >={} bp)",
+            overlap_bp, recommended_min_overlap
         ));
     }
-    if overlap_bp > 120 {
+    if overlap_bp > recommended_max_overlap {
         report.warnings.push(format!(
-            "Gibson overlap_bp={} is unusually long; verify primer and synthesis practicality",
+            "{family_label} overlap_bp={} is unusually long; verify primer and synthesis practicality",
             overlap_bp
         ));
     }
@@ -2284,7 +2544,7 @@ fn apply_gibson_family_preflight_semantics(
         let right_seq = right.get_forward_string().to_ascii_uppercase();
         if left_seq.len() < overlap_bp {
             report.errors.push(format!(
-                "Gibson overlap check failed: sequence '{}' length {} is shorter than overlap_bp={}",
+                "{family_label} overlap check failed: sequence '{}' length {} is shorter than overlap_bp={}",
                 left_id,
                 left_seq.len(),
                 overlap_bp
@@ -2293,7 +2553,7 @@ fn apply_gibson_family_preflight_semantics(
         }
         if right_seq.len() < overlap_bp {
             report.errors.push(format!(
-                "Gibson overlap check failed: sequence '{}' length {} is shorter than overlap_bp={}",
+                "{family_label} overlap check failed: sequence '{}' length {} is shorter than overlap_bp={}",
                 right_id,
                 right_seq.len(),
                 overlap_bp
@@ -2304,7 +2564,7 @@ fn apply_gibson_family_preflight_semantics(
         let right_prefix = &right_seq[..overlap_bp];
         if left_suffix != right_prefix {
             report.errors.push(format!(
-                "Gibson overlap mismatch between '{}' and '{}': left suffix '{}' != right prefix '{}' (overlap_bp={})",
+                "{family_label} overlap mismatch between '{}' and '{}': left suffix '{}' != right prefix '{}' (overlap_bp={})",
                 left_id,
                 right_id,
                 summarize_overlap_segment(left_suffix, 24),
@@ -2313,6 +2573,13 @@ fn apply_gibson_family_preflight_semantics(
             ));
         }
     }
+}
+
+fn apply_gibson_family_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+) {
+    apply_overlap_family_preflight_semantics(engine, report, "Gibson", 15, 120);
 }
 
 fn apply_restriction_family_preflight_semantics(
@@ -2490,6 +2757,464 @@ fn apply_restriction_family_preflight_semantics(
     }
 }
 
+fn apply_golden_gate_family_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+    bindings: &HashMap<String, String>,
+) {
+    let sequence_values = collect_sequence_input_values(report);
+    if sequence_values.is_empty() {
+        report
+            .errors
+            .push("Golden Gate preflight requires at least one sequence input".to_string());
+        return;
+    }
+
+    let enzyme_names = collect_restriction_enzyme_bindings(bindings);
+    if enzyme_names.is_empty() {
+        report
+            .errors
+            .push("Golden Gate preflight requires at least one enzyme binding".to_string());
+        return;
+    }
+
+    let catalog = active_restriction_enzymes();
+    if catalog.is_empty() {
+        report.errors.push(
+            "Golden Gate preflight could not load active restriction-enzyme catalog".to_string(),
+        );
+        return;
+    }
+    let mut by_name_lower = HashMap::new();
+    for enzyme in catalog {
+        by_name_lower.insert(enzyme.name.to_ascii_lowercase(), enzyme);
+    }
+
+    let mut valid_enzymes = vec![];
+    let mut unknown_names: Vec<String> = vec![];
+    let mut non_type_iis: Vec<String> = vec![];
+    for name in &enzyme_names {
+        let lookup = name.to_ascii_lowercase();
+        let Some(enzyme) = by_name_lower.get(&lookup) else {
+            unknown_names.push(name.clone());
+            continue;
+        };
+        if !is_type_iis_capable_enzyme_name(&enzyme.name) {
+            non_type_iis.push(enzyme.name.clone());
+            continue;
+        }
+        valid_enzymes.push((name.clone(), enzyme.clone()));
+    }
+    if !unknown_names.is_empty() {
+        report.errors.push(format!(
+            "Golden Gate preflight unknown enzyme name(s): {}",
+            unknown_names.join(", ")
+        ));
+    }
+    if !non_type_iis.is_empty() {
+        report.errors.push(format!(
+            "Golden Gate preflight requires Type IIS-capable enzymes; got non-Type-IIS: {}",
+            non_type_iis.join(", ")
+        ));
+    }
+    if valid_enzymes.is_empty() {
+        return;
+    }
+
+    let mut per_sequence = Vec::with_capacity(sequence_values.len());
+    for seq_id in &sequence_values {
+        if let Some(dna) = engine.state().sequences.get(seq_id) {
+            per_sequence.push((seq_id.as_str(), dna));
+        }
+    }
+    for (raw_name, enzyme) in &valid_enzymes {
+        let mut any_site = false;
+        for (seq_id, dna) in &per_sequence {
+            let sites = enzyme.get_sites(dna, None);
+            if sites.is_empty() {
+                report.errors.push(format!(
+                    "Golden Gate preflight: enzyme '{}' has no recognition site on input sequence '{}'",
+                    raw_name, seq_id
+                ));
+            } else {
+                any_site = true;
+            }
+        }
+        if !any_site {
+            report.errors.push(format!(
+                "Golden Gate preflight: enzyme '{}' has no recognition site across input sequence(s): {}",
+                raw_name,
+                sequence_values.join(", ")
+            ));
+        }
+    }
+
+    let expected_junctions = sequence_values.len().saturating_sub(1);
+    let junction_binding = bindings
+        .get("junction_overhangs")
+        .or_else(|| bindings.get("junctions"))
+        .or_else(|| bindings.get("overhangs"));
+    if expected_junctions >= 2 && junction_binding.is_none() {
+        report.errors.push(format!(
+            "Golden Gate preflight requires explicit junction_overhangs for multipart assembly (expected {} token(s))",
+            expected_junctions
+        ));
+    }
+    if let Some(raw) = junction_binding {
+        match split_csv_tokens_with_empty_error(raw) {
+            Ok(tokens) => {
+                if expected_junctions > 0 && tokens.len() != expected_junctions {
+                    report.errors.push(format!(
+                        "Golden Gate preflight expected {} junction_overhang token(s), got {}",
+                        expected_junctions,
+                        tokens.len()
+                    ));
+                }
+                if tokens.len() > 2 {
+                    let mut seen = HashSet::new();
+                    for token in tokens.iter().skip(1).take(tokens.len().saturating_sub(2)) {
+                        let normalized = token.to_ascii_uppercase();
+                        if !seen.insert(normalized.clone()) {
+                            report.errors.push(format!(
+                                "Golden Gate preflight duplicate non-terminal junction overhang '{}'",
+                                normalized
+                            ));
+                        }
+                    }
+                }
+            }
+            Err(err) => report.errors.push(format!("Golden Gate preflight: {err}")),
+        }
+    }
+
+    let mut local_errors: Vec<String> = vec![];
+    let mut fragment_keys = bindings
+        .keys()
+        .filter(|key| key.to_ascii_lowercase().contains("fragment"))
+        .cloned()
+        .collect::<Vec<_>>();
+    fragment_keys.sort_by_key(|value| value.to_ascii_lowercase());
+    for key in fragment_keys {
+        let parsed = parse_optional_usize_binding_with_context(
+            bindings,
+            &key,
+            "Golden Gate preflight",
+            &mut local_errors,
+        );
+        if parsed == Some(0) {
+            local_errors.push(format!(
+                "Golden Gate preflight expects {} >= 1 (digest products are 1-indexed)",
+                key
+            ));
+        }
+    }
+    let extract_from = parse_optional_usize_binding_with_context(
+        bindings,
+        "extract_from",
+        "Golden Gate preflight",
+        &mut local_errors,
+    );
+    let extract_to = parse_optional_usize_binding_with_context(
+        bindings,
+        "extract_to",
+        "Golden Gate preflight",
+        &mut local_errors,
+    );
+    if let (Some(from), Some(to)) = (extract_from, extract_to) {
+        if from == to {
+            report
+                .warnings
+                .push("Golden Gate preflight: extract_from equals extract_to".to_string());
+        } else if from > to {
+            report
+                .warnings
+                .push("Golden Gate preflight: extract_from > extract_to".to_string());
+        }
+    }
+    report.errors.extend(local_errors);
+}
+
+fn parse_att_token_set(raw: &str) -> Result<HashSet<String>, String> {
+    let tokens = split_csv_tokens_with_empty_error(raw)?;
+    Ok(tokens
+        .into_iter()
+        .map(|token| normalize_compact_token(&token))
+        .filter(|token| !token.is_empty())
+        .collect::<HashSet<_>>())
+}
+
+fn apply_gateway_family_preflight_semantics(
+    report: &mut MacroTemplatePreflightReport,
+    bindings: &HashMap<String, String>,
+) {
+    let sequence_values = collect_sequence_input_values(report);
+    if sequence_values.len() < 2 {
+        report.errors.push(format!(
+            "Gateway preflight requires at least two sequence inputs, found {}",
+            sequence_values.len()
+        ));
+    }
+
+    let raw_phase = bindings
+        .get("gateway_phase")
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| {
+            let template_name = report.template_name.to_ascii_lowercase();
+            if template_name.contains("bp_lr") {
+                "bp_lr".to_string()
+            } else if template_name.contains("_lr_") {
+                "lr".to_string()
+            } else {
+                "bp".to_string()
+            }
+        });
+    let phase = match raw_phase.as_str() {
+        "bp" | "bp_only" => "bp",
+        "lr" | "lr_only" => "lr",
+        "bp_lr" | "bp+lr" => "bp_lr",
+        other => {
+            report.errors.push(format!(
+                "Gateway preflight unsupported gateway_phase '{}'; expected bp|lr|bp_lr",
+                other
+            ));
+            return;
+        }
+    };
+
+    let raw_tokens = bindings
+        .get("att_tokens")
+        .or_else(|| bindings.get("att_site_tokens"))
+        .or_else(|| bindings.get("att_sites"))
+        .map(|value| value.as_str())
+        .unwrap_or("");
+    let att_tokens = match parse_att_token_set(raw_tokens) {
+        Ok(tokens) if !tokens.is_empty() => tokens,
+        Ok(_) => {
+            report.errors.push(
+                "Gateway preflight requires non-empty att_tokens (for example 'attB,attP')"
+                    .to_string(),
+            );
+            return;
+        }
+        Err(err) => {
+            report
+                .errors
+                .push(format!("Gateway preflight att_tokens parse error: {}", err));
+            return;
+        }
+    };
+
+    let has_attb = att_tokens.contains("attb");
+    let has_attp = att_tokens.contains("attp");
+    let has_attl = att_tokens.contains("attl");
+    let has_attr = att_tokens.contains("attr");
+    match phase {
+        "bp" => {
+            if !(has_attb && has_attp) {
+                report.errors.push(
+                    "Gateway BP preflight requires att_tokens to include attB and attP".to_string(),
+                );
+            }
+            if has_attl || has_attr {
+                report
+                    .errors
+                    .push("Gateway BP preflight rejects mixed-phase tokens attL/attR".to_string());
+            }
+        }
+        "lr" => {
+            if !(has_attl && has_attr) {
+                report.errors.push(
+                    "Gateway LR preflight requires att_tokens to include attL and attR".to_string(),
+                );
+            }
+            if has_attb || has_attp {
+                report
+                    .errors
+                    .push("Gateway LR preflight rejects mixed-phase tokens attB/attP".to_string());
+            }
+        }
+        "bp_lr" => {
+            if !(has_attb && has_attp && has_attl && has_attr) {
+                report.errors.push(
+                    "Gateway BP+LR preflight requires att_tokens to include attB,attP,attL,attR"
+                        .to_string(),
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_topo_family_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+    bindings: &HashMap<String, String>,
+) {
+    let insert_id = bindings
+        .get("insert_seq_id")
+        .or_else(|| bindings.get("donor_seq_id"))
+        .map(|value| value.trim().to_string());
+    let vector_id = bindings
+        .get("vector_seq_id")
+        .or_else(|| bindings.get("entry_vector_seq_id"))
+        .map(|value| value.trim().to_string());
+    let Some(insert_id) = insert_id.filter(|value| !value.is_empty()) else {
+        report
+            .errors
+            .push("TOPO preflight requires insert_seq_id binding".to_string());
+        return;
+    };
+    let Some(vector_id) = vector_id.filter(|value| !value.is_empty()) else {
+        report
+            .errors
+            .push("TOPO preflight requires vector_seq_id binding".to_string());
+        return;
+    };
+    let Some(insert_seq) = engine.state().sequences.get(&insert_id) else {
+        report.errors.push(format!(
+            "TOPO preflight insert sequence '{}' was not found",
+            insert_id
+        ));
+        return;
+    };
+    let Some(vector_seq) = engine.state().sequences.get(&vector_id) else {
+        report.errors.push(format!(
+            "TOPO preflight vector sequence '{}' was not found",
+            vector_id
+        ));
+        return;
+    };
+    let insert_text = insert_seq.get_forward_string().to_ascii_uppercase();
+    let vector_text = vector_seq.get_forward_string().to_ascii_uppercase();
+    let mode = bindings
+        .get("topo_mode")
+        .map(|value| normalize_compact_token(value))
+        .unwrap_or_else(|| {
+            let template = report.template_name.to_ascii_lowercase();
+            if template.contains("directional") {
+                "directionalcacc".to_string()
+            } else if template.contains("blunt") {
+                "blunt".to_string()
+            } else {
+                "ta".to_string()
+            }
+        });
+    match mode.as_str() {
+        "ta" => {
+            if !insert_text.ends_with('A') {
+                report.errors.push(format!(
+                    "TOPO TA preflight expects insert '{}' to end with 'A'",
+                    insert_id
+                ));
+            }
+            if !vector_text.ends_with('T') {
+                report.errors.push(format!(
+                    "TOPO TA preflight expects vector '{}' to end with 'T'",
+                    vector_id
+                ));
+            }
+        }
+        "blunt" => {}
+        "directionalcacc" | "directional" => {
+            if !insert_text.starts_with("CACC") {
+                report.errors.push(format!(
+                    "TOPO directional preflight expects insert '{}' to start with 'CACC'",
+                    insert_id
+                ));
+            }
+        }
+        other => report.errors.push(format!(
+            "TOPO preflight unsupported topo_mode '{}'; expected ta|blunt|directional_cacc",
+            other
+        )),
+    }
+}
+
+fn apply_ta_gc_family_preflight_semantics(
+    engine: &GentleEngine,
+    report: &mut MacroTemplatePreflightReport,
+    bindings: &HashMap<String, String>,
+) {
+    let insert_id = bindings
+        .get("insert_seq_id")
+        .map(|value| value.trim().to_string());
+    let vector_id = bindings
+        .get("vector_seq_id")
+        .map(|value| value.trim().to_string());
+    let Some(insert_id) = insert_id.filter(|value| !value.is_empty()) else {
+        report
+            .errors
+            .push("TA/GC preflight requires insert_seq_id binding".to_string());
+        return;
+    };
+    let Some(vector_id) = vector_id.filter(|value| !value.is_empty()) else {
+        report
+            .errors
+            .push("TA/GC preflight requires vector_seq_id binding".to_string());
+        return;
+    };
+    let Some(insert_seq) = engine.state().sequences.get(&insert_id) else {
+        report.errors.push(format!(
+            "TA/GC preflight insert sequence '{}' was not found",
+            insert_id
+        ));
+        return;
+    };
+    let Some(vector_seq) = engine.state().sequences.get(&vector_id) else {
+        report.errors.push(format!(
+            "TA/GC preflight vector sequence '{}' was not found",
+            vector_id
+        ));
+        return;
+    };
+    let mode = bindings
+        .get("tail_mode")
+        .map(|value| normalize_compact_token(value))
+        .unwrap_or_else(|| {
+            if report.template_name.to_ascii_lowercase().contains("gc_") {
+                "gc".to_string()
+            } else {
+                "ta".to_string()
+            }
+        });
+    let insert_text = insert_seq.get_forward_string().to_ascii_uppercase();
+    let vector_text = vector_seq.get_forward_string().to_ascii_uppercase();
+    match mode.as_str() {
+        "ta" => {
+            if !insert_text.ends_with('A') {
+                report.errors.push(format!(
+                    "TA/GC preflight expects TA insert '{}' to end with 'A'",
+                    insert_id
+                ));
+            }
+            if !vector_text.ends_with('T') {
+                report.errors.push(format!(
+                    "TA/GC preflight expects TA vector '{}' to end with 'T'",
+                    vector_id
+                ));
+            }
+        }
+        "gc" => {
+            if !insert_text.ends_with('G') {
+                report.errors.push(format!(
+                    "TA/GC preflight expects GC insert '{}' to end with 'G'",
+                    insert_id
+                ));
+            }
+            if !vector_text.ends_with('C') {
+                report.errors.push(format!(
+                    "TA/GC preflight expects GC vector '{}' to end with 'C'",
+                    vector_id
+                ));
+            }
+        }
+        other => report.errors.push(format!(
+            "TA/GC preflight unsupported tail_mode '{}'; expected ta|gc",
+            other
+        )),
+    }
+}
+
 fn apply_family_specific_preflight_semantics(
     engine: &GentleEngine,
     report: &mut MacroTemplatePreflightReport,
@@ -2501,8 +3226,31 @@ fn apply_family_specific_preflight_semantics(
     };
     if family.eq_ignore_ascii_case("gibson") {
         apply_gibson_family_preflight_semantics(engine, report);
+    } else if family.eq_ignore_ascii_case("infusion")
+        || family.eq_ignore_ascii_case("in_fusion")
+        || family.eq_ignore_ascii_case("in-fusion")
+    {
+        apply_overlap_family_preflight_semantics(engine, report, "In-Fusion", 12, 80);
+    } else if family.eq_ignore_ascii_case("nebuilder_hifi")
+        || family.eq_ignore_ascii_case("nebuilder")
+        || family.eq_ignore_ascii_case("nebuilder-hifi")
+    {
+        apply_overlap_family_preflight_semantics(engine, report, "NEBuilder HiFi", 15, 120);
     } else if family.eq_ignore_ascii_case("restriction") {
         apply_restriction_family_preflight_semantics(engine, report, bindings);
+    } else if family.eq_ignore_ascii_case("golden_gate")
+        || family.eq_ignore_ascii_case("goldengate")
+    {
+        apply_golden_gate_family_preflight_semantics(engine, report, bindings);
+    } else if family.eq_ignore_ascii_case("gateway") {
+        apply_gateway_family_preflight_semantics(report, bindings);
+    } else if family.eq_ignore_ascii_case("topo") {
+        apply_topo_family_preflight_semantics(engine, report, bindings);
+    } else if family.eq_ignore_ascii_case("ta_gc")
+        || family.eq_ignore_ascii_case("tagc")
+        || family.eq_ignore_ascii_case("ta-gc")
+    {
+        apply_ta_gc_family_preflight_semantics(engine, report, bindings);
     }
 }
 
@@ -3114,6 +3862,28 @@ impl ShellCommand {
                     .unwrap_or("-");
                 format!(
                     "list cloning routines from '{catalog}' (family={family}, status={status}, tag={tag}, query={query})"
+                )
+            }
+            Self::RoutinesExplain {
+                catalog_path,
+                routine_id,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string());
+                format!("explain cloning routine '{routine_id}' from '{catalog}'")
+            }
+            Self::RoutinesCompare {
+                catalog_path,
+                left_routine_id,
+                right_routine_id,
+            } => {
+                let catalog = catalog_path
+                    .clone()
+                    .unwrap_or_else(|| DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string());
+                format!(
+                    "compare cloning routines '{}' vs '{}' from '{}'",
+                    left_routine_id, right_routine_id, catalog
                 )
             }
             Self::AgentsList { catalog_path } => {
@@ -4102,6 +4872,14 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersSeedFromFeature { seq_id, feature_id } => format!(
+                "seed primer/qPCR design ROI payloads from feature n-{} on '{}'",
+                feature_id, seq_id
+            ),
+            Self::PrimersSeedFromSplicing { seq_id, feature_id } => format!(
+                "seed primer/qPCR design ROI payloads from splicing group for feature n-{} on '{}'",
+                feature_id, seq_id
+            ),
             Self::PrimersDesignQpcr {
                 request_json,
                 backend,
@@ -4510,7 +5288,9 @@ fn spawn_blast_async_worker(record: &mut BlastAsyncJobRecord) {
                     &mut should_cancel,
                 )
         };
-        let _ = tx.send(BlastAsyncWorkerMessage::Done(result.map_err(|e| e.to_string())));
+        let _ = tx.send(BlastAsyncWorkerMessage::Done(
+            result.map_err(|e| e.to_string()),
+        ));
         kick_blast_async_scheduler();
     });
 }
@@ -4599,13 +5379,11 @@ fn prune_blast_async_jobs_locked(jobs: &mut HashMap<String, BlastAsyncJobRecord>
     }
     let mut removable: Vec<(u128, String)> = jobs
         .iter()
-        .filter_map(|(job_id, record)| {
-            match record.status.state.as_str() {
-                "completed" | "failed" | "cancelled" => {
-                    Some((record.status.created_at_unix_ms, job_id.clone()))
-                }
-                _ => None,
+        .filter_map(|(job_id, record)| match record.status.state.as_str() {
+            "completed" | "failed" | "cancelled" => {
+                Some((record.status.created_at_unix_ms, job_id.clone()))
             }
+            _ => None,
         })
         .collect();
     removable.sort_by_key(|(created_at, _)| *created_at);
@@ -7478,10 +8256,101 @@ fn parse_guides_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn sequence_feature_roi_range_0based(
+    dna: &DNAsequence,
+    feature_id: usize,
+) -> Result<(usize, usize), String> {
+    let feature = dna
+        .features()
+        .get(feature_id)
+        .ok_or_else(|| format!("Feature id {feature_id} is out of range"))?;
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    collect_location_ranges_usize(&feature.location, &mut ranges);
+    if ranges.is_empty() {
+        let (from, to) = feature
+            .location
+            .find_bounds()
+            .map_err(|e| format!("Could not read bounds for feature id {feature_id}: {e}"))?;
+        if from < 0 || to < 0 {
+            return Err(format!("Feature id {feature_id} has negative bounds"));
+        }
+        ranges.push((from as usize, to as usize));
+    }
+    let seq_len = dna.len();
+    if seq_len == 0 {
+        return Err("Template sequence is empty".to_string());
+    }
+    let start = ranges
+        .iter()
+        .map(|(start, _)| *start)
+        .min()
+        .ok_or_else(|| format!("Feature id {feature_id} has no usable ranges"))?;
+    if start >= seq_len {
+        return Err(format!(
+            "Feature id {feature_id} starts outside sequence length {seq_len}"
+        ));
+    }
+    let end_exclusive = ranges
+        .iter()
+        .map(|(_, end)| *end)
+        .max()
+        .ok_or_else(|| format!("Feature id {feature_id} has no usable ranges"))?
+        .min(seq_len);
+    if end_exclusive <= start {
+        return Err(format!(
+            "Feature id {feature_id} has invalid range {}..{} for sequence length {seq_len}",
+            start, end_exclusive
+        ));
+    }
+    Ok((start, end_exclusive))
+}
+
+fn build_seeded_primer_pair_operation(
+    template: &str,
+    roi_start_0based: usize,
+    roi_end_0based_exclusive: usize,
+) -> Operation {
+    Operation::DesignPrimerPairs {
+        template: template.to_string(),
+        roi_start_0based,
+        roi_end_0based: roi_end_0based_exclusive,
+        forward: PrimerDesignSideConstraint::default(),
+        reverse: PrimerDesignSideConstraint::default(),
+        min_amplicon_bp: 120,
+        max_amplicon_bp: 1200,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(2.0),
+        max_pairs: Some(200),
+        report_id: None,
+    }
+}
+
+fn build_seeded_qpcr_operation(
+    template: &str,
+    roi_start_0based: usize,
+    roi_end_0based_exclusive: usize,
+) -> Operation {
+    Operation::DesignQpcrAssays {
+        template: template.to_string(),
+        roi_start_0based,
+        roi_end_0based: roi_end_0based_exclusive,
+        forward: PrimerDesignSideConstraint::default(),
+        reverse: PrimerDesignSideConstraint::default(),
+        probe: PrimerDesignSideConstraint::default(),
+        min_amplicon_bp: 120,
+        max_amplicon_bp: 1200,
+        pair_constraints: PrimerDesignPairConstraint::default(),
+        max_tm_delta_c: Some(2.0),
+        max_probe_tm_delta_c: Some(10.0),
+        max_assays: Some(200),
+        report_id: None,
+    }
+}
+
 fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -7566,6 +8435,32 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 primer3_executable,
             })
         }
+        "seed-from-feature" => {
+            if tokens.len() != 4 {
+                return Err("primers seed-from-feature requires SEQ_ID FEATURE_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers seed-from-feature: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::PrimersSeedFromFeature { seq_id, feature_id })
+        }
+        "seed-from-splicing" => {
+            if tokens.len() != 4 {
+                return Err("primers seed-from-splicing requires SEQ_ID FEATURE_ID".to_string());
+            }
+            let seq_id = tokens[2].clone();
+            let feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid feature id '{}' for primers seed-from-splicing: {e}",
+                    tokens[3]
+                )
+            })?;
+            Ok(ShellCommand::PrimersSeedFromSplicing { seq_id, feature_id })
+        }
         "list-reports" => {
             if tokens.len() != 2 {
                 return Err("primers list-reports takes no options".to_string());
@@ -7613,7 +8508,7 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }
@@ -7875,7 +8770,7 @@ fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
 
 fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
-        return Err("routines requires a subcommand: list".to_string());
+        return Err("routines requires a subcommand: list, explain, compare".to_string());
     }
     match tokens[1].as_str() {
         "list" => {
@@ -7940,8 +8835,72 @@ fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 query,
             })
         }
+        "explain" => {
+            if tokens.len() < 3 {
+                return Err("routines explain requires ROUTINE_ID [--catalog PATH]".to_string());
+            }
+            let routine_id = tokens[2].trim().to_string();
+            if routine_id.is_empty() {
+                return Err("routines explain ROUTINE_ID cannot be empty".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "routines explain",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for routines explain"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RoutinesExplain {
+                catalog_path,
+                routine_id,
+            })
+        }
+        "compare" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "routines compare requires ROUTINE_A ROUTINE_B [--catalog PATH]".to_string(),
+                );
+            }
+            let left_routine_id = tokens[2].trim().to_string();
+            let right_routine_id = tokens[3].trim().to_string();
+            if left_routine_id.is_empty() || right_routine_id.is_empty() {
+                return Err("routines compare routine ids cannot be empty".to_string());
+            }
+            let mut catalog_path: Option<String> = None;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--catalog" => {
+                        catalog_path = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--catalog",
+                            "routines compare",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for routines compare"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RoutinesCompare {
+                catalog_path,
+                left_routine_id,
+                right_routine_id,
+            })
+        }
         other => Err(format!(
-            "Unknown routines subcommand '{other}' (expected list)"
+            "Unknown routines subcommand '{other}' (expected list, explain, compare)"
         )),
     }
 }
@@ -8738,9 +9697,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "export-run-bundle" => {
             if tokens.len() < 2 {
-                return Err(
-                    "export-run-bundle requires: OUTPUT.json [--run-id RUN_ID]".to_string(),
-                );
+                return Err("export-run-bundle requires: OUTPUT.json [--run-id RUN_ID]".to_string());
             }
             let output = tokens[1].clone();
             let mut run_id: Option<String> = None;
@@ -10442,6 +11399,283 @@ pub fn execute_shell_command_with_options(
                     "available_statuses": available_statuses,
                     "routine_count": routines.len(),
                     "routines": routines,
+                }),
+            }
+        }
+        ShellCommand::RoutinesExplain {
+            catalog_path,
+            routine_id,
+        } => {
+            let resolved_catalog = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+                .to_string();
+            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
+            let catalog_schema = catalog.schema.clone();
+            let available_routine_ids = catalog
+                .routines
+                .iter()
+                .map(|row| row.routine_id.clone())
+                .collect::<Vec<_>>();
+            let Some(routine) = resolve_catalog_routine(&catalog, routine_id) else {
+                return Err(format!(
+                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
+                    routine_id.trim(),
+                    resolved_catalog,
+                    available_routine_ids.join(", ")
+                ));
+            };
+            let routine = routine.clone();
+
+            let mut alternatives = vec![];
+            if routine.confusing_alternatives.is_empty() {
+                for alt in catalog
+                    .routines
+                    .iter()
+                    .filter(|candidate| {
+                        !candidate
+                            .routine_id
+                            .eq_ignore_ascii_case(routine.routine_id.as_str())
+                            && candidate
+                                .family
+                                .eq_ignore_ascii_case(routine.family.as_str())
+                    })
+                    .take(4)
+                {
+                    alternatives.push(routine_summary_row(alt));
+                }
+            } else {
+                for alt_id in &routine.confusing_alternatives {
+                    if let Some(alt) = resolve_catalog_routine(&catalog, alt_id) {
+                        alternatives.push(routine_summary_row(alt));
+                    }
+                }
+            }
+
+            let requires = if routine.requires.is_empty() {
+                build_default_routine_requirements(&routine)
+            } else {
+                routine.requires.clone()
+            };
+
+            let disambiguation_questions = if routine.disambiguation_questions.is_empty() {
+                vec![
+                    "What molecule types and termini are expected for insert and vector?"
+                        .to_string(),
+                    "Do you need directionality constraints or compatible overhang control?"
+                        .to_string(),
+                    "Is this intended as planning-only preflight or as mutating execution?"
+                        .to_string(),
+                ]
+            } else {
+                routine.disambiguation_questions.clone()
+            };
+            let purpose = routine.purpose.clone().or_else(|| routine.summary.clone());
+            let mechanism = routine.mechanism.clone();
+            let contraindications = routine.contraindications.clone();
+            let failure_modes = routine.failure_modes.clone();
+            let routine_payload = routine.clone();
+
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": CLONING_ROUTINE_EXPLAIN_SCHEMA,
+                    "catalog_path": resolved_catalog,
+                    "catalog_schema": catalog_schema,
+                    "routine": routine_payload,
+                    "explanation": {
+                        "purpose": purpose,
+                        "mechanism": mechanism,
+                        "requires": requires,
+                        "contraindications": contraindications,
+                        "disambiguation_questions": disambiguation_questions,
+                        "failure_modes": failure_modes,
+                    },
+                    "alternatives": alternatives,
+                }),
+            }
+        }
+        ShellCommand::RoutinesCompare {
+            catalog_path,
+            left_routine_id,
+            right_routine_id,
+        } => {
+            let resolved_catalog = catalog_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+                .to_string();
+            let catalog = load_cloning_routine_catalog(&resolved_catalog)?;
+            let catalog_schema = catalog.schema.clone();
+
+            let available_routine_ids = catalog
+                .routines
+                .iter()
+                .map(|row| row.routine_id.clone())
+                .collect::<Vec<_>>();
+            let Some(left) = resolve_catalog_routine(&catalog, left_routine_id) else {
+                return Err(format!(
+                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
+                    left_routine_id.trim(),
+                    resolved_catalog,
+                    available_routine_ids.join(", ")
+                ));
+            };
+            let Some(right) = resolve_catalog_routine(&catalog, right_routine_id) else {
+                return Err(format!(
+                    "Routine '{}' was not found in catalog '{}'; available routine_id values: {}",
+                    right_routine_id.trim(),
+                    resolved_catalog,
+                    available_routine_ids.join(", ")
+                ));
+            };
+            let left = left.clone();
+            let right = right.clone();
+
+            let left_tag_set = left
+                .vocabulary_tags
+                .iter()
+                .map(|value| value.to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            let right_tag_set = right
+                .vocabulary_tags
+                .iter()
+                .map(|value| value.to_ascii_lowercase())
+                .collect::<BTreeSet<_>>();
+            let shared_tags = left
+                .vocabulary_tags
+                .iter()
+                .filter(|value| right_tag_set.contains(&value.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let left_only_tags = left
+                .vocabulary_tags
+                .iter()
+                .filter(|value| !right_tag_set.contains(&value.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let right_only_tags = right
+                .vocabulary_tags
+                .iter()
+                .filter(|value| !left_tag_set.contains(&value.to_ascii_lowercase()))
+                .cloned()
+                .collect::<Vec<_>>();
+
+            let left_axis_map = build_routine_axis_map(&left);
+            let right_axis_map = build_routine_axis_map(&right);
+            let mut keys = left_axis_map
+                .keys()
+                .chain(right_axis_map.keys())
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            if keys.is_empty() {
+                keys.insert("core_family".to_string());
+                keys.insert("status".to_string());
+                keys.insert("template".to_string());
+                keys.insert("required_inputs".to_string());
+            }
+            let mut axis_rows = vec![];
+            for key in keys {
+                let row = match key.as_str() {
+                    "core_family" => json!({
+                        "axis": "core_family",
+                        "left": left.family.clone(),
+                        "right": right.family.clone(),
+                        "same": left.family.eq_ignore_ascii_case(right.family.as_str()),
+                    }),
+                    "status" => json!({
+                        "axis": "status",
+                        "left": left.status.clone(),
+                        "right": right.status.clone(),
+                        "same": left.status.eq_ignore_ascii_case(right.status.as_str()),
+                    }),
+                    "template" => json!({
+                        "axis": "template",
+                        "left": left.template_name.clone(),
+                        "right": right.template_name.clone(),
+                        "same": left.template_name.eq_ignore_ascii_case(right.template_name.as_str()),
+                    }),
+                    "required_inputs" => {
+                        let left_inputs = build_default_routine_requirements(&left).join("; ");
+                        let right_inputs = build_default_routine_requirements(&right).join("; ");
+                        json!({
+                            "axis": "required_inputs",
+                            "left": left_inputs,
+                            "right": right_inputs,
+                            "same": left_inputs.eq_ignore_ascii_case(right_inputs.as_str()),
+                        })
+                    }
+                    _ => {
+                        let left_value = left_axis_map
+                            .get(key.as_str())
+                            .map(|(_, value)| value.clone())
+                            .unwrap_or_else(|| "-".to_string());
+                        let right_value = right_axis_map
+                            .get(key.as_str())
+                            .map(|(_, value)| value.clone())
+                            .unwrap_or_else(|| "-".to_string());
+                        let axis_label = left_axis_map
+                            .get(key.as_str())
+                            .map(|(axis, _)| axis.clone())
+                            .or_else(|| {
+                                right_axis_map
+                                    .get(key.as_str())
+                                    .map(|(axis, _)| axis.clone())
+                            })
+                            .unwrap_or_else(|| key.clone());
+                        json!({
+                            "axis": axis_label,
+                            "left": left_value,
+                            "right": right_value,
+                            "same": left_value.eq_ignore_ascii_case(right_value.as_str()),
+                        })
+                    }
+                };
+                axis_rows.push(row);
+            }
+
+            let mut disambiguation_questions = left.disambiguation_questions.clone();
+            for question in &right.disambiguation_questions {
+                if !disambiguation_questions
+                    .iter()
+                    .any(|entry| entry.eq_ignore_ascii_case(question))
+                {
+                    disambiguation_questions.push(question.clone());
+                }
+            }
+
+            let cross_referenced = left
+                .confusing_alternatives
+                .iter()
+                .any(|entry| entry.eq_ignore_ascii_case(right.routine_id.as_str()))
+                || right
+                    .confusing_alternatives
+                    .iter()
+                    .any(|entry| entry.eq_ignore_ascii_case(left.routine_id.as_str()));
+            let same_family = left.family.eq_ignore_ascii_case(right.family.as_str());
+            let left_payload = left.clone();
+            let right_payload = right.clone();
+
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": CLONING_ROUTINE_COMPARE_SCHEMA,
+                    "catalog_path": resolved_catalog,
+                    "catalog_schema": catalog_schema,
+                    "left": left_payload,
+                    "right": right_payload,
+                    "comparison": {
+                        "same_family": same_family,
+                        "cross_referenced_as_alternatives": cross_referenced,
+                        "shared_vocabulary_tags": shared_tags,
+                        "left_only_tags": left_only_tags,
+                        "right_only_tags": right_only_tags,
+                        "difference_matrix": axis_rows,
+                        "disambiguation_questions": disambiguation_questions,
+                    }
                 }),
             }
         }
@@ -12576,6 +13810,95 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::PrimersSeedFromFeature { seq_id, feature_id } => {
+            let dna = engine
+                .state()
+                .sequences
+                .get(seq_id)
+                .ok_or_else(|| format!("Sequence '{seq_id}' not found"))?;
+            let (roi_start_0based, roi_end_0based_exclusive) =
+                sequence_feature_roi_range_0based(dna, *feature_id)?;
+            let primer_pairs = build_seeded_primer_pair_operation(
+                seq_id,
+                roi_start_0based,
+                roi_end_0based_exclusive,
+            );
+            let qpcr =
+                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_seed_request.v1",
+                    "template": seq_id,
+                    "source": {
+                        "kind": "feature",
+                        "feature_id": feature_id,
+                    },
+                    "roi_start_0based": roi_start_0based,
+                    "roi_end_0based_exclusive": roi_end_0based_exclusive,
+                    "operations": {
+                        "design_primer_pairs": primer_pairs,
+                        "design_qpcr_assays": qpcr,
+                    }
+                }),
+            }
+        }
+        ShellCommand::PrimersSeedFromSplicing { seq_id, feature_id } => {
+            let expert = engine
+                .inspect_feature_expert(
+                    seq_id,
+                    &FeatureExpertTarget::SplicingFeature {
+                        feature_id: *feature_id,
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            let splicing = match expert {
+                FeatureExpertView::Splicing(view) => view,
+                _ => {
+                    return Err(format!(
+                        "Feature n-{} on '{}' does not resolve to a splicing expert view",
+                        feature_id, seq_id
+                    ));
+                }
+            };
+            if splicing.region_start_1based == 0
+                || splicing.region_end_1based < splicing.region_start_1based
+            {
+                return Err(format!(
+                    "Splicing region bounds are invalid for feature n-{} on '{}'",
+                    feature_id, seq_id
+                ));
+            }
+            let roi_start_0based = splicing.region_start_1based.saturating_sub(1);
+            let roi_end_0based_exclusive = splicing.region_end_1based;
+            let primer_pairs = build_seeded_primer_pair_operation(
+                seq_id,
+                roi_start_0based,
+                roi_end_0based_exclusive,
+            );
+            let qpcr =
+                build_seeded_qpcr_operation(seq_id, roi_start_0based, roi_end_0based_exclusive);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer_seed_request.v1",
+                    "template": seq_id,
+                    "source": {
+                        "kind": "splicing",
+                        "feature_id": feature_id,
+                        "group_label": splicing.group_label,
+                        "transcript_count": splicing.transcript_count,
+                        "unique_exon_count": splicing.unique_exon_count,
+                    },
+                    "roi_start_0based": roi_start_0based,
+                    "roi_end_0based_exclusive": roi_end_0based_exclusive,
+                    "operations": {
+                        "design_primer_pairs": primer_pairs,
+                        "design_qpcr_assays": qpcr,
+                    }
+                }),
+            }
+        }
         ShellCommand::PrimersDesign {
             request_json,
             backend,
@@ -13132,9 +14455,8 @@ mod tests {
 
     #[test]
     fn parse_export_run_bundle_with_run_id() {
-        let cmd =
-            parse_shell_line("export-run-bundle run_bundle.json --run-id demo_run")
-                .expect("parse command");
+        let cmd = parse_shell_line("export-run-bundle run_bundle.json --run-id demo_run")
+            .expect("parse command");
         match cmd {
             ShellCommand::ExportRunBundle { output, run_id } => {
                 assert_eq!(output, "run_bundle.json");
@@ -13499,6 +14821,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_primers_seed_from_feature_and_splicing() {
+        let feature =
+            parse_shell_line("primers seed-from-feature seq_a 7").expect("parse seed-from-feature");
+        assert!(matches!(
+            feature,
+            ShellCommand::PrimersSeedFromFeature {
+                seq_id,
+                feature_id
+            } if seq_id == "seq_a" && feature_id == 7
+        ));
+
+        let splicing = parse_shell_line("primers seed-from-splicing seq_a 11")
+            .expect("parse seed-from-splicing");
+        assert!(matches!(
+            splicing,
+            ShellCommand::PrimersSeedFromSplicing {
+                seq_id,
+                feature_id
+            } if seq_id == "seq_a" && feature_id == 11
+        ));
+    }
+
+    #[test]
     fn parse_tracks_import_bed() {
         let cmd = parse_shell_line(
             "tracks import-bed toy_slice test_files/data/peaks.bed.gz --name ChIP --min-score 5 --max-score 50 --clear-existing",
@@ -13664,6 +15009,50 @@ mod tests {
                 assert_eq!(status.as_deref(), Some("implemented"));
                 assert_eq!(tag.as_deref(), Some("guide"));
                 assert_eq!(query.as_deref(), Some("scan"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_routines_explain_with_catalog() {
+        let cmd = parse_shell_line(
+            "routines explain golden_gate.type_iis_single_insert --catalog catalog.json",
+        )
+        .expect("parse routines explain");
+        match cmd {
+            ShellCommand::RoutinesExplain {
+                catalog_path,
+                routine_id,
+            } => {
+                assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
+                assert_eq!(routine_id, "golden_gate.type_iis_single_insert".to_string());
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_routines_compare_with_catalog() {
+        let cmd = parse_shell_line(
+            "routines compare golden_gate.type_iis_single_insert gibson.two_fragment_overlap_preview --catalog catalog.json",
+        )
+        .expect("parse routines compare");
+        match cmd {
+            ShellCommand::RoutinesCompare {
+                catalog_path,
+                left_routine_id,
+                right_routine_id,
+            } => {
+                assert_eq!(catalog_path.as_deref(), Some("catalog.json"));
+                assert_eq!(
+                    left_routine_id,
+                    "golden_gate.type_iis_single_insert".to_string()
+                );
+                assert_eq!(
+                    right_routine_id,
+                    "gibson.two_fragment_overlap_preview".to_string()
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -14724,6 +16113,226 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_routines_explain_with_explicit_alternative_metadata() {
+        let mut engine = GentleEngine::default();
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("cloning_routines_explain.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "golden_gate.type_iis_single_insert",
+      "title": "Golden Gate Type IIS Single Insert",
+      "family": "golden_gate",
+      "status": "implemented",
+      "vocabulary_tags": ["golden_gate", "type_iis", "ligation"],
+      "summary": "Type IIS one-pot assembly for one insert.",
+      "purpose": "Assemble one insert into one destination vector with directional overhangs.",
+      "mechanism": "Digest + ligate cycles with Type IIS enzymes and programmed overhang junctions.",
+      "requires": ["Type IIS-compatible enzymes", "Defined non-conflicting overhang plan"],
+      "contraindications": ["Ambiguous or duplicated internal overhangs"],
+      "confusing_alternatives": ["gibson.two_fragment_overlap_preview"],
+      "difference_matrix": [
+        { "axis": "junction_constraint", "value": "explicit overhang grammar" },
+        { "axis": "assembly_mode", "value": "restriction-ligation cycling" }
+      ],
+      "disambiguation_questions": ["Do you require Type IIS junction tokens?"],
+      "failure_modes": ["duplicate junction overhang token"],
+      "template_name": "golden_gate_single_insert",
+      "input_ports": [
+        { "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one" }
+      ]
+    },
+    {
+      "routine_id": "gibson.two_fragment_overlap_preview",
+      "title": "Gibson Two-Fragment Overlap Preview",
+      "family": "gibson",
+      "status": "implemented",
+      "vocabulary_tags": ["gibson", "overlap", "assembly"],
+      "summary": "Overlap assembly preflight and preview path.",
+      "template_name": "gibson_two_fragment_overlap_preview",
+      "input_ports": [
+        { "port_id": "left_seq_id", "kind": "sequence", "required": true, "cardinality": "one" },
+        { "port_id": "right_seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one" }
+      ]
+    }
+  ]
+}"#,
+        )
+        .expect("write routines catalog");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RoutinesExplain {
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                routine_id: "golden_gate.type_iis_single_insert".to_string(),
+            },
+        )
+        .expect("routines explain");
+        assert!(!run.state_changed);
+        assert_eq!(
+            run.output["schema"].as_str(),
+            Some(CLONING_ROUTINE_EXPLAIN_SCHEMA)
+        );
+        assert_eq!(
+            run.output["routine"]["routine_id"].as_str(),
+            Some("golden_gate.type_iis_single_insert")
+        );
+        let alternatives = run
+            .output
+            .get("alternatives")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(alternatives.len(), 1);
+        assert_eq!(
+            alternatives[0]
+                .get("routine_id")
+                .and_then(|value| value.as_str()),
+            Some("gibson.two_fragment_overlap_preview")
+        );
+        let explanation_requires = run
+            .output
+            .get("explanation")
+            .and_then(|value| value.get("requires"))
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(explanation_requires.len(), 2);
+    }
+
+    #[test]
+    fn execute_routines_compare_returns_difference_matrix() {
+        let mut engine = GentleEngine::default();
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("cloning_routines_compare.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "golden_gate.type_iis_single_insert",
+      "title": "Golden Gate Type IIS Single Insert",
+      "family": "golden_gate",
+      "status": "implemented",
+      "vocabulary_tags": ["golden_gate", "assembly"],
+      "summary": "Type IIS one-pot assembly for one insert.",
+      "difference_matrix": [
+        { "axis": "assembly_mode", "value": "restriction-ligation cycling" },
+        { "axis": "junction_constraint", "value": "explicit overhang grammar" }
+      ],
+      "confusing_alternatives": ["gibson.two_fragment_overlap_preview"],
+      "template_name": "golden_gate_single_insert",
+      "input_ports": [
+        { "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one" }
+      ]
+    },
+    {
+      "routine_id": "gibson.two_fragment_overlap_preview",
+      "title": "Gibson Two-Fragment Overlap Preview",
+      "family": "gibson",
+      "status": "implemented",
+      "vocabulary_tags": ["gibson", "assembly"],
+      "summary": "Overlap assembly preflight and preview path.",
+      "difference_matrix": [
+        { "axis": "assembly_mode", "value": "homology-overlap assembly" },
+        { "axis": "junction_constraint", "value": "homology overlap sequence identity" }
+      ],
+      "confusing_alternatives": ["golden_gate.type_iis_single_insert"],
+      "template_name": "gibson_two_fragment_overlap_preview",
+      "input_ports": [
+        { "port_id": "left_seq_id", "kind": "sequence", "required": true, "cardinality": "one" },
+        { "port_id": "right_seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one" }
+      ]
+    }
+  ]
+}"#,
+        )
+        .expect("write routines catalog");
+
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RoutinesCompare {
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                left_routine_id: "golden_gate.type_iis_single_insert".to_string(),
+                right_routine_id: "gibson.two_fragment_overlap_preview".to_string(),
+            },
+        )
+        .expect("routines compare");
+        assert!(!run.state_changed);
+        assert_eq!(
+            run.output["schema"].as_str(),
+            Some(CLONING_ROUTINE_COMPARE_SCHEMA)
+        );
+        assert_eq!(
+            run.output["comparison"]["cross_referenced_as_alternatives"].as_bool(),
+            Some(true)
+        );
+        let matrix = run
+            .output
+            .get("comparison")
+            .and_then(|value| value.get("difference_matrix"))
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            matrix.iter().any(
+                |row| row.get("axis").and_then(|value| value.as_str()) == Some("assembly_mode")
+            )
+        );
+    }
+
+    #[test]
+    fn load_cloning_routine_catalog_rejects_unknown_confusing_alternative() {
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("cloning_routines_bad_alt.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "golden_gate.type_iis_single_insert",
+      "title": "Golden Gate Type IIS Single Insert",
+      "family": "golden_gate",
+      "status": "implemented",
+      "vocabulary_tags": ["golden_gate"],
+      "summary": "baseline",
+      "confusing_alternatives": ["missing.routine.id"],
+      "template_name": "golden_gate_single_insert",
+      "input_ports": [
+        { "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }
+      ],
+      "output_ports": [
+        { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one" }
+      ]
+    }
+  ]
+}"#,
+        )
+        .expect("write routines catalog");
+
+        let err = load_cloning_routine_catalog(catalog_path.to_string_lossy().as_ref())
+            .expect_err("unknown alternatives must be rejected");
+        assert!(err.contains("unknown confusing_alternative"));
+    }
+
+    #[test]
     fn execute_macros_template_registry_and_run() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -15615,6 +17224,657 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_macros_template_validate_only_applies_golden_gate_family_checks() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "gg_vector".to_string(),
+            DNAsequence::from_sequence("AAAAGGTCTCTTTTGGTCTCAAAA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gg_insert".to_string(),
+            DNAsequence::from_sequence("CCCCGGTCTCGGGG").expect("sequence"),
+        );
+        state.sequences.insert(
+            "plain_seq".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let base = env!("CARGO_MANIFEST_DIR");
+        let single_path = format!(
+            "{}/assets/cloning_patterns_catalog/golden_gate/type_iis/golden_gate_single_insert.json",
+            base
+        );
+        let multi_path = format!(
+            "{}/assets/cloning_patterns_catalog/golden_gate/type_iis/golden_gate_multi_insert.json",
+            base
+        );
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateImport { path: single_path },
+        )
+        .expect("import golden gate single");
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateImport { path: multi_path },
+        )
+        .expect("import golden gate multi");
+
+        let ok_run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "golden_gate_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "gg_vector".to_string()),
+                    ("insert_seq_id".to_string(), "gg_insert".to_string()),
+                    ("type_iis_enzyme".to_string(), "Eco31".to_string()),
+                    ("junction_overhangs".to_string(), "AATG".to_string()),
+                    ("vector_fragment".to_string(), "1".to_string()),
+                    ("insert_fragment".to_string(), "1".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("golden gate validate-only success");
+        assert_eq!(ok_run.output["can_execute"].as_bool(), Some(true));
+
+        let unknown_or_non_type_iis = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "golden_gate_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "gg_vector".to_string()),
+                    ("insert_seq_id".to_string(), "gg_insert".to_string()),
+                    ("type_iis_enzyme".to_string(), "EcoRI".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("golden gate validate-only non-type-iis");
+        assert_eq!(
+            unknown_or_non_type_iis.output["can_execute"].as_bool(),
+            Some(false)
+        );
+        let non_type_iis_errors = unknown_or_non_type_iis
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            non_type_iis_errors
+                .iter()
+                .any(|message| message.contains("Type IIS-capable")),
+            "expected Type IIS-capable error, got: {:?}",
+            non_type_iis_errors
+        );
+
+        let missing_site = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "golden_gate_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "plain_seq".to_string()),
+                    ("insert_seq_id".to_string(), "gg_insert".to_string()),
+                    ("type_iis_enzyme".to_string(), "Eco31".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("golden gate validate-only missing site");
+        assert_eq!(missing_site.output["can_execute"].as_bool(), Some(false));
+        let missing_site_errors = missing_site
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            missing_site_errors
+                .iter()
+                .any(|message| message.contains("no recognition site")),
+            "expected missing-site error, got: {:?}",
+            missing_site_errors
+        );
+
+        let invalid_junction_or_fragment = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "golden_gate_multi_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "gg_vector".to_string()),
+                    ("insert_a_seq_id".to_string(), "gg_insert".to_string()),
+                    ("insert_b_seq_id".to_string(), "gg_insert".to_string()),
+                    ("type_iis_enzyme".to_string(), "Eco31".to_string()),
+                    ("junction_overhangs".to_string(), "AATG,,GCTT".to_string()),
+                    ("vector_fragment".to_string(), "0".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("golden gate validate-only invalid overhang/fragment");
+        assert_eq!(
+            invalid_junction_or_fragment.output["can_execute"].as_bool(),
+            Some(false)
+        );
+        let invalid_errors = invalid_junction_or_fragment
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            invalid_errors.iter().any(|message| {
+                message.contains("contains an empty token")
+                    || message.contains("expects vector_fragment >= 1")
+            }),
+            "expected invalid-junction/fragment errors, got: {:?}",
+            invalid_errors
+        );
+    }
+
+    #[test]
+    fn execute_macros_template_validate_only_applies_gateway_topo_and_ta_gc_checks() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "gw_donor".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gw_entry".to_string(),
+            DNAsequence::from_sequence("TTTTACGTACGT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "topo_vector_t".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "topo_insert_a".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "topo_insert_bad".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGG").expect("sequence"),
+        );
+        state.sequences.insert(
+            "topo_insert_cacc".to_string(),
+            DNAsequence::from_sequence("CACCACGTACGTACGA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gc_vector_c".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGC").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gc_insert_g".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGG").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let base = env!("CARGO_MANIFEST_DIR");
+        for path in [
+            format!(
+                "{}/assets/cloning_patterns_catalog/gateway/bp_lr/gateway_bp_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/topo/entry/topo_ta_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/topo/entry/topo_directional_cacc_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/ta_gc/entry/ta_clone_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/ta_gc/entry/gc_clone_single_insert.json",
+                base
+            ),
+        ] {
+            execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+                .expect("import family template");
+        }
+
+        let gateway_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gateway_bp_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("donor_seq_id".to_string(), "gw_donor".to_string()),
+                    ("entry_vector_seq_id".to_string(), "gw_entry".to_string()),
+                    ("gateway_phase".to_string(), "bp".to_string()),
+                    ("att_tokens".to_string(), "attB,attP".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("gateway bp validate-only ok");
+        assert_eq!(gateway_ok.output["can_execute"].as_bool(), Some(true));
+
+        let gateway_bad = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gateway_bp_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("donor_seq_id".to_string(), "gw_donor".to_string()),
+                    ("entry_vector_seq_id".to_string(), "gw_entry".to_string()),
+                    ("gateway_phase".to_string(), "bp".to_string()),
+                    ("att_tokens".to_string(), "attL,attR".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("gateway bp validate-only bad");
+        assert_eq!(gateway_bad.output["can_execute"].as_bool(), Some(false));
+
+        let topo_ta_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "topo_ta_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_a".to_string()),
+                    ("topo_mode".to_string(), "ta".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("topo ta validate-only ok");
+        assert_eq!(topo_ta_ok.output["can_execute"].as_bool(), Some(true));
+
+        let topo_dir_bad = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "topo_directional_cacc_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_bad".to_string()),
+                    ("topo_mode".to_string(), "directional_cacc".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("topo directional bad");
+        assert_eq!(topo_dir_bad.output["can_execute"].as_bool(), Some(false));
+
+        let ta_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "ta_clone_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_a".to_string()),
+                    ("tail_mode".to_string(), "ta".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("ta clone validate-only ok");
+        assert_eq!(ta_ok.output["can_execute"].as_bool(), Some(true));
+
+        let gc_bad = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gc_clone_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_a".to_string()),
+                    ("tail_mode".to_string(), "gc".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("gc clone bad");
+        assert_eq!(gc_bad.output["can_execute"].as_bool(), Some(false));
+
+        let gc_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "gc_clone_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "gc_vector_c".to_string()),
+                    ("insert_seq_id".to_string(), "gc_insert_g".to_string()),
+                    ("tail_mode".to_string(), "gc".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("gc clone ok");
+        assert_eq!(gc_ok.output["can_execute"].as_bool(), Some(true));
+
+        let topo_dir_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "topo_directional_cacc_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_cacc".to_string()),
+                    ("topo_mode".to_string(), "directional_cacc".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("topo directional ok");
+        assert_eq!(topo_dir_ok.output["can_execute"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn execute_macros_template_validate_only_applies_infusion_and_nebuilder_checks() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "left".to_string(),
+            DNAsequence::from_sequence("ACACACGGGGAAAA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "middle".to_string(),
+            DNAsequence::from_sequence("GGGGAAAATTTTCCCC").expect("sequence"),
+        );
+        state.sequences.insert(
+            "right".to_string(),
+            DNAsequence::from_sequence("TTTTCCCCGAGAGA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "right_bad".to_string(),
+            DNAsequence::from_sequence("CCCCAAAAGAGAGA").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let base = env!("CARGO_MANIFEST_DIR");
+        for path in [
+            format!(
+                "{}/assets/cloning_patterns_catalog/infusion/overlap/infusion_two_fragment_overlap.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/nebuilder_hifi/overlap/nebuilder_multi_fragment_overlap.json",
+                base
+            ),
+        ] {
+            execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+                .expect("import overlap template");
+        }
+
+        let infusion_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "infusion_two_fragment_overlap".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("right_seq_id".to_string(), "middle".to_string()),
+                    ("overlap_bp".to_string(), "8".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("infusion validate-only ok");
+        assert_eq!(infusion_ok.output["can_execute"].as_bool(), Some(true));
+
+        let infusion_bad = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "infusion_two_fragment_overlap".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("right_seq_id".to_string(), "right_bad".to_string()),
+                    ("overlap_bp".to_string(), "8".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("infusion validate-only bad");
+        assert_eq!(infusion_bad.output["can_execute"].as_bool(), Some(false));
+        let infusion_bad_errors = infusion_bad
+            .output
+            .get("preflight")
+            .and_then(|preflight| preflight.get("errors"))
+            .and_then(|rows| rows.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|row| row.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        assert!(
+            infusion_bad_errors
+                .iter()
+                .any(|message| message.contains("In-Fusion overlap mismatch")),
+            "expected In-Fusion overlap mismatch error, got: {:?}",
+            infusion_bad_errors
+        );
+
+        let nebuilder_ok = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "nebuilder_multi_fragment_overlap".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("middle_seq_id".to_string(), "middle".to_string()),
+                    ("right_seq_id".to_string(), "right".to_string()),
+                    ("overlap_bp".to_string(), "8".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("nebuilder validate-only ok");
+        assert_eq!(nebuilder_ok.output["can_execute"].as_bool(), Some(true));
+
+        let nebuilder_bad = execute_shell_command(
+            &mut engine,
+            &ShellCommand::MacrosTemplateRun {
+                name: "nebuilder_multi_fragment_overlap".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "left".to_string()),
+                    ("middle_seq_id".to_string(), "middle".to_string()),
+                    ("right_seq_id".to_string(), "right".to_string()),
+                    ("overlap_bp".to_string(), "40".to_string()),
+                ]),
+                transactional: false,
+                validate_only: true,
+            },
+        )
+        .expect("nebuilder validate-only bad");
+        assert_eq!(nebuilder_bad.output["can_execute"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn execute_macros_template_run_new_family_packs_transactionally() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "gg_vector".to_string(),
+            DNAsequence::from_sequence("AAAAGGTCTCTTTTGGTCTCAAAA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gg_insert".to_string(),
+            DNAsequence::from_sequence("CCCCGGTCTCGGGG").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gw_donor".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "gw_entry".to_string(),
+            DNAsequence::from_sequence("TTTTACGTACGT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "topo_vector_t".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGT").expect("sequence"),
+        );
+        state.sequences.insert(
+            "topo_insert_a".to_string(),
+            DNAsequence::from_sequence("ACGTACGTACGA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "inf_left".to_string(),
+            DNAsequence::from_sequence("ACACACGGGGAAAA").expect("sequence"),
+        );
+        state.sequences.insert(
+            "inf_right".to_string(),
+            DNAsequence::from_sequence("GGGGAAAATTTTCCCC").expect("sequence"),
+        );
+        state.sequences.insert(
+            "neb_left".to_string(),
+            DNAsequence::from_sequence("TTTTCCCCAAAAGGGG").expect("sequence"),
+        );
+        state.sequences.insert(
+            "neb_right".to_string(),
+            DNAsequence::from_sequence("AAAAGGGGCCCTTTAA").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let base = env!("CARGO_MANIFEST_DIR");
+        for path in [
+            format!(
+                "{}/assets/cloning_patterns_catalog/golden_gate/type_iis/golden_gate_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/gateway/bp_lr/gateway_bp_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/topo/entry/topo_ta_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/ta_gc/entry/ta_clone_single_insert.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/infusion/overlap/infusion_two_fragment_overlap.json",
+                base
+            ),
+            format!(
+                "{}/assets/cloning_patterns_catalog/nebuilder_hifi/overlap/nebuilder_two_fragment_overlap.json",
+                base
+            ),
+        ] {
+            execute_shell_command(&mut engine, &ShellCommand::MacrosTemplateImport { path })
+                .expect("import template");
+        }
+
+        let runs = vec![
+            ShellCommand::MacrosTemplateRun {
+                name: "golden_gate_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "gg_vector".to_string()),
+                    ("insert_seq_id".to_string(), "gg_insert".to_string()),
+                    ("type_iis_enzyme".to_string(), "Eco31".to_string()),
+                    ("vector_fragment".to_string(), "1".to_string()),
+                    ("insert_fragment".to_string(), "1".to_string()),
+                    ("ligation_prefix".to_string(), "gg_run".to_string()),
+                    ("output_id".to_string(), "gg_tx_out".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+            ShellCommand::MacrosTemplateRun {
+                name: "gateway_bp_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("donor_seq_id".to_string(), "gw_donor".to_string()),
+                    ("entry_vector_seq_id".to_string(), "gw_entry".to_string()),
+                    ("gateway_phase".to_string(), "bp".to_string()),
+                    ("att_tokens".to_string(), "attB,attP".to_string()),
+                    ("assembly_prefix".to_string(), "gw_tx".to_string()),
+                    ("output_id".to_string(), "gw_tx_out".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+            ShellCommand::MacrosTemplateRun {
+                name: "topo_ta_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_a".to_string()),
+                    ("topo_mode".to_string(), "ta".to_string()),
+                    ("assembly_prefix".to_string(), "topo_tx".to_string()),
+                    ("output_id".to_string(), "topo_tx_out".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+            ShellCommand::MacrosTemplateRun {
+                name: "ta_clone_single_insert".to_string(),
+                bindings: HashMap::from([
+                    ("vector_seq_id".to_string(), "topo_vector_t".to_string()),
+                    ("insert_seq_id".to_string(), "topo_insert_a".to_string()),
+                    ("tail_mode".to_string(), "ta".to_string()),
+                    ("assembly_prefix".to_string(), "ta_tx".to_string()),
+                    ("output_id".to_string(), "ta_tx_out".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+            ShellCommand::MacrosTemplateRun {
+                name: "infusion_two_fragment_overlap".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "inf_left".to_string()),
+                    ("right_seq_id".to_string(), "inf_right".to_string()),
+                    ("overlap_bp".to_string(), "8".to_string()),
+                    ("assembly_prefix".to_string(), "inf_tx".to_string()),
+                    ("output_id".to_string(), "inf_tx_out".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+            ShellCommand::MacrosTemplateRun {
+                name: "nebuilder_two_fragment_overlap".to_string(),
+                bindings: HashMap::from([
+                    ("left_seq_id".to_string(), "neb_left".to_string()),
+                    ("right_seq_id".to_string(), "neb_right".to_string()),
+                    ("overlap_bp".to_string(), "8".to_string()),
+                    ("assembly_prefix".to_string(), "neb_tx".to_string()),
+                    ("output_id".to_string(), "neb_tx_out".to_string()),
+                ]),
+                transactional: true,
+                validate_only: false,
+            },
+        ];
+        for run_cmd in runs {
+            let out = execute_shell_command(&mut engine, &run_cmd).expect("transactional run");
+            assert!(out.state_changed);
+        }
+
+        for seq_id in [
+            "gg_tx_out",
+            "gw_tx_out",
+            "topo_tx_out",
+            "ta_tx_out",
+            "inf_tx_out",
+            "neb_tx_out",
+        ] {
+            assert!(engine.state().sequences.contains_key(seq_id));
+        }
+    }
+
+    #[test]
     fn execute_macros_template_run_gibson_preview_creates_deterministic_outputs() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -16072,6 +18332,100 @@ filter set1 set2 --metric score --min 10
     }
 
     #[test]
+    fn execute_primers_seed_from_feature_and_splicing() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+
+        let seeded_feature = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersSeedFromFeature {
+                seq_id: "seq_a".to_string(),
+                feature_id,
+            },
+        )
+        .expect("seed from feature");
+        assert!(!seeded_feature.state_changed);
+        assert_eq!(
+            seeded_feature.output["schema"].as_str(),
+            Some("gentle.primer_seed_request.v1")
+        );
+        assert_eq!(
+            seeded_feature.output["source"]["kind"].as_str(),
+            Some("feature")
+        );
+        let feature_start = seeded_feature.output["roi_start_0based"]
+            .as_u64()
+            .expect("feature start roi") as usize;
+        let feature_end = seeded_feature.output["roi_end_0based_exclusive"]
+            .as_u64()
+            .expect("feature end roi") as usize;
+        assert!(feature_end > feature_start);
+        assert_eq!(
+            seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
+                ["template"]
+                .as_str(),
+            Some("seq_a")
+        );
+        assert_eq!(
+            seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
+                ["roi_start_0based"]
+                .as_u64(),
+            Some(feature_start as u64)
+        );
+        assert_eq!(
+            seeded_feature.output["operations"]["design_primer_pairs"]["DesignPrimerPairs"]
+                ["roi_end_0based"]
+                .as_u64(),
+            Some(feature_end as u64)
+        );
+
+        let seeded_splicing = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersSeedFromSplicing {
+                seq_id: "seq_a".to_string(),
+                feature_id,
+            },
+        )
+        .expect("seed from splicing");
+        assert!(!seeded_splicing.state_changed);
+        assert_eq!(
+            seeded_splicing.output["schema"].as_str(),
+            Some("gentle.primer_seed_request.v1")
+        );
+        assert_eq!(
+            seeded_splicing.output["source"]["kind"].as_str(),
+            Some("splicing")
+        );
+        let splicing_start = seeded_splicing.output["roi_start_0based"]
+            .as_u64()
+            .expect("splicing start roi") as usize;
+        let splicing_end = seeded_splicing.output["roi_end_0based_exclusive"]
+            .as_u64()
+            .expect("splicing end roi") as usize;
+        assert!(splicing_end > splicing_start);
+        assert_eq!(splicing_start, feature_start);
+        assert_eq!(splicing_end, feature_end);
+        assert_eq!(
+            seeded_splicing.output["operations"]["design_qpcr_assays"]["DesignQpcrAssays"]
+                ["template"]
+                .as_str(),
+            Some("seq_a")
+        );
+    }
+
+    #[test]
     fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
         let mut engine = GentleEngine::new();
         let start = execute_shell_command(
@@ -16198,7 +18552,10 @@ filter set1 set2 --metric score --min 10
                 .unwrap_or_default()
                 .to_string();
             assert!(!job_one.is_empty());
-            assert_eq!(start_one.output["job"]["max_concurrent_jobs"].as_u64(), Some(1));
+            assert_eq!(
+                start_one.output["job"]["max_concurrent_jobs"].as_u64(),
+                Some(1)
+            );
 
             let start_two = execute_shell_command(
                 &mut engine,

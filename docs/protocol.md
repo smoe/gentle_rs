@@ -423,7 +423,20 @@ Adapter-equivalence guarantee for UI-intent tools:
   - typed catalog schema: `gentle.cloning_routines.v1`
   - response schema: `gentle.cloning_routines_list.v1`
   - filters are case-insensitive; query performs substring match across
-    routine id/title/family/status/template/tags/summary
+    routine id/title/family/status/template/tags/summary plus explainability
+    metadata fields
+- `routines explain ROUTINE_ID [--catalog PATH]`
+  - shared-shell/CLI routine explainability surface
+  - response schema: `gentle.cloning_routine_explain.v1`
+  - returns one routine definition plus normalized explanation payload
+    (purpose/mechanism/requires/contraindications/disambiguation/failure modes)
+    and resolved confusing alternatives
+- `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+  - shared-shell/CLI deterministic routine comparison surface
+  - response schema: `gentle.cloning_routine_compare.v1`
+  - returns both routine definitions plus comparison payload:
+    shared/unique tags, cross-reference status, aligned difference-matrix rows,
+    and merged disambiguation questions
 
 - `screenshot-window OUTPUT.png`
   - currently disabled by security policy
@@ -803,6 +816,9 @@ Candidate-set semantics:
     - `restriction.digest_ligate_extract_sticky`
   - adapter discovery surface:
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+  - explainability and comparison surfaces:
+    - `routines explain ROUTINE_ID [--catalog PATH]`
+    - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
 - Macro-instance lineage baseline:
   - mutating `macros run` / `macros template-run` append one
     `LineageMacroInstance` record in project lineage state for success and
@@ -1141,6 +1157,8 @@ Primer-design shell command family (implemented):
 - Shared-shell family:
   - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
   - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+  - `primers seed-from-feature SEQ_ID FEATURE_ID`
+  - `primers seed-from-splicing SEQ_ID FEATURE_ID`
   - `primers list-reports`
   - `primers show-report REPORT_ID`
   - `primers export-report REPORT_ID OUTPUT.json`
@@ -1151,11 +1169,22 @@ Primer-design shell command family (implemented):
   `{"DesignPrimerPairs": {...}}`.
 - `primers design-qpcr` expects an operation payload whose root variant is
   `{"DesignQpcrAssays": {...}}`.
+- `primers seed-from-feature` and `primers seed-from-splicing` are
+  non-mutating helper commands that resolve an ROI and emit seeded operation
+  payloads for both pair-PCR and qPCR design.
 - Response schemas:
+  - `gentle.primer_seed_request.v1`
   - `gentle.primer_design_report.v1`
   - `gentle.primer_design_report_list.v1`
   - `gentle.qpcr_design_report.v1`
   - `gentle.qpcr_design_report_list.v1`
+- `gentle.primer_seed_request.v1` payload fields:
+  - `template`
+  - `source` (`kind=feature|splicing`, `feature_id`, and splicing metadata when available)
+  - `roi_start_0based`
+  - `roi_end_0based_exclusive`
+  - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
+  - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
 
 Async BLAST shell contract (agent/MCP-ready baseline):
 

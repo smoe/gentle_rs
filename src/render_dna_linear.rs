@@ -669,6 +669,7 @@ impl RenderDnaLinear {
             from: usize,
             to: usize,
             exon_segments: Vec<(f32, f32)>,
+            connector_segments: Vec<(f32, f32)>,
             x1: f32,
             x2: f32,
             label: String,
@@ -790,12 +791,16 @@ impl RenderDnaLinear {
             exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
             let mut exon_segments: Vec<(f32, f32)> = Vec::new();
-            for (exon_start, exon_end_exclusive) in exon_ranges {
+            let mut exon_visibility: Vec<Option<(f32, f32)>> =
+                Vec::with_capacity(exon_ranges.len());
+            for (exon_start, exon_end_exclusive) in exon_ranges.iter().copied() {
                 if exon_start >= self.sequence_length {
+                    exon_visibility.push(None);
                     continue;
                 }
                 let exon_end_exclusive = exon_end_exclusive.min(self.sequence_length);
                 if exon_end_exclusive <= exon_start {
+                    exon_visibility.push(None);
                     continue;
                 }
                 let Some((visible_start, visible_end)) = Self::range_overlap(
@@ -804,6 +809,7 @@ impl RenderDnaLinear {
                     viewport.start,
                     viewport.end,
                 ) else {
+                    exon_visibility.push(None);
                     continue;
                 };
                 let seg_x1 = self.bp_to_x(visible_start, viewport).max(self.area.left());
@@ -812,11 +818,41 @@ impl RenderDnaLinear {
                     .max(seg_x1 + 1.0)
                     .min(self.area.right());
                 exon_segments.push((seg_x1, seg_x2));
+                exon_visibility.push(Some((seg_x1, seg_x2)));
             }
             if exon_segments.is_empty() {
                 continue;
             }
             exon_segments.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+
+            let mut connector_segments: Vec<(f32, f32)> = Vec::new();
+            for exon_idx in 0..exon_ranges.len().saturating_sub(1) {
+                let (left_start, left_end_exclusive) = exon_ranges[exon_idx];
+                let (right_start, _right_end_exclusive) = exon_ranges[exon_idx + 1];
+                if left_start >= self.sequence_length {
+                    continue;
+                }
+                let intron_start = left_end_exclusive.min(self.sequence_length);
+                let intron_end = right_start.min(self.sequence_length);
+                if intron_end <= intron_start {
+                    continue;
+                }
+                if Self::range_overlap(intron_start, intron_end, viewport.start, viewport.end)
+                    .is_none()
+                {
+                    continue;
+                }
+                let start_x = exon_visibility[exon_idx]
+                    .map(|(_, x2)| x2)
+                    .unwrap_or_else(|| self.area.left());
+                let end_x = exon_visibility[exon_idx + 1]
+                    .map(|(x1, _)| x1)
+                    .unwrap_or_else(|| self.area.right());
+                if end_x <= start_x {
+                    continue;
+                }
+                connector_segments.push((start_x, end_x));
+            }
 
             let x1 = exon_segments
                 .iter()
@@ -840,6 +876,7 @@ impl RenderDnaLinear {
                 from,
                 to,
                 exon_segments,
+                connector_segments,
                 x1,
                 x2,
                 label,
@@ -1097,12 +1134,12 @@ impl RenderDnaLinear {
             };
             let mut intron_connectors: Vec<[Pos2; 3]> = Vec::new();
             if !suppress_introns {
-                for (left, right) in exon_rects.iter().zip(exon_rects.iter().skip(1)) {
-                    if right.left() <= left.right() {
+                for (start_x, end_x) in &seed.connector_segments {
+                    if end_x <= start_x {
                         continue;
                     }
-                    let start = Pos2::new(left.right(), center_y);
-                    let end = Pos2::new(right.left(), center_y);
+                    let start = Pos2::new(*start_x, center_y);
+                    let end = Pos2::new(*end_x, center_y);
                     let apex_x = (start.x + end.x) * 0.5;
                     let apex = Pos2::new(apex_x, connector_apex_y);
                     intron_connectors.push([start, apex, end]);
@@ -2443,6 +2480,28 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 1);
         let baseline = renderer.baseline_y();
         assert!(fp.rect.center().y > baseline);
+    }
+
+    #[test]
+    fn intron_connector_remains_visible_when_adjacent_exon_is_offscreen() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(520, 580),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1000);
+        renderer.layout_features(LinearViewport {
+            start: 90,
+            end: 250,
+            span: 160,
+        });
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert_eq!(fp.exon_rects.len(), 1);
+        assert_eq!(fp.intron_connectors.len(), 1);
+        let connector = fp.intron_connectors[0];
+        assert!((connector[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
+        assert!(connector[0].x < connector[2].x);
     }
 
     #[test]
