@@ -28,6 +28,10 @@ Structured workflow examples:
 
 - canonical source files: `docs/examples/workflows/*.json`
 - schema: `gentle.workflow_example.v1`
+- includes GUI-first parity skeleton:
+  - `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
+  - companion walkthrough: `docs/tutorial/tp73_promoter_luciferase_gui.md`
+  - narrative showcase page: `docs/tutorial/tp73_promoter_luciferase_showcase.md`
 - on-demand snippet generation (CLI/shell/JS/Lua):
   - `cargo run --bin gentle_examples_docs -- generate`
 - validation only:
@@ -39,10 +43,85 @@ Structured workflow examples:
 - test gating:
   - `always` examples run in default tests
   - `online` examples run only with `GENTLE_TEST_ONLINE=1`
+  - set `GENTLE_SKIP_REMOTE_TESTS=1` to force-skip all remote-resource tests
+    (takes precedence over `GENTLE_TEST_ONLINE`)
   - `skip` examples are syntax-checked only
 
 Architecture invariant: all adapters/frontends above route cloning/business
 behavior through the same shared engine.
+
+## ClawBio/OpenClaw skill scaffold
+
+GENtle ships a copy-ready ClawBio skill scaffold at:
+
+- `integrations/clawbio/skills/gentle-cloning/`
+- ready-to-paste catalog object:
+  `integrations/clawbio/skills/gentle-cloning/catalog_entry.json`
+
+Purpose:
+
+- expose deterministic GENtle CLI routes as a ClawBio skill,
+- keep reproducibility artifacts (`report.md`, `result.json`,
+  `reproducibility/*`) for each run.
+
+Quick usage (inside the scaffold directory):
+
+```bash
+python gentle_cloning.py --demo --output /tmp/gentle_clawbio_demo
+python gentle_cloning.py --input examples/request_capabilities.json --output /tmp/gentle_clawbio_caps
+```
+
+When copied into a ClawBio checkout (`skills/gentle-cloning/`):
+
+```bash
+python clawbio.py run gentle-cloning --demo
+python clawbio.py run gentle-cloning --input skills/gentle-cloning/examples/request_workflow_file.json --output /tmp/gentle_clawbio_run
+```
+
+Command resolution order used by the wrapper:
+
+1. `--gentle-cli` explicit command string
+2. `GENTLE_CLI_CMD` environment variable
+3. `gentle_cli` on `PATH`
+4. repository-local fallback: `cargo run --quiet --bin gentle_cli --`
+
+## Python module wrapper (`gentle_py`)
+
+GENtle also ships a thin Python wrapper over `gentle_cli`:
+
+- module path: `integrations/python/gentle_py/`
+- quick docs: `integrations/python/README.md`
+
+Quick usage:
+
+```bash
+python3 - <<'PY'
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path("integrations/python").resolve()))
+from gentle_py import GentleClient
+
+client = GentleClient(state_path=".gentle_state.json")
+print(json.dumps(client.capabilities(), indent=2))
+PY
+```
+
+Deterministic API surface:
+
+- `capabilities()`
+- `state_summary()`
+- `op(operation)`
+- `workflow(workflow|workflow_path=...)`
+- `shell(line, expect_json=False)`
+
+CLI resolution order:
+
+1. constructor `cli_cmd`
+2. `GENTLE_CLI_CMD`
+3. `gentle_cli` on `PATH`
+4. repository fallback `cargo run --quiet --bin gentle_cli --`
 
 Resource update capability status:
 
@@ -81,6 +160,17 @@ Primer-design report capability status:
 - `gentle_js`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
 - `gentle_lua`: supported via `apply_operation` (`DesignPrimerPairs`, `DesignQpcrAssays`) plus shared-shell execution for report listing/show/export
 
+Dotplot/flexibility capability status:
+
+- `gentle_cli`: supported via shared-shell/direct commands:
+  - `dotplot compute|list|show`
+  - `flex compute|list|show`
+  backed by `ComputeDotplot` and `ComputeFlexibilityTrack`.
+- `gentle_js`: baseline support via `apply_operation` (`ComputeDotplot`,
+  `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+- `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
+  `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+
 Feature-expert SVG parity status:
 
 - `gentle_cli`: supported via direct commands and shared-shell command path
@@ -109,8 +199,11 @@ UniProt mapping capability status:
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
+- shared shell (`gentle_cli shell`, GUI shell): GenBank accession import
+  - `genbank fetch ACCESSION [--as-id ID]`
 - engine operations behind those commands:
-  - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`
+  - `FetchUniprotSwissProt`, `ImportUniprotSwissProt`, `ProjectUniprotToGenome`,
+    `FetchGenBankAccession`
 
 ## Build and run
 
@@ -606,7 +699,7 @@ cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "summarize curren
 cargo run --bin gentle_cli -- agents ask builtin_echo --prompt "ask: Which sequence should I use?" --execute-index 1
 cargo run --bin gentle_cli -- agents ask local_llama_compat --prompt "summarize project context" --base-url http://localhost:11964 --model deepseek-r1:8b
 cargo run --bin gentle_cli -- op '{"PrepareGenome":{"genome_id":"ToyGenome","catalog_path":"catalog.json"}}'
-cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","catalog_path":"catalog.json"}}'
+cargo run --bin gentle_cli -- op '{"ExtractGenomeRegion":{"genome_id":"ToyGenome","chromosome":"chr1","start_1based":1001,"end_1based":1600,"output_id":"toy_chr1_1001_1600","annotation_scope":"core","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- op '{"ExtractGenomeGene":{"genome_id":"ToyGenome","gene_query":"MYGENE","occurrence":1,"output_id":"toy_mygene","catalog_path":"catalog.json"}}'
 cargo run --bin gentle_cli -- genomes list --catalog assets/genomes.json
 cargo run --bin gentle_cli -- genomes list --catalog assets/helper_genomes.json
@@ -615,7 +708,7 @@ cargo run --bin gentle_cli -- genomes status "Human GRCh38 Ensembl 116" --catalo
 cargo run --bin gentle_cli -- genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP53$" --biotype protein_coding --limit 20
 cargo run --bin gentle_cli -- genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
 cargo run --bin gentle_cli -- genomes blast "Human GRCh38 Ensembl 116" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":97.0,"min_query_coverage_percent":80.0}}' --catalog assets/genomes.json --cache-dir data/genomes
-cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --catalog assets/genomes.json --cache-dir data/genomes
+cargo run --bin gentle_cli -- genomes extract-region "Human GRCh38 Ensembl 116" 1 1000000 1001500 --output-id grch38_chr1_slice --annotation-scope core --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 --output-id grch38_tp53 --catalog assets/genomes.json --cache-dir data/genomes
 cargo run --bin gentle_cli -- tracks import-bed grch38_tp53 data/chipseq/peaks.bed.gz --name H3K27ac --min-score 10 --clear-existing
 cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/signal.bw --name ATAC --min-score 0.2 --clear-existing
@@ -722,7 +815,7 @@ Shared shell command:
     - `genomes blast-status JOB_ID [--with-report]`
     - `genomes blast-cancel JOB_ID`
     - `genomes blast-list`
-    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
     - `helpers validate-catalog [--catalog PATH]`
@@ -734,7 +827,7 @@ Shared shell command:
     - `helpers blast-status JOB_ID [--with-report]`
     - `helpers blast-cancel JOB_ID`
     - `helpers blast-list`
-    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -791,6 +884,12 @@ Shared shell command:
     - `primers list-qpcr-reports`
     - `primers show-qpcr-report REPORT_ID`
     - `primers export-qpcr-report REPORT_ID OUTPUT.json`
+    - `dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+    - `dotplot list [SEQ_ID]`
+    - `dotplot show DOTPLOT_ID`
+    - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
+    - `flex list [SEQ_ID]`
+    - `flex show TRACK_ID`
     - Primer request payload notes (`primers design` / `primers design-qpcr`):
       - `forward`/`reverse`/`probe` side constraints support optional
         sequence filters:
@@ -1045,8 +1144,15 @@ Genome convenience commands:
   - Requests cooperative cancellation for one async BLAST job.
 - `genomes blast-list`
   - Lists known async genome-BLAST jobs in the current process.
-- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeRegion`.
+  - `--annotation-scope` selects projection policy (`none`, `core`, `full`).
+  - Default scope is `core` when neither scope nor legacy flags are set.
+  - `--max-annotation-features N` applies a deterministic safety cap
+    (`0` disables the cap for explicit unrestricted transfer).
+  - legacy `--include-genomic-annotation` maps to `--annotation-scope core`.
+  - legacy `--no-include-genomic-annotation` maps to `--annotation-scope none`.
+  - Result payload includes `genome_annotation_projection` telemetry.
 - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
@@ -1085,7 +1191,7 @@ Helper convenience commands:
   - Same behavior as `genomes blast-cancel`, scoped to helper jobs.
 - `helpers blast-list`
   - Same behavior as `genomes blast-list`, scoped to helper jobs.
-- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
 - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
@@ -1674,7 +1780,7 @@ Extract a genomic interval from the prepared cache (1-based inclusive
 coordinates):
 
 ```json
-{"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 116","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
+{"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 116","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","annotation_scope":"core","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}}
 ```
 
 Extract by gene query (name/id) from the prepared gene index:

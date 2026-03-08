@@ -31,8 +31,8 @@ use crate::{
     engine::{
         BIGWIG_TO_BEDGRAPH_ENV_BIN, BlastHitFeatureInput, BlastInvocationProvenance,
         DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DisplaySettings, DisplayTarget, Engine, EngineError,
-        ErrorCode, GenomeTrackImportProgress, GenomeTrackSource, GenomeTrackSubscription,
-        GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
+        ErrorCode, GenomeAnnotationScope, GenomeTrackImportProgress, GenomeTrackSource,
+        GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
         LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, ProjectState,
         SequenceGenomeAnchorSummary,
     },
@@ -90,6 +90,7 @@ const GUI_OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const GUI_OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 static NATIVE_HELP_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
+static NATIVE_HELP_OPEN_REQUESTED_AT_MS: AtomicU64 = AtomicU64::new(0);
 static NATIVE_SETTINGS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_SETTINGS_OPEN_GRAPHICS_TAB_REQUESTED: AtomicBool = AtomicBool::new(false);
 static NATIVE_WINDOWS_OPEN_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -105,6 +106,13 @@ fn viewport_native_menu_key(viewport_id: ViewportId) -> u64 {
 
 fn report_active_viewport_from_ui(viewport_id: ViewportId) {
     ACTIVE_VIEWPORT_KEY_REPORTED.store(viewport_native_menu_key(viewport_id), Ordering::SeqCst);
+}
+
+fn now_unix_ms_u64() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|v| v.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn normalize_agent_model_name(raw: &str) -> Option<String> {
@@ -309,6 +317,7 @@ fn default_agent_max_response_bytes_string() -> String {
 }
 
 pub fn request_open_help_from_native_menu() {
+    NATIVE_HELP_OPEN_REQUESTED_AT_MS.store(now_unix_ms_u64(), Ordering::SeqCst);
     NATIVE_HELP_OPEN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
@@ -468,12 +477,14 @@ pub struct GENtleApp {
     native_window_key_to_viewport: HashMap<u64, ViewportId>,
     active_window_menu_key: Option<u64>,
     pending_window_open_timestamps: HashMap<ViewportId, Instant>,
+    pending_viewport_focus_timestamps: HashMap<ViewportId, Instant>,
     pending_project_action: Option<ProjectAction>,
     show_reference_genome_prepare_dialog: bool,
     show_reference_genome_retrieve_dialog: bool,
     show_reference_genome_blast_dialog: bool,
     show_reference_genome_inspector_dialog: bool,
     show_uniprot_dialog: bool,
+    show_genbank_dialog: bool,
     genome_catalog_path: String,
     genome_cache_dir: String,
     genome_id: String,
@@ -495,6 +506,7 @@ pub struct GENtleApp {
     genome_start_1based: String,
     genome_end_1based: String,
     genome_output_id: String,
+    genome_include_genomic_annotation: bool,
     genome_retrieve_status: String,
     uniprot_query: String,
     uniprot_entry_id: String,
@@ -503,6 +515,9 @@ pub struct GENtleApp {
     uniprot_map_projection_id: String,
     uniprot_map_transcript_id: String,
     uniprot_status: String,
+    genbank_accession: String,
+    genbank_as_id: String,
+    genbank_status: String,
     genome_blast_source_mode: GenomeBlastSourceMode,
     genome_blast_query_manual: String,
     genome_blast_query_seq_id: String,
@@ -1100,6 +1115,7 @@ enum CommandPaletteAction {
     SaveProject,
     OpenSequence,
     OpenUniprot,
+    OpenGenbank,
     OpenConfiguration,
     OpenPrepareGenome,
     OpenRetrieveGenome,
@@ -1236,12 +1252,14 @@ impl Default for GENtleApp {
             native_window_key_to_viewport: HashMap::new(),
             active_window_menu_key: Some(viewport_native_menu_key(ViewportId::ROOT)),
             pending_window_open_timestamps: HashMap::new(),
+            pending_viewport_focus_timestamps: HashMap::new(),
             pending_project_action: None,
             show_reference_genome_prepare_dialog: false,
             show_reference_genome_retrieve_dialog: false,
             show_reference_genome_blast_dialog: false,
             show_reference_genome_inspector_dialog: false,
             show_uniprot_dialog: false,
+            show_genbank_dialog: false,
             genome_catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
             genome_cache_dir: DEFAULT_GENOME_CACHE_DIR.to_string(),
             genome_id: "Human GRCh38 Ensembl 113".to_string(),
@@ -1263,6 +1281,7 @@ impl Default for GENtleApp {
             genome_start_1based: "1".to_string(),
             genome_end_1based: "1000".to_string(),
             genome_output_id: String::new(),
+            genome_include_genomic_annotation: true,
             genome_retrieve_status: String::new(),
             uniprot_query: String::new(),
             uniprot_entry_id: String::new(),
@@ -1271,6 +1290,9 @@ impl Default for GENtleApp {
             uniprot_map_projection_id: String::new(),
             uniprot_map_transcript_id: String::new(),
             uniprot_status: String::new(),
+            genbank_accession: String::new(),
+            genbank_as_id: String::new(),
+            genbank_status: String::new(),
             genome_blast_source_mode: GenomeBlastSourceMode::Manual,
             genome_blast_query_manual: String::new(),
             genome_blast_query_seq_id: String::new(),
@@ -1409,6 +1431,10 @@ impl GENtleApp {
         ViewportId::from_hash_of("GENtle UniProt Viewport")
     }
 
+    fn genbank_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle GenBank Viewport")
+    }
+
     fn native_menu_key_for_viewport(viewport_id: ViewportId) -> u64 {
         viewport_native_menu_key(viewport_id)
     }
@@ -1421,6 +1447,7 @@ impl GENtleApp {
     fn note_viewport_focus_if_active(&mut self, ctx: &egui::Context, viewport_id: ViewportId) {
         if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
             self.set_active_window_viewport(viewport_id);
+            self.finalize_viewport_focus_probe(viewport_id);
         }
     }
 
@@ -1991,6 +2018,12 @@ Error: `{err}`"
 
     fn consume_native_help_request(&mut self) {
         if NATIVE_HELP_OPEN_REQUESTED.swap(false, Ordering::SeqCst) {
+            let requested_at_ms = NATIVE_HELP_OPEN_REQUESTED_AT_MS.swap(0, Ordering::SeqCst);
+            if requested_at_ms > 0 {
+                let now_ms = now_unix_ms_u64();
+                let dispatch_elapsed_ms = now_ms.saturating_sub(requested_at_ms) as u128;
+                self.note_slow_phase("Native Help menu dispatch", dispatch_elapsed_ms);
+            }
             self.open_help_doc(HelpDoc::Gui);
         }
     }
@@ -2547,6 +2580,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenUniprot,
             },
             CommandPaletteEntry {
+                title: "Fetch GenBank Accession".to_string(),
+                detail: "Fetch one GenBank accession and import it as a sequence".to_string(),
+                keywords: "genbank ncbi accession fetch import".to_string(),
+                action: CommandPaletteAction::OpenGenbank,
+            },
+            CommandPaletteEntry {
                 title: "Undo Last Operation".to_string(),
                 detail: "Restore previous project state".to_string(),
                 keywords: "undo history edit".to_string(),
@@ -2679,6 +2718,7 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenSequence => self.prompt_open_sequence(),
             CommandPaletteAction::OpenUniprot => self.open_uniprot_dialog(),
+            CommandPaletteAction::OpenGenbank => self.open_genbank_dialog(),
             CommandPaletteAction::OpenConfiguration => self.open_configuration_dialog(),
             CommandPaletteAction::OpenPrepareGenome => self.open_reference_genome_prepare_dialog(),
             CommandPaletteAction::OpenRetrieveGenome => {
@@ -2716,14 +2756,22 @@ Error: `{err}`"
     }
 
     fn open_help_doc(&mut self, doc: HelpDoc) {
+        if self.show_help_dialog && self.help_doc == doc {
+            self.queue_focus_viewport(Self::help_viewport_id());
+            return;
+        }
+        let opening_from_closed_state = !self.show_help_dialog;
         if !self.show_help_dialog {
             self.mark_viewport_open_requested(Self::help_viewport_id());
         }
         let help_load_started = Instant::now();
         self.ensure_help_docs_loaded();
         self.note_slow_phase("Help payload load", help_load_started.elapsed().as_millis());
+        let help_doc_changed = self.help_doc != doc;
         self.help_doc = doc;
-        self.refresh_help_search_matches();
+        if opening_from_closed_state || help_doc_changed {
+            self.refresh_help_search_matches();
+        }
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
         self.queue_focus_viewport(Self::help_viewport_id());
@@ -2876,6 +2924,9 @@ Error: `{err}`"
     fn queue_focus_viewport(&mut self, viewport_id: ViewportId) {
         if !self.pending_focus_viewports.contains(&viewport_id) {
             self.pending_focus_viewports.push(viewport_id);
+            self.pending_viewport_focus_timestamps
+                .entry(viewport_id)
+                .or_insert_with(Instant::now);
         }
     }
 
@@ -2897,6 +2948,44 @@ Error: `{err}`"
         {
             self.note_slow_phase(label, elapsed_ms);
         }
+    }
+
+    fn viewport_focus_label(viewport_id: ViewportId) -> &'static str {
+        if viewport_id == ViewportId::ROOT {
+            "Main window focus acquisition"
+        } else if viewport_id == Self::help_viewport_id() {
+            "Help focus acquisition"
+        } else if viewport_id == Self::configuration_viewport_id() {
+            "Configuration focus acquisition"
+        } else if viewport_id == Self::command_palette_viewport_id() {
+            "Command Palette focus acquisition"
+        } else if viewport_id == Self::history_viewport_id() {
+            "History focus acquisition"
+        } else if viewport_id == Self::prepare_genome_viewport_id() {
+            "Prepare Genome focus acquisition"
+        } else if viewport_id == Self::blast_genome_viewport_id() {
+            "BLAST Genome focus acquisition"
+        } else if viewport_id == Self::bed_track_viewport_id() {
+            "Track Import focus acquisition"
+        } else if viewport_id == Self::routine_assistant_viewport_id() {
+            "Routine Assistant focus acquisition"
+        } else if viewport_id == Self::agent_assistant_viewport_id() {
+            "Agent Assistant focus acquisition"
+        } else if viewport_id == Self::uniprot_viewport_id() {
+            "UniProt focus acquisition"
+        } else if viewport_id == Self::genbank_viewport_id() {
+            "GenBank focus acquisition"
+        } else {
+            "Window focus acquisition"
+        }
+    }
+
+    fn finalize_viewport_focus_probe(&mut self, viewport_id: ViewportId) {
+        let Some(started) = self.pending_viewport_focus_timestamps.remove(&viewport_id) else {
+            return;
+        };
+        let elapsed_ms = started.elapsed().as_millis();
+        self.note_slow_phase(Self::viewport_focus_label(viewport_id), elapsed_ms);
     }
 
     fn native_window_menu_sync_blocked_by_open_probe(&self) -> bool {
@@ -3283,6 +3372,7 @@ Error: `{err}`"
         self.show_routine_assistant_dialog = false;
         self.show_agent_assistant_dialog = false;
         self.show_uniprot_dialog = false;
+        self.show_genbank_dialog = false;
         self.routine_assistant_stage = RoutineAssistantStage::GoalAndCandidates;
         self.routine_assistant_goal.clear();
         self.routine_assistant_query.clear();
@@ -3310,6 +3400,7 @@ Error: `{err}`"
         self.agent_model_discovery_status.clear();
         self.agent_model_discovery_source_key.clear();
         self.uniprot_status.clear();
+        self.genbank_status.clear();
         self.load_bed_track_subscriptions_from_state();
         self.load_lineage_graph_workspace_from_state();
         self.mark_clean_snapshot();
@@ -3658,6 +3749,14 @@ Error: `{err}`"
             }
         }
         self.show_uniprot_dialog = true;
+    }
+
+    fn open_genbank_dialog(&mut self) {
+        if self.show_genbank_dialog {
+            self.queue_focus_viewport(Self::genbank_viewport_id());
+            return;
+        }
+        self.show_genbank_dialog = true;
     }
 
     fn track_name_default_from_path(path: &Path) -> String {
@@ -5589,6 +5688,30 @@ Error: `{err}`"
         )
     }
 
+    fn format_extract_region_status(result: &OpResult) -> String {
+        let mut text = Self::format_op_result_status(
+            "Extract region: ok",
+            &result.created_seq_ids,
+            &result.warnings,
+            &result.messages,
+        );
+        if let Some(telemetry) = result.genome_annotation_projection.as_ref() {
+            let cap = telemetry
+                .max_features_cap
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            text.push_str(&format!(
+                "\nannotation: requested={} effective={} attached={} dropped={} cap={}",
+                telemetry.requested_scope,
+                telemetry.effective_scope,
+                telemetry.attached_feature_count,
+                telemetry.dropped_feature_count,
+                cap
+            ));
+        }
+        text
+    }
+
     fn collect_prepared_genome_inspections(
         &self,
     ) -> Result<(Vec<PreparedGenomeInspection>, Vec<String>), String> {
@@ -5826,6 +5949,7 @@ Error: `{err}`"
                     cache_dir.as_deref(),
                     &report,
                 )],
+                genome_annotation_projection: None,
             });
             let _ = tx.send(GenomePrepareTaskMessage::Done {
                 job_id,
@@ -7112,6 +7236,13 @@ Error: `{err}`"
             start_1based,
             end_1based,
             output_id,
+            annotation_scope: Some(if self.genome_include_genomic_annotation {
+                GenomeAnnotationScope::Core
+            } else {
+                GenomeAnnotationScope::None
+            }),
+            max_annotation_features: None,
+            include_genomic_annotation: Some(self.genome_include_genomic_annotation),
             catalog_path,
             cache_dir: self.genome_cache_dir_opt(),
         };
@@ -7121,12 +7252,7 @@ Error: `{err}`"
                 for seq_id in &r.created_seq_ids {
                     self.open_sequence_window(seq_id);
                 }
-                self.genome_retrieve_status = Self::format_op_result_status(
-                    "Extract region: ok",
-                    &r.created_seq_ids,
-                    &r.warnings,
-                    &r.messages,
-                );
+                self.genome_retrieve_status = Self::format_extract_region_status(&r);
             }
             Err(e) => {
                 self.genome_retrieve_status = format!("Extract region failed: {}", e.message);
@@ -7140,6 +7266,38 @@ Error: `{err}`"
             None
         } else {
             Some(trimmed.to_string())
+        }
+    }
+
+    fn fetch_genbank_accession_from_dialog(&mut self) {
+        let accession = self.genbank_accession.trim().to_string();
+        if accession.is_empty() {
+            self.genbank_status = "GenBank accession cannot be empty".to_string();
+            return;
+        }
+        let op = Operation::FetchGenBankAccession {
+            accession: accession.clone(),
+            as_id: Self::uniprot_optional_trimmed(&self.genbank_as_id),
+        };
+        let result = { self.engine.write().unwrap().apply(op) };
+        match result {
+            Ok(result) => {
+                for seq_id in &result.created_seq_ids {
+                    self.open_sequence_window(seq_id);
+                }
+                if self.genbank_as_id.trim().is_empty() {
+                    self.genbank_as_id = accession;
+                }
+                self.genbank_status = Self::format_op_result_status(
+                    "GenBank fetch: ok",
+                    &result.created_seq_ids,
+                    &result.warnings,
+                    &result.messages,
+                );
+            }
+            Err(err) => {
+                self.genbank_status = format!("GenBank fetch failed: {}", err.message);
+            }
         }
     }
 
@@ -7292,6 +7450,72 @@ Error: `{err}`"
                 self.uniprot_status = format!("UniProt use failed: {}", err.message);
             }
         }
+    }
+
+    fn render_genbank_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_genbank_dialog {
+            return;
+        }
+        let mut open = self.show_genbank_dialog;
+        let mut close_requested = false;
+        egui::Window::new("GenBank Accession Fetch")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(760.0, 240.0))
+            .min_size(Vec2::new(640.0, 220.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Help")
+                        .on_hover_text("Open GUI help and bring it to the front")
+                        .clicked()
+                    {
+                        self.open_help_doc(HelpDoc::Gui);
+                    }
+                    if ui
+                        .button("Close")
+                        .on_hover_text("Close this GenBank window (Cmd/Ctrl+W)")
+                        .clicked()
+                    {
+                        close_requested = true;
+                    }
+                });
+                ui.separator();
+                ui.label(
+                    "Fetch one GenBank accession through NCBI EFetch and import it as a project sequence.",
+                );
+                ui.horizontal(|ui| {
+                    ui.label("accession");
+                    ui.text_edit_singleline(&mut self.genbank_accession)
+                        .on_hover_text("GenBank accession (for example AY738222 or NC_000001)");
+                    if ui
+                        .button("Fetch")
+                        .on_hover_text("Fetch accession and import sequence into the project")
+                        .clicked()
+                    {
+                        self.fetch_genbank_accession_from_dialog();
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("as_id");
+                    ui.text_edit_singleline(&mut self.genbank_as_id).on_hover_text(
+                        "Optional project sequence id override (auto-uses accession when empty)",
+                    );
+                });
+                ui.small("Examples: AY738222, NC_000001");
+                if !self.genbank_status.trim().is_empty() {
+                    ui.separator();
+                    ui.monospace(self.genbank_status.clone());
+                }
+            });
+        if close_requested {
+            open = false;
+        }
+        if Self::viewport_close_requested_or_shortcut(ctx) {
+            open = false;
+        }
+        self.show_genbank_dialog = open;
     }
 
     fn render_uniprot_dialog(&mut self, ctx: &egui::Context) {
@@ -7992,6 +8216,13 @@ Error: `{err}`"
                     ui.horizontal(|ui| {
                         ui.label("output_id");
                         ui.text_edit_singleline(&mut self.genome_output_id);
+                        ui.checkbox(
+                            &mut self.genome_include_genomic_annotation,
+                            "include genomic annotation",
+                        )
+                        .on_hover_text(
+                            "Attach overlapping annotation when extracting an explicit region",
+                        );
                         if ui
                             .add_enabled(
                                 self.genome_selected_gene.is_some(),
@@ -11432,6 +11663,14 @@ Error: `{err}`"
                 detail: "UniProt entry fetch/import/projection tools".to_string(),
             });
         }
+        if self.show_genbank_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::genbank_viewport_id()),
+                viewport_id: Self::genbank_viewport_id(),
+                title: "GenBank Accession Fetch".to_string(),
+                detail: "GenBank accession fetch/import tool".to_string(),
+            });
+        }
 
         let mut sequence_windows = self
             .windows
@@ -11476,6 +11715,8 @@ Error: `{err}`"
             self.show_agent_assistant_dialog = true;
         } else if viewport_id == Self::uniprot_viewport_id() {
             self.show_uniprot_dialog = true;
+        } else if viewport_id == Self::genbank_viewport_id() {
+            self.show_genbank_dialog = true;
         }
 
         ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Visible(true));
@@ -11682,6 +11923,14 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_uniprot_dialog();
+                    ui.close_menu();
+                }
+                if ui
+                    .button("Fetch GenBank Accession...")
+                    .on_hover_text("Fetch one GenBank accession and import it as a sequence")
+                    .clicked()
+                {
+                    self.open_genbank_dialog();
                     ui.close_menu();
                 }
                 ui.separator();
@@ -18098,15 +18347,27 @@ Error: `{err}`"
                 start_1based,
                 end_1based,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             } => format!(
-                "Extract genome region: genome_id={}, chromosome={}, start={}, end={}, output_id={}, catalog_path={}, cache_dir={}",
+                "Extract genome region: genome_id={}, chromosome={}, start={}, end={}, output_id={}, annotation_scope={}, max_annotation_features={}, include_genomic_annotation={}, catalog_path={}, cache_dir={}",
                 genome_id,
                 chromosome,
                 start_1based,
                 end_1based,
                 output_id.clone().unwrap_or_else(|| "-".to_string()),
+                annotation_scope
+                    .map(|scope| scope.as_str().to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                max_annotation_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                include_genomic_annotation
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
                 catalog_path.clone().unwrap_or_else(|| "-".to_string()),
                 cache_dir.clone().unwrap_or_else(|| "-".to_string())
             ),
@@ -18263,6 +18524,7 @@ impl eframe::App for GENtleApp {
             self.consume_active_viewport_report();
             if ctx.input(|i| i.viewport().focused.unwrap_or(false)) {
                 self.set_active_window_viewport(ViewportId::ROOT);
+                self.finalize_viewport_focus_probe(ViewportId::ROOT);
             }
             self.hover_status_name.clear();
             let project_dirty = self.is_project_dirty();
@@ -18390,6 +18652,7 @@ impl eframe::App for GENtleApp {
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
             self.render_uniprot_dialog(ctx);
+            self.render_genbank_dialog(ctx);
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
@@ -18448,8 +18711,8 @@ mod tests {
         CloningRoutineCatalogRow, CommandPaletteAction, ConfigurationTab, EngineError, ErrorCode,
         GENtleApp, GenomeBlastOptionsPreset, GenomeBlastTask, GenomeBlastTaskMessage,
         GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackImportTask,
-        GenomeTrackImportTaskMessage, HelpDoc, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-        PersistedConfiguration, PersistedLineageNodeGroup,
+        GenomeTrackImportTaskMessage, HelpDoc, HelpSearchMatch, LineageNodeKind, LineageRow,
+        MAX_RECENT_PROJECTS, PersistedConfiguration, PersistedLineageNodeGroup,
     };
     use crate::{
         dna_sequence::DNAsequence,
@@ -18463,6 +18726,7 @@ mod tests {
     use eframe::egui;
     use std::{
         collections::{HashMap, HashSet},
+        env,
         fs,
         sync::{
             Arc, RwLock,
@@ -18496,6 +18760,34 @@ mod tests {
             );
         }
         app
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = env::var(key).ok();
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe {
+                    env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    env::remove_var(self.key);
+                },
+            }
+        }
     }
 
     #[test]
@@ -18611,6 +18903,27 @@ mod tests {
     }
 
     #[test]
+    fn open_help_doc_when_same_tab_open_only_queues_focus() {
+        let mut app = GENtleApp::default();
+        app.show_help_dialog = true;
+        app.help_doc = HelpDoc::Gui;
+        app.help_search_query = "persist".to_string();
+        app.help_search_matches = vec![HelpSearchMatch {
+            line_number: 7,
+            snippet: "keep existing matches".to_string(),
+        }];
+
+        app.open_help_doc(HelpDoc::Gui);
+
+        assert_eq!(app.help_search_matches.len(), 1);
+        assert_eq!(app.help_search_matches[0].line_number, 7);
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::help_viewport_id())
+        );
+    }
+
+    #[test]
     fn command_palette_includes_routine_assistant_entry() {
         let app = GENtleApp::default();
         let entries = app.collect_command_palette_entries();
@@ -18646,6 +18959,17 @@ mod tests {
 
         app.finalize_viewport_open_probe(viewport_id, "Help");
         assert!(!app.native_window_menu_sync_blocked_by_open_probe());
+    }
+
+    #[test]
+    fn queue_focus_viewport_records_and_finalizes_focus_probe() {
+        let mut app = GENtleApp::default();
+        let viewport_id = GENtleApp::help_viewport_id();
+        app.queue_focus_viewport(viewport_id);
+        assert!(app.pending_viewport_focus_timestamps.contains_key(&viewport_id));
+
+        app.finalize_viewport_focus_probe(viewport_id);
+        assert!(!app.pending_viewport_focus_timestamps.contains_key(&viewport_id));
     }
 
     #[test]
@@ -19014,6 +19338,37 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn genbank_dialog_fetch_imports_sequence_and_opens_window() {
+        let _lock = crate::genomes::genbank_env_lock().lock().unwrap();
+        let mut app = GENtleApp::default();
+        let temp = tempdir().expect("tempdir");
+        let mock_dir = temp.path().join("mock");
+        fs::create_dir_all(&mock_dir).expect("mock dir");
+        fs::copy("test_files/tp73.ncbi.gb", mock_dir.join("NC_000001.gbwithparts"))
+            .expect("copy genbank fixture");
+        let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
+        let _env_guard = EnvVarGuard::set("GENTLE_NCBI_EFETCH_URL", &efetch_template);
+
+        app.genbank_accession = "NC_000001".to_string();
+        app.genbank_as_id = "tp73_gui_fetch".to_string();
+        app.fetch_genbank_accession_from_dialog();
+
+        let state = app.engine.read().unwrap().state().clone();
+        assert!(state.sequences.contains_key("tp73_gui_fetch"));
+        assert_eq!(
+            app.new_windows
+                .first()
+                .and_then(|window| window.sequence_id()),
+            Some("tp73_gui_fetch".to_string())
+        );
+        assert!(
+            app.genbank_status.contains("GenBank fetch: ok"),
+            "status was: {}",
+            app.genbank_status
+        );
+    }
+
+    #[test]
     fn request_prepare_cancel_is_idempotent() {
         let mut app = GENtleApp::default();
         let (_tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
@@ -19149,6 +19504,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 changed_seq_ids: vec!["seq_b".to_string()],
                 warnings: vec![],
                 messages: vec!["Imported 5 BED feature(s)".to_string()],
+                genome_annotation_projection: None,
             }),
         })
         .expect("send track import done");
@@ -19182,6 +19538,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 changed_seq_ids: vec![],
                 warnings: vec![],
                 messages: vec!["Imported 5 BED feature(s)".to_string()],
+                genome_annotation_projection: None,
             }),
         })
         .expect("send track import done");

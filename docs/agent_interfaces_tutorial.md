@@ -1,6 +1,6 @@
 # GENtle Agent Interfaces Tutorial
 
-Last updated: 2026-03-04
+Last updated: 2026-03-07
 
 This is a self-standing tutorial for using GENtle with AI/agent systems.
 
@@ -168,6 +168,28 @@ Alternative route for tool-calling stacks:
   `tools/list`/`tools/call`.
 - If it does not support MCP tools, use chat/planning mode and have it emit
   explicit `gentle_cli` commands for you to run.
+
+## 4b) ClawBio/OpenClaw skill runtime
+
+ClawBio/OpenClaw can run GENtle through a dedicated wrapper skill scaffold:
+
+- `integrations/clawbio/skills/gentle-cloning/`
+
+Execution model:
+
+1. ClawBio skill receives a structured request JSON.
+2. Wrapper maps request mode to one deterministic `gentle_cli` command.
+3. Wrapper executes command (with timeout) and writes reproducibility bundle.
+
+This differs from MCP:
+
+- MCP exposes GENtle tools directly over JSON-RPC.
+- ClawBio skill wraps CLI process execution and report packaging.
+
+This differs from `agents ask`:
+
+- `agents ask` is conversational planning/suggestion inside GENtle.
+- ClawBio skill is command-runner style integration for external orchestration.
 
 ## 5) Fast comparison matrix
 

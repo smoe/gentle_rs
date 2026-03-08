@@ -15,6 +15,7 @@ pub const WORKFLOW_EXAMPLE_SCHEMA: &str = "gentle.workflow_example.v1";
 pub const DEFAULT_WORKFLOW_EXAMPLE_DIR: &str = "docs/examples/workflows";
 pub const DEFAULT_WORKFLOW_SNIPPET_DIR: &str = "docs/examples/generated";
 pub const ONLINE_EXAMPLE_TEST_ENV: &str = "GENTLE_TEST_ONLINE";
+pub const SKIP_REMOTE_TESTS_ENV: &str = "GENTLE_SKIP_REMOTE_TESTS";
 pub const TUTORIAL_MANIFEST_SCHEMA: &str = "gentle.tutorial_manifest.v1";
 pub const TUTORIAL_GENERATION_REPORT_SCHEMA: &str = "gentle.tutorial_generation_report.v1";
 pub const DEFAULT_TUTORIAL_MANIFEST_PATH: &str = "docs/tutorial/manifest.json";
@@ -330,12 +331,16 @@ pub fn validate_example_required_files(
     Ok(())
 }
 
-pub fn online_example_tests_enabled() -> bool {
-    let raw = env::var(ONLINE_EXAMPLE_TEST_ENV).unwrap_or_default();
+fn bool_env_enabled(key: &str) -> bool {
+    let raw = env::var(key).unwrap_or_default();
     matches!(
         raw.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
+}
+
+pub fn online_example_tests_enabled() -> bool {
+    bool_env_enabled(ONLINE_EXAMPLE_TEST_ENV) && !bool_env_enabled(SKIP_REMOTE_TESTS_ENV)
 }
 
 pub fn run_example_workflow(example: &WorkflowExample) -> Result<(), String> {
@@ -1674,6 +1679,35 @@ pub fn generate_workflow_example_docs(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            // SAFETY: Test-only mutation is serialized by TEST_ENV_LOCK.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.previous {
+                // SAFETY: Test-only mutation is serialized by TEST_ENV_LOCK.
+                unsafe { std::env::set_var(self.key, value) };
+            } else {
+                // SAFETY: Test-only mutation is serialized by TEST_ENV_LOCK.
+                unsafe { std::env::remove_var(self.key) };
+            }
+        }
+    }
 
     fn example_dir() -> PathBuf {
         PathBuf::from(DEFAULT_WORKFLOW_EXAMPLE_DIR)
@@ -1730,6 +1764,17 @@ mod tests {
                 .expect("required files must be present");
             run_example_workflow(&loaded.example).expect("online example should execute");
         }
+    }
+
+    #[test]
+    fn online_example_tests_skip_remote_override_wins() {
+        let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
+        let _online = EnvVarGuard::set(ONLINE_EXAMPLE_TEST_ENV, "1");
+        let _skip = EnvVarGuard::set(SKIP_REMOTE_TESTS_ENV, "1");
+        assert!(
+            !online_example_tests_enabled(),
+            "GENTLE_SKIP_REMOTE_TESTS=1 should disable online tests even when GENTLE_TEST_ONLINE=1"
+        );
     }
 
     #[test]

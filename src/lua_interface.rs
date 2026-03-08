@@ -3,7 +3,8 @@
 use crate::app::GENtleApp;
 use crate::dna_sequence::DNAsequence;
 use crate::engine::{
-    Engine, FeatureExpertTarget, GenomeAnchorSide, GentleEngine, Operation, ProjectState, Workflow,
+    Engine, FeatureExpertTarget, GenomeAnchorSide, GenomeAnnotationScope, GentleEngine, Operation,
+    ProjectState, Workflow,
 };
 use crate::engine_shell::{ShellCommand, execute_shell_command};
 use crate::enzymes::active_restriction_enzymes;
@@ -117,7 +118,7 @@ impl LuaInterface {
             "  - prepare_genome(project, genome_id, [catalog_path], [cache_dir]): Engine op helper"
         );
         println!(
-            "  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir]): Engine op helper"
+            "  - extract_genome_region(project, genome_id, chr, start, end, [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features]): Engine op helper"
         );
         println!(
             "  - extract_genome_gene(project, genome_id, gene_query, [occurrence], [output_id], [catalog_path], [cache_dir]): Engine op helper"
@@ -961,6 +962,8 @@ impl LuaInterface {
                     output_id,
                     catalog_path,
                     cache_dir,
+                    annotation_scope,
+                    max_annotation_features,
                 ): (
                     Value,
                     String,
@@ -970,10 +973,27 @@ impl LuaInterface {
                     Option<String>,
                     Option<String>,
                     Option<String>,
+                    Option<String>,
+                    Option<usize>,
                 )| {
                     let state: ProjectState = lua
                         .from_value(state)
                         .map_err(|e| Self::err(&format!("Invalid project value: {e}")))?;
+                    let parsed_scope = match annotation_scope
+                        .as_deref()
+                        .map(|value| value.trim().to_ascii_lowercase())
+                    {
+                        None => None,
+                        Some(value) if value.is_empty() => None,
+                        Some(value) if value == "none" => Some(GenomeAnnotationScope::None),
+                        Some(value) if value == "core" => Some(GenomeAnnotationScope::Core),
+                        Some(value) if value == "full" => Some(GenomeAnnotationScope::Full),
+                        Some(other) => {
+                            return Err(Self::err(&format!(
+                                "Invalid annotation_scope '{other}' (expected none|core|full)"
+                            )));
+                        }
+                    };
                     let mut engine = GentleEngine::from_state(state);
                     let result = engine
                         .apply(Operation::ExtractGenomeRegion {
@@ -982,6 +1002,9 @@ impl LuaInterface {
                             start_1based,
                             end_1based,
                             output_id,
+                            annotation_scope: parsed_scope,
+                            max_annotation_features,
+                            include_genomic_annotation: None,
                             catalog_path,
                             cache_dir,
                         })

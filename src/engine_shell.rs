@@ -30,8 +30,9 @@ use crate::{
         CANDIDATE_MACRO_TEMPLATES_METADATA_KEY, CandidateFeatureBoundaryMode,
         CandidateFeatureGeometryMode, CandidateFeatureStrandRelation, CandidateMacroTemplateParam,
         CandidateObjectiveDirection, CandidateObjectiveSpec, CandidateTieBreakPolicy,
-        CandidateWeightedObjectiveTerm, Engine, FeatureExpertTarget, FeatureExpertView,
-        GUIDE_DESIGN_METADATA_KEY, GenomeAnchorSide, GenomeTrackSource, GenomeTrackSubscription,
+        CandidateWeightedObjectiveTerm, DOTPLOT_ANALYSIS_METADATA_KEY, DotplotMode, Engine,
+        FeatureExpertTarget, FeatureExpertView, FlexibilityModel, GUIDE_DESIGN_METADATA_KEY,
+        GenomeAnchorSide, GenomeAnnotationScope, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
         MacroInstanceStatus, Operation, PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend,
@@ -64,8 +65,6 @@ use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-#[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
-use std::path::Path;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
 #[cfg(test)]
@@ -470,6 +469,10 @@ pub enum ShellCommand {
         query: String,
         entry_id: Option<String>,
     },
+    GenbankFetch {
+        accession: String,
+        as_id: Option<String>,
+    },
     UniprotImportSwissProt {
         path: String,
         entry_id: Option<String>,
@@ -643,6 +646,9 @@ pub enum ShellCommand {
         start_1based: usize,
         end_1based: usize,
         output_id: Option<String>,
+        annotation_scope: Option<GenomeAnnotationScope>,
+        max_annotation_features: Option<usize>,
+        include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
@@ -976,6 +982,38 @@ pub enum ShellCommand {
     PrimersExportQpcrReport {
         report_id: String,
         path: String,
+    },
+    DotplotCompute {
+        seq_id: String,
+        span_start_0based: Option<usize>,
+        span_end_0based: Option<usize>,
+        mode: DotplotMode,
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        tile_bp: Option<usize>,
+        dotplot_id: Option<String>,
+    },
+    DotplotList {
+        seq_id: Option<String>,
+    },
+    DotplotShow {
+        dotplot_id: String,
+    },
+    FlexCompute {
+        seq_id: String,
+        span_start_0based: Option<usize>,
+        span_end_0based: Option<usize>,
+        model: FlexibilityModel,
+        bin_bp: usize,
+        smoothing_bp: Option<usize>,
+        track_id: Option<String>,
+    },
+    FlexList {
+        seq_id: Option<String>,
+    },
+    FlexShow {
+        track_id: String,
     },
     SetParameter {
         name: String,
@@ -3666,6 +3704,14 @@ impl ShellCommand {
                     .filter(|v| !v.trim().is_empty())
                     .unwrap_or("auto")
             ),
+            Self::GenbankFetch { accession, as_id } => format!(
+                "fetch GenBank accession '{}' (as_id={})",
+                accession,
+                as_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
             Self::UniprotImportSwissProt { path, entry_id } => format!(
                 "import UniProt SWISS-PROT text from '{}' (entry_id={})",
                 path,
@@ -4092,6 +4138,9 @@ impl ShellCommand {
                 start_1based,
                 end_1based,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             } => {
@@ -4101,8 +4150,26 @@ impl ShellCommand {
                     .unwrap_or_else(|| default_catalog_path(*helper_mode).to_string());
                 let cache = cache_dir.clone().unwrap_or_else(|| "-".to_string());
                 let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                let scope = annotation_scope
+                    .map(|value| value.as_str().to_string())
+                    .or_else(|| {
+                        include_genomic_annotation.map(|v| {
+                            if v {
+                                "core(legacy-flag)".to_string()
+                            } else {
+                                "none(legacy-flag)".to_string()
+                            }
+                        })
+                    })
+                    .unwrap_or_else(|| "core(default)".to_string());
+                let max_features = max_annotation_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let include_annotation = include_genomic_annotation
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "extract {label} region {genome_id}:{chromosome}:{start_1based}-{end_1based} (output='{output}', catalog='{catalog}', cache='{cache}')"
+                    "extract {label} region {genome_id}:{chromosome}:{start_1based}-{end_1based} (output='{output}', annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferenceExtractGene {
@@ -4912,6 +4979,80 @@ impl ShellCommand {
                 "export stored qPCR-design report '{}' to '{}'",
                 report_id, path
             ),
+            Self::DotplotCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+            } => format!(
+                "compute dotplot for '{}' (span={}..{}, mode={}, word_size={}, step_bp={}, max_mismatches={}, tile_bp={}, id='{}')",
+                seq_id,
+                span_start_0based.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                span_end_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "seq_end".to_string()),
+                mode.as_str(),
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                dotplot_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::DotplotList { seq_id } => format!(
+                "list stored dotplot views{}",
+                seq_id
+                    .as_deref()
+                    .map(|id| format!(" for '{}'", id))
+                    .unwrap_or_default()
+            ),
+            Self::DotplotShow { dotplot_id } => {
+                format!("show stored dotplot view '{}'", dotplot_id)
+            }
+            Self::FlexCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                model,
+                bin_bp,
+                smoothing_bp,
+                track_id,
+            } => format!(
+                "compute flexibility track for '{}' (span={}..{}, model={}, bin_bp={}, smoothing_bp={}, id='{}')",
+                seq_id,
+                span_start_0based.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                span_end_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "seq_end".to_string()),
+                model.as_str(),
+                bin_bp,
+                smoothing_bp
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                track_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::FlexList { seq_id } => format!(
+                "list stored flexibility tracks{}",
+                seq_id
+                    .as_deref()
+                    .map(|id| format!(" for '{}'", id))
+                    .unwrap_or_default()
+            ),
+            Self::FlexShow { track_id } => {
+                format!("show stored flexibility track '{}'", track_id)
+            }
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "genome_anchor_prepared_fallback_policy"
                 | "genome_anchor_fallback_mode"
@@ -5005,6 +5146,7 @@ impl ShellCommand {
                 | Self::TracksTrackedClear
                 | Self::TracksTrackedApply { .. }
                 | Self::UniprotFetch { .. }
+                | Self::GenbankFetch { .. }
                 | Self::UniprotImportSwissProt { .. }
                 | Self::UniprotMap { .. }
                 | Self::MacrosRun { .. }
@@ -5034,6 +5176,8 @@ impl ShellCommand {
                 | Self::GuidesProtocolExport { .. }
                 | Self::PrimersDesign { .. }
                 | Self::PrimersDesignQpcr { .. }
+                | Self::DotplotCompute { .. }
+                | Self::FlexCompute { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -6487,7 +6631,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "extract-region" => {
             if tokens.len() < 6 {
                 return Err(format!(
-                    "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
@@ -6499,6 +6643,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 .parse::<usize>()
                 .map_err(|e| format!("Invalid END coordinate '{}': {e}", tokens[5]))?;
             let mut output_id: Option<String> = None;
+            let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+            let mut max_annotation_features: Option<usize> = None;
+            let mut include_genomic_annotation: Option<bool> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
             let mut idx = 6usize;
@@ -6514,11 +6661,65 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     "--cache-dir" => {
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
+                    "--annotation-scope" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
+                        let scope = match raw.trim().to_ascii_lowercase().as_str() {
+                            "none" => GenomeAnnotationScope::None,
+                            "core" => GenomeAnnotationScope::Core,
+                            "full" => GenomeAnnotationScope::Full,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --annotation-scope value '{other}' for {label} extract-region (expected none|core|full)"
+                                ));
+                            }
+                        };
+                        annotation_scope = Some(scope);
+                    }
+                    "--max-annotation-features" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-annotation-features",
+                            label,
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-annotation-features value '{raw}' for {label} extract-region: {e}"
+                            )
+                        })?;
+                        max_annotation_features = Some(parsed);
+                    }
+                    "--include-genomic-annotation" => {
+                        include_genomic_annotation = Some(true);
+                        idx += 1;
+                    }
+                    "--no-include-genomic-annotation" => {
+                        include_genomic_annotation = Some(false);
+                        idx += 1;
+                    }
                     other => {
                         return Err(format!(
                             "Unknown option '{other}' for {label} extract-region"
                         ));
                     }
+                }
+            }
+            if let Some(include) = include_genomic_annotation {
+                let mapped_scope = if include {
+                    GenomeAnnotationScope::Core
+                } else {
+                    GenomeAnnotationScope::None
+                };
+                if let Some(explicit_scope) = annotation_scope {
+                    if explicit_scope != mapped_scope {
+                        return Err(format!(
+                            "Conflicting annotation options for {label} extract-region: --annotation-scope={} with legacy include/no-include flag",
+                            explicit_scope.as_str()
+                        ));
+                    }
+                } else {
+                    annotation_scope = Some(mapped_scope);
                 }
             }
             Ok(ShellCommand::ReferenceExtractRegion {
@@ -6528,6 +6729,9 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                 start_1based,
                 end_1based,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             })
@@ -6798,6 +7002,42 @@ fn parse_panels_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         other => Err(format!(
             "Unknown panels subcommand '{other}' (expected import-isoform, inspect-isoform, render-isoform-svg, validate-isoform)"
+        )),
+    }
+}
+
+fn parse_genbank_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("genbank requires a subcommand: fetch".to_string());
+    }
+    match tokens[1].as_str() {
+        "fetch" => {
+            if tokens.len() < 3 {
+                return Err("genbank fetch requires ACCESSION [--as-id ID]".to_string());
+            }
+            let accession = tokens[2].trim().to_string();
+            if accession.is_empty() {
+                return Err("genbank fetch ACCESSION must not be empty".to_string());
+            }
+            let mut as_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--as-id" => {
+                        as_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--as-id",
+                            "genbank fetch",
+                        )?);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for genbank fetch")),
+                }
+            }
+            Ok(ShellCommand::GenbankFetch { accession, as_id })
+        }
+        other => Err(format!(
+            "Unknown genbank subcommand '{other}' (expected fetch)"
         )),
     }
 }
@@ -8513,6 +8753,282 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     }
 }
 
+fn parse_dotplot_mode(raw: &str) -> Result<DotplotMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "self_forward" | "self-forward" | "forward" | "self" => Ok(DotplotMode::SelfForward),
+        "self_reverse_complement" | "self-reverse-complement" | "self_revcomp"
+        | "self-revcomp" | "revcomp" | "reverse_complement" | "reverse-complement" => {
+            Ok(DotplotMode::SelfReverseComplement)
+        }
+        other => Err(format!(
+            "Unsupported dotplot mode '{other}', expected self_forward or self_reverse_complement"
+        )),
+    }
+}
+
+fn parse_flexibility_model(raw: &str) -> Result<FlexibilityModel, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "at_richness" | "at-richness" | "at" | "at_content" | "at-content" => {
+            Ok(FlexibilityModel::AtRichness)
+        }
+        "at_skew" | "at-skew" | "skew" => Ok(FlexibilityModel::AtSkew),
+        other => Err(format!(
+            "Unsupported flexibility model '{other}', expected at_richness or at_skew"
+        )),
+    }
+}
+
+fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("dotplot requires a subcommand: compute, list, show".to_string());
+    }
+    match tokens[1].as_str() {
+        "compute" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "dotplot compute requires SEQ_ID [--start N] [--end N] [--mode MODE] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("dotplot compute SEQ_ID must not be empty".to_string());
+            }
+            let mut span_start_0based: Option<usize> = None;
+            let mut span_end_0based: Option<usize> = None;
+            let mut mode = DotplotMode::SelfForward;
+            let mut word_size = 12usize;
+            let mut step_bp = 2usize;
+            let mut max_mismatches = 0usize;
+            let mut tile_bp: Option<usize> = None;
+            let mut dotplot_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--start", "dotplot compute")?;
+                        span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --start value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--end" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--end", "dotplot compute")?;
+                        span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --end value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--mode" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--mode", "dotplot compute")?;
+                        mode = parse_dotplot_mode(&raw)?;
+                    }
+                    "--word-size" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--word-size",
+                            "dotplot compute",
+                        )?;
+                        word_size = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --word-size value '{raw}' for dotplot compute: {e}")
+                        })?;
+                    }
+                    "--step" | "--step-bp" => {
+                        let flag = tokens[idx].clone();
+                        let raw =
+                            parse_option_path(tokens, &mut idx, &flag, "dotplot compute")?;
+                        step_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid {flag} value '{raw}' for dotplot compute: {e}")
+                        })?;
+                    }
+                    "--max-mismatches" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-mismatches",
+                            "dotplot compute",
+                        )?;
+                        max_mismatches = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-mismatches value '{raw}' for dotplot compute: {e}"
+                            )
+                        })?;
+                    }
+                    "--tile-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tile-bp",
+                            "dotplot compute",
+                        )?;
+                        tile_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --tile-bp value '{raw}' for dotplot compute: {e}")
+                        })?);
+                    }
+                    "--id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--id", "dotplot compute")?;
+                        dotplot_id = Some(raw);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for dotplot compute"));
+                    }
+                }
+            }
+            Ok(ShellCommand::DotplotCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+            })
+        }
+        "list" => {
+            if tokens.len() > 3 {
+                return Err("dotplot list expects at most one optional SEQ_ID".to_string());
+            }
+            let seq_id = if tokens.len() == 3 {
+                let value = tokens[2].trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::DotplotList { seq_id })
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("dotplot show requires DOTPLOT_ID".to_string());
+            }
+            Ok(ShellCommand::DotplotShow {
+                dotplot_id: tokens[2].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown dotplot subcommand '{other}' (expected compute, list, show)"
+        )),
+    }
+}
+
+fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err("flex requires a subcommand: compute, list, show".to_string());
+    }
+    match tokens[1].as_str() {
+        "compute" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "flex compute requires SEQ_ID [--start N] [--end N] [--model MODEL] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("flex compute SEQ_ID must not be empty".to_string());
+            }
+            let mut span_start_0based: Option<usize> = None;
+            let mut span_end_0based: Option<usize> = None;
+            let mut model = FlexibilityModel::AtRichness;
+            let mut bin_bp = 25usize;
+            let mut smoothing_bp: Option<usize> = None;
+            let mut track_id: Option<String> = None;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--start" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--start", "flex compute")?;
+                        span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --start value '{raw}' for flex compute: {e}")
+                        })?);
+                    }
+                    "--end" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--end", "flex compute")?;
+                        span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --end value '{raw}' for flex compute: {e}")
+                        })?);
+                    }
+                    "--model" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--model", "flex compute")?;
+                        model = parse_flexibility_model(&raw)?;
+                    }
+                    "--bin-bp" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--bin-bp", "flex compute")?;
+                        bin_bp = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --bin-bp value '{raw}' for flex compute: {e}")
+                        })?;
+                    }
+                    "--smoothing-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--smoothing-bp",
+                            "flex compute",
+                        )?;
+                        smoothing_bp = Some(raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --smoothing-bp value '{raw}' for flex compute: {e}"
+                            )
+                        })?);
+                    }
+                    "--id" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--id", "flex compute")?;
+                        track_id = Some(raw);
+                    }
+                    other => return Err(format!("Unknown option '{other}' for flex compute")),
+                }
+            }
+            Ok(ShellCommand::FlexCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                model,
+                bin_bp,
+                smoothing_bp,
+                track_id,
+            })
+        }
+        "list" => {
+            if tokens.len() > 3 {
+                return Err("flex list expects at most one optional SEQ_ID".to_string());
+            }
+            let seq_id = if tokens.len() == 3 {
+                let value = tokens[2].trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::FlexList { seq_id })
+        }
+        "show" => {
+            if tokens.len() != 3 {
+                return Err("flex show requires TRACK_ID".to_string());
+            }
+            Ok(ShellCommand::FlexShow {
+                track_id: tokens[2].clone(),
+            })
+        }
+        other => Err(format!(
+            "Unknown flex subcommand '{other}' (expected compute, list, show)"
+        )),
+    }
+}
+
 fn parse_macros_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -9733,6 +10249,8 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
                 prefix: tokens.get(2).cloned().unwrap_or_else(|| "pool".to_string()),
             })
         }
+        "dotplot" => parse_dotplot_command(tokens),
+        "flex" => parse_flex_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
@@ -10214,6 +10732,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "genomes" => parse_reference_command(tokens, false),
         "helpers" => parse_reference_command(tokens, true),
         "panels" => parse_panels_command(tokens),
+        "genbank" => parse_genbank_command(tokens),
         "uniprot" => parse_uniprot_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
@@ -11020,6 +11539,18 @@ pub fn execute_shell_command_with_options(
                 state_changed: false,
                 output: serde_json::to_value(report)
                     .map_err(|e| format!("Could not serialize isoform validation report: {e}"))?,
+            }
+        }
+        ShellCommand::GenbankFetch { accession, as_id } => {
+            let op_result = engine
+                .apply(Operation::FetchGenBankAccession {
+                    accession: accession.clone(),
+                    as_id: as_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: true,
+                output: json!({ "result": op_result }),
             }
         }
         ShellCommand::UniprotFetch { query, entry_id } => {
@@ -12474,6 +13005,9 @@ pub fn execute_shell_command_with_options(
             start_1based,
             end_1based,
             output_id,
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
             catalog_path,
             cache_dir,
         } => {
@@ -12484,6 +13018,9 @@ pub fn execute_shell_command_with_options(
                     start_1based: *start_1based,
                     end_1based: *end_1based,
                     output_id: output_id.clone(),
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    include_genomic_annotation: *include_genomic_annotation,
                     catalog_path: operation_catalog_path(catalog_path, *helper_mode),
                     cache_dir: cache_dir.clone(),
                 })
@@ -14114,6 +14651,156 @@ pub fn execute_shell_command_with_options(
                     "report_id": report.report_id,
                     "path": path,
                     "assay_count": report.assay_count,
+                }),
+            }
+        }
+        ShellCommand::DotplotCompute {
+            seq_id,
+            span_start_0based,
+            span_end_0based,
+            mode,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            dotplot_id,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ComputeDotplot {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: *span_start_0based,
+                    span_end_0based: *span_end_0based,
+                    mode: *mode,
+                    word_size: *word_size,
+                    step_bp: *step_bp,
+                    max_mismatches: *max_mismatches,
+                    tile_bp: *tile_bp,
+                    store_as: dotplot_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let selected = if let Some(id) = dotplot_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_dotplot_view(id).ok()
+            } else {
+                engine
+                    .list_dotplot_views(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_dotplot_view(row.dotplot_id.as_str()).ok())
+            };
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "dotplot": selected,
+                }),
+            }
+        }
+        ShellCommand::DotplotList { seq_id } => {
+            let rows = engine.list_dotplot_views(seq_id.as_deref());
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.dotplot_view_list.v1",
+                    "dotplot_count": rows.len(),
+                    "dotplots": rows,
+                }),
+            }
+        }
+        ShellCommand::DotplotShow { dotplot_id } => {
+            let view = engine
+                .get_dotplot_view(dotplot_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "dotplot": view,
+                }),
+            }
+        }
+        ShellCommand::FlexCompute {
+            seq_id,
+            span_start_0based,
+            span_end_0based,
+            model,
+            bin_bp,
+            smoothing_bp,
+            track_id,
+        } => {
+            let before = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let op_result = engine
+                .apply(Operation::ComputeFlexibilityTrack {
+                    seq_id: seq_id.clone(),
+                    span_start_0based: *span_start_0based,
+                    span_end_0based: *span_end_0based,
+                    model: *model,
+                    bin_bp: *bin_bp,
+                    smoothing_bp: *smoothing_bp,
+                    store_as: track_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let after = engine
+                .state()
+                .metadata
+                .get(DOTPLOT_ANALYSIS_METADATA_KEY)
+                .cloned();
+            let selected = if let Some(id) = track_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_flexibility_track(id).ok()
+            } else {
+                engine
+                    .list_flexibility_tracks(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_flexibility_track(row.track_id.as_str()).ok())
+            };
+            ShellRunResult {
+                state_changed: before != after,
+                output: json!({
+                    "result": op_result,
+                    "track": selected,
+                }),
+            }
+        }
+        ShellCommand::FlexList { seq_id } => {
+            let rows = engine.list_flexibility_tracks(seq_id.as_deref());
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.flexibility_track_list.v1",
+                    "track_count": rows.len(),
+                    "tracks": rows,
+                }),
+            }
+        }
+        ShellCommand::FlexShow { track_id } => {
+            let track = engine
+                .get_flexibility_track(track_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "track": track,
                 }),
             }
         }
@@ -19299,6 +19986,70 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
     }
 
     #[test]
+    fn parse_genomes_extract_region_with_annotation_flag() {
+        let cmd = parse_shell_line(
+            "genomes extract-region ToyGenome chr1 100 250 --include-genomic-annotation --output-id out",
+        )
+        .expect("parse genomes extract-region with annotation flag");
+        match cmd {
+            ShellCommand::ReferenceExtractRegion {
+                helper_mode,
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                output_id,
+                annotation_scope,
+                include_genomic_annotation,
+                ..
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome".to_string());
+                assert_eq!(chromosome, "chr1".to_string());
+                assert_eq!(start_1based, 100);
+                assert_eq!(end_1based, 250);
+                assert_eq!(output_id, Some("out".to_string()));
+                assert_eq!(annotation_scope, Some(GenomeAnnotationScope::Core));
+                assert_eq!(include_genomic_annotation, Some(true));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_extract_region_with_scope_and_cap() {
+        let cmd = parse_shell_line(
+            "genomes extract-region ToyGenome chr1 100 250 --annotation-scope full --max-annotation-features 1200 --output-id out",
+        )
+        .expect("parse genomes extract-region with scope and cap");
+        match cmd {
+            ShellCommand::ReferenceExtractRegion {
+                helper_mode,
+                genome_id,
+                chromosome,
+                start_1based,
+                end_1based,
+                output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
+                ..
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome".to_string());
+                assert_eq!(chromosome, "chr1".to_string());
+                assert_eq!(start_1based, 100);
+                assert_eq!(end_1based, 250);
+                assert_eq!(output_id, Some("out".to_string()));
+                assert_eq!(annotation_scope, Some(GenomeAnnotationScope::Full));
+                assert_eq!(max_annotation_features, Some(1200));
+                assert_eq!(include_genomic_annotation, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_genomes_prepare_with_timeout() {
         let cmd = parse_shell_line(
             "genomes prepare ToyGenome --catalog c.json --cache-dir cache --timeout-secs 90",
@@ -19456,6 +20207,9 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path.clone()),
                 cache_dir: None,
             },
@@ -19495,6 +20249,91 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
             .get("slice_ext5")
             .expect("extended sequence in state");
         assert_eq!(seq.get_forward_string(), "ACGTACGTAC");
+    }
+
+    #[test]
+    fn execute_genomes_extract_region_default_scope_core_with_telemetry() {
+        let td = tempdir().expect("tempdir");
+        let fasta = td.path().join("toy.fa");
+        let gtf = td.path().join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGT\n").expect("write fasta");
+        fs::write(
+            &gtf,
+            concat!(
+                "chr1\tsrc\tgene\t1\t16\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+                "chr1\tsrc\ttranscript\t1\t16\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+            ),
+        )
+        .expect("write gtf");
+        let catalog = td.path().join("catalog.json");
+        let cache_dir = td.path().join("cache");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            gtf.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog, catalog_json).expect("write catalog");
+        let catalog_path = catalog.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::ReferencePrepare {
+                helper_mode: false,
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            },
+        )
+        .expect("prepare genome");
+
+        let command = parse_shell_line(&format!(
+            "genomes extract-region ToyGenome chr1 1 16 --output-id shell_slice_default --catalog {}",
+            catalog_path
+        ))
+        .expect("parse extract-region");
+        let out = execute_shell_command(&mut engine, &command).expect("execute extract-region");
+        assert!(out.state_changed);
+        let telemetry = out
+            .output
+            .get("result")
+            .and_then(|v| v.get("genome_annotation_projection"))
+            .and_then(|v| v.as_object())
+            .expect("annotation projection telemetry");
+        assert_eq!(
+            telemetry.get("requested_scope").and_then(|v| v.as_str()),
+            Some("core")
+        );
+        assert_eq!(
+            telemetry.get("effective_scope").and_then(|v| v.as_str()),
+            Some("core")
+        );
+        assert!(
+            telemetry
+                .get("attached_feature_count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                >= 2
+        );
+        let seq = engine
+            .state()
+            .sequences
+            .get("shell_slice_default")
+            .expect("sequence created by extract-region");
+        assert!(
+            seq.features()
+                .iter()
+                .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene"))
+        );
     }
 
     #[test]
@@ -19546,6 +20385,9 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path.clone()),
                 cache_dir: None,
             },
@@ -20034,6 +20876,16 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
 
     #[test]
     fn parse_uniprot_commands() {
+        let genbank = parse_shell_line("genbank fetch NC_000001 --as-id tp73_fetch")
+            .expect("parse genbank fetch");
+        match genbank {
+            ShellCommand::GenbankFetch { accession, as_id } => {
+                assert_eq!(accession, "NC_000001");
+                assert_eq!(as_id.as_deref(), Some("tp73_fetch"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
         let fetch = parse_shell_line("uniprot fetch P04637 --entry-id TP53_UNIPROT")
             .expect("parse uniprot fetch");
         match fetch {
@@ -20426,6 +21278,127 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             "RenderFeatureExpertSvg operation and shell routes must match for splicing"
         );
         assert!(op_text.contains("cell color intensity encodes exon support frequency"));
+    }
+
+    #[test]
+    fn parse_dotplot_and_flex_commands() {
+        let dotplot = parse_shell_line(
+            "dotplot compute seq_a --start 10 --end 110 --mode self_reverse_complement --word-size 8 --step 4 --max-mismatches 1 --tile-bp 256 --id promoter_dp",
+        )
+        .expect("parse dotplot compute");
+        match dotplot {
+            ShellCommand::DotplotCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                dotplot_id,
+            } => {
+                assert_eq!(seq_id, "seq_a");
+                assert_eq!(span_start_0based, Some(10));
+                assert_eq!(span_end_0based, Some(110));
+                assert_eq!(mode, DotplotMode::SelfReverseComplement);
+                assert_eq!(word_size, 8);
+                assert_eq!(step_bp, 4);
+                assert_eq!(max_mismatches, 1);
+                assert_eq!(tile_bp, Some(256));
+                assert_eq!(dotplot_id.as_deref(), Some("promoter_dp"));
+            }
+            other => panic!("expected DotplotCompute, got {other:?}"),
+        }
+
+        let flex = parse_shell_line(
+            "flex compute seq_a --start 25 --end 325 --model at_skew --bin-bp 20 --smoothing-bp 60 --id promoter_flex",
+        )
+        .expect("parse flex compute");
+        match flex {
+            ShellCommand::FlexCompute {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                model,
+                bin_bp,
+                smoothing_bp,
+                track_id,
+            } => {
+                assert_eq!(seq_id, "seq_a");
+                assert_eq!(span_start_0based, Some(25));
+                assert_eq!(span_end_0based, Some(325));
+                assert_eq!(model, FlexibilityModel::AtSkew);
+                assert_eq!(bin_bp, 20);
+                assert_eq!(smoothing_bp, Some(60));
+                assert_eq!(track_id.as_deref(), Some("promoter_flex"));
+            }
+            other => panic!("expected FlexCompute, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn execute_dotplot_and_flex_commands_store_payloads() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "seq_a".to_string(),
+            DNAsequence::from_sequence("ATGCATGCATGCATGCATGCATGC").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+
+        let dotplot = execute_shell_command(
+            &mut engine,
+            &ShellCommand::DotplotCompute {
+                seq_id: "seq_a".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based: Some(24),
+                mode: DotplotMode::SelfForward,
+                word_size: 4,
+                step_bp: 2,
+                max_mismatches: 0,
+                tile_bp: None,
+                dotplot_id: Some("dp_1".to_string()),
+            },
+        )
+        .expect("execute dotplot compute");
+        assert!(dotplot.state_changed);
+        assert_eq!(
+            dotplot.output["dotplot"]["dotplot_id"].as_str(),
+            Some("dp_1")
+        );
+
+        let flex = execute_shell_command(
+            &mut engine,
+            &ShellCommand::FlexCompute {
+                seq_id: "seq_a".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based: Some(24),
+                model: FlexibilityModel::AtRichness,
+                bin_bp: 6,
+                smoothing_bp: Some(12),
+                track_id: Some("flex_1".to_string()),
+            },
+        )
+        .expect("execute flex compute");
+        assert!(flex.state_changed);
+        assert_eq!(flex.output["track"]["track_id"].as_str(), Some("flex_1"));
+
+        let listed = execute_shell_command(
+            &mut engine,
+            &ShellCommand::DotplotList {
+                seq_id: Some("seq_a".to_string()),
+            },
+        )
+        .expect("list dotplots");
+        assert_eq!(listed.output["dotplot_count"].as_u64(), Some(1));
+        let flex_list = execute_shell_command(
+            &mut engine,
+            &ShellCommand::FlexList {
+                seq_id: Some("seq_a".to_string()),
+            },
+        )
+        .expect("list flex tracks");
+        assert_eq!(flex_list.output["track_count"].as_u64(), Some(1));
     }
 
     #[test]

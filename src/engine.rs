@@ -32,7 +32,8 @@ use crate::{
         DEFAULT_GENOME_CATALOG_PATH, DEFAULT_HELPER_GENOME_CATALOG_PATH, GenomeBlastReport,
         GenomeCatalog, GenomeGeneRecord, GenomeSourcePlan, GenomeTranscriptRecord,
         PrepareGenomeProgress, PrepareGenomeReport, PreparedGenomeFallbackPolicy,
-        PreparedGenomeInspection, is_prepare_cancelled_error,
+        PreparedGenomeInspection, build_genbank_efetch_url, is_prepare_cancelled_error,
+        validate_genbank_accession,
     },
     iupac_code::IupacCode,
     lineage_export::export_lineage_svg,
@@ -122,9 +123,16 @@ const UNIPROT_GENOME_PROJECTIONS_METADATA_KEY: &str = "uniprot_genome_projection
 const UNIPROT_GENOME_PROJECTIONS_SCHEMA: &str = "gentle.uniprot_genome_projections.v1";
 const UNIPROT_GENOME_PROJECTION_SCHEMA: &str = "gentle.uniprot_genome_projection.v1";
 const PROCESS_RUN_BUNDLE_SCHEMA: &str = "gentle.process_run_bundle.v1";
+pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
+const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
+const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v1";
+const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
+const MAX_DOTPLOT_POINTS: usize = 250_000;
+const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 5_000_000;
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
+const DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP: usize = 5_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
@@ -1904,6 +1912,15 @@ struct PrimerDesignStore {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct DotplotAnalysisStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    dotplots: HashMap<String, DotplotView>,
+    flexibility_tracks: HashMap<String, FlexibilityTrack>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct IsoformPanelDomainSpec {
     pub name: String,
@@ -2433,6 +2450,141 @@ impl GenomeAnchorSide {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+/// Annotation projection policy for `ExtractGenomeRegion`.
+pub enum GenomeAnnotationScope {
+    None,
+    Core,
+    Full,
+}
+
+impl GenomeAnnotationScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Core => "core",
+            Self::Full => "full",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Dotplot comparison mode for `ComputeDotplot`.
+pub enum DotplotMode {
+    #[default]
+    SelfForward,
+    SelfReverseComplement,
+}
+
+impl DotplotMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SelfForward => "self_forward",
+            Self::SelfReverseComplement => "self_reverse_complement",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+/// Flexibility score model for `ComputeFlexibilityTrack`.
+pub enum FlexibilityModel {
+    #[default]
+    AtRichness,
+    AtSkew,
+}
+
+impl FlexibilityModel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AtRichness => "at_richness",
+            Self::AtSkew => "at_skew",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotMatchPoint {
+    pub x_0based: usize,
+    pub y_0based: usize,
+    pub mismatches: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DotplotView {
+    pub schema: String,
+    pub dotplot_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub mode: DotplotMode,
+    pub word_size: usize,
+    pub step_bp: usize,
+    pub max_mismatches: usize,
+    pub tile_bp: Option<usize>,
+    pub point_count: usize,
+    pub points: Vec<DotplotMatchPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DotplotViewSummary {
+    pub dotplot_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub mode: DotplotMode,
+    pub word_size: usize,
+    pub step_bp: usize,
+    pub max_mismatches: usize,
+    pub point_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct FlexibilityBinScore {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct FlexibilityTrack {
+    pub schema: String,
+    pub track_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub model: FlexibilityModel,
+    pub bin_bp: usize,
+    pub smoothing_bp: Option<usize>,
+    pub min_score: f64,
+    pub max_score: f64,
+    pub bins: Vec<FlexibilityBinScore>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlexibilityTrackSummary {
+    pub track_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub span_start_0based: usize,
+    pub span_end_0based: usize,
+    pub model: FlexibilityModel,
+    pub bin_bp: usize,
+    pub smoothing_bp: Option<usize>,
+    pub bin_count: usize,
+    pub min_score: f64,
+    pub max_score: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Canonical engine operation contract.
 ///
@@ -2521,6 +2673,13 @@ pub enum Operation {
         start_1based: usize,
         end_1based: usize,
         output_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotation_scope: Option<GenomeAnnotationScope>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_annotation_features: Option<usize>,
+        /// Legacy compatibility flag; prefer `annotation_scope`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
@@ -2587,6 +2746,10 @@ pub enum Operation {
     FetchUniprotSwissProt {
         query: String,
         entry_id: Option<String>,
+    },
+    FetchGenBankAccession {
+        accession: String,
+        as_id: Option<SeqId>,
     },
     ImportUniprotEntrySequence {
         entry_id: String,
@@ -2705,6 +2868,37 @@ pub enum Operation {
         max_probe_tm_delta_c: Option<f64>,
         max_assays: Option<usize>,
         report_id: Option<String>,
+    },
+    ComputeDotplot {
+        seq_id: SeqId,
+        #[serde(default)]
+        span_start_0based: Option<usize>,
+        #[serde(default)]
+        span_end_0based: Option<usize>,
+        #[serde(default)]
+        mode: DotplotMode,
+        word_size: usize,
+        step_bp: usize,
+        #[serde(default)]
+        max_mismatches: usize,
+        #[serde(default)]
+        tile_bp: Option<usize>,
+        #[serde(default)]
+        store_as: Option<String>,
+    },
+    ComputeFlexibilityTrack {
+        seq_id: SeqId,
+        #[serde(default)]
+        span_start_0based: Option<usize>,
+        #[serde(default)]
+        span_end_0based: Option<usize>,
+        #[serde(default)]
+        model: FlexibilityModel,
+        bin_bp: usize,
+        #[serde(default)]
+        smoothing_bp: Option<usize>,
+        #[serde(default)]
+        store_as: Option<String>,
     },
     ExtractRegion {
         input: SeqId,
@@ -3478,6 +3672,40 @@ pub struct OpResult {
     pub changed_seq_ids: Vec<SeqId>,
     pub warnings: Vec<String>,
     pub messages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub genome_annotation_projection: Option<GenomeAnnotationProjectionTelemetry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Structured annotation projection telemetry emitted by `ExtractGenomeRegion`.
+pub struct GenomeAnnotationProjectionTelemetry {
+    pub requested_scope: String,
+    pub effective_scope: String,
+    pub max_features_cap: Option<usize>,
+    pub candidate_feature_count: usize,
+    pub attached_feature_count: usize,
+    pub dropped_feature_count: usize,
+    pub genes_attached: usize,
+    pub transcripts_attached: usize,
+    pub exons_attached: usize,
+    pub cds_attached: usize,
+    pub fallback_applied: bool,
+    pub fallback_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ExtractRegionAnnotationProjectionBatch {
+    features: Vec<gb_io::seq::Feature>,
+    gene_count: usize,
+    transcript_count: usize,
+    exon_count: usize,
+    cds_count: usize,
+}
+
+impl ExtractRegionAnnotationProjectionBatch {
+    fn feature_count(&self) -> usize {
+        self.features.len()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3933,6 +4161,7 @@ impl GentleEngine {
                 "ImportIsoformPanel".to_string(),
                 "ImportUniprotSwissProt".to_string(),
                 "FetchUniprotSwissProt".to_string(),
+                "FetchGenBankAccession".to_string(),
                 "ImportUniprotEntrySequence".to_string(),
                 "ProjectUniprotToGenome".to_string(),
                 "ImportBlastHitsTrack".to_string(),
@@ -3948,6 +4177,8 @@ impl GentleEngine {
                 "PcrMutagenesis".to_string(),
                 "DesignPrimerPairs".to_string(),
                 "DesignQpcrAssays".to_string(),
+                "ComputeDotplot".to_string(),
+                "ComputeFlexibilityTrack".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -5093,6 +5324,64 @@ impl GentleEngine {
             message: format!("Could not read UniProt response body for '{query}': {e}"),
         })?;
         Ok((url, text))
+    }
+
+    fn fetch_genbank_accession_text(accession: &str) -> Result<(String, String), EngineError> {
+        let accession = validate_genbank_accession(accession).map_err(|e| EngineError {
+            code: ErrorCode::InvalidInput,
+            message: e,
+        })?;
+        let source_url = build_genbank_efetch_url(&accession, "gbwithparts");
+        if let Some(path) = source_url.strip_prefix("file://") {
+            let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not read GenBank source file '{}' for accession '{}': {e}",
+                    path, accession
+                ),
+            })?;
+            return Ok((source_url, text));
+        }
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(45))
+            .build()
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not create GenBank HTTP client: {e}"),
+            })?;
+        let response = client.get(&source_url).send().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not fetch GenBank accession '{}' from '{}': {e}",
+                accession, source_url
+            ),
+        })?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = if status == reqwest::StatusCode::NOT_FOUND {
+                format!(
+                    "GenBank accession '{}' was not found (HTTP {}) at '{}'",
+                    accession, status, source_url
+                )
+            } else {
+                format!(
+                    "GenBank accession '{}' returned HTTP status {} at '{}'",
+                    accession, status, source_url
+                )
+            };
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: detail,
+            });
+        }
+        let text = response.text().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not read GenBank response body for accession '{}': {e}",
+                accession
+            ),
+        })?;
+        Ok((source_url, text))
     }
 
     fn parse_uniprot_entry_text(
@@ -7785,6 +8074,265 @@ impl GentleEngine {
         )
     }
 
+    fn normalize_genome_chromosome_token(raw: &str) -> String {
+        let trimmed = raw.trim();
+        let without_chr = trimmed
+            .strip_prefix("chr")
+            .or_else(|| trimmed.strip_prefix("Chr"))
+            .or_else(|| trimmed.strip_prefix("CHR"))
+            .unwrap_or(trimmed);
+        without_chr.to_ascii_lowercase()
+    }
+
+    fn genome_chromosome_matches(left: &str, right: &str) -> bool {
+        let left_trimmed = left.trim();
+        let right_trimmed = right.trim();
+        if left_trimmed.eq_ignore_ascii_case(right_trimmed) {
+            return true;
+        }
+        Self::normalize_genome_chromosome_token(left_trimmed)
+            == Self::normalize_genome_chromosome_token(right_trimmed)
+    }
+
+    fn resolve_extract_region_annotation_scope(
+        annotation_scope: Option<GenomeAnnotationScope>,
+        include_genomic_annotation: Option<bool>,
+    ) -> GenomeAnnotationScope {
+        if let Some(scope) = annotation_scope {
+            return scope;
+        }
+        match include_genomic_annotation {
+            Some(false) => GenomeAnnotationScope::None,
+            Some(true) => GenomeAnnotationScope::Core,
+            None => GenomeAnnotationScope::Core,
+        }
+    }
+
+    fn genomic_interval_to_local_location(
+        extracted_start_1based: usize,
+        clipped_start_1based: usize,
+        clipped_end_1based: usize,
+        strand: Option<char>,
+    ) -> Option<gb_io::seq::Location> {
+        if clipped_end_1based < clipped_start_1based || clipped_start_1based < extracted_start_1based
+        {
+            return None;
+        }
+        let local_start_0based = clipped_start_1based.saturating_sub(extracted_start_1based);
+        let local_end_exclusive = clipped_end_1based
+            .saturating_sub(extracted_start_1based)
+            .saturating_add(1);
+        if local_end_exclusive <= local_start_0based {
+            return None;
+        }
+        let base = gb_io::seq::Location::simple_range(
+            local_start_0based as i64,
+            local_end_exclusive as i64,
+        );
+        Some(if strand == Some('-') {
+            gb_io::seq::Location::Complement(Box::new(base))
+        } else {
+            base
+        })
+    }
+
+    fn gene_feature_from_genome_record(
+        record: &GenomeGeneRecord,
+        extracted_start_1based: usize,
+        extracted_end_1based: usize,
+    ) -> Option<gb_io::seq::Feature> {
+        let clipped_start = record.start_1based.max(extracted_start_1based);
+        let clipped_end = record.end_1based.min(extracted_end_1based);
+        if clipped_end < clipped_start {
+            return None;
+        }
+        let local_start_0based = clipped_start.saturating_sub(extracted_start_1based);
+        let local_end_exclusive = clipped_end
+            .saturating_sub(extracted_start_1based)
+            .saturating_add(1);
+        if local_end_exclusive <= local_start_0based {
+            return None;
+        }
+        let location = gb_io::seq::Location::simple_range(
+            local_start_0based as i64,
+            local_end_exclusive as i64,
+        );
+        let mut qualifiers = vec![
+            ("chromosome".into(), Some(record.chromosome.clone())),
+            ("genomic_start_1based".into(), Some(record.start_1based.to_string())),
+            ("genomic_end_1based".into(), Some(record.end_1based.to_string())),
+        ];
+        if let Some(gene_name) = &record.gene_name {
+            qualifiers.push(("gene".into(), Some(gene_name.clone())));
+            qualifiers.push(("label".into(), Some(gene_name.clone())));
+        }
+        if let Some(gene_id) = &record.gene_id {
+            qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+            if record.gene_name.is_none() {
+                qualifiers.push(("label".into(), Some(gene_id.clone())));
+            }
+        }
+        if let Some(strand) = record.strand {
+            qualifiers.push(("strand".into(), Some(strand.to_string())));
+        }
+        if let Some(biotype) = record
+            .biotype
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            qualifiers.push(("biotype".into(), Some(biotype.to_string())));
+        }
+        Some(gb_io::seq::Feature {
+            kind: gb_io::seq::FeatureKind::from("gene"),
+            location,
+            qualifiers,
+        })
+    }
+
+    fn transcript_subfeatures_from_genome_record(
+        record: &GenomeTranscriptRecord,
+        extracted_start_1based: usize,
+        extracted_end_1based: usize,
+    ) -> (Vec<gb_io::seq::Feature>, usize, usize) {
+        let mut features: Vec<gb_io::seq::Feature> = vec![];
+        let mut exons_attached = 0usize;
+        let mut cds_attached = 0usize;
+
+        let mut exon_ranges = record
+            .exons_1based
+            .iter()
+            .filter_map(|(start, end)| {
+                let clipped_start = (*start).max(extracted_start_1based);
+                let clipped_end = (*end).min(extracted_end_1based);
+                (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+            })
+            .collect::<Vec<_>>();
+        exon_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        exon_ranges.dedup();
+        for (idx, (start, end)) in exon_ranges.iter().enumerate() {
+            let Some(location) = Self::genomic_interval_to_local_location(
+                extracted_start_1based,
+                *start,
+                *end,
+                record.strand,
+            ) else {
+                continue;
+            };
+            let mut qualifiers = vec![
+                ("transcript_id".into(), Some(record.transcript_id.clone())),
+                ("chromosome".into(), Some(record.chromosome.clone())),
+                ("genomic_start_1based".into(), Some(start.to_string())),
+                ("genomic_end_1based".into(), Some(end.to_string())),
+                ("exon_number".into(), Some((idx + 1).to_string())),
+            ];
+            if let Some(gene_name) = &record.gene_name {
+                qualifiers.push(("gene".into(), Some(gene_name.clone())));
+            }
+            if let Some(gene_id) = &record.gene_id {
+                qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+            }
+            if let Some(strand) = record.strand {
+                qualifiers.push(("strand".into(), Some(strand.to_string())));
+            }
+            features.push(gb_io::seq::Feature {
+                kind: gb_io::seq::FeatureKind::from("exon"),
+                location,
+                qualifiers,
+            });
+            exons_attached = exons_attached.saturating_add(1);
+        }
+
+        let mut cds_ranges = record
+            .cds_1based
+            .iter()
+            .filter_map(|(start, end)| {
+                let clipped_start = (*start).max(extracted_start_1based);
+                let clipped_end = (*end).min(extracted_end_1based);
+                (clipped_end >= clipped_start).then_some((clipped_start, clipped_end))
+            })
+            .collect::<Vec<_>>();
+        cds_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        cds_ranges.dedup();
+        for (start, end) in cds_ranges {
+            let Some(location) = Self::genomic_interval_to_local_location(
+                extracted_start_1based,
+                start,
+                end,
+                record.strand,
+            ) else {
+                continue;
+            };
+            let mut qualifiers = vec![
+                ("transcript_id".into(), Some(record.transcript_id.clone())),
+                ("chromosome".into(), Some(record.chromosome.clone())),
+                ("genomic_start_1based".into(), Some(start.to_string())),
+                ("genomic_end_1based".into(), Some(end.to_string())),
+            ];
+            if let Some(gene_name) = &record.gene_name {
+                qualifiers.push(("gene".into(), Some(gene_name.clone())));
+            }
+            if let Some(gene_id) = &record.gene_id {
+                qualifiers.push(("gene_id".into(), Some(gene_id.clone())));
+            }
+            if let Some(strand) = record.strand {
+                qualifiers.push(("strand".into(), Some(strand.to_string())));
+            }
+            features.push(gb_io::seq::Feature {
+                kind: gb_io::seq::FeatureKind::from("CDS"),
+                location,
+                qualifiers,
+            });
+            cds_attached = cds_attached.saturating_add(1);
+        }
+        (features, exons_attached, cds_attached)
+    }
+
+    fn build_extract_region_annotation_projection(
+        genes: &[GenomeGeneRecord],
+        transcripts: &[GenomeTranscriptRecord],
+        extracted_start_1based: usize,
+        extracted_end_1based: usize,
+        scope: GenomeAnnotationScope,
+    ) -> ExtractRegionAnnotationProjectionBatch {
+        let mut batch = ExtractRegionAnnotationProjectionBatch::default();
+        if matches!(scope, GenomeAnnotationScope::None) {
+            return batch;
+        }
+        for record in genes {
+            if let Some(feature) = Self::gene_feature_from_genome_record(
+                record,
+                extracted_start_1based,
+                extracted_end_1based,
+            ) {
+                batch.features.push(feature);
+                batch.gene_count = batch.gene_count.saturating_add(1);
+            }
+        }
+        for record in transcripts {
+            if let Some(feature) = Self::transcript_feature_from_genome_record(
+                record,
+                extracted_start_1based,
+                extracted_end_1based,
+            ) {
+                batch.features.push(feature);
+                batch.transcript_count = batch.transcript_count.saturating_add(1);
+            }
+            if matches!(scope, GenomeAnnotationScope::Full) {
+                let (subfeatures, exons_attached, cds_attached) =
+                    Self::transcript_subfeatures_from_genome_record(
+                        record,
+                        extracted_start_1based,
+                        extracted_end_1based,
+                    );
+                batch.exon_count = batch.exon_count.saturating_add(exons_attached);
+                batch.cds_count = batch.cds_count.saturating_add(cds_attached);
+                batch.features.extend(subfeatures);
+            }
+        }
+        batch
+    }
+
     fn transcript_feature_from_genome_record(
         record: &GenomeTranscriptRecord,
         extracted_start_1based: usize,
@@ -7925,8 +8473,9 @@ impl GentleEngine {
             code: ErrorCode::Internal,
             message: format!("Could not construct DNA sequence from genome slice: {e}"),
         })?;
-        Self::prepare_sequence(&mut dna);
         let seq_id = self.unique_seq_id(&default_id);
+        dna.set_name(seq_id.clone());
+        Self::prepare_sequence(&mut dna);
         self.state.sequences.insert(seq_id.clone(), dna);
         self.add_lineage_node(
             &seq_id,
@@ -8499,6 +9048,406 @@ impl GentleEngine {
             message: format!("Could not write qPCR design report to '{path}': {e}"),
         })?;
         Ok(report)
+    }
+
+    fn read_dotplot_analysis_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> DotplotAnalysisStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<DotplotAnalysisStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = DOTPLOT_ANALYSIS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_dotplot_analysis_store(&self) -> DotplotAnalysisStore {
+        Self::read_dotplot_analysis_store_from_metadata(
+            self.state.metadata.get(DOTPLOT_ANALYSIS_METADATA_KEY),
+        )
+    }
+
+    fn write_dotplot_analysis_store(
+        &mut self,
+        mut store: DotplotAnalysisStore,
+    ) -> Result<(), EngineError> {
+        if store.dotplots.is_empty() && store.flexibility_tracks.is_empty() {
+            self.state.metadata.remove(DOTPLOT_ANALYSIS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = DOTPLOT_ANALYSIS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize dotplot analysis metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(DOTPLOT_ANALYSIS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn normalize_analysis_id(raw: &str, kind: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("{kind}_id cannot be empty"),
+            });
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "{kind}_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
+                ),
+            });
+        }
+        Ok(out)
+    }
+
+    fn resolve_analysis_span(
+        seq_len: usize,
+        span_start_0based: Option<usize>,
+        span_end_0based: Option<usize>,
+    ) -> Result<(usize, usize), EngineError> {
+        let start = span_start_0based.unwrap_or(0);
+        let end = span_end_0based.unwrap_or(seq_len);
+        if start >= seq_len {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "span_start_0based ({start}) must be within sequence length ({seq_len})"
+                ),
+            });
+        }
+        if end > seq_len {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "span_end_0based ({end}) must be <= sequence length ({seq_len})"
+                ),
+            });
+        }
+        if end <= start {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Invalid span {start}..{end}; span_end_0based must be > span_start_0based"
+                ),
+            });
+        }
+        Ok((start, end))
+    }
+
+    fn count_mismatches_capped(left: &[u8], right: &[u8], cap: usize) -> usize {
+        let mut mismatches = 0usize;
+        for (a, b) in left.iter().zip(right.iter()) {
+            if !a.eq_ignore_ascii_case(b) {
+                mismatches += 1;
+                if mismatches > cap {
+                    break;
+                }
+            }
+        }
+        mismatches
+    }
+
+    fn compute_dotplot_points(
+        sequence: &[u8],
+        span_start_0based: usize,
+        mode: DotplotMode,
+        word_size: usize,
+        step_bp: usize,
+        max_mismatches: usize,
+        max_points: usize,
+    ) -> Result<(Vec<DotplotMatchPoint>, bool), EngineError> {
+        if word_size == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ComputeDotplot requires word_size >= 1".to_string(),
+            });
+        }
+        if step_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ComputeDotplot requires step_bp >= 1".to_string(),
+            });
+        }
+        if sequence.len() < word_size {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "ComputeDotplot word_size ({word_size}) exceeds selected span length ({})",
+                    sequence.len()
+                ),
+            });
+        }
+        let positions: Vec<usize> = (0..=sequence.len() - word_size).step_by(step_bp).collect();
+        let pair_evaluations = positions
+            .len()
+            .saturating_mul(positions.len())
+            .max(positions.len());
+        if pair_evaluations > MAX_DOTPLOT_PAIR_EVALUATIONS {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "ComputeDotplot requested {} pair evaluations (limit {}); increase step_bp or reduce span",
+                    pair_evaluations, MAX_DOTPLOT_PAIR_EVALUATIONS
+                ),
+            });
+        }
+
+        let mut reverse_words: Vec<Vec<u8>> = vec![];
+        if matches!(mode, DotplotMode::SelfReverseComplement) {
+            reverse_words = positions
+                .iter()
+                .map(|start| {
+                    Self::reverse_complement_bytes(&sequence[*start..*start + word_size])
+                        .into_iter()
+                        .map(|b| b.to_ascii_uppercase())
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+        }
+
+        let mut points: Vec<DotplotMatchPoint> = vec![];
+        let mut truncated = false;
+        for (x_idx, x_start) in positions.iter().enumerate() {
+            let left = &sequence[*x_start..*x_start + word_size];
+            for (y_idx, y_start) in positions.iter().enumerate() {
+                let mismatches = match mode {
+                    DotplotMode::SelfForward => Self::count_mismatches_capped(
+                        left,
+                        &sequence[*y_start..*y_start + word_size],
+                        max_mismatches,
+                    ),
+                    DotplotMode::SelfReverseComplement => {
+                        Self::count_mismatches_capped(left, &reverse_words[y_idx], max_mismatches)
+                    }
+                };
+                if mismatches <= max_mismatches {
+                    points.push(DotplotMatchPoint {
+                        x_0based: span_start_0based + positions[x_idx],
+                        y_0based: span_start_0based + positions[y_idx],
+                        mismatches,
+                    });
+                    if points.len() >= max_points {
+                        truncated = true;
+                        return Ok((points, truncated));
+                    }
+                }
+            }
+        }
+        Ok((points, truncated))
+    }
+
+    fn compute_flexibility_track_bins(
+        sequence: &[u8],
+        span_start_0based: usize,
+        model: FlexibilityModel,
+        bin_bp: usize,
+        smoothing_bp: Option<usize>,
+    ) -> Result<Vec<FlexibilityBinScore>, EngineError> {
+        if bin_bp == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "ComputeFlexibilityTrack requires bin_bp >= 1".to_string(),
+            });
+        }
+        if sequence.is_empty() {
+            return Ok(vec![]);
+        }
+        let mut bins: Vec<FlexibilityBinScore> = vec![];
+        let mut idx = 0usize;
+        while idx < sequence.len() {
+            let end = (idx + bin_bp).min(sequence.len());
+            let slice = &sequence[idx..end];
+            let mut a_count = 0usize;
+            let mut t_count = 0usize;
+            for b in slice {
+                match b.to_ascii_uppercase() {
+                    b'A' => a_count += 1,
+                    b'T' => t_count += 1,
+                    _ => {}
+                }
+            }
+            let at_total = a_count + t_count;
+            let score = match model {
+                FlexibilityModel::AtRichness => {
+                    if slice.is_empty() {
+                        0.0
+                    } else {
+                        at_total as f64 / slice.len() as f64
+                    }
+                }
+                FlexibilityModel::AtSkew => {
+                    if at_total == 0 {
+                        0.0
+                    } else {
+                        (a_count as f64 - t_count as f64) / at_total as f64
+                    }
+                }
+            };
+            bins.push(FlexibilityBinScore {
+                start_0based: span_start_0based + idx,
+                end_0based_exclusive: span_start_0based + end,
+                score,
+            });
+            idx = end;
+        }
+        if bins.is_empty() {
+            return Ok(bins);
+        }
+        let smoothing = smoothing_bp
+            .and_then(|value| (value > 0).then_some(value))
+            .map(|value| value.div_ceil(bin_bp))
+            .unwrap_or(0);
+        if smoothing > 1 {
+            let radius = smoothing / 2;
+            let raw = bins.iter().map(|bin| bin.score).collect::<Vec<_>>();
+            for (index, bin) in bins.iter_mut().enumerate() {
+                let start = index.saturating_sub(radius);
+                let end = (index + radius + 1).min(raw.len());
+                if end > start {
+                    let sum = raw[start..end].iter().sum::<f64>();
+                    bin.score = sum / (end - start) as f64;
+                }
+            }
+        }
+        Ok(bins)
+    }
+
+    fn upsert_dotplot_view(&mut self, view: DotplotView) -> Result<(), EngineError> {
+        let mut store = self.read_dotplot_analysis_store();
+        store.dotplots.insert(view.dotplot_id.clone(), view);
+        self.write_dotplot_analysis_store(store)
+    }
+
+    fn upsert_flexibility_track(&mut self, track: FlexibilityTrack) -> Result<(), EngineError> {
+        let mut store = self.read_dotplot_analysis_store();
+        store.flexibility_tracks.insert(track.track_id.clone(), track);
+        self.write_dotplot_analysis_store(store)
+    }
+
+    pub fn list_dotplot_views(&self, seq_id_filter: Option<&str>) -> Vec<DotplotViewSummary> {
+        let filter = seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let mut rows = self
+            .read_dotplot_analysis_store()
+            .dotplots
+            .values()
+            .filter(|view| {
+                filter.as_ref().is_none_or(|needle| {
+                    view.seq_id.to_ascii_lowercase().eq_ignore_ascii_case(needle)
+                })
+            })
+            .map(|view| DotplotViewSummary {
+                dotplot_id: view.dotplot_id.clone(),
+                seq_id: view.seq_id.clone(),
+                generated_at_unix_ms: view.generated_at_unix_ms,
+                span_start_0based: view.span_start_0based,
+                span_end_0based: view.span_end_0based,
+                mode: view.mode,
+                word_size: view.word_size,
+                step_bp: view.step_bp,
+                max_mismatches: view.max_mismatches,
+                point_count: view.point_count,
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.dotplot_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.dotplot_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    pub fn get_dotplot_view(&self, dotplot_id: &str) -> Result<DotplotView, EngineError> {
+        let dotplot_id = Self::normalize_analysis_id(dotplot_id, "dotplot")?;
+        self.read_dotplot_analysis_store()
+            .dotplots
+            .get(dotplot_id.as_str())
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Dotplot view '{}' not found", dotplot_id),
+            })
+    }
+
+    pub fn list_flexibility_tracks(
+        &self,
+        seq_id_filter: Option<&str>,
+    ) -> Vec<FlexibilityTrackSummary> {
+        let filter = seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let mut rows = self
+            .read_dotplot_analysis_store()
+            .flexibility_tracks
+            .values()
+            .filter(|track| {
+                filter.as_ref().is_none_or(|needle| {
+                    track.seq_id.to_ascii_lowercase().eq_ignore_ascii_case(needle)
+                })
+            })
+            .map(|track| FlexibilityTrackSummary {
+                track_id: track.track_id.clone(),
+                seq_id: track.seq_id.clone(),
+                generated_at_unix_ms: track.generated_at_unix_ms,
+                span_start_0based: track.span_start_0based,
+                span_end_0based: track.span_end_0based,
+                model: track.model,
+                bin_bp: track.bin_bp,
+                smoothing_bp: track.smoothing_bp,
+                bin_count: track.bins.len(),
+                min_score: track.min_score,
+                max_score: track.max_score,
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.track_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.track_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    pub fn get_flexibility_track(&self, track_id: &str) -> Result<FlexibilityTrack, EngineError> {
+        let track_id = Self::normalize_analysis_id(track_id, "track")?;
+        self.read_dotplot_analysis_store()
+            .flexibility_tracks
+            .get(track_id.as_str())
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Flexibility track '{}' not found", track_id),
+            })
     }
 
     fn read_guide_design_store_from_metadata(
@@ -15360,6 +16309,8 @@ impl GentleEngine {
             | Operation::ImportBlastHitsTrack { seq_id, .. }
             | Operation::GenerateCandidateSet { seq_id, .. }
             | Operation::GenerateCandidateSetBetweenAnchors { seq_id, .. }
+            | Operation::ComputeDotplot { seq_id, .. }
+            | Operation::ComputeFlexibilityTrack { seq_id, .. }
             | Operation::SetTopology { seq_id, .. }
             | Operation::RecomputeFeatures { seq_id, .. }
             | Operation::AnnotateTfbs { seq_id, .. } => {
@@ -15406,6 +16357,7 @@ impl GentleEngine {
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
+            Operation::FetchGenBankAccession { .. } => {}
             Operation::DigestContainer { container_id, .. }
             | Operation::LigationContainer { container_id, .. }
             | Operation::FilterContainerByMolecularWeight { container_id, .. } => {
@@ -17741,6 +18693,7 @@ impl GentleEngine {
             changed_seq_ids: vec![],
             warnings: vec![],
             messages: vec![],
+            genome_annotation_projection: None,
         };
 
         match op {
@@ -18155,6 +19108,9 @@ impl GentleEngine {
                 start_1based,
                 end_1based,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             } => {
@@ -18189,6 +19145,149 @@ impl GentleEngine {
                 );
                 let base = output_id.unwrap_or(default_id);
                 let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                let requested_scope = Self::resolve_extract_region_annotation_scope(
+                    annotation_scope,
+                    include_genomic_annotation,
+                );
+                let effective_cap = max_annotation_features
+                    .filter(|value| *value > 0)
+                    .or_else(|| {
+                        matches!(requested_scope, GenomeAnnotationScope::Full)
+                            .then_some(DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP)
+                    });
+                let mut genes: Vec<GenomeGeneRecord> = vec![];
+                let mut transcripts: Vec<GenomeTranscriptRecord> = vec![];
+                if !matches!(requested_scope, GenomeAnnotationScope::None) {
+                    match catalog.list_gene_regions(&genome_id, cache_dir.as_deref()) {
+                        Ok(records) => {
+                            genes = records
+                                .into_iter()
+                                .filter(|record| {
+                                    Self::genome_chromosome_matches(
+                                        &record.chromosome,
+                                        &chromosome,
+                                    ) && record.end_1based >= start_1based
+                                        && record.start_1based <= end_1based
+                                })
+                                .collect();
+                        }
+                        Err(e) => result.warnings.push(format!(
+                            "Could not inspect gene records for extracted region '{}': {}",
+                            seq_id, e
+                        )),
+                    }
+                    match catalog.list_gene_transcript_records(
+                        &genome_id,
+                        &chromosome,
+                        start_1based,
+                        end_1based,
+                        None,
+                        None,
+                        cache_dir.as_deref(),
+                    ) {
+                        Ok(records) => {
+                            transcripts = records;
+                        }
+                        Err(e) => result.warnings.push(format!(
+                            "Could not inspect transcript/exon annotation for extracted region '{}': {}",
+                            seq_id, e
+                        )),
+                    }
+                }
+                let mut effective_scope = requested_scope;
+                let mut fallback_reason: Option<String> = None;
+                let mut projection = Self::build_extract_region_annotation_projection(
+                    &genes,
+                    &transcripts,
+                    start_1based,
+                    end_1based,
+                    requested_scope,
+                );
+                let candidate_before_fallback = projection.feature_count();
+                if let Some(cap) = effective_cap {
+                    if projection.feature_count() > cap {
+                        if matches!(requested_scope, GenomeAnnotationScope::Full) {
+                            let core_projection = Self::build_extract_region_annotation_projection(
+                                &genes,
+                                &transcripts,
+                                start_1based,
+                                end_1based,
+                                GenomeAnnotationScope::Core,
+                            );
+                            if core_projection.feature_count() <= cap {
+                                effective_scope = GenomeAnnotationScope::Core;
+                                projection = core_projection;
+                                fallback_reason = Some(format!(
+                                    "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
+                                    candidate_before_fallback
+                                ));
+                            } else {
+                                effective_scope = GenomeAnnotationScope::None;
+                                projection = ExtractRegionAnnotationProjectionBatch::default();
+                                fallback_reason = Some(format!(
+                                    "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
+                                ));
+                            }
+                        } else {
+                            effective_scope = GenomeAnnotationScope::None;
+                            projection = ExtractRegionAnnotationProjectionBatch::default();
+                            fallback_reason = Some(format!(
+                                "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                            ));
+                        }
+                    }
+                }
+
+                let attached_feature_count = projection.feature_count();
+                let genes_attached = projection.gene_count;
+                let transcripts_attached = projection.transcript_count;
+                let exons_attached = projection.exon_count;
+                let cds_attached = projection.cds_count;
+                if attached_feature_count > 0 {
+                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                        dna.features_mut().extend(projection.features);
+                        Self::prepare_sequence(dna);
+                    }
+                    result.messages.push(format!(
+                        "Attached {} genomic annotation feature(s) to extracted region '{}' (scope={}, genes={}, transcripts={}, exons={}, cds={})",
+                        attached_feature_count,
+                        seq_id,
+                        effective_scope.as_str(),
+                        genes_attached,
+                        transcripts_attached,
+                        exons_attached,
+                        cds_attached
+                    ));
+                } else if matches!(effective_scope, GenomeAnnotationScope::None) {
+                    result.messages.push(format!(
+                        "Extracted region '{}' without projected genomic annotation (scope={})",
+                        seq_id,
+                        effective_scope.as_str()
+                    ));
+                } else {
+                    result.messages.push(format!(
+                        "No overlapping genomic annotation features were found for extracted region '{}'",
+                        seq_id
+                    ));
+                }
+                if let Some(reason) = fallback_reason.as_ref() {
+                    result.warnings.push(reason.clone());
+                }
+                result.genome_annotation_projection = Some(GenomeAnnotationProjectionTelemetry {
+                    requested_scope: requested_scope.as_str().to_string(),
+                    effective_scope: effective_scope.as_str().to_string(),
+                    max_features_cap: effective_cap,
+                    candidate_feature_count: candidate_before_fallback,
+                    attached_feature_count,
+                    dropped_feature_count: candidate_before_fallback
+                        .saturating_sub(attached_feature_count),
+                    genes_attached,
+                    transcripts_attached,
+                    exons_attached,
+                    cds_attached,
+                    fallback_applied: fallback_reason.is_some(),
+                    fallback_reason,
+                });
                 let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
                 let inspection = catalog
                     .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
@@ -18596,6 +19695,7 @@ impl GentleEngine {
                 })?;
                 Self::prepare_sequence(&mut dna);
                 let extended_seq_id = self.unique_seq_id(&base);
+                dna.set_name(extended_seq_id.clone());
                 self.state.sequences.insert(extended_seq_id.clone(), dna);
                 self.add_lineage_node(
                     &extended_seq_id,
@@ -19245,6 +20345,141 @@ impl GentleEngine {
                 result.messages.push(format!(
                     "Fetched UniProt entry '{}' (accession '{}') from '{}'",
                     resolved_entry_id, accession, source_url
+                ));
+            }
+            Operation::FetchGenBankAccession { accession, as_id } => {
+                let accession_trimmed = accession.trim();
+                if accession_trimmed.is_empty() {
+                    return Err(EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "FetchGenBankAccession requires a non-empty accession".to_string(),
+                    });
+                }
+                let (source_url, text) = Self::fetch_genbank_accession_text(accession_trimmed)?;
+                let mut tmp = tempfile::Builder::new()
+                    .prefix("gentle_genbank_fetch_")
+                    .suffix(".gb")
+                    .tempfile()
+                    .map_err(|e| EngineError {
+                        code: ErrorCode::Io,
+                        message: format!(
+                            "Could not create temporary GenBank file for '{}': {e}",
+                            accession_trimmed
+                        ),
+                    })?;
+                tmp.write_all(text.as_bytes()).map_err(|e| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not write temporary GenBank file for '{}': {e}",
+                        accession_trimmed
+                    ),
+                })?;
+                let path = tmp.path().to_string_lossy().to_string();
+                let mut dna = GENtleApp::load_from_file(&path).map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not parse fetched GenBank accession '{}' from '{}': {e}",
+                        accession_trimmed, source_url
+                    ),
+                })?;
+                Self::prepare_sequence(&mut dna);
+                let base = as_id.unwrap_or_else(|| accession_trimmed.to_string());
+                let seq_id = self.unique_seq_id(&base);
+                self.state.sequences.insert(seq_id.clone(), dna);
+                self.add_lineage_node(&seq_id, SequenceOrigin::ImportedGenomic, Some(&result.op_id));
+
+                let imported_anchor = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .and_then(|loaded| Self::infer_imported_genbank_anchor(&path, loaded));
+                if let Some(anchor) = imported_anchor {
+                    let mut anchor_verified: Option<bool> = None;
+                    if let Some(loaded) = self.state.sequences.get(&seq_id) {
+                        match Self::verify_anchor_sequence_against_catalog(
+                            loaded,
+                            &anchor,
+                            DEFAULT_GENOME_CATALOG_PATH,
+                            None,
+                        ) {
+                            Ok(is_match) => {
+                                anchor_verified = Some(is_match);
+                                if is_match {
+                                    result.messages.push(format!(
+                                        "Verified imported GenBank anchor '{}' against catalog '{}' ({}:{}-{})",
+                                        seq_id,
+                                        DEFAULT_GENOME_CATALOG_PATH,
+                                        anchor.genome_id,
+                                        anchor.chromosome,
+                                        anchor.start_1based
+                                    ));
+                                } else {
+                                    result.warnings.push(format!(
+                                        "Imported GenBank anchor '{}' does not match catalog sequence at {}:{}:{}-{} (catalog='{}')",
+                                        seq_id,
+                                        anchor.genome_id,
+                                        anchor.chromosome,
+                                        anchor.start_1based,
+                                        anchor.end_1based,
+                                        DEFAULT_GENOME_CATALOG_PATH
+                                    ));
+                                }
+                            }
+                            Err(err) => {
+                                result.warnings.push(format!(
+                                    "Could not verify imported GenBank anchor '{}' against catalog '{}': {}",
+                                    seq_id, DEFAULT_GENOME_CATALOG_PATH, err
+                                ));
+                            }
+                        }
+                    }
+                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
+                        seq_id: seq_id.clone(),
+                        recorded_at_unix_ms: Self::now_unix_ms(),
+                        operation: "FetchGenBankAccession".to_string(),
+                        genome_id: anchor.genome_id.clone(),
+                        catalog_path: DEFAULT_GENOME_CATALOG_PATH.to_string(),
+                        cache_dir: None,
+                        chromosome: Some(anchor.chromosome.clone()),
+                        start_1based: Some(anchor.start_1based),
+                        end_1based: Some(anchor.end_1based),
+                        gene_query: None,
+                        occurrence: None,
+                        gene_id: None,
+                        gene_name: None,
+                        strand: None,
+                        anchor_strand: anchor.strand,
+                        anchor_verified,
+                        sequence_source_type: Some("genbank_accession".to_string()),
+                        annotation_source_type: Some("genbank_accession".to_string()),
+                        sequence_source: Some(source_url.clone()),
+                        annotation_source: Some(source_url.clone()),
+                        sequence_sha1: None,
+                        annotation_sha1: None,
+                    });
+                    let strand = anchor.strand.unwrap_or('+');
+                    let verification_label = match anchor_verified {
+                        Some(true) => "verified",
+                        Some(false) => "unverified",
+                        None => "verification n/a",
+                    };
+                    result.messages.push(format!(
+                        "Detected GenBank genome anchor for '{}': {}:{}-{} ({}, strand {}, {})",
+                        seq_id,
+                        anchor.chromosome,
+                        anchor.start_1based,
+                        anchor.end_1based,
+                        anchor.genome_id,
+                        strand,
+                        verification_label
+                    ));
+                }
+
+                result.created_seq_ids.push(seq_id.clone());
+                result.messages.push(format!(
+                    "Fetched GenBank accession '{}' from '{}' as '{}'",
+                    accession_trimmed, source_url, seq_id
                 ));
             }
             Operation::ImportUniprotEntrySequence {
@@ -20885,6 +22120,155 @@ impl GentleEngine {
                         report.report_id
                     ));
                 }
+            }
+            Operation::ComputeDotplot {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                mode,
+                word_size,
+                step_bp,
+                max_mismatches,
+                tile_bp,
+                store_as,
+            } => {
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let seq_text = dna.get_forward_string().to_ascii_uppercase();
+                let seq_bytes = seq_text.as_bytes();
+                let (span_start_0based, span_end_0based) =
+                    Self::resolve_analysis_span(seq_bytes.len(), span_start_0based, span_end_0based)?;
+                let span = &seq_bytes[span_start_0based..span_end_0based];
+                let (points, truncated) = Self::compute_dotplot_points(
+                    span,
+                    span_start_0based,
+                    mode,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    MAX_DOTPLOT_POINTS,
+                )?;
+                let dotplot_id = if let Some(raw_id) = store_as.as_deref() {
+                    Self::normalize_analysis_id(raw_id, "dotplot")?
+                } else {
+                    format!("dotplot_{}", result.op_id)
+                };
+                let view = DotplotView {
+                    schema: DOTPLOT_VIEW_SCHEMA.to_string(),
+                    dotplot_id: dotplot_id.clone(),
+                    seq_id: seq_id.clone(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    span_start_0based,
+                    span_end_0based,
+                    mode,
+                    word_size,
+                    step_bp,
+                    max_mismatches,
+                    tile_bp,
+                    point_count: points.len(),
+                    points,
+                };
+                let replaced = self
+                    .read_dotplot_analysis_store()
+                    .dotplots
+                    .contains_key(dotplot_id.as_str());
+                self.upsert_dotplot_view(view.clone())?;
+                result.messages.push(format!(
+                    "{} dotplot '{}' for '{}' (mode={}, span={}..{}, points={})",
+                    if replaced { "Updated" } else { "Created" },
+                    dotplot_id,
+                    seq_id,
+                    mode.as_str(),
+                    span_start_0based,
+                    span_end_0based,
+                    view.point_count
+                ));
+                if truncated {
+                    result.warnings.push(format!(
+                        "Dotplot '{}' reached MAX_DOTPLOT_POINTS ({MAX_DOTPLOT_POINTS}); result was truncated",
+                        dotplot_id
+                    ));
+                }
+            }
+            Operation::ComputeFlexibilityTrack {
+                seq_id,
+                span_start_0based,
+                span_end_0based,
+                model,
+                bin_bp,
+                smoothing_bp,
+                store_as,
+            } => {
+                let dna = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("Sequence '{seq_id}' not found"),
+                    })?;
+                let seq_text = dna.get_forward_string().to_ascii_uppercase();
+                let seq_bytes = seq_text.as_bytes();
+                let (span_start_0based, span_end_0based) =
+                    Self::resolve_analysis_span(seq_bytes.len(), span_start_0based, span_end_0based)?;
+                let span = &seq_bytes[span_start_0based..span_end_0based];
+                let bins = Self::compute_flexibility_track_bins(
+                    span,
+                    span_start_0based,
+                    model,
+                    bin_bp,
+                    smoothing_bp,
+                )?;
+                let min_score = bins.iter().map(|bin| bin.score).fold(f64::INFINITY, f64::min);
+                let max_score = bins
+                    .iter()
+                    .map(|bin| bin.score)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                let (min_score, max_score) = if bins.is_empty() {
+                    (0.0, 0.0)
+                } else {
+                    (min_score, max_score)
+                };
+                let track_id = if let Some(raw_id) = store_as.as_deref() {
+                    Self::normalize_analysis_id(raw_id, "track")?
+                } else {
+                    format!("flex_{}", result.op_id)
+                };
+                let track = FlexibilityTrack {
+                    schema: FLEXIBILITY_TRACK_SCHEMA.to_string(),
+                    track_id: track_id.clone(),
+                    seq_id: seq_id.clone(),
+                    generated_at_unix_ms: Self::now_unix_ms(),
+                    span_start_0based,
+                    span_end_0based,
+                    model,
+                    bin_bp,
+                    smoothing_bp,
+                    min_score,
+                    max_score,
+                    bins,
+                };
+                let replaced = self
+                    .read_dotplot_analysis_store()
+                    .flexibility_tracks
+                    .contains_key(track_id.as_str());
+                self.upsert_flexibility_track(track.clone())?;
+                result.messages.push(format!(
+                    "{} flexibility track '{}' for '{}' (model={}, span={}..{}, bins={})",
+                    if replaced { "Updated" } else { "Created" },
+                    track_id,
+                    seq_id,
+                    model.as_str(),
+                    span_start_0based,
+                    span_end_0based,
+                    track.bins.len()
+                ));
             }
             Operation::ExtractRegion {
                 input,
@@ -25145,6 +26529,59 @@ exit 2
     }
 
     #[test]
+    fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
+        let _guard = crate::genomes::genbank_env_lock().lock().unwrap();
+        let td = tempdir().unwrap();
+        let mock_dir = td.path().join("mock");
+        fs::create_dir_all(&mock_dir).unwrap();
+        fs::copy("test_files/tp73.ncbi.gb", mock_dir.join("NC_000001.gbwithparts")).unwrap();
+        let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
+        let _efetch_env = EnvVarGuard::set("GENTLE_NCBI_EFETCH_URL", &efetch_template);
+
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::FetchGenBankAccession {
+                accession: "NC_000001".to_string(),
+                as_id: Some("tp73_fetch".to_string()),
+            })
+            .expect("fetch genbank accession");
+        assert_eq!(res.created_seq_ids, vec!["tp73_fetch".to_string()]);
+        assert!(res.messages.iter().any(|m| {
+            m.contains("Fetched GenBank accession 'NC_000001'") && m.contains("tp73_fetch")
+        }));
+        assert!(
+            engine
+                .list_sequences_with_genome_anchor()
+                .iter()
+                .any(|seq_id| seq_id == "tp73_fetch")
+        );
+        let provenance = engine
+            .state()
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .and_then(|v| v.get(GENOME_EXTRACTIONS_METADATA_KEY))
+            .and_then(|v| v.as_array())
+            .and_then(|records| {
+                records.iter().find(|entry| {
+                    entry
+                        .get("seq_id")
+                        .and_then(|v| v.as_str())
+                        .map(|id| id == "tp73_fetch")
+                        .unwrap_or(false)
+                })
+            })
+            .cloned()
+            .expect("provenance record");
+        assert_eq!(
+            provenance
+                .get("sequence_source_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default(),
+            "genbank_accession"
+        );
+    }
+
+    #[test]
     fn test_load_file_operation_genbank_region_anchor_enables_bed_import() {
         let mut engine = GentleEngine::new();
         let res = engine
@@ -27514,6 +28951,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("toy_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
@@ -27652,6 +29092,242 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn test_extract_genome_region_include_annotation_attaches_features_and_sets_name() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+            ),
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+
+        let with_annotation = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 1,
+                end_1based: 12,
+                output_id: Some("toy_slice_ann".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: Some(true),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert_eq!(with_annotation.created_seq_ids, vec!["toy_slice_ann".to_string()]);
+        assert!(with_annotation.messages.iter().any(|m| m.contains("Attached")));
+        let telemetry = with_annotation
+            .genome_annotation_projection
+            .as_ref()
+            .expect("annotation telemetry");
+        assert_eq!(telemetry.requested_scope, "core");
+        assert_eq!(telemetry.effective_scope, "core");
+        assert!(telemetry.attached_feature_count >= 2);
+        let annotated = engine.state().sequences.get("toy_slice_ann").unwrap();
+        assert_eq!(annotated.name().as_deref(), Some("toy_slice_ann"));
+        assert!(annotated.features().iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("gene")
+                && feature
+                    .qualifier_values("gene_id".into())
+                    .any(|value| value == "GENE1")
+        }));
+        assert!(annotated.features().iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("mRNA")
+                && feature
+                    .qualifier_values("transcript_id".into())
+                    .any(|value| value == "TX1")
+        }));
+
+        let default_result = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 1,
+                end_1based: 12,
+                output_id: Some("toy_slice_default".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        let default_telemetry = default_result
+            .genome_annotation_projection
+            .as_ref()
+            .expect("default annotation telemetry");
+        assert_eq!(default_telemetry.requested_scope, "core");
+        assert_eq!(default_telemetry.effective_scope, "core");
+        let default_slice = engine.state().sequences.get("toy_slice_default").unwrap();
+        assert_eq!(default_slice.name().as_deref(), Some("toy_slice_default"));
+        assert!(default_slice.features().iter().any(|feature| {
+            feature.kind.to_string().eq_ignore_ascii_case("gene")
+                && feature
+                    .qualifier_values("gene_id".into())
+                    .any(|value| value == "GENE1")
+        }));
+
+        let plain_result = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 1,
+                end_1based: 12,
+                output_id: Some("toy_slice_plain".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: Some(false),
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        let plain_telemetry = plain_result
+            .genome_annotation_projection
+            .as_ref()
+            .expect("plain annotation telemetry");
+        assert_eq!(plain_telemetry.requested_scope, "none");
+        assert_eq!(plain_telemetry.effective_scope, "none");
+        assert_eq!(plain_telemetry.attached_feature_count, 0);
+        let plain = engine.state().sequences.get("toy_slice_plain").unwrap();
+        assert_eq!(plain.name().as_deref(), Some("toy_slice_plain"));
+        assert!(plain.features().is_empty());
+    }
+
+    #[test]
+    fn test_extract_genome_region_full_scope_feature_cap_falls_back_to_core() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t20\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                "chr1\tsrc\ttranscript\t1\t20\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+                "chr1\tsrc\tCDS\t2\t4\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\tCDS\t9\t11\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+            ),
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+
+        let result = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyGenome".to_string(),
+                chromosome: "chr1".to_string(),
+                start_1based: 1,
+                end_1based: 20,
+                output_id: Some("toy_slice_capped".to_string()),
+                annotation_scope: Some(GenomeAnnotationScope::Full),
+                max_annotation_features: Some(2),
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(result.warnings.iter().any(|w| w.contains("fell back to core")));
+        let telemetry = result
+            .genome_annotation_projection
+            .as_ref()
+            .expect("annotation telemetry");
+        assert_eq!(telemetry.requested_scope, "full");
+        assert_eq!(telemetry.effective_scope, "core");
+        assert!(telemetry.fallback_applied);
+        assert!(telemetry.candidate_feature_count > telemetry.attached_feature_count);
+        assert!(telemetry.exons_attached == 0);
+        assert!(telemetry.cds_attached == 0);
+
+        let seq = engine.state().sequences.get("toy_slice_capped").unwrap();
+        assert!(seq
+            .features()
+            .iter()
+            .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene")));
+        assert!(seq
+            .features()
+            .iter()
+            .any(|f| f.kind.to_string().eq_ignore_ascii_case("mRNA")));
+        assert!(!seq
+            .features()
+            .iter()
+            .any(|f| f.kind.to_string().eq_ignore_ascii_case("exon")));
+        assert!(!seq
+            .features()
+            .iter()
+            .any(|f| f.kind.to_string().eq_ignore_ascii_case("CDS")));
+    }
+
+    #[test]
     fn test_prepare_genome_operation_supports_timeout_seconds() {
         let td = tempdir().unwrap();
         let root = td.path();
@@ -27736,6 +29412,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("toy_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
@@ -27759,6 +29438,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             .get("toy_slice_ext5")
             .expect("extended sequence should exist");
         assert_eq!(extended_seq.get_forward_string(), "ACGTACGTAC");
+        assert_eq!(extended_seq.name().as_deref(), Some("toy_slice_ext5"));
 
         let lineage = &engine.state().lineage;
         let parent = lineage
@@ -28044,6 +29724,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("alias_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
@@ -28219,6 +29902,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 2,
                 end_1based: 7,
                 output_id: Some("anch".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
@@ -28380,6 +30066,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("anch".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
@@ -28495,6 +30184,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("toy_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
             })
@@ -28619,6 +30311,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some("toy_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
             })
@@ -29096,6 +30791,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 start_1based: 1,
                 end_1based: 40,
                 output_id: Some("helper_head".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
             })
@@ -30683,6 +32381,88 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             })
             .expect_err("duplicate guide ids should be rejected");
         assert!(err.message.contains("Duplicate guide_id"));
+    }
+
+    #[test]
+    fn test_compute_dotplot_stores_and_retrieves_view() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "s".to_string(),
+            DNAsequence::from_sequence("ATGCATGCATGCATGC").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let result = engine
+            .apply(Operation::ComputeDotplot {
+                seq_id: "s".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based: Some(16),
+                mode: DotplotMode::SelfForward,
+                word_size: 4,
+                step_bp: 2,
+                max_mismatches: 0,
+                tile_bp: Some(128),
+                store_as: Some("promoter_dotplot".to_string()),
+            })
+            .expect("compute dotplot");
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|message| message.contains("promoter_dotplot")),
+            "expected dotplot id in message, got: {:?}",
+            result.messages
+        );
+        let rows = engine.list_dotplot_views(Some("s"));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].dotplot_id, "promoter_dotplot");
+        let view = engine
+            .get_dotplot_view("promoter_dotplot")
+            .expect("dotplot view");
+        assert_eq!(view.schema, DOTPLOT_VIEW_SCHEMA);
+        assert_eq!(view.seq_id, "s");
+        assert_eq!(view.word_size, 4);
+        assert!(!view.points.is_empty());
+        assert_eq!(view.point_count, view.points.len());
+    }
+
+    #[test]
+    fn test_compute_flexibility_track_stores_and_retrieves_track() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "s".to_string(),
+            DNAsequence::from_sequence("AAAATTTTCCCCGGGGAAAATTTT").expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let result = engine
+            .apply(Operation::ComputeFlexibilityTrack {
+                seq_id: "s".to_string(),
+                span_start_0based: Some(0),
+                span_end_0based: Some(24),
+                model: FlexibilityModel::AtRichness,
+                bin_bp: 4,
+                smoothing_bp: Some(8),
+                store_as: Some("promoter_flex".to_string()),
+            })
+            .expect("compute flexibility track");
+        assert!(
+            result
+                .messages
+                .iter()
+                .any(|message| message.contains("promoter_flex")),
+            "expected track id in message, got: {:?}",
+            result.messages
+        );
+        let rows = engine.list_flexibility_tracks(Some("s"));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].track_id, "promoter_flex");
+        let track = engine
+            .get_flexibility_track("promoter_flex")
+            .expect("flexibility track");
+        assert_eq!(track.schema, FLEXIBILITY_TRACK_SCHEMA);
+        assert_eq!(track.model, FlexibilityModel::AtRichness);
+        assert_eq!(track.bin_bp, 4);
+        assert_eq!(track.bins.len(), 6);
+        assert!(track.max_score >= track.min_score);
     }
 
     #[test]

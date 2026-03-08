@@ -86,3 +86,9 @@ If a release artifact is broken:
    create a new patch tag (`vX.Y.Z+1`) and publish normally.
 3. If needed, remove incorrect assets from the GitHub Release UI before
    republishing.
+
+## Internal Release Notes
+
+For internal tags, keep a versioned release-notes document under `docs/`, e.g.:
+
+- `docs/release_notes_v0.1.0-internal.2.md`

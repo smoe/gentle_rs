@@ -20,7 +20,7 @@ fn normalized_non_empty(value: &str) -> Option<String> {
 pub fn set_tool_override(env_var: &str, configured: &str) {
     let mut guard = TOOL_OVERRIDES
         .write()
-        .expect("Tool override lock poisoned for write");
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some(value) = normalized_non_empty(configured) {
         guard.insert(env_var.to_string(), value);
     } else {
@@ -31,7 +31,7 @@ pub fn set_tool_override(env_var: &str, configured: &str) {
 pub fn get_tool_override(env_var: &str) -> Option<String> {
     TOOL_OVERRIDES
         .read()
-        .expect("Tool override lock poisoned for read")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(env_var)
         .cloned()
 }

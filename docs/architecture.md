@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -22,6 +22,7 @@ GENtle is a DNA/cloning workbench with multiple access paths:
 - GUI for interactive use
 - JavaScript shell for scripted experiments
 - Lua shell for scripted experiments
+- Python module wrapper for scripted/notebook automation
 - CLI for automation and AI tools
 - MCP server route for tool-based AI integration, including capability
   discovery/negotiation (`tools/list`, `capabilities`)
@@ -43,7 +44,8 @@ Wet-lab semantic rule (target model):
 
 Strategic aims:
 
-1. Keep one deterministic engine contract across GUI, CLI, JS, Lua, and MCP.
+1. Keep one deterministic engine contract across GUI, CLI, JS, Lua, Python,
+   and MCP.
 2. Preserve provenance so every derived result can be traced and replayed.
 3. Make every process exportable as a human-readable protocol text that a
    technical assistant can follow step by step (inputs, operations, expected
@@ -87,6 +89,21 @@ Import-format policy (GenBank-first, XML additive):
   diagnostics.
 - Cross-format fixtures must remain small and paired (same biological content
   across `.fa`, `.gb`, `.xml`) so parity tests can detect semantic drift.
+
+Information-preserving transfer default (decision):
+
+- Default behavior for import/retrieval/transcode paths is to preserve and
+  transfer relevant structured biological information (sequence + annotation)
+  whenever source data contains it.
+- For genome-region retrieval specifically, annotation projection defaults to
+  `annotation_scope=core` when unset.
+- `annotation_scope=full` is available for richer transfer and can be paired
+  with `max_annotation_features` to keep payload size bounded.
+- Opt-out is allowed when associated data volume is large and not immediately
+  relevant to the active cloning task, but this must be explicit at the call
+  site.
+- Gene-level annotation is considered core cloning context and should not be
+  omitted by default.
 
 Tooltip coverage rule:
 
@@ -167,7 +184,7 @@ Discoverability rule:
 GENtle should follow a single-engine architecture:
 
 1. `Core engine` (single source of truth)
-2. `Adapters/frontends` (GUI, JS, Lua, CLI, MCP server)
+2. `Adapters/frontends` (GUI, JS, Lua, Python, CLI, MCP server)
 3. `View model/renderers` (presentation layer only)
 
 ### Non-negotiable invariant
@@ -339,6 +356,8 @@ Practical rule:
   - test gating by example metadata:
     - `always`: execute in default test runs
     - `online`: execute only with `GENTLE_TEST_ONLINE=1`
+    - `GENTLE_SKIP_REMOTE_TESTS=1` force-disables remote-resource tests
+      regardless of `GENTLE_TEST_ONLINE`
     - `skip`: parse/validate only
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
@@ -516,6 +535,16 @@ Minimum requirements:
 4. Capability negotiation
 5. Stable versioning policy
 
+ClawBio/OpenClaw compatibility direction:
+
+- Present GENtle to ClawBio as a thin skill wrapper around deterministic
+  `gentle_cli` command surfaces (not by duplicating biology logic in the skill).
+- Wrapper outputs should remain reproducibility-first:
+  `report.md`, `result.json`, and reproducibility artifacts
+  (`commands.sh`, `environment.yml`, checksums).
+- Keep command contracts explicit in request payloads so orchestration layers
+  can route high-level asks while execution remains replayable.
+
 Current work satisfies (1) through (4) for most operations; remaining gaps are
 mainly view-model formalization and promoting remaining adapter-level utility
 contracts into stable engine operations.
@@ -539,6 +568,9 @@ GENtle now provides a shared agent-assistance bridge across GUI and CLI shell:
   - `builtin_echo` (offline/demo transport)
   - `external_json_stdio` (external adapter command over stdin/stdout JSON)
   - `native_openai` / `native_openai_compat` (built-in HTTP adapters with optional per-request base URL/model override)
+  - `native_openai_compat` is the preferred path for OpenAI-compatible hosted
+    providers (including [clawbio.ai](https://clawbio.ai/)) through explicit
+    base-URL + model selection
   - `native_openai_compat` requires explicit model resolution (catalog model or
     per-request override; `unspecified` is rejected) and keeps endpoint host/port
     deterministic (no hidden host fallback probing)
@@ -1112,6 +1144,109 @@ Interaction and export semantics:
   - render splicing view SVG from the same payload
     (`render-feature-expert-svg ... splicing ...`).
 
+### Dotplot + promoter-flexibility contract (implemented baseline; follow-ups)
+
+Goal:
+
+- Add low-latency sequence-self analysis in sequence windows without coupling
+  biological logic to GUI rendering.
+- Support promoter-oriented interpretation (repeat structure + local
+  flexibility proxies) through engine-owned, exportable view models.
+
+Design constraints:
+
+- Dotplot must not block first paint of sequence windows.
+- Dotplot/flexibility computation must be cancellable and progress-reported.
+- GUI/CLI/JS/Lua/SVG must consume the same engine payloads.
+- Feature geometry remains authoritative; analysis overlays are additive.
+
+Status (2026-03-08):
+
+- Implemented baseline:
+  - engine operations `ComputeDotplot` and `ComputeFlexibilityTrack`
+  - persisted analysis payloads in project metadata (`dotplot_analysis`)
+  - shared-shell/CLI read/write command surfaces:
+    - `dotplot compute|list|show`
+    - `flex compute|list|show`
+- Pending follow-ups:
+  - `RenderDotplotSvg`
+  - dedicated GUI Dotplot mode and linked crosshair controls
+  - JS/Lua/Python convenience wrappers beyond generic `apply_operation`
+
+Engine objects and operations:
+
+- Dotplot payload schema:
+  - `gentle.dotplot_view.v1`
+  - typed fields:
+    - `seq_id`
+    - `span_start_0based`, `span_end_0based`
+    - `mode` (`self_forward`, `self_reverse_complement`, optional later
+      `seq_vs_seq`)
+    - `word_size`, `step_bp`, `max_mismatches`
+    - sparse/packed match points in deterministic order
+    - optional aggregated density tiles (multiresolution)
+- Flexibility payload schema:
+  - `gentle.flexibility_track.v1`
+  - typed fields:
+    - `seq_id`, span
+    - bin size
+    - one or more score series (for example bendability, A/T-run burden,
+      duplex-destabilization proxy)
+    - normalization metadata and min/max ranges
+- Operations:
+  - implemented:
+    - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches, tile_bp?, store_as? }`
+    - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }`
+  - planned:
+    - `RenderDotplotSvg { seq_id, dotplot_id, flexibility_ids?, path }`
+  - optional later:
+    - explicit inspect operations (`InspectDotplot`, `InspectFlexibilityTrack`)
+      if adapter-neutral retrieval routes need to be operation-based instead of
+      shell read commands.
+
+Low-latency strategy (engine-first):
+
+- Use indexed seeds (k-mer/minimizer style) for candidate match discovery, not
+  O(n^2) brute-force raster loops.
+- Build multiresolution tiles so initial view is coarse+fast; refine only for
+  visible region/zoom level.
+- Cache results in project metadata keyed by `(seq_id, span, params_hash)`.
+- Reuse cache across GUI redraws and SVG export; no adapter-side recomputation.
+- Route long runs through background jobs with cooperative cancellation and
+  deterministic progress phases (`index`, `seed-match`, `tile-aggregate`,
+  `finalize`).
+
+GUI contract (planned):
+
+- Add a sequence-window `Dotplot` mode (separate from map background by
+  default).
+- Support optional overlay mode with low alpha, but keep dedicated panel mode
+  as primary for readability.
+- Link cursor/crosshair between dotplot and linear map coordinates.
+- Provide compact parameter presets:
+  - `fast-preview` (large word, coarse step)
+  - `balanced`
+  - `sensitive` (small word, fine step)
+- Provide promoter-flexibility toggles as separate tracks that can be shown
+  beneath/alongside dotplot (not fused into dotplot colors by default).
+
+Determinism and parity rules:
+
+- Same parameter set must yield byte-stable JSON payloads (ordering and
+  rounding rules fixed in engine).
+- SVG export consumes only stored/returned engine payloads.
+- CLI/JS/Lua interfaces call the same operations and can render/export the same
+  artifacts without GUI-only logic.
+
+Testing contract:
+
+- Deterministic fixture tests with known direct repeats, inverted repeats, and
+  low-complexity promoter motifs.
+- Parameter-sensitivity tests (`word_size`, `max_mismatches`, `step_bp`) with
+  stable expected deltas.
+- Snapshot tests for `RenderDotplotSvg`.
+- Regression tests for cache-key correctness and cancellation behavior.
+
 ### Amino-acid translation row contract (deferred)
 
 The sequence-panel amino-acid row path is intentionally deferred and must remain
@@ -1157,6 +1292,9 @@ Deferred-scope rules:
   `FilterContainerByMolecularWeight`)
 - Add normalized engine state summary and expose via CLI/JS/Lua:
   accepted and implemented
+- Add thin Python adapter wrapper over deterministic CLI contracts
+  (`integrations/python/gentle_py`):
+  accepted and implemented
 - Add TFBS safety cap semantics (`default=500`, `0=unlimited`):
   accepted and implemented
 - Add shared TFBS display filtering criteria and enforce parity in SVG export:
@@ -1189,6 +1327,12 @@ Deferred-scope rules:
 - Add agent-assistant bridge with catalog-driven transports, per-reply
   execution intents, shared-shell execution, and standalone GUI viewport:
   accepted and implemented
+- Keep explicit compatibility target for OpenAI-compatible hosted providers
+  (including [clawbio.ai](https://clawbio.ai/)) via `native_openai_compat`:
+  accepted and implemented
+- Add ClawBio/OpenClaw skill scaffold that wraps deterministic `gentle_cli`
+  routes and emits reproducibility bundles:
+  accepted and implemented (`integrations/clawbio/skills/gentle-cloning`)
 - Add curated isoform-panel import + TP53-style transcript/protein expert view
   + deterministic SVG export route (`ImportIsoformPanel`,
   `RenderIsoformArchitectureSvg`): accepted and implemented

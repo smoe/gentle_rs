@@ -681,6 +681,9 @@ mod tests {
                 start_1based: 3,
                 end_1based: 10,
                 output_id: Some(seq_id.clone()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
             })
@@ -1373,6 +1376,39 @@ mod tests {
 
         let dna = area.dna().read().expect("DNA lock poisoned");
         assert_eq!(dna.features().len(), 1);
+    }
+
+    #[test]
+    fn replace_active_dna_marks_layout_dirty_and_expands_full_view_on_growth() {
+        let initial_dna = DNAsequence::from_sequence("A".repeat(100).as_str()).expect("sequence");
+        let mut area = MainAreaDna::new(initial_dna, None, None);
+        area.set_linear_viewport(0, 100);
+
+        let grown_dna = DNAsequence::from_sequence("A".repeat(180).as_str()).expect("sequence");
+        area.replace_active_dna(grown_dna, true);
+
+        let (start, span, seq_len) = area.current_linear_viewport();
+        assert_eq!(start, 0);
+        assert_eq!(span, 180);
+        assert_eq!(seq_len, 180);
+        let display = area.dna_display.read().expect("display lock");
+        assert!(display.update_layout().update_map_dna());
+        assert!(display.update_layout().update_map_sequence());
+    }
+
+    #[test]
+    fn replace_active_dna_preserves_non_full_linear_viewport_on_growth() {
+        let initial_dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        let mut area = MainAreaDna::new(initial_dna, None, None);
+        area.set_linear_viewport(40, 60);
+
+        let grown_dna = DNAsequence::from_sequence("A".repeat(320).as_str()).expect("sequence");
+        area.replace_active_dna(grown_dna, true);
+
+        let (start, span, seq_len) = area.current_linear_viewport();
+        assert_eq!(start, 40);
+        assert_eq!(span, 60);
+        assert_eq!(seq_len, 320);
     }
 
     #[test]
@@ -2333,10 +2369,7 @@ impl MainAreaDna {
     }
 
     pub fn replace_loaded_sequence(&mut self, dna: DNAsequence) {
-        *self.dna.write().expect("DNA lock poisoned") = dna;
-        self.clear_feature_focus();
-        self.description_cache_initialized = false;
-        self.update_dna_map();
+        self.replace_active_dna(dna, true);
     }
 
     pub fn defer_feature_tree_until_interaction(&mut self) {
@@ -2359,7 +2392,7 @@ impl MainAreaDna {
         let Some(updated_dna) = updated_dna else {
             return;
         };
-        *self.dna.write().expect("DNA lock poisoned") = updated_dna;
+        self.replace_active_dna(updated_dna, false);
         let selected_feature_invalid = self
             .get_selected_feature_id()
             .map(|id| {
@@ -2373,7 +2406,55 @@ impl MainAreaDna {
             self.map_dna.select_feature(None);
         }
         self.prune_multi_selected_feature_ids();
+    }
+
+    fn replace_active_dna(&mut self, dna: DNAsequence, clear_feature_focus: bool) {
+        let previous_len = self
+            .dna
+            .read()
+            .map(|existing| existing.len())
+            .unwrap_or_default();
+        *self.dna.write().expect("DNA lock poisoned") = dna;
+        if clear_feature_focus {
+            self.clear_feature_focus();
+        }
+        self.description_cache_initialized = false;
+        self.mark_dna_layout_dirty();
+        self.reconcile_linear_viewport_after_dna_replace(previous_len);
         self.update_dna_map();
+    }
+
+    fn mark_dna_layout_dirty(&self) {
+        if let Ok(mut display) = self.dna_display.write() {
+            display.update_layout_mut().update_all();
+        }
+    }
+
+    fn reconcile_linear_viewport_after_dna_replace(&self, previous_len: usize) {
+        if self.is_circular() {
+            return;
+        }
+        let new_len = self
+            .dna
+            .read()
+            .map(|dna| dna.len())
+            .unwrap_or_default();
+        if new_len == 0 {
+            return;
+        }
+        let (start_bp, span_bp) = self
+            .dna_display
+            .read()
+            .map(|display| (display.linear_view_start_bp(), display.linear_view_span_bp()))
+            .unwrap_or((0, new_len));
+
+        let was_full_sequence_view =
+            previous_len > 0 && (span_bp == 0 || span_bp >= previous_len);
+        if was_full_sequence_view && new_len > previous_len {
+            self.set_linear_viewport(0, new_len);
+            return;
+        }
+        self.set_linear_viewport(start_bp, span_bp);
     }
 
     pub fn refresh_from_engine_settings(&mut self) {
@@ -3071,8 +3152,7 @@ impl MainAreaDna {
                             .get(&seq_id)
                             .cloned()
                         {
-                            *self.dna.write().expect("DNA lock poisoned") = updated;
-                            self.clear_feature_focus();
+                            self.replace_active_dna(updated, true);
                         }
                     }
                 } else {
@@ -8153,29 +8233,37 @@ impl MainAreaDna {
     }
 
     fn apply_sequence_derivation(&mut self, op: Operation) {
-        let Some(engine) = &self.engine else {
+        let Some(engine) = self.engine.clone() else {
             return;
         };
-        let Ok(result) = engine.write().expect("Engine lock poisoned").apply(op) else {
+        let Ok(result) = ({
+            let Ok(mut guard) = engine.write() else {
+                self.op_status =
+                    "Engine lock poisoned while deriving sequence; restart recommended".to_string();
+                return;
+            };
+            guard.apply(op)
+        }) else {
             return;
         };
         let Some(new_seq_id) = result.created_seq_ids.first() else {
             return;
         };
-        let Some(new_dna) = engine
-            .read()
-            .expect("Engine lock poisoned")
-            .state()
-            .sequences
-            .get(new_seq_id)
-            .cloned()
-        else {
+        let Some(new_dna) = ({
+            let Ok(guard) = engine.read() else {
+                self.op_status =
+                    "Engine lock poisoned while reading derived sequence; restart recommended"
+                        .to_string();
+                return;
+            };
+            guard.state().sequences.get(new_seq_id).cloned()
+        }) else {
+            self.op_status = format!("Derived sequence '{new_seq_id}' was not found in engine");
             return;
         };
 
         self.seq_id = Some(new_seq_id.clone());
-        *self.dna.write().expect("DNA lock poisoned") = new_dna;
-        self.clear_feature_focus();
+        self.replace_active_dna(new_dna, true);
     }
 
     fn apply_operation_with_feedback(&mut self, op: Operation) {
@@ -8185,7 +8273,12 @@ impl MainAreaDna {
         };
         let started = Instant::now();
         let apply_result = {
-            let mut guard = engine.write().expect("Engine lock poisoned");
+            let Ok(mut guard) = engine.write() else {
+                self.op_status =
+                    "Engine lock poisoned while applying operation; restart recommended"
+                        .to_string();
+                return;
+            };
             guard.apply(op)
         };
         match apply_result {
@@ -8199,10 +8292,17 @@ impl MainAreaDna {
             PendingGenomeAnchorAction::Extend { seq_id, .. } => seq_id,
             PendingGenomeAnchorAction::Verify { seq_id } => seq_id,
         };
-        let Some(engine) = self.engine.as_ref() else {
+        let Some(engine) = self.engine.clone() else {
             return false;
         };
-        let guard = engine.read().expect("Engine lock poisoned");
+        let guard = match engine.read() {
+            Ok(guard) => guard,
+            Err(_) => {
+                self.op_status =
+                    "Engine lock poisoned while resolving prepared genomes".to_string();
+                return false;
+            }
+        };
         let inspection =
             match guard.sequence_anchor_prepared_genome_options(requested_seq_id, None, None) {
                 Ok(v) => v,
@@ -8333,8 +8433,7 @@ impl MainAreaDna {
                         .cloned()
                     {
                         self.seq_id = Some(new_seq_id.clone());
-                        *self.dna.write().expect("DNA lock poisoned") = new_dna;
-                        self.clear_feature_focus();
+                        self.replace_active_dna(new_dna, true);
                     }
                 }
             } else if let Some(current_seq_id) = self.seq_id.clone() {
@@ -8351,8 +8450,7 @@ impl MainAreaDna {
                         .get(&current_seq_id)
                         .cloned()
                     {
-                        *self.dna.write().expect("DNA lock poisoned") = updated_dna;
-                        self.clear_feature_focus();
+                        self.replace_active_dna(updated_dna, true);
                     }
                 }
             }
@@ -8610,8 +8708,7 @@ impl MainAreaDna {
                 .cloned()
             {
                 self.seq_id = Some(new_seq_id);
-                *self.dna.write().expect("DNA lock poisoned") = new_dna;
-                self.clear_feature_focus();
+                self.replace_active_dna(new_dna, true);
             }
         }
         self.op_status = format!(
@@ -9026,7 +9123,8 @@ impl MainAreaDna {
             .name()
             .as_ref()
             .cloned()
-            .unwrap_or_else(|| "<Unnamed DNA sequence>".to_string());
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| seq_id.clone());
         let header_left = format!("{} ({})", seq_name, seq_id);
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"18\" fill=\"#111111\">{}</text>",
@@ -12176,10 +12274,13 @@ impl MainAreaDna {
     }
 
     pub fn window_title(&self) -> String {
+        let seq_id = self.sequence_id().map(|value| value.to_string());
         let display_name = self
             .sequence_name()
+            .filter(|name| !name.trim().is_empty())
+            .or_else(|| seq_id.clone())
             .unwrap_or_else(|| "<Unnamed sequence>".to_string());
-        let Some(seq_id) = self.sequence_id() else {
+        let Some(seq_id) = seq_id.as_deref() else {
             return display_name;
         };
         if let Some(node_id) = self.lineage_node_id_for_seq_id(seq_id) {
@@ -12785,8 +12886,14 @@ impl MainAreaDna {
                 .expect("DNA lock poisoned")
                 .name()
                 .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or("<Unnamed DNA sequence>"),
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    self.seq_id
+                        .clone()
+                        .unwrap_or_else(|| "<Unnamed DNA sequence>".to_string())
+                }),
         );
         let multi_select_count = self.multi_selected_feature_ids.len();
         if multi_select_count > 1 {

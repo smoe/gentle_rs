@@ -5,7 +5,7 @@ through a shared core engine.
 
 Goal:
 
-- GUI, CLI, JavaScript, and Lua call the same core routines.
+- GUI, CLI, JavaScript, Lua, and Python wrappers call the same core routines.
 - AI tools can run deterministic cloning workflows with reproducible logs.
 
 ## Design principles
@@ -112,7 +112,16 @@ Current draft operations:
 - `PcrMutagenesis { template, forward_primer, reverse_primer, mutations, output_id?, unique?, require_all_mutations? }`
 - `DesignPrimerPairs { ... }` (implemented baseline)
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
+- `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline)
+- `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
 - `ExtractRegion { input, from, to, output_id? }`
+- `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
+- `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+  - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
+  - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
+  - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
+  - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
+- `ExtractGenomeGene { genome_id, gene_query, occurrence?, output_id?, catalog_path?, cache_dir? }`
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
@@ -125,6 +134,7 @@ Current draft operations:
 - `ImportIsoformPanel { seq_id, panel_path, panel_id?, strict }`
 - `ImportUniprotSwissProt { path, entry_id? }`
 - `FetchUniprotSwissProt { query, entry_id? }`
+- `FetchGenBankAccession { accession, as_id? }`
 - `ProjectUniprotToGenome { seq_id, entry_id, projection_id?, transcript_id? }`
 - `GenerateCandidateSet { set_name, seq_id, length_bp, step_bp, feature_kinds[], feature_label_regex?, max_distance_bp?, feature_geometry_mode?, feature_boundary_mode?, feature_strand_relation?, limit? }`
 - `GenerateCandidateSetBetweenAnchors { set_name, seq_id, anchor_a, anchor_b, length_bp, step_bp, limit? }`
@@ -252,6 +262,25 @@ external coding agent runtime, see:
   - `uniprot map ENTRY_ID SEQ_ID [--projection-id ID] [--transcript ID]`
   - `uniprot projection-list [--seq SEQ_ID]`
   - `uniprot projection-show PROJECTION_ID`
+- shared-shell GenBank route:
+  - `genbank fetch ACCESSION [--as-id ID]`
+
+- Python adapter wrapper (`integrations/python/gentle_py`):
+  - thin subprocess-based wrapper over `gentle_cli`
+  - deterministic methods:
+    - `capabilities()`
+    - `state_summary()`
+    - `op(operation)`
+    - `workflow(workflow|workflow_path)`
+    - `shell(line, expect_json=False)`
+  - raises structured `GentleCliError` with:
+    - `code` (best-effort extracted stable code token)
+    - `command`, `exit_code`, `stdout`, `stderr`
+  - executable resolution order:
+    1. constructor `cli_cmd`
+    2. `GENTLE_CLI_CMD`
+    3. `gentle_cli` on `PATH`
+    4. repository fallback `cargo run --quiet --bin gentle_cli --`
 
 - `gentle_mcp` (stdio MCP adapter, expanded UI-intent parity baseline)
   - MCP role:
@@ -599,6 +628,29 @@ Failure-handling policy for external adapters:
   - `AGENT_ADAPTER_FAILED`
   - `AGENT_RESPONSE_PARSE`
   - `AGENT_RESPONSE_VALIDATION`
+
+ClawBio/OpenClaw integration scaffold schemas:
+
+- integration path:
+  `integrations/clawbio/skills/gentle-cloning/`
+- wrapper request schema: `gentle.clawbio_skill_request.v1`
+  - `mode`: `capabilities|state-summary|shell|op|workflow|raw`
+  - optional: `state_path`, `timeout_secs`
+  - mode-specific:
+    - `shell`: `shell_line`
+    - `op`: `operation` (JSON object/string)
+    - `workflow`: `workflow` or `workflow_path`
+    - `raw`: `raw_args[]`
+- wrapper result schema: `gentle.clawbio_skill_result.v1`
+  - `status`: `ok|command_failed|timeout|failed|degraded_demo`
+  - includes resolver details, executed command, exit code, stdout/stderr, and
+    generated artifact paths
+- reproducibility outputs:
+  - `report.md`
+  - `result.json`
+  - `reproducibility/commands.sh`
+  - `reproducibility/environment.yml`
+  - `reproducibility/checksums.sha256`
 
 Planned operation refinements:
 
@@ -1185,6 +1237,38 @@ Primer-design shell command family (implemented):
   - `roi_end_0based_exclusive`
   - `operations.design_primer_pairs` (`{"DesignPrimerPairs": ...}`)
   - `operations.design_qpcr_assays` (`{"DesignQpcrAssays": ...}`)
+
+Dotplot + flexibility operation contract (implemented baseline):
+
+- Dotplot operation:
+  - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }`
+  - `mode`: `self_forward | self_reverse_complement`
+  - stores payload schema `gentle.dotplot_view.v1`
+  - guardrails:
+    - `word_size >= 1`
+    - `step_bp >= 1`
+    - span must satisfy `0 <= start < end <= sequence_len`
+    - pair-evaluation safety limit is enforced for latency protection
+    - point count is capped with deterministic truncation warning
+- Flexibility operation:
+  - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }`
+  - `model`: `at_richness | at_skew`
+  - stores payload schema `gentle.flexibility_track.v1`
+  - guardrails:
+    - `bin_bp >= 1`
+    - same span validation contract as dotplot
+    - optional smoothing uses deterministic moving-average bins
+- Metadata persistence:
+  - metadata key: `dotplot_analysis`
+  - store schema: `gentle.dotplot_analysis_store.v1`
+  - both dotplots and flexibility tracks are persisted under this key
+- Shared-shell command family:
+  - `dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]`
+  - `dotplot list [SEQ_ID]`
+  - `dotplot show DOTPLOT_ID`
+  - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
+  - `flex list [SEQ_ID]`
+  - `flex show TRACK_ID`
 
 Async BLAST shell contract (agent/MCP-ready baseline):
 

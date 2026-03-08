@@ -2204,7 +2204,7 @@ fn resolve_genbank_accession_source(
     Ok(Some(build_genbank_efetch_url(&accession, rettype)))
 }
 
-fn validate_genbank_accession(raw: &str) -> Result<String, String> {
+pub(crate) fn validate_genbank_accession(raw: &str) -> Result<String, String> {
     let value = raw.trim();
     if value.is_empty() {
         return Err("GenBank accession is empty".to_string());
@@ -2239,7 +2239,7 @@ fn is_unpublished_genbank_placeholder(raw: &str) -> bool {
     )
 }
 
-fn build_genbank_efetch_url(accession: &str, rettype: &str) -> String {
+pub(crate) fn build_genbank_efetch_url(accession: &str, rettype: &str) -> String {
     let override_url = std::env::var(NCBI_EFETCH_ENV_VAR)
         .ok()
         .map(|v| v.trim().to_string())

@@ -334,6 +334,40 @@ mod macos_native_windows_menu {
         unsafe { window_menu.itemAtIndex(index) }
     }
 
+    fn try_update_existing_entry_states(
+        submenu: &NSMenu,
+        entries: &[(u64, String)],
+        active_key: Option<u64>,
+    ) -> bool {
+        if entries.is_empty() {
+            return false;
+        }
+        let item_count = unsafe { submenu.numberOfItems() };
+        if item_count < 0 || item_count as usize != entries.len() {
+            return false;
+        }
+        for (idx, (key, _title)) in entries.iter().enumerate() {
+            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+                return false;
+            };
+            let existing_tag: isize = unsafe { msg_send![&item, tag] };
+            if existing_tag != *key as isize {
+                return false;
+            }
+        }
+        for (idx, (key, _title)) in entries.iter().enumerate() {
+            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+                return false;
+            };
+            unsafe {
+                let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+                let _: () = msg_send![&item, setState: state_value];
+                item.setEnabled(true);
+            }
+        }
+        true
+    }
+
     pub(super) fn install() {
         if INSTALLED.load(Ordering::Relaxed) {
             return;
@@ -405,6 +439,9 @@ mod macos_native_windows_menu {
             item.setSubmenu(Some(&created));
             created
         };
+        if try_update_existing_entry_states(&submenu, entries, active_key) {
+            return;
+        }
         unsafe {
             submenu.removeAllItems();
         }
@@ -521,6 +558,40 @@ mod macos_native_app_windows_menu {
         unsafe { app_menu.itemAtIndex(index) }
     }
 
+    fn try_update_existing_entry_states(
+        submenu: &NSMenu,
+        entries: &[(u64, String)],
+        active_key: Option<u64>,
+    ) -> bool {
+        if entries.is_empty() {
+            return false;
+        }
+        let item_count = unsafe { submenu.numberOfItems() };
+        if item_count < 0 || item_count as usize != entries.len() {
+            return false;
+        }
+        for (idx, (key, _title)) in entries.iter().enumerate() {
+            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+                return false;
+            };
+            let existing_tag: isize = unsafe { msg_send![&item, tag] };
+            if existing_tag != *key as isize {
+                return false;
+            }
+        }
+        for (idx, (key, _title)) in entries.iter().enumerate() {
+            let Some(item) = (unsafe { submenu.itemAtIndex(idx as isize) }) else {
+                return false;
+            };
+            unsafe {
+                let state_value: isize = if Some(*key) == active_key { 1 } else { 0 };
+                let _: () = msg_send![&item, setState: state_value];
+                item.setEnabled(true);
+            }
+        }
+        true
+    }
+
     pub(super) fn install() {
         if INSTALLED.load(Ordering::Relaxed) {
             return;
@@ -590,6 +661,9 @@ mod macos_native_app_windows_menu {
             item.setSubmenu(Some(&created));
             created
         };
+        if try_update_existing_entry_states(&submenu, entries, active_key) {
+            return;
+        }
         unsafe {
             submenu.removeAllItems();
         }

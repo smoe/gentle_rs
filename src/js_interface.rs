@@ -692,7 +692,7 @@ impl JavaScriptInterface {
           			}
           		});
           	}
-          	function extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir) {
+          	function extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features) {
           		return apply_operation(state, {
           			ExtractGenomeRegion: {
           				genome_id: genome_id,
@@ -700,6 +700,8 @@ impl JavaScriptInterface {
           				start_1based: start_1based,
           				end_1based: end_1based,
           				output_id: output_id ?? null,
+          				annotation_scope: annotation_scope ?? null,
+          				max_annotation_features: (max_annotation_features === undefined || max_annotation_features === null) ? null : Number(max_annotation_features),
           				catalog_path: catalog_path ?? null,
           				cache_dir: cache_dir ?? null
           			}

@@ -34,6 +34,12 @@
     "annotations_local": "/lab/resources/vectors/pBR322.gff3.gz",
     "cache_dir": "data/helper_genomes"
   },
+  "Reporter Promega Luciferase AY738222 (online)": {
+    "description": "Promega luciferase reporter backbone fetched from NCBI GenBank accession AY738222",
+    "genbank_accession": "AY738222",
+    "genbank_reference": "https://www.ncbi.nlm.nih.gov/nuccore/AY738222",
+    "cache_dir": "data/helper_genomes"
+  },
   "Plasmid pX300 (local)": {
     "description": "CRISPR helper backbone (SpCas9 and sgRNA expression cassette)",
     "genbank_accession": "LOCAL_UNPUBLISHED",

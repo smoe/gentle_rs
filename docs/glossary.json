@@ -1,5 +1,5 @@
 {
-   "command_count": 182,
+   "command_count": 197,
    "commands": [
       {
          "aliases": [
@@ -388,6 +388,19 @@
       {
          "aliases": [],
          "engine_operations": [
+            "FetchGenBankAccession"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell"
+         ],
+         "path": "genbank fetch",
+         "summary": "Fetch one GenBank accession via NCBI EFetch and import it as a sequence.",
+         "usage": "genbank fetch ACCESSION [--as-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
             "FetchUniprotSwissProt"
          ],
          "interfaces": [
@@ -591,8 +604,8 @@
             "cli-direct"
          ],
          "path": "genomes extract-region",
-         "summary": "Extract genomic interval into a project sequence.",
-         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+         "summary": "Extract genomic interval into a project sequence (default annotation_scope=core).",
+         "usage": "genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -721,8 +734,8 @@
             "cli-direct"
          ],
          "path": "helpers extract-region",
-         "summary": "Extract helper-genome interval into a project sequence.",
-         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+         "summary": "Extract helper-genome interval into a project sequence (default annotation_scope=core).",
+         "usage": "helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
       },
       {
          "aliases": [],
@@ -1123,6 +1136,82 @@
          "path": "primers export-qpcr-report",
          "summary": "Write one persisted qPCR assay report to JSON.",
          "usage": "primers export-qpcr-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComputeDotplot"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot compute",
+         "summary": "Compute and persist one dotplot payload for a sequence span.",
+         "usage": "dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot list",
+         "summary": "List persisted dotplot payload summaries.",
+         "usage": "dotplot list [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "dotplot show",
+         "summary": "Inspect one persisted dotplot payload by ID.",
+         "usage": "dotplot show DOTPLOT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ComputeFlexibilityTrack"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "flex compute",
+         "summary": "Compute and persist one promoter-flexibility track for a sequence span.",
+         "usage": "flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "flex list",
+         "summary": "List persisted flexibility track summaries.",
+         "usage": "flex list [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "flex show",
+         "summary": "Inspect one persisted flexibility track payload by ID.",
+         "usage": "flex show TRACK_ID"
       },
       {
          "aliases": [],
@@ -1710,7 +1799,7 @@
          ],
          "path": "extract_genome_region",
          "summary": "Apply ExtractGenomeRegion operation.",
-         "usage": "extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, [output_id], [catalog_path], [cache_dir])"
+         "usage": "extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features])"
       },
       {
          "aliases": [],
@@ -2074,7 +2163,7 @@
          ],
          "path": "extract_genome_region",
          "summary": "Apply ExtractGenomeRegion operation.",
-         "usage": "extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, [output_id], [catalog_path], [cache_dir])"
+         "usage": "extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, [output_id], [catalog_path], [cache_dir], [annotation_scope], [max_annotation_features])"
       },
       {
          "aliases": [],

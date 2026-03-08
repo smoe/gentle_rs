@@ -3,8 +3,8 @@
 use gentle::{
     about,
     engine::{
-        Engine, EngineStateSummary, GenomeTrackImportProgress, GentleEngine, Operation,
-        OperationProgress, ProjectState, RenderSvgMode, TfbsProgress,
+        Engine, EngineStateSummary, GenomeAnnotationScope, GenomeTrackImportProgress,
+        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode, TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -472,7 +472,7 @@ fn usage() {
   gentle_cli genomes genes GENOME_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
@@ -482,7 +482,7 @@ fn usage() {
   gentle_cli helpers genes HELPER_ID [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--limit N] [--offset N]\n  \
   gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
@@ -545,6 +545,12 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] primers list-qpcr-reports\n  \
   gentle_cli [--state PATH|--project PATH] primers show-qpcr-report REPORT_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers export-qpcr-report REPORT_ID OUTPUT.json\n\n  \
+  gentle_cli [--state PATH|--project PATH] dotplot compute SEQ_ID [--start N] [--end N] [--mode self_forward|self_reverse_complement] [--word-size N] [--step N] [--max-mismatches N] [--tile-bp N] [--id DOTPLOT_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] dotplot list [SEQ_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] dotplot show DOTPLOT_ID\n  \
+  gentle_cli [--state PATH|--project PATH] flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] flex list [SEQ_ID]\n  \
+  gentle_cli [--state PATH|--project PATH] flex show TRACK_ID\n\n  \
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH]\n\n  \
@@ -571,7 +577,11 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "ladders",
     "guides",
     "primers",
+    "dotplot",
+    "flex",
     "tracks",
+    "genbank",
+    "uniprot",
     "screenshot-window",
     "inspect-feature-expert",
     "render-feature-expert-svg",
@@ -628,11 +638,14 @@ fn read_text_input(path_or_url: &str) -> Result<String, String> {
 }
 
 fn load_state(path: &str) -> Result<ProjectState, String> {
-    if std::path::Path::new(path).exists() {
-        ProjectState::load_from_path(path).map_err(|e| e.to_string())
-    } else {
-        Ok(ProjectState::default())
+    if !std::path::Path::new(path).exists() {
+        return Ok(ProjectState::default());
     }
+    let raw = fs::read_to_string(path).map_err(|e| format!("Could not read state file '{path}': {e}"))?;
+    if raw.trim().is_empty() {
+        return Ok(ProjectState::default());
+    }
+    ProjectState::load_from_path(path).map_err(|e| e.to_string())
 }
 
 fn print_json<T: Serialize>(value: &T) -> Result<(), String> {
@@ -1344,7 +1357,7 @@ fn run() -> Result<(), String> {
                     if args.len() <= cmd_idx + 6 {
                         usage();
                         return Err(format!(
-                            "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                            "{label} extract-region requires GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
                         ));
                     }
                     let genome_id = args[cmd_idx + 2].clone();
@@ -1356,6 +1369,9 @@ fn run() -> Result<(), String> {
                         format!("Invalid END coordinate '{}': {}", args[cmd_idx + 5], e)
                     })?;
                     let mut output_id: Option<String> = None;
+                    let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+                    let mut max_annotation_features: Option<usize> = None;
+                    let mut include_genomic_annotation: Option<bool> = None;
                     let mut catalog_path: Option<String> = None;
                     let mut cache_dir: Option<String> = None;
                     let mut idx = cmd_idx + 6;
@@ -1388,12 +1404,78 @@ fn run() -> Result<(), String> {
                                 cache_dir = Some(args[idx + 1].clone());
                                 idx += 2;
                             }
+                            "--annotation-scope" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing VALUE after --annotation-scope for {label} extract-region"
+                                    ));
+                                }
+                                let value = args[idx + 1].trim().to_ascii_lowercase();
+                                let parsed = match value.as_str() {
+                                    "none" => GenomeAnnotationScope::None,
+                                    "core" => GenomeAnnotationScope::Core,
+                                    "full" => GenomeAnnotationScope::Full,
+                                    other => {
+                                        return Err(format!(
+                                            "Invalid --annotation-scope value '{}' for {label} extract-region (expected none|core|full)",
+                                            other
+                                        ));
+                                    }
+                                };
+                                annotation_scope = Some(parsed);
+                                idx += 2;
+                            }
+                            "--max-annotation-features" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --max-annotation-features for {label} extract-region"
+                                    ));
+                                }
+                                let raw = args[idx + 1].trim().to_string();
+                                let parsed = raw.parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --max-annotation-features value '{}' for {label} extract-region: {}",
+                                        raw, e
+                                    )
+                                })?;
+                                max_annotation_features = Some(parsed);
+                                idx += 2;
+                            }
+                            "--include-genomic-annotation" => {
+                                include_genomic_annotation = Some(true);
+                                idx += 1;
+                            }
+                            "--no-include-genomic-annotation" => {
+                                include_genomic_annotation = Some(false);
+                                idx += 1;
+                            }
                             other => {
                                 return Err(format!(
                                     "Unknown option '{}' for {label} extract-region",
                                     other
                                 ));
                             }
+                        }
+                    }
+                    if let Some(include) = include_genomic_annotation {
+                        let mapped_scope = if include {
+                            GenomeAnnotationScope::Core
+                        } else {
+                            GenomeAnnotationScope::None
+                        };
+                        if let Some(explicit_scope) = annotation_scope {
+                            if explicit_scope != mapped_scope {
+                                return Err(format!(
+                                    "Conflicting annotation options for {label} extract-region: --annotation-scope={} with legacy include/no-include flag",
+                                    match explicit_scope {
+                                        GenomeAnnotationScope::None => "none",
+                                        GenomeAnnotationScope::Core => "core",
+                                        GenomeAnnotationScope::Full => "full",
+                                    }
+                                ));
+                            }
+                        } else {
+                            annotation_scope = Some(mapped_scope);
                         }
                     }
                     let op_catalog_path = catalog_path
@@ -1407,6 +1489,9 @@ fn run() -> Result<(), String> {
                             start_1based,
                             end_1based,
                             output_id,
+                            annotation_scope,
+                            max_annotation_features,
+                            include_genomic_annotation,
                             catalog_path: op_catalog_path,
                             cache_dir,
                         })
@@ -2163,7 +2248,39 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        key: String,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            // SAFETY: Test-only mutation is serialized by TEST_ENV_LOCK.
+            unsafe { std::env::set_var(key, value) };
+            Self {
+                key: key.to_string(),
+                previous,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = &self.previous {
+                // SAFETY: Test-only mutation is serialized by TEST_ENV_LOCK.
+                unsafe { std::env::set_var(&self.key, value) };
+            } else {
+                // SAFETY: Test-only mutation is serialized by TEST_ENV_LOCK.
+                unsafe { std::env::remove_var(&self.key) };
+            }
+        }
+    }
 
     fn execute_forwarded_like_cli(
         state: ProjectState,
@@ -2285,6 +2402,28 @@ T [ 0 0 0 10 ]
         assert_eq!(parsed.state_path, "project.gentle.json");
         assert!(!parsed.allow_screenshots);
         assert_eq!(parsed.cmd_idx, 3);
+    }
+
+    #[test]
+    fn test_load_state_returns_default_for_empty_or_whitespace_file() {
+        let td = tempdir().expect("tempdir");
+        let empty_path = td.path().join("empty_state.json");
+        fs::write(&empty_path, "").expect("write empty state");
+        let empty_state = load_state(empty_path.to_string_lossy().as_ref())
+            .expect("empty file should initialize default state");
+        assert!(empty_state.sequences.is_empty());
+        assert!(empty_state.metadata.is_empty());
+        assert!(empty_state.container_state.containers.is_empty());
+        assert!(empty_state.container_state.arrangements.is_empty());
+
+        let whitespace_path = td.path().join("whitespace_state.json");
+        fs::write(&whitespace_path, " \n\t\r ").expect("write whitespace state");
+        let whitespace_state = load_state(whitespace_path.to_string_lossy().as_ref())
+            .expect("whitespace file should initialize default state");
+        assert!(whitespace_state.sequences.is_empty());
+        assert!(whitespace_state.metadata.is_empty());
+        assert!(whitespace_state.container_state.containers.is_empty());
+        assert!(whitespace_state.container_state.arrangements.is_empty());
     }
 
     #[test]
@@ -2563,6 +2702,46 @@ T [ 0 0 0 10 ]
     }
 
     #[test]
+    fn test_parse_forwarded_shell_command_routes_genbank_fetch() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "genbank".to_string(),
+            "fetch".to_string(),
+            "AY738222".to_string(),
+            "--as-id".to_string(),
+            "luc_promega".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::GenbankFetch { accession, as_id }) => {
+                assert_eq!(accession, "AY738222");
+                assert_eq!(as_id.as_deref(), Some("luc_promega"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_forwarded_shell_command_routes_uniprot_fetch() {
+        let args = vec![
+            "gentle_cli".to_string(),
+            "uniprot".to_string(),
+            "fetch".to_string(),
+            "P04637".to_string(),
+            "--entry-id".to_string(),
+            "tp53_human".to_string(),
+        ];
+        let parsed = parse_forwarded_shell_command(&args, 1).expect("parse forwarded");
+        match parsed {
+            Some(ShellCommand::UniprotFetch { query, entry_id }) => {
+                assert_eq!(query, "P04637");
+                assert_eq!(entry_id.as_deref(), Some("tp53_human"));
+            }
+            other => panic!("unexpected parsed shell command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_forwarded_resources_sync_rebase_dispatch_matches_shared_shell_execution() {
         let td = tempdir().expect("tempdir");
         let input_path = td.path().join("rebase.withrefm");
@@ -2621,6 +2800,48 @@ T [ 0 0 0 10 ]
             "sync-jaspar".to_string(),
             input_path.to_string_lossy().to_string(),
             output_path.to_string_lossy().to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_genbank_fetch_dispatch_matches_shared_shell_execution() {
+        let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
+        let td = tempdir().expect("tempdir");
+        let mock_dir = td.path().join("mock_genbank");
+        fs::create_dir_all(&mock_dir).expect("create mock dir");
+        fs::copy("test_files/tp73.ncbi.gb", mock_dir.join("NC_000001.gbwithparts"))
+            .expect("copy mocked genbank payload");
+        let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
+        let _efetch_env = EnvVarGuard::set("GENTLE_NCBI_EFETCH_URL", &efetch_template);
+
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "genbank".to_string(),
+            "fetch".to_string(),
+            "NC_000001".to_string(),
+            "--as-id".to_string(),
+            "tp73_fetch".to_string(),
         ];
         let shared_tokens = forwarded_args[1..].to_vec();
 

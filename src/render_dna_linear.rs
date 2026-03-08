@@ -820,9 +820,6 @@ impl RenderDnaLinear {
                 exon_segments.push((seg_x1, seg_x2));
                 exon_visibility.push(Some((seg_x1, seg_x2)));
             }
-            if exon_segments.is_empty() {
-                continue;
-            }
             exon_segments.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
 
             let mut connector_segments: Vec<(f32, f32)> = Vec::new();
@@ -853,14 +850,19 @@ impl RenderDnaLinear {
                 }
                 connector_segments.push((start_x, end_x));
             }
+            if exon_segments.is_empty() && connector_segments.is_empty() {
+                continue;
+            }
 
             let x1 = exon_segments
                 .iter()
                 .map(|(sx1, _)| *sx1)
+                .chain(connector_segments.iter().map(|(sx1, _)| *sx1))
                 .fold(f32::INFINITY, f32::min);
             let x2 = exon_segments
                 .iter()
                 .map(|(_, sx2)| *sx2)
+                .chain(connector_segments.iter().map(|(_, sx2)| *sx2))
                 .fold(f32::NEG_INFINITY, f32::max);
             if !x1.is_finite() || !x2.is_finite() {
                 continue;
@@ -1119,13 +1121,26 @@ impl RenderDnaLinear {
                     )
                 })
                 .collect();
-            if exon_rects.is_empty() {
-                continue;
-            }
-            let mut rect = exon_rects[0];
-            for exon_rect in exon_rects.iter().skip(1) {
-                rect = rect.union(*exon_rect);
-            }
+            let rect = if exon_rects.is_empty() {
+                let (min_x, max_x) = seed.connector_segments.iter().fold(
+                    (f32::INFINITY, f32::NEG_INFINITY),
+                    |(min_x, max_x), (start_x, end_x)| (min_x.min(*start_x), max_x.max(*end_x)),
+                );
+                if !min_x.is_finite() || !max_x.is_finite() || max_x <= min_x {
+                    continue;
+                }
+                let half_h = (side_style.height * 0.2).max(1.5);
+                Rect::from_min_max(
+                    Pos2::new(min_x, center_y - half_h),
+                    Pos2::new(max_x, center_y + half_h),
+                )
+            } else {
+                let mut rect = exon_rects[0];
+                for exon_rect in exon_rects.iter().skip(1) {
+                    rect = rect.union(*exon_rect);
+                }
+                rect
+            };
             let connector_delta = (side_style.height * 0.42).max(3.0);
             let connector_apex_y = if lane_is_bottom_side {
                 center_y + connector_delta
@@ -2500,6 +2515,28 @@ mod tests {
         assert_eq!(fp.intron_connectors.len(), 1);
         let connector = fp.intron_connectors[0];
         assert!((connector[0].x - fp.exon_rects[0].right()).abs() < 0.01);
+        assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
+        assert!(connector[0].x < connector[2].x);
+    }
+
+    #[test]
+    fn intron_connector_remains_visible_when_no_exon_is_in_view() {
+        let feature = make_test_feature(Location::Join(vec![
+            Location::simple_range(100, 160),
+            Location::simple_range(840, 900),
+        ]));
+        let mut renderer = test_renderer_with_feature(feature, 1200);
+        renderer.layout_features(LinearViewport {
+            start: 300,
+            end: 700,
+            span: 400,
+        });
+        assert_eq!(renderer.features.len(), 1);
+        let fp = &renderer.features[0];
+        assert!(fp.exon_rects.is_empty());
+        assert_eq!(fp.intron_connectors.len(), 1);
+        let connector = fp.intron_connectors[0];
+        assert!((connector[0].x - renderer.area.left()).abs() < 0.01);
         assert!((connector[2].x - renderer.area.right()).abs() < 0.01);
         assert!(connector[0].x < connector[2].x);
     }

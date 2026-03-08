@@ -86,14 +86,14 @@ impl fmt::Display for DNAoverhang {
         let left = self.forward_5.len().max(self.reverse_3.len());
         let line1 = format!(
             "{: >left$} - ... - {}",
-            String::from_utf8(self.forward_5.to_owned()).unwrap(),
-            String::from_utf8(self.forward_3.to_owned()).unwrap(),
+            String::from_utf8_lossy(&self.forward_5),
+            String::from_utf8_lossy(&self.forward_3),
             left = left
         );
         let line2 = format!(
             "{: >left$} - ... - {}",
-            String::from_utf8(self.reverse_3.to_owned()).unwrap(),
-            String::from_utf8(self.reverse_5.to_owned()).unwrap(),
+            String::from_utf8_lossy(&self.reverse_3),
+            String::from_utf8_lossy(&self.reverse_5),
             left = left
         );
         write!(f, "{}\n{}", line1, line2)
@@ -626,6 +626,16 @@ impl DNAsequence {
         &self.seq.name
     }
 
+    pub fn set_name<S: Into<String>>(&mut self, name: S) {
+        let raw = name.into();
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            self.seq.name = None;
+        } else {
+            self.seq.name = Some(trimmed.to_string());
+        }
+    }
+
     pub fn molecule_type(&self) -> Option<&str> {
         self.seq.molecule_type.as_deref()
     }
@@ -635,7 +645,7 @@ impl DNAsequence {
     }
 
     pub fn get_forward_string(&self) -> String {
-        std::str::from_utf8(self.forward()).unwrap().to_string()
+        String::from_utf8_lossy(self.forward()).into_owned()
     }
 
     pub fn overhang(&self) -> &DNAoverhang {
@@ -1101,6 +1111,24 @@ mod tests {
     use crate::{app::GENtleApp, enzymes::Enzymes};
     use std::{fs, io::Write};
     use tempfile::Builder;
+
+    #[test]
+    fn test_get_forward_string_handles_non_utf8_bases_lossy() {
+        let seq = DNAsequence::from_u8(&[b'A', 0xFF, b'C']);
+        assert_eq!(seq.get_forward_string(), "A\u{FFFD}C");
+    }
+
+    #[test]
+    fn test_overhang_display_handles_non_utf8_lossy() {
+        let overhang = DNAoverhang {
+            forward_3: vec![b'T'],
+            forward_5: vec![b'A', 0xFF],
+            reverse_3: vec![b'G'],
+            reverse_5: vec![0xFE, b'C'],
+        };
+        let rendered = format!("{overhang}");
+        assert!(rendered.contains('\u{FFFD}'));
+    }
 
     #[test]
     fn test_split_at_restriction_enzyme_site_circular() {

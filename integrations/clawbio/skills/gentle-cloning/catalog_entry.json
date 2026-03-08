@@ -1,0 +1,32 @@
+{
+  "name": "gentle-cloning",
+  "cli_alias": "gentle-cloning",
+  "description": "Deterministic GENtle CLI wrapper for cloning/genome-analysis workflows with reproducibility bundle output.",
+  "version": "0.1.0",
+  "status": "mvp",
+  "has_script": true,
+  "has_tests": true,
+  "has_demo": true,
+  "demo_command": "python clawbio.py run gentle-cloning --demo",
+  "dependencies": [
+    "python3",
+    "gentle_cli (or GENTLE_CLI_CMD / cargo fallback)"
+  ],
+  "tags": [
+    "cloning",
+    "genome-analysis",
+    "reproducibility",
+    "automation"
+  ],
+  "trigger_keywords": [
+    "gentle",
+    "cloning workflow",
+    "prepare genome",
+    "primer design",
+    "blast sequence",
+    "genome anchor"
+  ],
+  "chaining_partners": [
+    "bio-orchestrator"
+  ]
+}

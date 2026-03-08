@@ -42,6 +42,9 @@ jobs:
       - name: Cargo check
         run: cargo check -q
 
+      - name: Cargo check (all features)
+        run: cargo check --all-features -q
+
       - name: Examples and tutorial schema/drift checks
         run: |
           cargo run --bin gentle_examples_docs -- --check

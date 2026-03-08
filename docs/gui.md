@@ -224,8 +224,9 @@ Global productivity controls:
   - undo/redo availability counters
   - latest app/job status message
     (including slow-open timing diagnostics for help/configuration windows:
-    configuration runtime sync, help payload load, first-frame render, total
-    open latency, and native window-menu sync when those exceed threshold)
+    native Help-menu dispatch, configuration runtime sync, help payload load,
+    focus-acquisition latency, first-frame render, total open latency, and
+    native window-menu sync when those exceed threshold)
 - `Edit -> Undo` / `Redo` and `Window -> Show Operation History` expose
   operation-level history controls.
 - `Window -> Show Background Jobs` opens a centralized progress panel for
@@ -727,6 +728,8 @@ Help content loading behavior:
 
 - opening Help reuses already-loaded markdown/glossary payloads for faster
   window activation
+- re-invoking the already selected Help tab while Help is open now performs a
+  focus-only fast path (no markdown reload/search-refresh pass)
 - opening Help can emit status-bar slow-path timing hints for:
   - help payload load
   - first-frame help render
@@ -1216,6 +1219,8 @@ Recommended flow:
    - browse candidates page-by-page (`Prev`/`Next`) to avoid rendering huge lists
    - click a filtered gene to auto-fill `chr`, `start_1based`, `end_1based`
    - optionally edit coordinates and set `output_id`
+   - `include genomic annotation` is enabled by default for explicit region extraction
+     and attaches overlapping gene/transcript annotation when available
    - click `Extract Selected Gene` (engine op `ExtractGenomeGene`) or
      `Extract Region` (explicit coordinate extraction)
    - coordinates are 1-based and inclusive
@@ -1339,7 +1344,7 @@ Equivalent workflow JSON (still supported via workflow runner):
 [
   {"PrepareGenome":{"genome_id":"Human GRCh38 Ensembl 116","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
   {"ExtractGenomeGene":{"genome_id":"Human GRCh38 Ensembl 116","gene_query":"TP53","occurrence":1,"output_id":"grch38_tp53","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
-  {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 116","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
+  {"ExtractGenomeRegion":{"genome_id":"Human GRCh38 Ensembl 116","chromosome":"1","start_1based":1000000,"end_1based":1001500,"output_id":"grch38_chr1_1000000_1001500","annotation_scope":"core","catalog_path":"assets/genomes.json","cache_dir":"data/genomes"}},
   {"ImportGenomeBedTrack":{"seq_id":"grch38_tp53","path":"data/chipseq/peaks.bed.gz","track_name":"H3K27ac","min_score":10.0,"max_score":null,"clear_existing":false}}
 ]
 ```
@@ -1484,6 +1489,13 @@ Tutorial projects:
 - Generated tutorial project files are written under the system temp directory
   (`.../gentle_tutorial_projects`) and opened without adding those temp files
   to the `Open Recent Project...` list.
+- Additional GUI-first manual tutorial:
+  - `docs/tutorial/tp73_promoter_luciferase_gui.md`
+  - includes a stepwise GUI workflow for TP73 promoter -> luciferase planning
+    using Promega AY738222 input, plus per-step GUI/CLI parity mapping.
+  - canonical workflow skeleton:
+    `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
+    (`test_mode: skip`, external input placeholder by design).
 
 Shortcut:
 
@@ -1502,6 +1514,15 @@ UniProt mapping behavior:
   (entry/accession/source/import timestamp) and `Use` buttons to import/open
   the selected UniProt entry sequence in the project.
 - Use one stable `entry_id` in that window when you plan to project repeatedly.
+
+GenBank accession fetch behavior:
+
+- `Fetch GenBank Accession...` opens a specialist window for:
+  - online fetch by accession (`FetchGenBankAccession`)
+  - optional project sequence ID override (`as_id`)
+  - automatic sequence-window open for newly imported sequence IDs
+- Shell parity route:
+  - `genbank fetch ACCESSION [--as-id ID]`
 
 Resource import behavior:
 

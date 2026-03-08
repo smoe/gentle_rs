@@ -1,0 +1,121 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tp73_promoter_luciferase_assay_planning",
+  "title": "TP73 promoter luciferase assay planning (GUI-first parity skeleton)",
+  "summary": "Plans a TP73 promoter -> luciferase reporter construct workflow with explicit genome-anchor extraction, promoter candidate generation, vector import, assembly preview, and primer/qPCR report generation.",
+  "test_mode": "skip",
+  "required_files": [],
+  "tags": [
+    "tutorial",
+    "tp73",
+    "promoter",
+    "luciferase",
+    "gui",
+    "parity",
+    "online"
+  ],
+  "workflow": {
+    "run_id": "example_tp73_promoter_luciferase_assay_planning",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractGenomeGene": {
+          "genome_id": "Human GRCh38 Ensembl 116",
+          "gene_query": "TP73",
+          "occurrence": 1,
+          "output_id": "grch38_tp73",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtendGenomeAnchor": {
+          "seq_id": "grch38_tp73",
+          "side": "five_prime",
+          "length_bp": 2500,
+          "output_id": "grch38_tp73_promoter_context",
+          "catalog_path": "assets/genomes.json",
+          "cache_dir": "data/genomes"
+        }
+      },
+      {
+        "ExtractAnchoredRegion": {
+          "input": "grch38_tp73_promoter_context",
+          "anchor": {
+            "FeatureBoundary": {
+              "feature_kind": "gene",
+              "feature_label": "TP73",
+              "boundary": "Start",
+              "occurrence": 0
+            }
+          },
+          "direction": "Upstream",
+          "target_length_bp": 1200,
+          "length_tolerance_bp": 200,
+          "required_re_sites": [],
+          "required_tf_motifs": [],
+          "forward_primer": null,
+          "reverse_primer": null,
+          "output_prefix": "tp73_promoter_fragment",
+          "unique": false,
+          "max_candidates": 6
+        }
+      },
+      {
+        "FetchGenBankAccession": {
+          "accession": "AY738222",
+          "as_id": "promega_luciferase_ay738222"
+        }
+      },
+      {
+        "Ligation": {
+          "inputs": [
+            "tp73_promoter_fragment_1",
+            "promega_luciferase_ay738222"
+          ],
+          "circularize_if_possible": false,
+          "protocol": "Blunt",
+          "output_prefix": "tp73_luc_assembly",
+          "unique": false
+        }
+      },
+      {
+        "Branch": {
+          "input": "tp73_luc_assembly_1",
+          "output_id": "tp73_luciferase_construct_preview"
+        }
+      },
+      {
+        "DesignPrimerPairs": {
+          "template": "tp73_luciferase_construct_preview",
+          "roi_start_0based": 100,
+          "roi_end_0based": 1200,
+          "min_amplicon_bp": 120,
+          "max_amplicon_bp": 900,
+          "max_tm_delta_c": 2.0,
+          "max_pairs": 48,
+          "report_id": "tp73_luc_promoter_primers_v1"
+        }
+      },
+      {
+        "DesignQpcrAssays": {
+          "template": "tp73_luciferase_construct_preview",
+          "roi_start_0based": 100,
+          "roi_end_0based": 1200,
+          "min_amplicon_bp": 70,
+          "max_amplicon_bp": 220,
+          "max_tm_delta_c": 2.0,
+          "max_probe_tm_delta_c": 10.0,
+          "max_assays": 24,
+          "report_id": "tp73_luc_promoter_qpcr_v1"
+        }
+      }
+    ]
+  }
+}

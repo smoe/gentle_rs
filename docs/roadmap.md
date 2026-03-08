@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -16,8 +16,19 @@ order. Durable architecture constraints and decisions remain in
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
+- CLI state loading now treats empty/whitespace `--state` files as
+  uninitialized and starts from `ProjectState::default()` instead of failing
+  parse.
+- Remote-resource test execution now supports explicit skip policy via
+  `GENTLE_SKIP_REMOTE_TESTS=1` (overrides `GENTLE_TEST_ONLINE=1`) for
+  packaging/offline environments.
 - JS and Lua adapters expose shared operation/workflow bridges and convenience
   wrappers over engine contracts.
+- Python adapter baseline is now available as a thin `gentle_cli` wrapper:
+  - path: `integrations/python/gentle_py/`
+  - deterministic methods for `capabilities`, `state-summary`, `op`,
+    `workflow`, and `shell`
+  - no biology logic duplication (subprocess bridge only)
 
 ### Biology/analysis capabilities already implemented
 
@@ -26,6 +37,24 @@ order. Durable architecture constraints and decisions remain in
 - Reference-genome preparation and extraction (`PrepareGenome`,
   `ExtractGenomeRegion`, `ExtractGenomeGene`, `ExtendGenomeAnchor`) including
   catalog-backed helper flows and BLAST integration.
+- `ExtractGenomeRegion` now supports explicit annotation projection scopes
+  (`annotation_scope=none|core|full`), defaulting to `core` when unset so
+  extracted coordinate slices include overlapping gene/transcript features by
+  default.
+- `ExtractGenomeRegion` now emits structured annotation projection telemetry in
+  `OpResult` (`genome_annotation_projection`) with requested/effective scope,
+  attached/dropped counts, and fallback reason fields.
+- `ExtractGenomeRegion` now supports `max_annotation_features` caps with
+  deterministic fallback (`full -> core -> none`) and warning guidance for
+  follow-up unrestricted transfer.
+- Shell/CLI `genomes/helpers extract-region` now expose
+  `--annotation-scope`/`--max-annotation-features` while retaining legacy
+  `--include-genomic-annotation` / `--no-include-genomic-annotation` flags for
+  compatibility.
+- Deterministic tests now cover:
+  - default core projection telemetry,
+  - full-scope cap fallback behavior,
+  - shell parse/execute paths for new scope/cap flags.
 - Imported GenBank region anchors now record verification status against catalog
   sequence (`verified`/`unverified`/`verification n/a`) and extension now
   hardens against stale/invalid anchor `catalog_path` by falling back to the
@@ -202,10 +231,12 @@ order. Durable architecture constraints and decisions remain in
     - `ImportUniprotSwissProt` (offline SWISS text ingestion)
     - `FetchUniprotSwissProt` (online accession/id fetch)
     - `ProjectUniprotToGenome` (feature-to-genome mapping via transcript/CDS)
+    - `FetchGenBankAccession` (online GenBank accession fetch + direct import)
   - persisted metadata stores:
     - `gentle.uniprot_entries.v1`
     - `gentle.uniprot_genome_projections.v1`
   - shared-shell commands:
+    - `genbank fetch ACCESSION [--as-id ID]`
     - `uniprot fetch`, `uniprot import-swissprot`, `uniprot list`,
       `uniprot show`, `uniprot map`, `uniprot projection-list`,
       `uniprot projection-show`
@@ -247,6 +278,14 @@ order. Durable architecture constraints and decisions remain in
     - fast primer-pair report generation + persisted report inspection
   - CI now also runs the full Rust test suite (`cargo test -q`) to catch
     cross-module regressions that may not be covered by targeted smoke steps.
+- ClawBio/OpenClaw external skill scaffold is now available for deterministic
+  GENtle execution from a skill runtime:
+  - path: `integrations/clawbio/skills/gentle-cloning/`
+  - wrapper request/result schemas:
+    `gentle.clawbio_skill_request.v1` /
+    `gentle.clawbio_skill_result.v1`
+  - outputs include reproducibility bundle artifacts (`commands.sh`,
+    `environment.yml`, checksums)
 
 ### GUI baseline in place
 
@@ -317,6 +356,9 @@ order. Durable architecture constraints and decisions remain in
   (`FetchUniprotSwissProt`, `ImportUniprotSwissProt`,
   `ProjectUniprotToGenome`) and a recent-entry table for quick `entry_id`
   reuse.
+- File menu now also includes `Fetch GenBank Accession...` specialist dialog
+  backed by shared engine operation `FetchGenBankAccession` (accession + optional
+  `as_id`, with imported sequence window auto-open).
 - Linear sequence windows now include a dedicated primary `Splicing map` mode
   (read-only) for selected `mRNA`/`exon` features.
   - Primary map splicing lanes reuse the same `SplicingExpertView` payload and
@@ -348,14 +390,19 @@ order. Durable architecture constraints and decisions remain in
 - Help open-path latency hardening:
   - opening help now reuses already-loaded markdown/glossary payloads
     (no unconditional disk reload/parse on each open)
+  - when Help is already open on the requested tab, re-open now takes a
+    focus-only fast path (no redundant search refresh)
   - explicit `Reload` in help remains the deterministic path for on-disk doc refresh
   - help search/render paths no longer clone full markdown buffers on each
     refresh/frame
 - Window-backdrop load path now uses a stable texture-size hint so opening
   differently sized windows does not trigger per-window-size image reload paths.
 - Slow-open diagnostics now emit status-bar timing hints when:
+  - native macOS `GENtle Help...` menu dispatch to app-loop consumption exceeds
+    a threshold
   - Configuration runtime sync exceeds a threshold
   - Help payload load exceeds a threshold
+  - viewport focus acquisition exceeds a threshold
   - first-frame Help/Configuration render exceeds a threshold
   - total Help/Configuration window activation exceeds a threshold
   - native macOS open-window menu synchronization exceeds a threshold
@@ -416,7 +463,7 @@ order. Durable architecture constraints and decisions remain in
 | Candidate strand-relation controls across adapters | Done |
 | Alternative-splicing interpretation (lanes/boundaries/events/evidence) | Done (expert + primary-map read-only baseline) |
 | Cloning-mode macro presets (SnapGene-style workflows) | Partial (starter templates only) |
-| AI communication routes (agent bridge + MCP server) | Partial (agent bridge + guarded MCP op/workflow baseline implemented) |
+| AI communication routes (agent bridge + MCP server) | Partial (agent bridge + guarded MCP op/workflow baseline implemented; ClawBio skill scaffold available) |
 | Gel simulation realism and arrangement modeling | Partial |
 | Shared operation protocol usage | Partial |
 
@@ -1261,6 +1308,113 @@ Planned upgrades:
   - hidden high-priority labels (genes/CDS/ORFs/selected RE sites)
 - Continue node/table/sequence-window identity consistency
   (`node_id <-> seq_id <-> open-window title`) for lineage traceability.
+
+#### D) Dotplot + promoter-flexibility view track (new, high value)
+
+Status (2026-03-08):
+
+- Implemented baseline:
+  - engine operations:
+    - `ComputeDotplot`
+    - `ComputeFlexibilityTrack`
+  - persisted metadata schemas:
+    - `gentle.dotplot_view.v1`
+    - `gentle.flexibility_track.v1`
+  - shared-shell/CLI commands:
+    - `dotplot compute|list|show`
+    - `flex compute|list|show`
+  - deterministic tests:
+    - engine operation storage/retrieval
+    - shell parse + shell execute paths
+- Remaining:
+  - `RenderDotplotSvg`
+  - GUI dotplot mode + linked crosshair/overlay controls
+  - JS/Lua/Python convenience wrappers beyond generic operation calls
+
+Goal:
+
+- Add a low-latency dotplot workflow in DNA sequence windows and pair it with
+  promoter-oriented flexibility tracks for interpretation.
+- Keep this engine-owned so GUI/CLI/JS/Lua/SVG remain deterministic and
+  equivalent.
+
+Why now:
+
+- Promoter-heavy analysis needs quick repeat/inverted-repeat inspection.
+- Dotplot alone is not enough for flexibility claims; it should be paired with
+  explicit score tracks.
+- Existing background-job and SVG/export contracts are mature enough to host
+  this without frontend-only logic.
+
+Phase 1 (engine payload + compute baseline):
+
+- Add typed payload schemas:
+  - `gentle.dotplot_view.v1`
+  - `gentle.flexibility_track.v1`
+- Add compute operations:
+  - `ComputeDotplot` (self-forward, self-revcomp, parameterized seed/mismatch)
+  - `ComputeFlexibilityTrack` (model + binning + smoothing options)
+- Store outputs in project metadata with deterministic cache keys:
+  `(seq_id, span, params_hash, model_version)`.
+- Add cooperative progress phases + cancellation support.
+- Status: implemented baseline; progress-phase callbacks and advanced cache-key
+  versioning are follow-up hardening.
+
+Phase 2 (GUI sequence-window workflow):
+
+- Add a dedicated `Dotplot` mode in sequence windows (primary view).
+- Add optional low-alpha overlay mode (secondary, opt-in).
+- Add linked coordinate crosshair between dotplot and sequence map.
+- Add parameter presets:
+  - `Fast preview`
+  - `Balanced`
+  - `Sensitive`
+- Add flexibility-track toggles in the same control group, but keep visual
+  channels separate from dotplot symbols to avoid ambiguity.
+
+Phase 3 (CLI/JS/Lua parity + export):
+
+- Add shared-shell commands:
+  - `dotplot compute ...`
+  - `dotplot show ...`
+  - `dotplot render-svg ...`
+  - `flex compute ...`
+  - `flex show ...`
+- Add adapter wrappers in JS/Lua/Python over the same operation payloads.
+- Add engine export operation:
+  - `RenderDotplotSvg` (optional flexibility-track panels on same coordinate axis).
+- Status: partial.
+  - implemented: `dotplot compute|list|show`, `flex compute|list|show`
+  - pending: `dotplot render-svg`, adapter convenience wrappers.
+
+Phase 4 (latency hardening):
+
+- Use indexed seed matching (k-mer/minimizer style), not brute-force full
+  matrix fill.
+- Add multiresolution tile generation so initial draw is fast and refinement is
+  viewport-driven.
+- Reuse cached tiles/payloads between GUI redraw and SVG export.
+- Add explicit performance budgets for common promoter spans.
+
+Acceptance gates:
+
+- Deterministic fixtures:
+  - direct-repeat promoter fragment
+  - inverted-repeat promoter fragment
+  - low-complexity fragment.
+- Snapshot tests for dotplot/flexibility SVG output.
+- Parity tests proving GUI/CLI/JS/Lua receive equivalent payloads for the same
+  parameter set.
+- Cancellation + resume tests for long spans.
+- Cache-key regression tests (parameter changes must invalidate/recompute;
+  unchanged inputs must reuse cache).
+
+Post-baseline follow-ups:
+
+- Add optional sequence-vs-sequence mode (`seqA` vs `seqB`) for construct vs
+  reference comparison.
+- Evaluate adding additional promoter mechanics models after baseline
+  reproducibility is stable.
 
 ### UX declutter and readability improvements (planned)
 
