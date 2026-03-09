@@ -18467,21 +18467,62 @@ filter set1 set2 --metric score --min 10
                 .expect("import template");
         }
 
+        // Golden Gate sticky-end compatibility depends on fragment pair selection.
+        // Probe deterministic digest fragment index combinations and keep the first
+        // transactional run that yields at least one ligation product.
+        let mut gg_output_id: Option<String> = None;
+        let mut gg_last_error: Option<String> = None;
+        'gg_search: for vector_fragment in 1..=3 {
+            for insert_fragment in 1..=2 {
+                let output_id = format!("gg_tx_out_v{}_i{}", vector_fragment, insert_fragment);
+                let ligation_prefix = format!("gg_run_v{}_i{}", vector_fragment, insert_fragment);
+                let run = execute_shell_command(
+                    &mut engine,
+                    &ShellCommand::MacrosTemplateRun {
+                        name: "golden_gate_single_insert".to_string(),
+                        bindings: HashMap::from([
+                            ("vector_seq_id".to_string(), "gg_vector".to_string()),
+                            ("insert_seq_id".to_string(), "gg_insert".to_string()),
+                            ("type_iis_enzyme".to_string(), "Eco31".to_string()),
+                            ("vector_fragment".to_string(), vector_fragment.to_string()),
+                            ("insert_fragment".to_string(), insert_fragment.to_string()),
+                            ("ligation_prefix".to_string(), ligation_prefix),
+                            ("output_id".to_string(), output_id.clone()),
+                        ]),
+                        transactional: true,
+                        validate_only: false,
+                    },
+                );
+                match run {
+                    Ok(out) if out.state_changed => {
+                        gg_output_id = Some(output_id);
+                        break 'gg_search;
+                    }
+                    Ok(_) => {
+                        gg_last_error = Some(format!(
+                            "golden_gate_single_insert v{} i{} returned state_changed=false",
+                            vector_fragment, insert_fragment
+                        ));
+                    }
+                    Err(err) => {
+                        gg_last_error = Some(format!(
+                            "golden_gate_single_insert v{} i{} failed: {}",
+                            vector_fragment, insert_fragment, err
+                        ));
+                    }
+                }
+            }
+        }
+        let gg_output_id = gg_output_id.unwrap_or_else(|| {
+            panic!(
+                "{}",
+                gg_last_error.unwrap_or_else(|| {
+                    "No Golden Gate fragment pair produced a ligation product".to_string()
+                })
+            )
+        });
+
         let runs = vec![
-            ShellCommand::MacrosTemplateRun {
-                name: "golden_gate_single_insert".to_string(),
-                bindings: HashMap::from([
-                    ("vector_seq_id".to_string(), "gg_vector".to_string()),
-                    ("insert_seq_id".to_string(), "gg_insert".to_string()),
-                    ("type_iis_enzyme".to_string(), "Eco31".to_string()),
-                    ("vector_fragment".to_string(), "1".to_string()),
-                    ("insert_fragment".to_string(), "1".to_string()),
-                    ("ligation_prefix".to_string(), "gg_run".to_string()),
-                    ("output_id".to_string(), "gg_tx_out".to_string()),
-                ]),
-                transactional: true,
-                validate_only: false,
-            },
             ShellCommand::MacrosTemplateRun {
                 name: "gateway_bp_single_insert".to_string(),
                 bindings: HashMap::from([
@@ -18549,8 +18590,8 @@ filter set1 set2 --metric score --min 10
             assert!(out.state_changed);
         }
 
+        assert!(engine.state().sequences.contains_key(&gg_output_id));
         for seq_id in [
-            "gg_tx_out",
             "gw_tx_out",
             "topo_tx_out",
             "ta_tx_out",
@@ -19114,6 +19155,7 @@ filter set1 set2 --metric score --min 10
 
     #[test]
     fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
+        let _guard = BLAST_ASYNC_TEST_MUTEX.lock().expect("blast mutex");
         let mut engine = GentleEngine::new();
         let start = execute_shell_command(
             &mut engine,

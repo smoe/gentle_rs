@@ -19,5 +19,5 @@
     { "port_id": "assembly_prefix", "kind": "sequence", "required": false, "cardinality": "many", "description": "TOPO TA ligation output namespace prefix." },
     { "port_id": "output_id", "kind": "sequence", "required": false, "cardinality": "one", "description": "Deterministic TOPO TA output sequence ID." }
   ],
-  "script": "op {\"Ligation\":{\"inputs\":[\"${vector_seq_id}\",\"${insert_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Sticky\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
+  "script": "op {\"Ligation\":{\"inputs\":[\"${vector_seq_id}\",\"${insert_seq_id}\"],\"circularize_if_possible\":false,\"output_id\":null,\"protocol\":\"Blunt\",\"output_prefix\":\"${assembly_prefix}\",\"unique\":false}}\nop {\"Branch\":{\"input\":\"${assembly_prefix}_1\",\"output_id\":\"${output_id}\"}}"
 }
