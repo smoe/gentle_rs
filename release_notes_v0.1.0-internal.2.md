@@ -61,12 +61,19 @@ hardening.
   - richer routine catalog entries and pattern templates across
     Gibson/Golden Gate/Gateway/TOPO/TA-GC/In-Fusion/NEBuilder families
   - stronger preflight/validation and run-bundle consistency
+- Primer backend checks are now unified before running primer design:
+  - new command:
+    `primers preflight [--backend ...] [--primer3-exec ...]`
+  - this runs a dry check first (tool available, version readable, setup looks
+    valid) before execution
+  - GUI now uses the same preflight check/report path as shell/CLI
+  - deterministic tests now cover CLI forwarding for `primers preflight`
 - Tutorial and workflow assets expanded:
   - new canonical online/tutorial examples (including TP53/TP63 tracks)
   - TP73 promoter luciferase planning skeleton workflow and GUI tutorial
     materials added
-  - web-ready narrative showcase page added:
-    `docs/tutorial/tp73_promoter_luciferase_showcase.md`
+  - TP73 showcase/tutorial content consolidated into one canonical page:
+    `docs/tutorial/tp73_promoter_luciferase_gui.md`
 - UniProt mapping functionality expanded:
   - import/fetch/projection routes and shell/CLI exposure improved
 - Architecture/protocol/docs hardening:
@@ -112,6 +119,18 @@ hardening.
 - Extended shell/CLI parser coverage with deterministic tests for new
   extract-region options and defaults.
 
+### 3a) Primer Backend Preflight and Diagnostics
+
+- Preflight means a dry-run check before execution: verify backend/tool
+  availability and report what would be used, without changing project state.
+- Added one shared preflight report path for Primer3 availability/version
+  checks (engine + shell + CLI + GUI).
+- GUI preflight status now shows the same shared report payload used by
+  shell/CLI.
+- Added deterministic tests for:
+  - shell parsing/execution of `primers preflight`
+  - CLI forwarded `primers preflight` parser and dispatch parity
+
 ### 4) Cloning Routine Catalog and Macro Workflows
 
 - Expanded template catalog and routine metadata coverage.
@@ -135,7 +154,31 @@ No intentional protocol-major breaking changes were introduced in this internal
 release. Existing project states and primary CLI operation/workflow routes
 remain on the same schema family (`v1` contracts).
 
+## Migration and Compatibility Notes
+
+- `ExtractGenomeRegion` now defaults to `annotation_scope=core` when
+  annotation scope is not explicitly set.
+- Legacy flags are preserved for compatibility and map to scope semantics:
+  - `--include-genomic-annotation` maps to `annotation_scope=core`.
+  - `--no-include-genomic-annotation` maps to `annotation_scope=none`.
+- For deterministic automation behavior, prefer explicit
+  `--annotation-scope` and optional `--max-annotation-features` over legacy
+  include/omit flags.
+
+## Validated Commands (this release candidate)
+
+- `cargo check -q`
+- `cargo test -q test_extract_genome_region_include_annotation_attaches_features_and_sets_name`
+- `cargo test -q test_extract_genome_region_full_scope_feature_cap_falls_back_to_core`
+- `cargo test -q parse_genomes_extract_region_with_annotation_flag`
+- `cargo test -q parse_genomes_extract_region_with_scope_and_cap`
+- `cargo test -q execute_genomes_extract_region_default_scope_core_with_telemetry`
+- `cargo test -q execute_genomes_extend_anchor_creates_sequence`
+
 ## Known Gaps (still open after this release)
+
+Priority-ordered tracking and execution detail live in `docs/roadmap.md`
+(see section "2. Active known gaps (priority-ordered)").
 
 - Primer3 deep parity and advanced backend normalization still require
   additional hardening.

@@ -4,11 +4,8 @@ This folder contains a series of accessory files that are meant to be available
 at the application's start or run time. These have mostly been carried over from the C++ version of GENtle.
 
 amino_acids.json:: Describes properties of amino acids (one and three letter abbreviation, molecular weight, [isoelectric point](https://en.wikipedia.org/wiki/Isoelectric_point) and various scores like [Kyte-Doolittle](https://en.wikipedia.org/wiki/Hydrophobicity_scales), [Chou-Fasman](https://en.wikipedia.org/wiki/Chou%E2%80%93Fasman_method), [Hopp-Woods](https://en.wikipedia.org/wiki/Hopp%E2%80%93Woods_scale) ) 
-blank.mysql::
-blank.sqlite3::
 codon_catalog.csv:: Tabular representation of nucleotide representations that should be selected by default for a given amino acid. A later development of that table should represent the codon frequencies for each species, as in https://www.creative-biostructure.com/codon-usage-frequency-table.htm .
 codon_tables.json:: A codon translation table.
-commonvectors.db:: Sqlite3 representation of the most common vectors.
 dna_ladders.json:: Collection of DNA ladders, i.e. fragments of DNA of well-defined length and relative abundance that are accompanying gels to identify the molecular weight of DNA sequences.
 enzymes.json:: List of DNA restriction enzymes (endonucleases) and proteases
 genomes.json::
@@ -16,6 +13,7 @@ helper_genomes.json::
 blast_defaults.json:: Default BLAST option layer (`task`, `max_hits`, optional thresholds) used when no project/request override is provided.
 jaspar.motifs.json:: The JASPAR database transformed into a JSON format that is meant to be mostly compatible with the JSON format offered by the JASPAR project: ```gzip -dc data/JASPAR_2022.txt.gz | perl scripts/pfm2json.pl | jq --compact-output > assets/jaspar_2022.json```
 ncoils.matrix::
+translations.json:: UI translation catalog keyed by language and translation id (schema `gentle.translations.v1`).
 
 Data notes:
 
@@ -28,11 +26,12 @@ Data notes:
   Entries may use explicit `sequence_remote`/`annotations_remote` URLs or
   `ncbi_assembly_accession` + `ncbi_assembly_name` for direct NCBI GenBank/RefSeq
   FTP-derived sources.
-- `helper_genomes.json` is a curated starter catalog for lab helper systems
-  (plasmid/lenti/adeno/AAV plus yeast/E. coli host references), intended to be
-  copied and edited for local vector inventories.
+- `helper_genomes.json` is a curated starter catalog for helper references
+  (host genomes plus common online vector backbones), intended to be copied and
+  edited for local vector inventories.
   Entries can use explicit local/remote URLs or `genbank_accession` for
   NCBI EFetch-derived FASTA + GenBank annotation during prepare/index.
+  The shipped defaults avoid absolute lab-specific paths.
 
 # "Finder" icon (seen in OS' task bar)
 
