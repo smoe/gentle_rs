@@ -10,6 +10,17 @@ on:
         description: 'Tag to release (example: v0.1.0)'
         required: true
         type: string
+      linux_distribution:
+        description: 'Planned Linux distribution channel recorded as release metadata'
+        required: false
+        type: choice
+        options:
+          - deferred
+          - deb
+          - appimage
+          - rpm
+          - tarball
+        default: tarball
 
 permissions:
   contents: write
@@ -228,6 +239,7 @@ jobs:
     needs: build-installers
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      LINUX_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.linux_distribution || 'tarball' }}
     steps:
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
@@ -238,6 +250,25 @@ jobs:
         run: |
           find dist -type f | sort
 
+      - name: Write release attributes
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#refs/tags/}"
+          out_dir="dist/release-meta"
+          mkdir -p "$out_dir"
+          out_file="$out_dir/gentle-${tag}-release-attributes.json"
+          generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cat > "$out_file" <<EOF
+          {
+            "schema": "gentle.release_attributes.v1",
+            "tag": "$tag",
+            "linux_distribution": "$LINUX_DISTRIBUTION",
+            "generated_at_utc": "$generated_at"
+          }
+          EOF
+          echo "release_attributes=$out_file"
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -245,5 +276,6 @@ jobs:
           files: |
             dist/**/*.dmg
             dist/**/*.zip
+            dist/release-meta/*.json
           fail_on_unmatched_files: true
           generate_release_notes: true

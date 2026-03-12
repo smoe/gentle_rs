@@ -715,13 +715,22 @@ impl RenderDna {
                 "gene_synonym",
                 "locus_tag",
                 "standard_name",
+                "mcs_expected_sites",
                 "note",
                 "function",
                 "experiment",
                 "db_xref",
             ]
         } else {
-            vec!["product", "gene", "note", "experiment", "db_xref"]
+            vec![
+                "label",
+                "product",
+                "gene",
+                "mcs_expected_sites",
+                "note",
+                "experiment",
+                "db_xref",
+            ]
         };
         for key in keys {
             for value in feature.qualifier_values(key.into()) {
@@ -779,29 +788,34 @@ impl RenderDna {
 impl Widget for RenderDna {
     fn ui(self, ui: &mut Ui) -> Response {
         let available = ui.available_size_before_wrap();
+        let clip = ui.clip_rect();
+        let fallback_width = clip.width().max(1.0);
+        let fallback_height = clip.height().max(1.0);
         let mut width = if available.x.is_finite() {
             available.x
         } else {
-            1.0
+            fallback_width
         };
         let mut height = if available.y.is_finite() {
             available.y
         } else {
-            1.0
+            fallback_height
         };
         if width <= 0.0 {
-            width = ui.max_rect().width().max(1.0);
+            width = fallback_width;
         }
         if height <= 0.0 {
-            height = ui.max_rect().height().max(1.0);
+            height = fallback_height;
         }
-        let safe_size = Vec2::new(width.clamp(1.0, 100_000.0), height.clamp(1.0, 100_000.0));
+        if !width.is_finite() {
+            width = fallback_width;
+        }
+        if !height.is_finite() {
+            height = fallback_height;
+        }
+        let safe_size = Vec2::new(width.max(1.0), height.max(1.0));
         let (rect, response) = ui.allocate_exact_size(safe_size, Sense::click_and_drag());
-        let builder = egui::UiBuilder::new()
-            .max_rect(rect)
-            .layout(ui.layout().clone());
-        let mut child_ui = ui.new_child(builder);
-        self.render(&mut child_ui, rect);
+        self.render(ui, rect);
         response
     }
 }

@@ -1,6 +1,6 @@
 # GENtle Architecture (Working Draft)
 
-Last updated: 2026-03-08
+Last updated: 2026-03-11
 
 This document describes how GENtle is intended to work and the durable
 architecture constraints behind implementation choices.
@@ -170,9 +170,16 @@ Discoverability rule:
   - the help viewer should support interface/language filtering (GUI shell,
     CLI shell, CLI direct, JS, Lua, MCP, or all) to avoid duplicated manuals
     while keeping context-specific views.
+- Menu information architecture should separate sequence ingress from reference
+  lifecycle:
+  - `File` may include sequence ingress/start actions (for example local open,
+    accession fetch, and sequence retrieval) because users treat these as
+    project-seeding entry points.
+  - `Genome` remains the canonical home for prepared-reference lifecycle and
+    heavy analysis workflows (prepare, BLAST, track import, inspection).
 - Prepared-reference inspection must remain directly reachable from
-  `File -> Prepared References...` and `Genome -> Prepared References...`, and
-  searchable as `Prepared References` in Command Palette.
+  `Genome -> Prepared References...`, and searchable as
+  `Prepared References` in Command Palette.
 - Chromosome inspection currently lives inside `Prepared References...` as an
   embedded `Chromosome inspector` section (one proportional line per contig).
 - Configuration dialogs with staged edits must keep primary commit actions
@@ -394,6 +401,29 @@ Practical rule:
     - if snapshot tests are intentionally desired again, run with explicit
       feature opt-in (example:
       `cargo test --features snapshot-tests -q render_export::tests::snapshot_`)
+
+#### Cross-platform screenshot relaunch (deferred)
+
+This track is intentionally deferred until GUI stability improves and should be
+kept as a design target, not an active implementation item.
+
+Fixed decisions for relaunch:
+
+- active GENtle window only for raster screenshot capture
+- all GENtle windows are eligible targets (main, sequence, and auxiliary
+  specialist windows)
+- capture content area only (no native OS title bar/frame pixels)
+- raster screenshot capture is GUI-context only
+- CLI/MCP headless workflows use explicit SVG export commands instead of raster
+  screenshot capture
+
+Implementation direction:
+
+- use a shared `egui/eframe` viewport screenshot event pipeline for all desktop
+  platforms
+- avoid OS shell screenshot utilities in the primary path
+- keep screenshot capture behind explicit runtime/feature opt-in policy gates
+  even after relaunch
 
 ### MCP server (implemented parity-expanded baseline)
 
@@ -1143,6 +1173,42 @@ Interaction and export semantics:
   - inspect splicing view payload (`inspect-feature-expert ... splicing ...`)
   - render splicing view SVG from the same payload
     (`render-feature-expert-svg ... splicing ...`).
+
+### RNA-seq evidence direction for cloning-candidate regions (planned)
+
+Primary near-term scope is small genomic region interpretation for cloning
+candidate workflows, not whole-transcriptome alignment inside GENtle.
+
+Detailed implementation plan:
+`docs/rna_seq_nanopore_cloning_regions_plan.md`.
+
+Architecture constraints for this track:
+
+- RNA evidence handling must remain engine-owned and deterministic; adapters
+  only invoke/display shared contracts.
+- Initial RNA-seq path is Nanopore cDNA evidence ingestion with deterministic
+  filtering and partial ROI mapping overlays.
+- Batch-oriented outputs must remain engine-owned: sample-sheet export contracts
+  (TSV + machine-readable frequency columns) are shared across GUI/CLI/agents
+  and derived from persisted RNA-read reports.
+- Fixed seed-hit thresholds are bootstrap defaults for phase-1 only; the
+  architecture must support a transcriptome-scale signal-to-noise model that can
+  derive dynamic acceptance thresholds from empirical background distributions.
+- Suggestion-first curation applies: RNA-derived edit candidates are
+  non-mutating until explicitly user-confirmed through shared engine edit
+  operations.
+- Cross-adapter parity (GUI/CLI/shared shell) is required for summary
+  inspection/export surfaces.
+- Long-running RNA-read interpretation should avoid exclusive engine-write
+  lock residency during compute-heavy read parsing/filtering so adapters stay
+  responsive while progress streams are active.
+- SNR/background diagnostics must be persisted in engine-owned report payloads
+  so GUI/CLI/shared shell/agent adapters can explain decisions consistently.
+
+Ownership/defer boundary:
+
+- Transposon-specific interpretation and modeling decisions are intentionally
+  deferred pending Anze Karlek's direction.
 
 ### Dotplot + promoter-flexibility contract (implemented baseline; follow-ups)
 

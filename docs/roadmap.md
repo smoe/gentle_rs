@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-08
+Last updated: 2026-03-11
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -51,6 +51,10 @@ order. Durable architecture constraints and decisions remain in
   `--annotation-scope`/`--max-annotation-features` while retaining legacy
   `--include-genomic-annotation` / `--no-include-genomic-annotation` flags for
   compatibility.
+- GUI `Retrieve Genomic Sequence` now exposes matching extraction controls for
+  annotation scope/cap (`none|core|full`, optional `max_annotation_features`)
+  and surfaces structured projection outcomes in status output (requested/effective
+  scope, attached/dropped counts, optional fallback reason).
 - Deterministic tests now cover:
   - default core projection telemetry,
   - full-scope cap fallback behavior,
@@ -59,6 +63,12 @@ order. Durable architecture constraints and decisions remain in
   sequence (`verified`/`unverified`/`verification n/a`) and extension now
   hardens against stale/invalid anchor `catalog_path` by falling back to the
   default genome catalog when no explicit catalog override is provided.
+- Helper genome extraction now auto-attaches a canonical `misc_feature` MCS
+  annotation for pUC18/pUC19 when source annotation does not already provide an
+  MCS feature (motif-detected, deterministic qualifiers, uniqueness required).
+- Engine Ops digest panel now includes MCS/REBASE quick-fill actions:
+  `Use MCS enzymes`, `Single-cutters (REBASE)`, and
+  `Single-cutters in CDS`.
 - New strict policy switch is available:
   `SetParameter(require_verified_genome_anchor_for_extension=true)` enforces
   verified anchors for `ExtendGenomeAnchor` (unverified/unknown anchors fail).
@@ -130,6 +140,9 @@ order. Durable architecture constraints and decisions remain in
     - typed binding form
     - preflight stage (`macros template-run --validate-only`)
     - transactional run + run-bundle export
+    - Gibson topology guard:
+      - circular sequence bindings block preflight/execute
+      - one-click `Linearize Vector...` action branches + linearizes + rebinds
   - GUI `Patterns` menu now exposes routine browsing grouped by family/status
     and routine-level template import actions
   - workflow template preflight baseline is now wired into
@@ -193,6 +206,7 @@ order. Durable architecture constraints and decisions remain in
     payloads (`gentle.qpcr_design_report.v1`) with forward/reverse/probe assay
     records in project metadata
   - side-sequence constraints are now supported for forward/reverse/probe:
+    - `non_annealing_5prime_tail` (5' add-on excluded from anneal Tm/GC/hit)
     - `fixed_5prime`, `fixed_3prime`
     - `required_motifs[]`, `forbidden_motifs[]`
     - `locked_positions[]`
@@ -223,6 +237,13 @@ order. Durable architecture constraints and decisions remain in
     (`requested`, `used`, optional fallback reason + Primer3 executable/version)
   - `auto` mode now falls back deterministically to internal scoring when
     Primer3 is unavailable
+  - pair-ranking/scoring now includes explicit primer-quality heuristics:
+    - preferred length window (`20..30 bp`)
+    - 3' GC-clamp preference
+    - secondary-structure penalties (homopolymer/self-complementary runs)
+    - primer-pair dimer-risk penalties (global and 3'-anchored)
+  - report payloads now include per-primer and pair diagnostics for those
+    heuristics (clamp status, run lengths, dimer run metrics)
   - deterministic engine tests now cover side/pair/probe constraint pass/fail
     behavior and shared-shell primer/qPCR request parsing with the extended
     operation payload
@@ -499,10 +520,15 @@ Notes:
      - Primer3 backend baseline is now available behind `DesignPrimerPairs`
        (with deterministic auto-fallback to internal backend), but deeper
        constraint-mapping parity still needs hardening
-     - backend preflight/version diagnostics are now captured per report, but
-       dedicated GUI preflight/status UX is still pending
-     - no adapter-equivalence test matrix comparing internal vs Primer3-backed
-       report normalization/provenance behavior
+     - backend preflight/version diagnostics are now shared across engine/shell
+       (`primers preflight`) and GUI Engine Ops preflight controls, but broader
+       cross-tool diagnostics for additional external binaries remain pending
+     - adapter-equivalence coverage is still incomplete:
+       - shared-shell parity baseline exists for internal-vs-Primer3 report
+         normalization/provenance
+       - CLI forwarded-route parity now covers `primers preflight`
+       - wider matrix coverage is still pending across additional primer routes
+         and adapters
 2. MCP route now has guarded mutating execution (`op`/`workflow`) and
    UI-intent parity baseline (`ui_intents`, `ui_intent`,
    `ui_prepared_genomes`, `ui_latest_prepared`), but broader parity breadth is
@@ -534,6 +560,9 @@ Notes:
 7. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
 8. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
+   - genome-extract failure diagnostics for chromosome/contig mismatches still
+     need explicit alias-aware guidance (for example `17` vs `chr17`) with
+     prepared-contig suggestions from the active reference
    - GUI-driven feature editing is not yet first-class:
      - no explicit edit workflow yet for exon/intron/transcript boundary curation
        informed by RNA-seq interpretation
@@ -557,6 +586,9 @@ Notes:
      engine-owned transcript/CDS-aware translation contracts are implemented
      (explicit codon-table resolution plus frame/phase context); current dormant
      AA-row path is maintained as safe no-op
+   - tutorial/executable-guidance UX still needs an explicit per-step checklist
+     with state-verifiable completion markers inside GUI walkthrough flows
+     (including promoter cloning walkthroughs such as TP73)
    - publication/release visual-polish mode is still pending:
      - add a dedicated `Publication mode` preset for GUI + SVG export paths
      - include deterministic readability-focused defaults (backdrop strength,
@@ -663,6 +695,76 @@ Status:
    - import/overlay RNA-seq-derived splice evidence as suggestions.
    - offer user-confirmed "apply suggestion as feature edit" actions via the
      same engine edit operations (no GUI-only mutation path).
+
+### RNA-seq evidence for cloning-candidate regions (Nanopore cDNA first)
+
+Goal: prioritize cloning-oriented interpretation for small genomic regions of
+interest, with deterministic RNA-seq evidence overlays and explicit
+suggestion-first editing handoff.
+
+Detailed execution plan: `docs/rna_seq_nanopore_cloning_regions_plan.md`.
+
+Status:
+
+- In progress (phase-1 baseline implementation started).
+- This replaces earlier demo-oriented framing for this direction; immediate
+  focus is production-aligned ROI workflows for cloning-candidate regions.
+- Implemented in current baseline:
+  - Splicing Expert `Nanopore cDNA interpretation` run path is now asynchronous
+    (non-blocking UI) with live progress updates.
+  - Running seed-confirmation histogram (genomic-position bins) is shown during
+    execution and updates every 1000 reads (`+` strand up, `-` strand down).
+  - Histogram bars now use sqrt-scaled heights so low-frequency bins remain
+    visible instead of collapsing under one dominant bin.
+  - Seed-hash catalog preview is now available directly in Splicing Expert and
+    overlaid as red position dots with hover sequence/hash detail.
+  - Live top-read preview is now available during streaming; selected rows
+    highlight their supported seed positions in green with recompute-time
+    telemetry for in-window hash-speed sanity checks.
+  - RNA-read reports now persist exon-support and exon-exon junction-support
+    frequency summaries for aligned reads.
+  - `rna-reads export-sample-sheet` / GUI sample-sheet export produce TSV
+    cohort summaries with per-report frequency JSON columns for downstream
+    annotation workflows.
+
+Track boundaries:
+
+1. Initial data path is Nanopore cDNA evidence with deterministic
+   filtering + partial ROI mapping (not full transcriptome alignment in
+   GENtle at this stage), with FASTA-first ingest in phase 1.
+2. Evidence modeling remains engine-owned and adapter-equivalent across
+   GUI/shell/CLI.
+3. Curation flow remains non-mutating by default and suggestion-first, with
+   explicit user-confirmed apply actions only.
+4. Transposon-specific interpretation/modeling is explicitly deferred and
+   pending Anze-led direction.
+5. Add a transcriptome-scale SNR calibration subtrack:
+   - treat the current `30%` seed-hit threshold as bootstrap default only
+   - empirically estimate background/noise seed-hit distributions for
+     full-transcriptome input
+   - evolve toward SNR-normalized acceptance thresholds with report-level
+     diagnostics and deterministic cross-adapter parity.
+6. Add SRA/FASTA ingestion + storage strategy subtrack:
+   - baseline phase-1 contract remains external SRA conversion and FASTA ingest
+     (`.sra` is not parsed directly by GENtle in phase 1)
+   - record observed storage behavior in design assumptions:
+     raw FASTA can be larger than `.sra` (for example, a ~9.4 GB `.sra` to
+     ~11 GB FASTA conversion), so disk planning is mandatory
+   - evaluate a streaming ingestion path via `fasterq-dump --fasta --stdout`
+     as an optional execution mode for large runs
+   - because the Nanopore flow is two-pass (seed filter then alignment),
+     define deterministic replay/spool rules up front:
+     - stream mode: keep deterministic shortlisted-hit spool entries
+       (read id, ordinal index, seed metrics, sequence; byte offset when
+       available) and run pass 2 from this spool
+     - artifact mode: keep full FASTA artifact for exact replay/audit and pass 2
+   - prefer compressed persisted exports (`.fasta.gz` plus JSON report sidecar)
+     for retained hit sets and summaries.
+7. Extend sample-sheet cohorts with user metadata:
+   - add optional sample annotation fields (condition/timepoint/replicate,
+     extraction notes) in shared engine-owned sample-sheet contracts
+   - keep CLI/GUI/agent parity for writing/merging these annotations with RNA
+     evidence metrics.
 
 ### Isoform-architecture panel track (baseline implemented; follow-ups)
 
@@ -1125,14 +1227,19 @@ Phase 2 (tooling diagnostics + compatibility hardening): in progress
 
 - Shell/CLI report payload now captures executable/version diagnostics when
   Primer3 is used (or fallback metadata in auto mode).
+- GUI Engine Ops now includes dedicated Primer3 preflight/status controls:
+  - backend selector (`auto|internal|primer3`)
+  - executable path field (`primer3_executable`)
+  - explicit probe action with structured status text
+- shared-shell non-mutating preflight command is now available:
+  - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
+- Fixture-backed adapter-equivalence coverage now includes deterministic
+  internal-vs-Primer3 normalization parity tests (fake local Primer3 script +
+  committed key/value fixture).
 - Remaining:
-  - dedicated GUI preflight/status views for Primer3 availability
   - additional config-path diagnostics for complex installations
 - Keep failure modes deterministic and machine-readable
   (`Unsupported`/`Io`/`InvalidInput` with stable message contracts).
-- Add fixture-backed adapter-equivalence tests that assert matching normalized
-  report semantics between internal and Primer3 backends for representative
-  inputs.
 
 Phase 3 (async specificity tier + agent/MCP parity): baseline started
 
@@ -1311,7 +1418,7 @@ Planned upgrades:
 
 #### D) Dotplot + promoter-flexibility view track (new, high value)
 
-Status (2026-03-08):
+Status (2026-03-09):
 
 - Implemented baseline:
   - engine operations:
@@ -1328,8 +1435,22 @@ Status (2026-03-08):
     - shell parse + shell execute paths
 - Remaining:
   - `RenderDotplotSvg`
-  - GUI dotplot mode + linked crosshair/overlay controls
+  - additional overlay controls beyond crosshair baseline
   - JS/Lua/Python convenience wrappers beyond generic operation calls
+
+Latest GUI baseline (2026-03-09):
+
+- Sequence windows now include a primary `Dotplot map` mode.
+- Dotplot compute defaults to a viewport-centered bounded span with
+  `half_window_bp` (default `500` => ±500 bp), reducing compute load on large
+  loci.
+- Dotplot mode now supports:
+  - parameterized compute (`mode`, `word_size`, `step`, `max_mismatches`,
+    optional `tile_bp`)
+  - persisted payload selection (`dotplot_id`)
+  - optional paired flexibility-track panel (`flex_track_id`, model/bin/smooth)
+  - linked crosshair baseline (hover + click-to-lock + sequence-selection sync)
+  - density-render safeguards (point sampling cap for responsive redraws)
 
 Goal:
 
@@ -1363,6 +1484,8 @@ Phase 1 (engine payload + compute baseline):
 Phase 2 (GUI sequence-window workflow):
 
 - Add a dedicated `Dotplot` mode in sequence windows (primary view).
+- Status: implemented baseline (bounded compute controls + persisted selection
+  + in-view rendering + optional flexibility track panel + linked crosshair).
 - Add optional low-alpha overlay mode (secondary, opt-in).
 - Add linked coordinate crosshair between dotplot and sequence map.
 - Add parameter presets:
@@ -1591,6 +1714,19 @@ Post-baseline follow-ups:
   endpoint-security exception/approval.
 - Keep auto-updated documentation with embedded graphics postponed until above
   safety/contract priorities are complete.
+- Add deferred documentation track: **GUI screenshot atlas automation (blocked
+  by stability gate)**.
+  - Stability gate:
+    - do not start screenshot-atlas implementation until GUI stability baseline
+      is reached.
+  - Staged deliverables after gate:
+    1. re-enable `screenshot-window` in GUI shell context via shared viewport
+       screenshot capture path.
+    2. add `docs/screenshots/manifest.json` and generated
+       `docs/gui_screenshots.md`.
+    3. add `screenshot-atlas list` / `screenshot-atlas run` command routes.
+    4. keep CLI/MCP raster screenshot capture disabled outside GUI context and
+       use explicit SVG export commands for headless workflows.
 
 ### Phase F: interpretation (later)
 

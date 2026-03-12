@@ -211,15 +211,15 @@ Task example: prepare a helper genome and run BLAST for one query sequence.
 Run directly:
 
 ```bash
-gentle_cli helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes --timeout-secs 600
-gentle_cli helpers blast "Plasmid pUC19 (local)" ACGTACGT --task blastn-short --max-hits 20 --cache-dir data/helper_genomes
+gentle_cli helpers prepare "Plasmid pUC19 (online)" --cache-dir data/helper_genomes --timeout-secs 600
+gentle_cli helpers blast "Plasmid pUC19 (online)" ACGTACGT --task blastn-short --max-hits 20 --cache-dir data/helper_genomes
 ```
 
 Or via shared shell route:
 
 ```bash
-gentle_cli shell 'helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes --timeout-secs 600'
-gentle_cli shell 'helpers blast "Plasmid pUC19 (local)" ACGTACGT --task blastn-short --max-hits 20 --cache-dir data/helper_genomes'
+gentle_cli shell 'helpers prepare "Plasmid pUC19 (online)" --cache-dir data/helper_genomes --timeout-secs 600'
+gentle_cli shell 'helpers blast "Plasmid pUC19 (online)" ACGTACGT --task blastn-short --max-hits 20 --cache-dir data/helper_genomes'
 ```
 
 Who executes: you (or script/CI).

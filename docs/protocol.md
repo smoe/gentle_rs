@@ -114,6 +114,12 @@ Current draft operations:
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
+- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, seed_filter, align_config, report_id? }` (Nanopore cDNA profile implemented in phase-1)
+- `ListRnaReadReports { seq_id? }`
+- `ShowRnaReadReport { report_id }`
+- `ExportRnaReadReport { report_id, path }`
+- `ExportRnaReadHitsFasta { report_id, path, selection }`
+- `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
 - `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
@@ -121,7 +127,14 @@ Current draft operations:
   - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
   - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
   - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
-- `ExtractGenomeGene { genome_id, gene_query, occurrence?, output_id?, catalog_path?, cache_dir? }`
+  - for helper genome IDs containing `pUC18`/`pUC19`, the engine applies a deterministic fallback MCS `misc_feature` annotation when source annotation does not already include an MCS feature and exactly one canonical MCS motif is found.
+  - source-derived and fallback MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names when recognizable.
+- `ExtractGenomeGene { genome_id, gene_query, occurrence?, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
+  - `annotation_scope` accepts `none|core|full` and defaults to `core` when omitted.
+  - `max_annotation_features` is an optional safety cap (0 or omitted = unlimited for explicit requests).
+  - legacy `include_genomic_annotation` is still accepted (`true` -> `core`, `false` -> `none`) for compatibility.
+  - operation results include `genome_annotation_projection` telemetry (requested/effective scope, feature counts, fallback metadata).
+  - for helper genome IDs containing `pUC18`/`pUC19`, the same deterministic MCS fallback annotation behavior applies when an MCS feature is missing; non-unique motif matches are warned and skipped.
 - `ExtendGenomeAnchor { seq_id, side, length_bp, output_id?, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `VerifyGenomeAnchor { seq_id, catalog_path?, cache_dir?, prepared_genome_id? }`
 - `ImportBlastHitsTrack { seq_id, hits[], track_name?, clear_existing?, blast_provenance? }`
@@ -1037,9 +1050,12 @@ Operation progress/cancellation semantics:
   - `Tfbs`
   - `GenomePrepare`
   - `GenomeTrackImport`
+  - `RnaReadInterpret`
 - Current cancellation support:
   - genome-track imports support cooperative cancellation and return partial
     import warnings.
+  - RNA-read interpretation uses cooperative callback checks while emitting
+    periodic progress snapshots (including seed-confirmation histogram bins).
 
 `Pcr` semantics (current):
 
@@ -1094,8 +1110,8 @@ Operation progress/cancellation semantics:
     "roi_start_0based": 1000,
     "roi_end_0based": 1600,
     "forward": {
-      "min_length": 18,
-      "max_length": 24,
+      "min_length": 20,
+      "max_length": 30,
       "location_0based": null,
       "start_0based": null,
       "end_0based": null,
@@ -1104,6 +1120,7 @@ Operation progress/cancellation semantics:
       "min_gc_fraction": 0.35,
       "max_gc_fraction": 0.70,
       "max_anneal_hits": 1,
+      "non_annealing_5prime_tail": null,
       "fixed_5prime": null,
       "fixed_3prime": null,
       "required_motifs": [],
@@ -1111,8 +1128,8 @@ Operation progress/cancellation semantics:
       "locked_positions": []
     },
     "reverse": {
-      "min_length": 18,
-      "max_length": 24,
+      "min_length": 20,
+      "max_length": 30,
       "location_0based": null,
       "start_0based": null,
       "end_0based": null,
@@ -1121,6 +1138,7 @@ Operation progress/cancellation semantics:
       "min_gc_fraction": 0.35,
       "max_gc_fraction": 0.70,
       "max_anneal_hits": 1,
+      "non_annealing_5prime_tail": null,
       "fixed_5prime": null,
       "fixed_3prime": null,
       "required_motifs": [],
@@ -1152,9 +1170,16 @@ Operation progress/cancellation semantics:
     `{"require_roi_flanking":false,"required_amplicon_motifs":[],"forbidden_amplicon_motifs":[],"fixed_amplicon_start_0based":null,"fixed_amplicon_end_0based_exclusive":null}`
 - Side constraints (`forward`, `reverse`, and qPCR `probe`) accept optional
   sequence-level filters:
+  - `non_annealing_5prime_tail` (added to the final oligo but excluded from
+    anneal Tm/GC/hit calculations)
   - `fixed_5prime`, `fixed_3prime`
   - `required_motifs[]`, `forbidden_motifs[]`
   - `locked_positions[]` entries (`offset_0based`, single IUPAC `base`)
+- Built-in primer-ranking heuristics (internal and Primer3 pair-ranking stage):
+  - preferred primer length window: `20..30 bp` (outside window is penalized)
+  - 3' GC clamp preference (`G/C` at terminal 3' base)
+  - secondary-structure risk penalty (homopolymer and self-complementary runs)
+  - primer-dimer risk penalty (global and 3'-anchored complementary runs)
 
 - Report schema:
   - `gentle.primer_design_report.v1`
@@ -1167,9 +1192,20 @@ Operation progress/cancellation semantics:
     - optional `backend.primer3_version`
   - each pair includes:
     - forward/reverse primer sequence and genomic binding window
-    - estimated Tm and GC fraction
+    - per-primer diagnostics:
+      - `length_bp`
+      - `anneal_length_bp`
+      - `non_annealing_5prime_tail_bp`
+      - `three_prime_base`
+      - `three_prime_gc_clamp`
+      - `longest_homopolymer_run_bp`
+      - `self_complementary_run_bp`
+    - estimated `tm_c` and `gc_fraction` for annealing segment only
     - anneal-hit counts per side
     - amplicon start/end/length
+    - pair dimer diagnostics:
+      - `primer_pair_complementary_run_bp`
+      - `primer_pair_3prime_complementary_run_bp`
     - rule-pass flags and aggregate score
   - optional rejection summary buckets (for explainability):
     - out-of-window
@@ -1269,6 +1305,38 @@ Dotplot + flexibility operation contract (implemented baseline):
   - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
   - `flex list [SEQ_ID]`
   - `flex show TRACK_ID`
+
+RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
+
+- Operation:
+  - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, seed_filter, align_config, report_id? }`
+  - implemented profile: `nanopore_cdna_v1`
+  - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
+  - default seed/filter constants:
+    - `kmer_len=9`
+    - `short_full_hash_max_bp=420`
+    - `long_window_bp=140`
+    - `long_window_count=3`
+    - `min_seed_hit_fraction=0.30` (bootstrap default; future SNR calibration track can override policy)
+- Report persistence:
+  - report schema: `gentle.rna_read_report.v1`
+  - metadata store schema: `gentle.rna_read_reports.v1`
+  - metadata key: `rna_read_reports`
+  - report payload now includes per-report:
+    - `exon_support_frequencies[]`
+    - `junction_support_frequencies[]`
+- Sample-sheet export:
+  - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
+  - export schema: `gentle.rna_read_sample_sheet_export.v1`
+  - output: TSV with run/read metrics and JSON-serialized exon/junction
+    frequency columns for cohort-level downstream analysis.
+- Shared-shell command family:
+  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads list-reports [SEQ_ID]`
+  - `rna-reads show-report REPORT_ID`
+  - `rna-reads export-report REPORT_ID OUTPUT.json`
+  - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
+  - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
 
 Async BLAST shell contract (agent/MCP-ready baseline):
 

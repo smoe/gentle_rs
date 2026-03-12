@@ -3,8 +3,9 @@
 use gentle::{
     about,
     engine::{
-        Engine, EngineStateSummary, GenomeAnnotationScope, GenomeTrackImportProgress,
-        GentleEngine, Operation, OperationProgress, ProjectState, RenderSvgMode, TfbsProgress,
+        Engine, EngineStateSummary, GenomeAnnotationScope, GenomeTrackImportProgress, GentleEngine,
+        Operation, OperationProgress, ProjectState, RenderSvgMode, RnaReadInterpretProgress,
+        TfbsProgress,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -473,7 +474,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] genomes prepare GENOME_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli genomes blast GENOME_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] genomes verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli helpers list [--catalog PATH]\n  \
@@ -483,7 +484,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] helpers prepare HELPER_ID [--catalog PATH] [--cache-dir PATH] [--timeout-secs N]\n  \
   gentle_cli helpers blast HELPER_ID QUERY_SEQUENCE [--max-hits N] [--task blastn-short|blastn] [--options-json JSON_OR_@FILE|--options-file PATH] [--catalog PATH] [--cache-dir PATH]\n  \
   gentle_cli [--state PATH|--project PATH] helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n  \
-  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]\n\n  \
+  gentle_cli [--state PATH|--project PATH] helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]\n\n  \
   gentle_cli [--state PATH|--project PATH] helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n  \
   gentle_cli [--state PATH|--project PATH] helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]\n\n  \
   gentle_cli [--state PATH|--project PATH] tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]\n\n  \
@@ -537,6 +538,7 @@ fn usage() {
   gentle_cli [--state PATH|--project PATH] guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]\n\n  \
   gentle_cli [--state PATH|--project PATH] primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
+  gentle_cli [--state PATH|--project PATH] primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-feature SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers seed-from-splicing SEQ_ID FEATURE_ID\n  \
   gentle_cli [--state PATH|--project PATH] primers list-reports\n  \
@@ -579,6 +581,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "primers",
     "dotplot",
     "flex",
+    "rna-reads",
     "tracks",
     "genbank",
     "uniprot",
@@ -641,7 +644,8 @@ fn load_state(path: &str) -> Result<ProjectState, String> {
     if !std::path::Path::new(path).exists() {
         return Ok(ProjectState::default());
     }
-    let raw = fs::read_to_string(path).map_err(|e| format!("Could not read state file '{path}': {e}"))?;
+    let raw =
+        fs::read_to_string(path).map_err(|e| format!("Could not read state file '{path}': {e}"))?;
     if raw.trim().is_empty() {
         return Ok(ProjectState::default());
     }
@@ -832,11 +836,35 @@ impl ProgressPrinter {
         }
     }
 
+    fn on_rna_read_interpret_progress(&mut self, p: RnaReadInterpretProgress) {
+        let stride = p.update_every_reads.max(1);
+        if p.done || p.reads_processed % stride == 0 {
+            let percent = if p.reads_total == 0 {
+                100.0
+            } else {
+                (p.reads_processed as f64 / p.reads_total as f64) * 100.0
+            };
+            self.print_line(&format!(
+                "progress rna-reads seq={} reads={}/{} ({:.1}%) seed_passed={} aligned={} matched_kmers={} tested_kmers={} done={}",
+                p.seq_id,
+                p.reads_processed,
+                p.reads_total,
+                percent,
+                p.seed_passed,
+                p.aligned,
+                p.matched_kmers,
+                p.tested_kmers,
+                p.done
+            ));
+        }
+    }
+
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),
+            OperationProgress::RnaReadInterpret(p) => self.on_rna_read_interpret_progress(p),
         }
     }
 }
@@ -1506,13 +1534,16 @@ fn run() -> Result<(), String> {
                     if args.len() <= cmd_idx + 3 {
                         usage();
                         return Err(format!(
-                            "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                            "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
                         ));
                     }
                     let genome_id = args[cmd_idx + 2].clone();
                     let gene_query = args[cmd_idx + 3].clone();
                     let mut occurrence: Option<usize> = None;
                     let mut output_id: Option<String> = None;
+                    let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+                    let mut max_annotation_features: Option<usize> = None;
+                    let mut include_genomic_annotation: Option<bool> = None;
                     let mut catalog_path: Option<String> = None;
                     let mut cache_dir: Option<String> = None;
                     let mut idx = cmd_idx + 4;
@@ -1542,6 +1573,54 @@ fn run() -> Result<(), String> {
                                 output_id = Some(args[idx + 1].clone());
                                 idx += 2;
                             }
+                            "--annotation-scope" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing VALUE after --annotation-scope for {label} extract-gene"
+                                    ));
+                                }
+                                let parsed = match args[idx + 1]
+                                    .trim()
+                                    .to_ascii_lowercase()
+                                    .as_str()
+                                {
+                                    "none" => GenomeAnnotationScope::None,
+                                    "core" => GenomeAnnotationScope::Core,
+                                    "full" => GenomeAnnotationScope::Full,
+                                    other => {
+                                        return Err(format!(
+                                            "Invalid --annotation-scope value '{}' for {label} extract-gene (expected none|core|full)",
+                                            other
+                                        ));
+                                    }
+                                };
+                                annotation_scope = Some(parsed);
+                                idx += 2;
+                            }
+                            "--max-annotation-features" => {
+                                if idx + 1 >= args.len() {
+                                    return Err(format!(
+                                        "Missing N after --max-annotation-features for {label} extract-gene"
+                                    ));
+                                }
+                                let parsed = args[idx + 1].parse::<usize>().map_err(|e| {
+                                    format!(
+                                        "Invalid --max-annotation-features value '{}' for {label} extract-gene: {}",
+                                        args[idx + 1],
+                                        e
+                                    )
+                                })?;
+                                max_annotation_features = Some(parsed);
+                                idx += 2;
+                            }
+                            "--include-genomic-annotation" => {
+                                include_genomic_annotation = Some(true);
+                                idx += 1;
+                            }
+                            "--no-include-genomic-annotation" => {
+                                include_genomic_annotation = Some(false);
+                                idx += 1;
+                            }
                             "--catalog" => {
                                 if idx + 1 >= args.len() {
                                     return Err(format!(
@@ -1568,6 +1647,23 @@ fn run() -> Result<(), String> {
                             }
                         }
                     }
+                    if let Some(include) = include_genomic_annotation {
+                        let mapped_scope = if include {
+                            GenomeAnnotationScope::Core
+                        } else {
+                            GenomeAnnotationScope::None
+                        };
+                        if let Some(explicit_scope) = annotation_scope {
+                            if explicit_scope != mapped_scope {
+                                return Err(format!(
+                                    "Conflicting annotation options for {label} extract-gene: --annotation-scope={} with legacy include/no-include flag",
+                                    explicit_scope.as_str()
+                                ));
+                            }
+                        } else {
+                            annotation_scope = Some(mapped_scope);
+                        }
+                    }
                     let op_catalog_path = catalog_path
                         .filter(|v| !v.trim().is_empty())
                         .or_else(|| helper_mode.then_some(default_catalog.to_string()));
@@ -1578,6 +1674,9 @@ fn run() -> Result<(), String> {
                             gene_query,
                             occurrence,
                             output_id,
+                            annotation_scope,
+                            max_annotation_features,
+                            include_genomic_annotation,
                             catalog_path: op_catalog_path,
                             cache_dir,
                         })
@@ -2636,6 +2735,23 @@ T [ 0 0 0 10 ]
             }
         ));
 
+        let primers_preflight = parse_shell_tokens(&[
+            "primers".to_string(),
+            "preflight".to_string(),
+            "--backend".to_string(),
+            "primer3".to_string(),
+            "--primer3-exec".to_string(),
+            "/opt/primer3/primer3_core".to_string(),
+        ])
+        .expect("parse primers preflight");
+        assert!(matches!(
+            primers_preflight,
+            ShellCommand::PrimersPreflight {
+                backend: Some(_),
+                primer3_executable: Some(_),
+            }
+        ));
+
         let primers_seed_feature = parse_shell_tokens(&[
             "primers".to_string(),
             "seed-from-feature".to_string(),
@@ -2670,6 +2786,24 @@ T [ 0 0 0 10 ]
         assert!(matches!(
             primers_export_qpcr,
             ShellCommand::PrimersExportQpcrReport { .. }
+        ));
+
+        let rna_reads_interpret = parse_shell_tokens(&[
+            "rna-reads".to_string(),
+            "interpret".to_string(),
+            "seqA".to_string(),
+            "7".to_string(),
+            "reads.fa".to_string(),
+            "--scope".to_string(),
+            "all_overlapping_both_strands".to_string(),
+        ])
+        .expect("parse rna-reads interpret");
+        assert!(matches!(
+            rna_reads_interpret,
+            ShellCommand::RnaReadsInterpret {
+                scope: gentle::engine::SplicingScopePreset::AllOverlappingBothStrands,
+                ..
+            }
         ));
     }
 
@@ -2830,8 +2964,11 @@ T [ 0 0 0 10 ]
         let td = tempdir().expect("tempdir");
         let mock_dir = td.path().join("mock_genbank");
         fs::create_dir_all(&mock_dir).expect("create mock dir");
-        fs::copy("test_files/tp73.ncbi.gb", mock_dir.join("NC_000001.gbwithparts"))
-            .expect("copy mocked genbank payload");
+        fs::copy(
+            "test_files/tp73.ncbi.gb",
+            mock_dir.join("NC_000001.gbwithparts"),
+        )
+        .expect("copy mocked genbank payload");
         let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
         let _efetch_env = EnvVarGuard::set("GENTLE_NCBI_EFETCH_URL", &efetch_template);
 
@@ -2974,6 +3111,44 @@ T [ 0 0 0 10 ]
 
         assert_eq!(forwarded_changed, shared_changed);
         assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            shared_state
+                .sequences
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_primers_preflight_dispatch_matches_shared_shell_execution() {
+        let forwarded_args = vec![
+            "gentle_cli".to_string(),
+            "primers".to_string(),
+            "preflight".to_string(),
+            "--backend".to_string(),
+            "primer3".to_string(),
+            "--primer3-exec".to_string(),
+            "__gentle_missing_primer3_for_forwarded_cli_parity_test__".to_string(),
+        ];
+        let shared_tokens = forwarded_args[1..].to_vec();
+
+        let (forwarded_changed, forwarded_output, forwarded_state) =
+            execute_forwarded_like_cli(ProjectState::default(), forwarded_args);
+        let (shared_changed, shared_output, shared_state) =
+            execute_shared_shell_tokens(ProjectState::default(), shared_tokens);
+
+        assert_eq!(forwarded_changed, shared_changed);
+        assert_eq!(forwarded_output, shared_output);
+        assert_eq!(
+            forwarded_output["preflight"]["reachable"].as_bool(),
+            Some(false)
+        );
         assert_eq!(
             forwarded_state
                 .sequences

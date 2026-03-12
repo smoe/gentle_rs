@@ -57,15 +57,19 @@ use serde_json::json;
 use std::{
     cmp::Ordering,
     collections::hash_map::DefaultHasher,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
     env,
     error::Error,
     fmt,
-    fs::File,
+    fs::{File, OpenOptions},
     hash::{Hash, Hasher},
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering as AtomicOrdering},
+    },
     time::{Duration, Instant},
 };
 use tempfile::NamedTempFile;
@@ -82,8 +86,8 @@ pub use crate::feature_expert::{
     IsoformArchitectureTranscriptLane, RESTRICTION_EXPERT_INSTRUCTION, RestrictionSiteExpertView,
     SPLICING_EXPERT_INSTRUCTION, SplicingBoundaryMarker, SplicingEventSummary,
     SplicingExonCdsPhase, SplicingExonSummary, SplicingExpertView, SplicingJunctionArc,
-    SplicingMatrixRow, SplicingRange, SplicingTranscriptLane, TFBS_EXPERT_INSTRUCTION,
-    TfbsExpertColumn, TfbsExpertView,
+    SplicingMatrixRow, SplicingRange, SplicingScopePreset, SplicingTranscriptLane,
+    TFBS_EXPERT_INSTRUCTION, TfbsExpertColumn, TfbsExpertView,
 };
 const PROVENANCE_METADATA_KEY: &str = "provenance";
 const GENOME_EXTRACTIONS_METADATA_KEY: &str = "genome_extractions";
@@ -127,12 +131,31 @@ pub const DOTPLOT_ANALYSIS_METADATA_KEY: &str = "dotplot_analysis";
 const DOTPLOT_ANALYSIS_SCHEMA: &str = "gentle.dotplot_analysis_store.v1";
 const DOTPLOT_VIEW_SCHEMA: &str = "gentle.dotplot_view.v1";
 const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
+pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
+const RNA_READ_REPORTS_SCHEMA: &str = "gentle.rna_read_reports.v1";
+const RNA_READ_REPORT_SCHEMA: &str = "gentle.rna_read_report.v1";
+const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
+const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 100;
+const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
+const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;
+const RNA_READ_RETAINED_HITS_MAX: usize = 5_000;
+const RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX: usize = 20;
 const MAX_DOTPLOT_POINTS: usize = 250_000;
 const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 5_000_000;
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
 pub const BIGWIG_TO_BEDGRAPH_ENV_BIN: &str = "GENTLE_BIGWIG_TO_BEDGRAPH_BIN";
 const MAX_IMPORTED_SIGNAL_FEATURES: usize = 25_000;
 const DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP: usize = 5_000;
+const HELPER_MCS_GENERATED_TAG: &str = "helper_mcs";
+const PUC19_MCS_SEQUENCE: &str = "GAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGGCATGCAAGCTT";
+const PUC18_MCS_SEQUENCE: &str = "AAGCTTGCATGCCTGCAGGTCGACTCTAGAGGATCCCCGGGTACCGAGCTCGAATTC";
+const PUC_MCS_EXPECTED_SITES: &str = "EcoRI,SacI,KpnI,SmaI,BamHI,XbaI,SalI,PstI,SphI,HindIII";
+const PRIMER_PREFERRED_MIN_LENGTH_BP: usize = 20;
+const PRIMER_PREFERRED_MAX_LENGTH_BP: usize = 30;
+const PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP: usize = 4;
+const PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP: usize = 6;
+const PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP: usize = 6;
+const PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP: usize = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Named visibility targets controlled through `Operation::SetDisplayVisibility`.
@@ -1320,6 +1343,7 @@ pub struct PrimerDesignSideConstraint {
     pub min_gc_fraction: f64,
     pub max_gc_fraction: f64,
     pub max_anneal_hits: usize,
+    pub non_annealing_5prime_tail: Option<String>,
     pub fixed_5prime: Option<String>,
     pub fixed_3prime: Option<String>,
     #[serde(default)]
@@ -1333,8 +1357,8 @@ pub struct PrimerDesignSideConstraint {
 impl Default for PrimerDesignSideConstraint {
     fn default() -> Self {
         Self {
-            min_length: 18,
-            max_length: 24,
+            min_length: PRIMER_PREFERRED_MIN_LENGTH_BP,
+            max_length: PRIMER_PREFERRED_MAX_LENGTH_BP,
             location_0based: None,
             start_0based: None,
             end_0based: None,
@@ -1343,6 +1367,7 @@ impl Default for PrimerDesignSideConstraint {
             min_gc_fraction: 0.35,
             max_gc_fraction: 0.70,
             max_anneal_hits: 1,
+            non_annealing_5prime_tail: None,
             fixed_5prime: None,
             fixed_3prime: None,
             required_motifs: vec![],
@@ -1358,9 +1383,16 @@ pub struct PrimerDesignPrimerRecord {
     pub sequence: String,
     pub start_0based: usize,
     pub end_0based_exclusive: usize,
+    pub length_bp: usize,
+    pub anneal_length_bp: usize,
+    pub non_annealing_5prime_tail_bp: usize,
     pub tm_c: f64,
     pub gc_fraction: f64,
     pub anneal_hits: usize,
+    pub three_prime_base: String,
+    pub three_prime_gc_clamp: bool,
+    pub longest_homopolymer_run_bp: usize,
+    pub self_complementary_run_bp: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1369,6 +1401,11 @@ pub struct PrimerDesignPairRuleFlags {
     pub roi_covered: bool,
     pub amplicon_size_in_range: bool,
     pub tm_delta_in_range: bool,
+    pub forward_secondary_structure_ok: bool,
+    pub reverse_secondary_structure_ok: bool,
+    pub primer_pair_dimer_risk_low: bool,
+    pub forward_three_prime_gc_clamp: bool,
+    pub reverse_three_prime_gc_clamp: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1382,6 +1419,8 @@ pub struct PrimerDesignPairRecord {
     pub amplicon_end_0based_exclusive: usize,
     pub amplicon_length_bp: usize,
     pub tm_delta_c: f64,
+    pub primer_pair_complementary_run_bp: usize,
+    pub primer_pair_3prime_complementary_run_bp: usize,
     pub rule_flags: PrimerDesignPairRuleFlags,
 }
 
@@ -1430,6 +1469,20 @@ pub struct PrimerDesignBackendInfo {
     pub fallback_reason: Option<String>,
     pub primer3_executable: Option<String>,
     pub primer3_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Primer3PreflightReport {
+    pub backend: String,
+    pub executable: String,
+    pub reachable: bool,
+    pub version_probe_ok: bool,
+    pub status_code: Option<i32>,
+    pub version: Option<String>,
+    pub detail: Option<String>,
+    pub error: Option<String>,
+    pub probe_time_ms: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2505,6 +2558,357 @@ impl FlexibilityModel {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadInputFormat {
+    #[default]
+    Fasta,
+}
+
+impl RnaReadInputFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fasta => "fasta",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadInterpretationProfile {
+    #[default]
+    NanoporeCdnaV1,
+    ShortReadV1,
+    TransposonV1,
+}
+
+impl RnaReadInterpretationProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NanoporeCdnaV1 => "nanopore_cdna_v1",
+            Self::ShortReadV1 => "short_read_v1",
+            Self::TransposonV1 => "transposon_v1",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadHitSelection {
+    All,
+    SeedPassed,
+    #[default]
+    Aligned,
+}
+
+impl RnaReadHitSelection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::SeedPassed => "seed_passed",
+            Self::Aligned => "aligned",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RnaReadSeedFilterConfig {
+    pub kmer_len: usize,
+    pub short_full_hash_max_bp: usize,
+    pub long_window_bp: usize,
+    pub long_window_count: usize,
+    pub min_seed_hit_fraction: f64,
+}
+
+impl Default for RnaReadSeedFilterConfig {
+    fn default() -> Self {
+        Self {
+            kmer_len: 9,
+            short_full_hash_max_bp: 420,
+            long_window_bp: 140,
+            long_window_count: 3,
+            min_seed_hit_fraction: 0.30,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RnaReadAlignConfig {
+    pub band_width_bp: usize,
+    pub min_identity_fraction: f64,
+    pub max_secondary_mappings: usize,
+}
+
+impl Default for RnaReadAlignConfig {
+    fn default() -> Self {
+        Self {
+            band_width_bp: 24,
+            min_identity_fraction: 0.60,
+            max_secondary_mappings: 3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadMappingHit {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub query_start_0based: usize,
+    pub query_end_0based_exclusive: usize,
+    pub target_start_1based: usize,
+    pub target_end_1based: usize,
+    pub matches: usize,
+    pub mismatches: usize,
+    pub score: isize,
+    pub identity_fraction: f64,
+    pub query_coverage_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadInterpretationHit {
+    pub record_index: usize,
+    pub source_byte_offset: usize,
+    pub header_id: String,
+    pub sequence: String,
+    pub read_length_bp: usize,
+    pub tested_kmers: usize,
+    pub matched_kmers: usize,
+    pub seed_hit_fraction: f64,
+    pub perfect_seed_match: bool,
+    pub passed_seed_filter: bool,
+    pub best_mapping: Option<RnaReadMappingHit>,
+    pub secondary_mappings: Vec<RnaReadMappingHit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadExonSupportFrequency {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub support_read_count: usize,
+    pub support_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadJunctionSupportFrequency {
+    pub donor_1based: usize,
+    pub acceptor_1based: usize,
+    pub support_read_count: usize,
+    pub support_fraction: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadSampleSheetExport {
+    pub schema: String,
+    pub path: String,
+    pub report_count: usize,
+    pub appended: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaSeedHashCatalogEntry {
+    pub seed_bits: u32,
+    pub kmer_sequence: String,
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub template_offset_0based: usize,
+    pub genomic_pos_1based: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadInterpretationReport {
+    pub schema: String,
+    pub report_id: String,
+    pub seq_id: String,
+    pub seed_feature_id: usize,
+    pub generated_at_unix_ms: u128,
+    pub profile: RnaReadInterpretationProfile,
+    pub input_path: String,
+    pub input_format: RnaReadInputFormat,
+    pub scope: SplicingScopePreset,
+    pub seed_filter: RnaReadSeedFilterConfig,
+    pub align_config: RnaReadAlignConfig,
+    pub read_count_total: usize,
+    pub read_count_seed_passed: usize,
+    pub read_count_aligned: usize,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub hits: Vec<RnaReadInterpretationHit>,
+    #[serde(default)]
+    pub exon_support_frequencies: Vec<RnaReadExonSupportFrequency>,
+    #[serde(default)]
+    pub junction_support_frequencies: Vec<RnaReadJunctionSupportFrequency>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RnaReadInterpretationReportSummary {
+    pub report_id: String,
+    pub seq_id: String,
+    pub generated_at_unix_ms: u128,
+    pub profile: RnaReadInterpretationProfile,
+    pub input_path: String,
+    pub input_format: RnaReadInputFormat,
+    pub seed_feature_id: usize,
+    pub scope: SplicingScopePreset,
+    pub read_count_total: usize,
+    pub read_count_seed_passed: usize,
+    pub read_count_aligned: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct RnaReadReportStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    reports: BTreeMap<String, RnaReadInterpretationReport>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ParsedFastaReadRecord {
+    record_index: usize,
+    source_byte_offset: usize,
+    header_id: String,
+    sequence: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct FastaVisitProgress {
+    records_processed: usize,
+    input_bytes_processed: u64,
+    input_bytes_total: u64,
+}
+
+#[derive(Debug)]
+struct CountingReader<R> {
+    inner: R,
+    bytes_read: Arc<AtomicU64>,
+}
+
+impl<R> CountingReader<R> {
+    fn new(inner: R, bytes_read: Arc<AtomicU64>) -> Self {
+        Self { inner, bytes_read }
+    }
+}
+
+impl<R: Read> Read for CountingReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        self.bytes_read
+            .fetch_add(read as u64, AtomicOrdering::Relaxed);
+        Ok(read)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RnaReadRetentionRank {
+    seed_hit_ppm: u32,
+    matched_kmers: usize,
+    tested_kmers: usize,
+    read_length_bp: usize,
+    record_index: usize,
+}
+
+impl Ord for RnaReadRetentionRank {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.seed_hit_ppm
+            .cmp(&other.seed_hit_ppm)
+            .then(self.matched_kmers.cmp(&other.matched_kmers))
+            .then(self.tested_kmers.cmp(&other.tested_kmers))
+            .then(self.read_length_bp.cmp(&other.read_length_bp))
+            .then(other.record_index.cmp(&self.record_index))
+    }
+}
+
+impl PartialOrd for RnaReadRetentionRank {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RetainedRnaReadHit {
+    rank: RnaReadRetentionRank,
+    hit: RnaReadInterpretationHit,
+}
+
+impl Ord for RetainedRnaReadHit {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Keep the weakest retained hit at heap top for O(log N) replacement.
+        other.rank.cmp(&self.rank)
+    }
+}
+
+impl PartialOrd for RetainedRnaReadHit {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for RetainedRnaReadHit {
+    fn eq(&self, other: &Self) -> bool {
+        self.rank == other.rank
+    }
+}
+
+impl Eq for RetainedRnaReadHit {}
+
+#[derive(Debug, Clone)]
+struct RetainedRnaReadPreviewHit {
+    rank: RnaReadRetentionRank,
+    preview: RnaReadTopHitPreview,
+}
+
+impl Ord for RetainedRnaReadPreviewHit {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.rank.cmp(&self.rank)
+    }
+}
+
+impl PartialOrd for RetainedRnaReadPreviewHit {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for RetainedRnaReadPreviewHit {
+    fn eq(&self, other: &Self) -> bool {
+        self.rank == other.rank
+    }
+}
+
+impl Eq for RetainedRnaReadPreviewHit {}
+
+#[derive(Debug, Clone, Default)]
+struct SplicingTranscriptTemplate {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    transcript_label: String,
+    strand: String,
+    sequence: Vec<u8>,
+    genomic_positions_1based: Vec<usize>,
+    kmer_positions: HashMap<u32, Vec<usize>>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SeedHistogramWeight {
+    bin_index: usize,
+    strand_minus: bool,
+    weight: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct DotplotMatchPoint {
@@ -2688,6 +3092,13 @@ pub enum Operation {
         gene_query: String,
         occurrence: Option<usize>,
         output_id: Option<SeqId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        annotation_scope: Option<GenomeAnnotationScope>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_annotation_features: Option<usize>,
+        /// Legacy compatibility flag; prefer `annotation_scope`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
@@ -2899,6 +3310,49 @@ pub enum Operation {
         smoothing_bp: Option<usize>,
         #[serde(default)]
         store_as: Option<String>,
+    },
+    InterpretRnaReads {
+        seq_id: SeqId,
+        seed_feature_id: usize,
+        #[serde(default)]
+        profile: RnaReadInterpretationProfile,
+        input_path: String,
+        #[serde(default)]
+        input_format: RnaReadInputFormat,
+        #[serde(default)]
+        scope: SplicingScopePreset,
+        #[serde(default)]
+        seed_filter: RnaReadSeedFilterConfig,
+        #[serde(default)]
+        align_config: RnaReadAlignConfig,
+        #[serde(default)]
+        report_id: Option<String>,
+    },
+    ListRnaReadReports {
+        #[serde(default)]
+        seq_id: Option<SeqId>,
+    },
+    ShowRnaReadReport {
+        report_id: String,
+    },
+    ExportRnaReadReport {
+        report_id: String,
+        path: String,
+    },
+    ExportRnaReadHitsFasta {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+    },
+    ExportRnaReadSampleSheet {
+        path: String,
+        #[serde(default)]
+        seq_id: Option<SeqId>,
+        #[serde(default)]
+        report_ids: Vec<String>,
+        #[serde(default)]
+        append: bool,
     },
     ExtractRegion {
         input: SeqId,
@@ -3488,8 +3942,24 @@ struct PrimerDesignCandidate {
     anneal_hits: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct PrimerHeuristicMetrics {
+    length_bp: usize,
+    three_prime_gc_clamp: bool,
+    three_prime_base: u8,
+    longest_homopolymer_run_bp: usize,
+    self_complementary_run_bp: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct PrimerPairDimerMetrics {
+    max_complementary_run_bp: usize,
+    max_3prime_complementary_run_bp: usize,
+}
+
 #[derive(Debug, Clone, Default)]
 struct NormalizedPrimerSideSequenceConstraints {
+    non_annealing_5prime_tail: Option<String>,
     fixed_5prime: Option<String>,
     fixed_3prime: Option<String>,
     required_motifs: Vec<String>,
@@ -3677,7 +4147,8 @@ pub struct OpResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Structured annotation projection telemetry emitted by `ExtractGenomeRegion`.
+/// Structured annotation projection telemetry emitted by genomic extraction
+/// operations (`ExtractGenomeRegion`, `ExtractGenomeGene`).
 pub struct GenomeAnnotationProjectionTelemetry {
     pub requested_scope: String,
     pub effective_scope: String,
@@ -3734,11 +4205,57 @@ pub struct GenomeTrackImportProgress {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// One genome-position bin used for running RNA-read seed-confirmation statistics.
+pub struct RnaReadSeedHistogramBin {
+    pub start_1based: usize,
+    pub end_1based: usize,
+    pub confirmed_plus: u64,
+    pub confirmed_minus: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Lightweight top-hit row included in running RNA-read progress updates.
+pub struct RnaReadTopHitPreview {
+    pub record_index: usize,
+    pub header_id: String,
+    pub seed_hit_fraction: f64,
+    pub matched_kmers: usize,
+    pub tested_kmers: usize,
+    pub passed_seed_filter: bool,
+    pub read_length_bp: usize,
+    pub sequence: String,
+    pub sequence_preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Progress payload emitted by RNA-read interpretation operations.
+pub struct RnaReadInterpretProgress {
+    pub seq_id: String,
+    pub reads_processed: usize,
+    pub reads_total: usize,
+    #[serde(default)]
+    pub input_bytes_processed: u64,
+    #[serde(default)]
+    pub input_bytes_total: u64,
+    pub seed_passed: usize,
+    pub aligned: usize,
+    pub tested_kmers: usize,
+    pub matched_kmers: usize,
+    pub update_every_reads: usize,
+    pub done: bool,
+    pub bins: Vec<RnaReadSeedHistogramBin>,
+    pub score_density_bins: Vec<u64>,
+    #[serde(default)]
+    pub top_hits_preview: Vec<RnaReadTopHitPreview>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),
     GenomeTrackImport(GenomeTrackImportProgress),
+    RnaReadInterpret(RnaReadInterpretProgress),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4179,6 +4696,12 @@ impl GentleEngine {
                 "DesignQpcrAssays".to_string(),
                 "ComputeDotplot".to_string(),
                 "ComputeFlexibilityTrack".to_string(),
+                "InterpretRnaReads".to_string(),
+                "ListRnaReadReports".to_string(),
+                "ShowRnaReadReport".to_string(),
+                "ExportRnaReadReport".to_string(),
+                "ExportRnaReadHitsFasta".to_string(),
+                "ExportRnaReadSampleSheet".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -6589,6 +7112,7 @@ impl GentleEngine {
         &self,
         seq_id: &str,
         feature_id: usize,
+        scope: SplicingScopePreset,
     ) -> Result<SplicingExpertView, EngineError> {
         let dna = self
             .state
@@ -6617,6 +7141,41 @@ impl GentleEngine {
         }
         let target_group = Self::splicing_group_label(target_feature, feature_id);
         let target_is_reverse = feature_is_reverse(target_feature);
+        let restrict_to_target_group = scope.restrict_to_target_group();
+        let restrict_to_target_strand = scope.restrict_to_target_strand();
+
+        let mut roi_ranges_0based: Vec<(usize, usize)> = Vec::new();
+        for (idx, feature) in features.iter().enumerate() {
+            if Self::splicing_group_label(feature, idx) != target_group {
+                continue;
+            }
+            if !Self::is_mrna_feature(feature) && !Self::is_exon_feature(feature) {
+                continue;
+            }
+            collect_location_ranges_usize(&feature.location, &mut roi_ranges_0based);
+        }
+        if roi_ranges_0based.is_empty() {
+            let (from, to) = target_feature
+                .location
+                .find_bounds()
+                .map_err(|e| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!("Could not parse target feature range: {e}"),
+                })?;
+            if from >= 0 && to >= 0 {
+                roi_ranges_0based.push((from as usize, to as usize));
+            }
+        }
+        let roi_start_0based = roi_ranges_0based
+            .iter()
+            .map(|(start, _)| *start)
+            .min()
+            .unwrap_or(0);
+        let roi_end_0based_exclusive = roi_ranges_0based
+            .iter()
+            .map(|(_, end)| *end)
+            .max()
+            .unwrap_or(roi_start_0based.saturating_add(1));
 
         #[derive(Clone)]
         struct TranscriptWork {
@@ -6634,12 +7193,23 @@ impl GentleEngine {
             if !Self::is_mrna_feature(feature) {
                 continue;
             }
-            if Self::splicing_group_label(feature, idx) != target_group {
+            if restrict_to_target_group && Self::splicing_group_label(feature, idx) != target_group
+            {
                 continue;
             }
             let is_reverse = feature_is_reverse(feature);
-            if is_reverse != target_is_reverse {
+            if restrict_to_target_strand && is_reverse != target_is_reverse {
                 continue;
+            }
+            if !restrict_to_target_group {
+                let mut feature_ranges = Vec::<(usize, usize)>::new();
+                collect_location_ranges_usize(&feature.location, &mut feature_ranges);
+                let overlaps_roi = feature_ranges.iter().any(|(start, end)| {
+                    *end > roi_start_0based && *start < roi_end_0based_exclusive
+                });
+                if !overlaps_roi {
+                    continue;
+                }
             }
             let mut exon_ranges = vec![];
             collect_location_ranges_usize(&feature.location, &mut exon_ranges);
@@ -7082,8 +7652,8 @@ impl GentleEngine {
                     *recognition_end_1based,
                 )
                 .map(FeatureExpertView::RestrictionSite),
-            FeatureExpertTarget::SplicingFeature { feature_id } => self
-                .build_splicing_expert_view(seq_id, *feature_id)
+            FeatureExpertTarget::SplicingFeature { feature_id, scope } => self
+                .build_splicing_expert_view(seq_id, *feature_id, *scope)
                 .map(FeatureExpertView::Splicing),
             FeatureExpertTarget::IsoformArchitecture { panel_id } => self
                 .build_isoform_architecture_expert_view(seq_id, panel_id)
@@ -7897,6 +8467,11 @@ impl GentleEngine {
                 | Operation::ExportRnaLadders { .. }
                 | Operation::ExportPool { .. }
                 | Operation::ExportProcessRunBundle { .. }
+                | Operation::ListRnaReadReports { .. }
+                | Operation::ShowRnaReadReport { .. }
+                | Operation::ExportRnaReadReport { .. }
+                | Operation::ExportRnaReadHitsFasta { .. }
+                | Operation::ExportRnaReadSampleSheet { .. }
         )
     }
 
@@ -8108,13 +8683,269 @@ impl GentleEngine {
         }
     }
 
+    fn helper_mcs_preset_hint(genome_id: &str) -> Option<&'static str> {
+        let lowered = genome_id.to_ascii_lowercase();
+        if lowered.contains("puc19") {
+            Some("pUC19")
+        } else if lowered.contains("puc18") {
+            Some("pUC18")
+        } else {
+            None
+        }
+    }
+
+    fn helper_mcs_sequence_by_preset(preset: &str) -> Option<&'static [u8]> {
+        if preset.eq_ignore_ascii_case("pUC19") {
+            Some(PUC19_MCS_SEQUENCE.as_bytes())
+        } else if preset.eq_ignore_ascii_case("pUC18") {
+            Some(PUC18_MCS_SEQUENCE.as_bytes())
+        } else {
+            None
+        }
+    }
+
+    fn detect_helper_mcs(
+        sequence: &[u8],
+        preferred_preset: &str,
+    ) -> Option<(&'static str, usize, usize)> {
+        let mut candidates: Vec<(&'static str, &'static [u8])> = vec![];
+        if preferred_preset.eq_ignore_ascii_case("pUC19") {
+            candidates.push(("pUC19", PUC19_MCS_SEQUENCE.as_bytes()));
+            candidates.push(("pUC18", PUC18_MCS_SEQUENCE.as_bytes()));
+        } else if preferred_preset.eq_ignore_ascii_case("pUC18") {
+            candidates.push(("pUC18", PUC18_MCS_SEQUENCE.as_bytes()));
+            candidates.push(("pUC19", PUC19_MCS_SEQUENCE.as_bytes()));
+        } else {
+            return None;
+        }
+        for (preset, motif) in candidates {
+            let hits = Self::find_all_subsequences(sequence, motif);
+            if let Some(start_0based) = hits.first().copied() {
+                return Some((preset, start_0based, hits.len()));
+            }
+        }
+        None
+    }
+
+    fn is_generated_helper_mcs_feature(feature: &gb_io::seq::Feature) -> bool {
+        feature
+            .qualifier_values("gentle_generated".into())
+            .any(|v| v.eq_ignore_ascii_case(HELPER_MCS_GENERATED_TAG))
+    }
+
+    fn text_mentions_mcs(text: &str) -> bool {
+        let lower = text.to_ascii_lowercase();
+        lower.contains("multiple cloning site")
+            || lower == "mcs"
+            || lower.contains(" mcs ")
+            || lower.starts_with("mcs ")
+            || lower.ends_with(" mcs")
+            || lower.contains("(mcs)")
+    }
+
+    fn normalize_enzyme_match_token(text: &str) -> String {
+        text.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_uppercase())
+            .collect()
+    }
+
+    fn extract_rebase_enzyme_names_from_text(text: &str) -> Vec<String> {
+        let tokens = text
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if tokens.is_empty() {
+            return vec![];
+        }
+        let mut lookup: HashMap<String, String> = HashMap::new();
+        for enzyme in active_restriction_enzymes() {
+            let normalized_name = Self::normalize_enzyme_match_token(&enzyme.name);
+            if !normalized_name.is_empty() {
+                lookup.entry(normalized_name).or_insert(enzyme.name);
+            }
+        }
+        let mut out: Vec<String> = vec![];
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut push_candidate = |candidate: String| {
+            let normalized = Self::normalize_enzyme_match_token(&candidate);
+            if let Some(name) = lookup.get(&normalized) {
+                if seen.insert(name.clone()) {
+                    out.push(name.clone());
+                }
+            }
+        };
+        for idx in 0..tokens.len() {
+            push_candidate(tokens[idx].clone());
+            if idx + 1 < tokens.len() {
+                push_candidate(format!("{}{}", tokens[idx], tokens[idx + 1]));
+            }
+            if idx + 2 < tokens.len() {
+                push_candidate(format!(
+                    "{}{}{}",
+                    tokens[idx],
+                    tokens[idx + 1],
+                    tokens[idx + 2]
+                ));
+            }
+        }
+        out
+    }
+
+    fn feature_looks_like_mcs(feature: &gb_io::seq::Feature) -> bool {
+        if Self::is_generated_helper_mcs_feature(feature) {
+            return true;
+        }
+        let text = Self::first_nonempty_feature_qualifier(
+            feature,
+            &["label", "note", "gene", "name", "standard_name"],
+        )
+        .unwrap_or_default();
+        Self::text_mentions_mcs(&text)
+    }
+
+    fn feature_overlaps_span(
+        feature: &gb_io::seq::Feature,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+    ) -> bool {
+        if end_0based_exclusive <= start_0based {
+            return false;
+        }
+        let mut ranges = vec![];
+        collect_location_ranges_usize(&feature.location, &mut ranges);
+        ranges.into_iter().any(|(part_start, part_end_exclusive)| {
+            part_end_exclusive > start_0based && part_start < end_0based_exclusive
+        })
+    }
+
+    fn build_helper_mcs_feature(
+        preset: &str,
+        start_0based: usize,
+        end_0based_exclusive: usize,
+        overlap_labels: &[String],
+    ) -> gb_io::seq::Feature {
+        let location =
+            gb_io::seq::Location::simple_range(start_0based as i64, end_0based_exclusive as i64);
+        let mut note = format!(
+            "Multiple cloning site (MCS), {preset} orientation. Expected unique restriction sites: {}.",
+            PUC_MCS_EXPECTED_SITES
+        );
+        if !overlap_labels.is_empty() {
+            note.push_str(&format!(
+                " Overlaps existing feature(s): {}. Insertion at this MCS may disrupt these features.",
+                overlap_labels.join(", ")
+            ));
+        }
+        gb_io::seq::Feature {
+            kind: gb_io::FeatureKind::from("misc_feature"),
+            location,
+            qualifiers: vec![
+                ("label".into(), Some(format!("MCS ({preset})"))),
+                ("note".into(), Some(note)),
+                ("mcs_preset".into(), Some(preset.to_string())),
+                (
+                    "mcs_expected_sites".into(),
+                    Some(PUC_MCS_EXPECTED_SITES.to_string()),
+                ),
+                (
+                    "gentle_generated".into(),
+                    Some(HELPER_MCS_GENERATED_TAG.to_string()),
+                ),
+            ],
+        }
+    }
+
+    fn maybe_attach_known_helper_mcs_annotation(
+        &mut self,
+        seq_id: &str,
+        genome_id: &str,
+        result: &mut OpResult,
+    ) {
+        let Some(preferred_preset) = Self::helper_mcs_preset_hint(genome_id) else {
+            return;
+        };
+        let Some(dna) = self.state.sequences.get_mut(seq_id) else {
+            return;
+        };
+        if dna.features().iter().any(Self::feature_looks_like_mcs) {
+            result.messages.push(format!(
+                "Detected existing MCS annotation on '{}'; skipped fallback helper MCS annotation.",
+                seq_id
+            ));
+            return;
+        }
+        let sequence = dna.get_forward_string().into_bytes();
+        let Some((detected_preset, start_0based, match_count)) =
+            Self::detect_helper_mcs(&sequence, preferred_preset)
+        else {
+            result.warnings.push(format!(
+                "Could not auto-detect canonical MCS motif for helper genome '{}' on extracted sequence '{}'",
+                genome_id, seq_id
+            ));
+            return;
+        };
+        let motif_len = Self::helper_mcs_sequence_by_preset(detected_preset)
+            .map(|motif| motif.len())
+            .unwrap_or(0usize);
+        if motif_len == 0 || start_0based.saturating_add(motif_len) > sequence.len() {
+            return;
+        }
+        if match_count != 1 {
+            result.warnings.push(format!(
+                "Found {match_count} canonical MCS motif matches on '{}'; expected exactly one, so no MCS fallback annotation was applied.",
+                seq_id
+            ));
+            return;
+        }
+        let end_0based_exclusive = start_0based.saturating_add(motif_len);
+        let overlap_labels: Vec<String> = dna
+            .features()
+            .iter()
+            .enumerate()
+            .filter_map(|(feature_id, feature)| {
+                let kind = feature.kind.to_string().to_ascii_uppercase();
+                if !matches!(kind.as_str(), "GENE" | "CDS" | "MRNA") {
+                    return None;
+                }
+                if !Self::feature_overlaps_span(feature, start_0based, end_0based_exclusive) {
+                    return None;
+                }
+                Some(Self::feature_display_label(feature, feature_id))
+            })
+            .collect();
+        dna.features_mut().push(Self::build_helper_mcs_feature(
+            detected_preset,
+            start_0based,
+            end_0based_exclusive,
+            &overlap_labels,
+        ));
+        Self::prepare_sequence(dna);
+        result.messages.push(format!(
+            "Annotated helper MCS on '{}' using {} preset ({}..{}).",
+            seq_id,
+            detected_preset,
+            start_0based.saturating_add(1),
+            end_0based_exclusive
+        ));
+        if !detected_preset.eq_ignore_ascii_case(preferred_preset) {
+            result.warnings.push(format!(
+                "Helper genome '{}' suggests {} but matched {} MCS orientation; using detected orientation.",
+                genome_id, preferred_preset, detected_preset
+            ));
+        }
+    }
+
     fn genomic_interval_to_local_location(
         extracted_start_1based: usize,
         clipped_start_1based: usize,
         clipped_end_1based: usize,
         strand: Option<char>,
     ) -> Option<gb_io::seq::Location> {
-        if clipped_end_1based < clipped_start_1based || clipped_start_1based < extracted_start_1based
+        if clipped_end_1based < clipped_start_1based
+            || clipped_start_1based < extracted_start_1based
         {
             return None;
         }
@@ -8159,8 +8990,14 @@ impl GentleEngine {
         );
         let mut qualifiers = vec![
             ("chromosome".into(), Some(record.chromosome.clone())),
-            ("genomic_start_1based".into(), Some(record.start_1based.to_string())),
-            ("genomic_end_1based".into(), Some(record.end_1based.to_string())),
+            (
+                "genomic_start_1based".into(),
+                Some(record.start_1based.to_string()),
+            ),
+            (
+                "genomic_end_1based".into(),
+                Some(record.end_1based.to_string()),
+            ),
         ];
         if let Some(gene_name) = &record.gene_name {
             qualifiers.push(("gene".into(), Some(gene_name.clone())));
@@ -8182,6 +9019,18 @@ impl GentleEngine {
             .filter(|value| !value.is_empty())
         {
             qualifiers.push(("biotype".into(), Some(biotype.to_string())));
+        }
+        if let Some(mcs_text) = record
+            .gene_name
+            .as_ref()
+            .or(record.gene_id.as_ref())
+            .filter(|value| Self::text_mentions_mcs(value))
+        {
+            qualifiers.push(("note".into(), Some(mcs_text.clone())));
+            let linked_enzymes = Self::extract_rebase_enzyme_names_from_text(mcs_text);
+            if !linked_enzymes.is_empty() {
+                qualifiers.push(("mcs_expected_sites".into(), Some(linked_enzymes.join(","))));
+            }
         }
         Some(gb_io::seq::Feature {
             kind: gb_io::seq::FeatureKind::from("gene"),
@@ -8434,33 +9283,6 @@ impl GentleEngine {
             location,
             qualifiers,
         })
-    }
-
-    fn attach_transcript_features_to_extracted_gene_sequence(
-        &mut self,
-        seq_id: &str,
-        extracted_start_1based: usize,
-        extracted_end_1based: usize,
-        records: &[GenomeTranscriptRecord],
-    ) -> usize {
-        let Some(dna) = self.state.sequences.get_mut(seq_id) else {
-            return 0;
-        };
-        let mut added = 0usize;
-        for record in records {
-            if let Some(feature) = Self::transcript_feature_from_genome_record(
-                record,
-                extracted_start_1based,
-                extracted_end_1based,
-            ) {
-                dna.features_mut().push(feature);
-                added = added.saturating_add(1);
-            }
-        }
-        if added > 0 {
-            Self::prepare_sequence(dna);
-        }
-        added
     }
 
     fn import_genome_slice_sequence(
@@ -9050,6 +9872,1720 @@ impl GentleEngine {
         Ok(report)
     }
 
+    fn read_rna_read_report_store_from_metadata(
+        value: Option<&serde_json::Value>,
+    ) -> RnaReadReportStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<RnaReadReportStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = RNA_READ_REPORTS_SCHEMA.to_string();
+        }
+        store
+    }
+
+    fn read_rna_read_report_store(&self) -> RnaReadReportStore {
+        Self::read_rna_read_report_store_from_metadata(
+            self.state.metadata.get(RNA_READ_REPORTS_METADATA_KEY),
+        )
+    }
+
+    fn write_rna_read_report_store(
+        &mut self,
+        mut store: RnaReadReportStore,
+    ) -> Result<(), EngineError> {
+        if store.reports.is_empty() {
+            self.state.metadata.remove(RNA_READ_REPORTS_METADATA_KEY);
+            return Ok(());
+        }
+        store.schema = RNA_READ_REPORTS_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize RNA-read report metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(RNA_READ_REPORTS_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    fn upsert_rna_read_report(
+        &mut self,
+        report: RnaReadInterpretationReport,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_rna_read_report_store();
+        store.reports.insert(report.report_id.clone(), report);
+        self.write_rna_read_report_store(store)
+    }
+
+    fn normalize_rna_read_report_id(raw: &str) -> Result<String, EngineError> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "report_id cannot be empty".to_string(),
+            });
+        }
+        let mut out = String::with_capacity(trimmed.len());
+        for ch in trimmed.chars() {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        if out.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "report_id must contain at least one ASCII letter, digit, '-', '_' or '.'"
+                    .to_string(),
+            });
+        }
+        Ok(out)
+    }
+
+    pub fn list_rna_read_reports(
+        &self,
+        seq_id_filter: Option<&str>,
+    ) -> Vec<RnaReadInterpretationReportSummary> {
+        let filter = seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
+        let mut rows = self
+            .read_rna_read_report_store()
+            .reports
+            .values()
+            .filter(|report| {
+                filter.as_ref().is_none_or(|needle| {
+                    report
+                        .seq_id
+                        .to_ascii_lowercase()
+                        .eq_ignore_ascii_case(needle)
+                })
+            })
+            .map(|report| RnaReadInterpretationReportSummary {
+                report_id: report.report_id.clone(),
+                seq_id: report.seq_id.clone(),
+                generated_at_unix_ms: report.generated_at_unix_ms,
+                profile: report.profile,
+                input_path: report.input_path.clone(),
+                input_format: report.input_format,
+                seed_feature_id: report.seed_feature_id,
+                scope: report.scope,
+                read_count_total: report.read_count_total,
+                read_count_seed_passed: report.read_count_seed_passed,
+                read_count_aligned: report.read_count_aligned,
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.report_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.report_id.to_ascii_lowercase()),
+                )
+        });
+        rows
+    }
+
+    pub fn get_rna_read_report(
+        &self,
+        report_id: &str,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let report_id = Self::normalize_rna_read_report_id(report_id)?;
+        self.read_rna_read_report_store()
+            .reports
+            .get(report_id.as_str())
+            .cloned()
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("RNA-read report '{}' not found", report_id),
+            })
+    }
+
+    pub fn export_rna_read_report(
+        &self,
+        report_id: &str,
+        path: &str,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let text = serde_json::to_string_pretty(&report).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!(
+                "Could not serialize RNA-read report '{}': {e}",
+                report.report_id
+            ),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA-read report to '{path}': {e}"),
+        })?;
+        Ok(report)
+    }
+
+    pub fn export_rna_read_hits_fasta(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+    ) -> Result<usize, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let mut writer = BufWriter::new(File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create RNA-read FASTA output '{}': {e}", path),
+        })?);
+        let mut written = 0usize;
+        for hit in &report.hits {
+            let include = match selection {
+                RnaReadHitSelection::All => true,
+                RnaReadHitSelection::SeedPassed => hit.passed_seed_filter,
+                RnaReadHitSelection::Aligned => hit.best_mapping.is_some(),
+            };
+            if !include {
+                continue;
+            }
+            // Report payload keeps detailed mapping metrics while FASTA headers provide compact
+            // human-readable context for quick triage.
+            let mapping_header = if let Some(best) = &hit.best_mapping {
+                format!(
+                    "best={} strand={} target={}..{} identity={:.3} coverage={:.3}",
+                    best.transcript_id,
+                    best.strand,
+                    best.target_start_1based,
+                    best.target_end_1based,
+                    best.identity_fraction,
+                    best.query_coverage_fraction
+                )
+            } else {
+                "best=none".to_string()
+            };
+            let header = format!(
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} perfect={} {}",
+                hit.header_id,
+                hit.record_index,
+                hit.source_byte_offset,
+                hit.seed_hit_fraction,
+                hit.perfect_seed_match,
+                mapping_header
+            );
+            writeln!(writer, ">{header}").map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write FASTA header to '{}': {e}", path),
+            })?;
+            writeln!(writer, "{}", hit.sequence).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write FASTA sequence to '{}': {e}", path),
+            })?;
+            written += 1;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush FASTA output '{}': {e}", path),
+        })?;
+        Ok(written)
+    }
+
+    fn sanitize_tsv_cell(raw: &str) -> String {
+        raw.replace(['\t', '\n', '\r'], " ")
+    }
+
+    pub fn export_rna_read_sample_sheet(
+        &self,
+        path: &str,
+        seq_id_filter: Option<&str>,
+        report_ids: &[String],
+        append: bool,
+    ) -> Result<RnaReadSampleSheetExport, EngineError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read sample sheet export requires non-empty path".to_string(),
+            });
+        }
+        let seq_filter = seq_id_filter
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
+        let store = self.read_rna_read_report_store();
+        let mut selected = if report_ids.is_empty() {
+            store.reports.values().cloned().collect::<Vec<_>>()
+        } else {
+            let mut out = Vec::<RnaReadInterpretationReport>::with_capacity(report_ids.len());
+            for raw_id in report_ids {
+                let normalized = Self::normalize_rna_read_report_id(raw_id)?;
+                let Some(report) = store.reports.get(normalized.as_str()) else {
+                    return Err(EngineError {
+                        code: ErrorCode::NotFound,
+                        message: format!("RNA-read report '{}' not found", normalized),
+                    });
+                };
+                out.push(report.clone());
+            }
+            out
+        };
+        if let Some(filter) = seq_filter.as_deref() {
+            selected.retain(|report| report.seq_id.eq_ignore_ascii_case(filter));
+        }
+        if selected.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No RNA-read reports matched the requested sample-sheet selection"
+                    .to_string(),
+            });
+        }
+        selected.sort_by(|left, right| {
+            left.seq_id
+                .to_ascii_lowercase()
+                .cmp(&right.seq_id.to_ascii_lowercase())
+                .then(left.generated_at_unix_ms.cmp(&right.generated_at_unix_ms))
+                .then(
+                    left.report_id
+                        .to_ascii_lowercase()
+                        .cmp(&right.report_id.to_ascii_lowercase()),
+                )
+        });
+
+        let existing_nonempty = append
+            && std::fs::metadata(path)
+                .map(|meta| meta.len() > 0)
+                .unwrap_or(false);
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(!append)
+            .append(append)
+            .open(path)
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not open RNA-read sample sheet '{}': {e}", path),
+            })?;
+        let mut writer = BufWriter::new(file);
+        if !existing_nonempty {
+            writeln!(
+                writer,
+                "sample_id\tsample_name\tsample_description\treport_id\tseq_id\tseed_feature_id\tgenerated_at_unix_ms\tinput_path\tprofile\tscope\tread_count_total\tread_count_seed_passed\tread_count_aligned\tseed_pass_fraction\taligned_fraction\texon_support_frequencies_json\tjunction_support_frequencies_json"
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write sample-sheet header to '{}': {e}", path),
+            })?;
+        }
+
+        for report in &selected {
+            let sample_name = Path::new(&report.input_path)
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().to_string())
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| report.report_id.clone());
+            let sample_description = format!(
+                "input={} profile={} scope={}",
+                report.input_path,
+                report.profile.as_str(),
+                report.scope.as_str()
+            );
+            let seed_pass_fraction = if report.read_count_total == 0 {
+                0.0
+            } else {
+                report.read_count_seed_passed as f64 / report.read_count_total as f64
+            };
+            let aligned_fraction = if report.read_count_total == 0 {
+                0.0
+            } else {
+                report.read_count_aligned as f64 / report.read_count_total as f64
+            };
+            let exon_json = serde_json::to_string(&report.exon_support_frequencies).map_err(|e| {
+                EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not serialize exon support frequencies for report '{}': {e}",
+                        report.report_id
+                    ),
+                }
+            })?;
+            let junction_json = serde_json::to_string(&report.junction_support_frequencies)
+                .map_err(|e| EngineError {
+                    code: ErrorCode::Internal,
+                    message: format!(
+                        "Could not serialize junction support frequencies for report '{}': {e}",
+                        report.report_id
+                    ),
+                })?;
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&sample_name),
+                Self::sanitize_tsv_cell(&sample_description),
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
+                report.seed_feature_id,
+                report.generated_at_unix_ms,
+                Self::sanitize_tsv_cell(&report.input_path),
+                report.profile.as_str(),
+                report.scope.as_str(),
+                report.read_count_total,
+                report.read_count_seed_passed,
+                report.read_count_aligned,
+                seed_pass_fraction,
+                aligned_fraction,
+                Self::sanitize_tsv_cell(&exon_json),
+                Self::sanitize_tsv_cell(&junction_json),
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write RNA-read sample sheet row to '{}': {e}", path),
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush RNA-read sample sheet '{}': {e}", path),
+        })?;
+        Ok(RnaReadSampleSheetExport {
+            schema: RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_count: selected.len(),
+            appended: append,
+        })
+    }
+
+    pub fn collect_rna_seed_hash_catalog(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Result<Vec<RnaSeedHashCatalogEntry>, EngineError> {
+        if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "kmer_len must be within 1..=16".to_string(),
+            });
+        }
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
+        let templates = splicing
+            .transcripts
+            .iter()
+            .map(|lane| Self::make_transcript_template(dna, lane, seed_filter.kmer_len))
+            .filter(|template| !template.sequence.is_empty())
+            .collect::<Vec<_>>();
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript templates available for splicing scope '{}' on '{}'",
+                    scope.as_str(),
+                    seq_id
+                ),
+            });
+        }
+        Ok(Self::collect_rna_seed_hash_catalog_rows(
+            &templates,
+            seed_filter.kmer_len,
+        ))
+    }
+
+    pub fn export_rna_seed_hash_catalog(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        path: &str,
+    ) -> Result<(usize, usize), EngineError> {
+        let rows = self.collect_rna_seed_hash_catalog(seq_id, seed_feature_id, scope, seed_filter)?;
+
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA seed-hash catalog export requires non-empty path".to_string(),
+            });
+        }
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create RNA seed-hash catalog '{}': {e}", path),
+        })?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "seed_bits\tseed_bits_hex\tkmer_sequence\ttranscript_feature_id\ttranscript_id\ttranscript_label\tstrand\ttemplate_offset_0based\tgenomic_pos_1based"
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA seed-hash catalog header to '{}': {e}", path),
+        })?;
+
+        let mut unique_hashes = HashSet::<u32>::new();
+        for row in &rows {
+            unique_hashes.insert(row.seed_bits);
+            writeln!(
+                writer,
+                "{}\t{:08X}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                row.seed_bits,
+                row.seed_bits,
+                Self::sanitize_tsv_cell(&row.kmer_sequence),
+                row.transcript_feature_id,
+                Self::sanitize_tsv_cell(&row.transcript_id),
+                Self::sanitize_tsv_cell(&row.transcript_label),
+                Self::sanitize_tsv_cell(&row.strand),
+                row.template_offset_0based,
+                row.genomic_pos_1based,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write RNA seed-hash row to '{}': {e}", path),
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush RNA seed-hash catalog '{}': {e}", path),
+        })?;
+        Ok((rows.len(), unique_hashes.len()))
+    }
+
+    fn collect_rna_seed_hash_catalog_rows(
+        templates: &[SplicingTranscriptTemplate],
+        kmer_len: usize,
+    ) -> Vec<RnaSeedHashCatalogEntry> {
+        if kmer_len == 0 {
+            return Vec::new();
+        }
+        let mut seen = HashSet::<(u32, usize, bool)>::new();
+        let mut rows = Vec::<RnaSeedHashCatalogEntry>::new();
+        for template in templates {
+            let strand_minus = template.strand.trim() == "-";
+            if template.sequence.len() < kmer_len {
+                continue;
+            }
+            for start in 0..=template.sequence.len() - kmer_len {
+                let window = &template.sequence[start..start + kmer_len];
+                let Some(seed_bits) = Self::encode_kmer_bits(window) else {
+                    continue;
+                };
+                let genomic_pos_1based = template
+                    .genomic_positions_1based
+                    .get(start)
+                    .copied()
+                    .unwrap_or(1);
+                if !seen.insert((seed_bits, genomic_pos_1based, strand_minus)) {
+                    continue;
+                }
+                rows.push(RnaSeedHashCatalogEntry {
+                    seed_bits,
+                    kmer_sequence: String::from_utf8_lossy(window).to_string(),
+                    transcript_feature_id: template.transcript_feature_id,
+                    transcript_id: template.transcript_id.clone(),
+                    transcript_label: template.transcript_label.clone(),
+                    strand: template.strand.clone(),
+                    template_offset_0based: start,
+                    genomic_pos_1based,
+                });
+            }
+        }
+        rows.sort_by(|left, right| {
+            left.genomic_pos_1based
+                .cmp(&right.genomic_pos_1based)
+                .then_with(|| left.strand.cmp(&right.strand))
+                .then_with(|| left.transcript_feature_id.cmp(&right.transcript_feature_id))
+                .then_with(|| left.template_offset_0based.cmp(&right.template_offset_0based))
+                .then_with(|| left.seed_bits.cmp(&right.seed_bits))
+        });
+        rows
+    }
+
+    fn visit_fasta_records_with_offsets(
+        path: &str,
+        on_record: &mut dyn FnMut(ParsedFastaReadRecord, FastaVisitProgress) -> Result<(), EngineError>,
+    ) -> Result<FastaVisitProgress, EngineError> {
+        let file = File::open(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not open FASTA input '{}': {e}", path),
+        })?;
+        let input_bytes_total = file.metadata().map(|meta| meta.len()).unwrap_or(0);
+        let source_bytes_read = Arc::new(AtomicU64::new(0));
+        let counted_file = CountingReader::new(file, Arc::clone(&source_bytes_read));
+        let lower = path.to_ascii_lowercase();
+        let mut reader: Box<dyn BufRead> = if lower.ends_with(".gz") {
+            let decoder = GzDecoder::new(BufReader::new(counted_file));
+            Box::new(BufReader::new(decoder))
+        } else {
+            Box::new(BufReader::new(counted_file))
+        };
+        let mut processed = 0usize;
+        let mut current_header: Option<String> = None;
+        let mut current_header_offset: usize = 0usize;
+        let mut current_sequence = String::new();
+        let mut offset = 0usize;
+        let mut line = String::new();
+        let mut flush_record = |header: Option<String>,
+                                header_offset: usize,
+                                sequence: &mut String|
+         -> Result<(), EngineError> {
+            let Some(header_text) = header else {
+                return Ok(());
+            };
+            let normalized = sequence
+                .chars()
+                .filter(|ch| !ch.is_whitespace())
+                .map(|ch| {
+                    let upper = ch.to_ascii_uppercase();
+                    if upper == 'U' { 'T' } else { upper }
+                })
+                .collect::<String>();
+            sequence.clear();
+            if normalized.is_empty() {
+                return Ok(());
+            }
+            let record_index = processed;
+            let header_id = header_text
+                .trim()
+                .split_ascii_whitespace()
+                .next()
+                .filter(|v| !v.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("record_{}", record_index + 1));
+            processed = processed.saturating_add(1);
+            let input_bytes_processed = if input_bytes_total > 0 {
+                source_bytes_read
+                    .load(AtomicOrdering::Relaxed)
+                    .min(input_bytes_total)
+            } else {
+                source_bytes_read.load(AtomicOrdering::Relaxed)
+            };
+            on_record(ParsedFastaReadRecord {
+                record_index,
+                source_byte_offset: header_offset,
+                header_id,
+                sequence: normalized.as_bytes().to_vec(),
+            }, FastaVisitProgress {
+                records_processed: processed,
+                input_bytes_processed,
+                input_bytes_total,
+            })?;
+            Ok(())
+        };
+
+        loop {
+            line.clear();
+            let bytes = reader.read_line(&mut line).map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not read FASTA input '{}': {e}", path),
+            })?;
+            if bytes == 0 {
+                break;
+            }
+            let line_start_offset = offset;
+            offset = offset.saturating_add(bytes);
+            if line.starts_with('>') {
+                flush_record(current_header.take(), current_header_offset, &mut current_sequence)?;
+                current_header = Some(line[1..].trim().to_string());
+                current_header_offset = line_start_offset;
+                continue;
+            }
+            if current_header.is_none() {
+                continue;
+            }
+            current_sequence.push_str(line.trim());
+        }
+        flush_record(current_header.take(), current_header_offset, &mut current_sequence)?;
+        if processed == 0 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("No FASTA records found in '{}'", path),
+            });
+        }
+        let input_bytes_processed = if input_bytes_total > 0 {
+            input_bytes_total
+        } else {
+            source_bytes_read.load(AtomicOrdering::Relaxed)
+        };
+        Ok(FastaVisitProgress {
+            records_processed: processed,
+            input_bytes_processed,
+            input_bytes_total,
+        })
+    }
+
+    #[cfg(test)]
+    fn parse_fasta_records_with_offsets_with_progress(
+        path: &str,
+        on_record_progress: &mut dyn FnMut(usize) -> bool,
+    ) -> Result<Vec<ParsedFastaReadRecord>, EngineError> {
+        let mut out = Vec::<ParsedFastaReadRecord>::new();
+        let mut processed = 0usize;
+        Self::visit_fasta_records_with_offsets(path, &mut |record, progress| {
+            out.push(record);
+            processed = progress.records_processed;
+            if (processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0 || processed <= 3)
+                && !on_record_progress(processed)
+            {
+                return Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "RNA-read FASTA parsing cancelled during progress reporting"
+                        .to_string(),
+                });
+            }
+            Ok(())
+        })?;
+        if !on_record_progress(processed) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read FASTA parsing cancelled at completion".to_string(),
+            });
+        }
+        Ok(out)
+    }
+
+    #[cfg(test)]
+    fn parse_fasta_records_with_offsets(
+        path: &str,
+    ) -> Result<Vec<ParsedFastaReadRecord>, EngineError> {
+        let mut noop = |_processed: usize| true;
+        Self::parse_fasta_records_with_offsets_with_progress(path, &mut noop)
+    }
+
+    fn normalize_nucleotide_base(base: u8) -> u8 {
+        match base.to_ascii_uppercase() {
+            b'U' => b'T',
+            other => other,
+        }
+    }
+
+    fn complement_nucleotide_base(base: u8) -> u8 {
+        match Self::normalize_nucleotide_base(base) {
+            b'A' => b'T',
+            b'T' => b'A',
+            b'C' => b'G',
+            b'G' => b'C',
+            b'N' => b'N',
+            _ => b'N',
+        }
+    }
+
+    fn base_to_2bit(base: u8) -> Option<u32> {
+        match Self::normalize_nucleotide_base(base) {
+            b'A' => Some(0),
+            b'C' => Some(1),
+            b'G' => Some(2),
+            b'T' => Some(3),
+            _ => None,
+        }
+    }
+
+    fn encode_kmer_bits(window: &[u8]) -> Option<u32> {
+        let mut bits = 0u32;
+        for base in window {
+            let value = Self::base_to_2bit(*base)?;
+            bits = (bits << 2) | value;
+        }
+        Some(bits)
+    }
+
+    fn sampled_read_windows(
+        read_len: usize,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> Vec<(usize, usize)> {
+        if read_len == 0 {
+            return vec![];
+        }
+        if read_len < seed_filter.short_full_hash_max_bp {
+            return vec![(0, read_len)];
+        }
+        let window_len = seed_filter.long_window_bp.max(1).min(read_len);
+        let count = seed_filter.long_window_count.max(1);
+        if count == 1 || read_len == window_len {
+            return vec![(
+                (read_len - window_len) / 2,
+                (read_len - window_len) / 2 + window_len,
+            )];
+        }
+        let mut starts = Vec::<usize>::with_capacity(count);
+        for idx in 0..count {
+            let start = idx.saturating_mul(read_len - window_len) / (count - 1);
+            starts.push(start);
+        }
+        starts.sort_unstable();
+        starts.dedup();
+        starts
+            .into_iter()
+            .map(|start| (start, start + window_len))
+            .collect()
+    }
+
+    fn build_rna_read_seed_histogram_bins(seq_len_bp: usize) -> Vec<RnaReadSeedHistogramBin> {
+        if seq_len_bp == 0 {
+            return vec![];
+        }
+        let bin_count = seq_len_bp.min(RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS).max(1);
+        let bin_size_bp = seq_len_bp.div_ceil(bin_count);
+        (0..bin_count)
+            .map(|idx| {
+                let start_1based = idx.saturating_mul(bin_size_bp).saturating_add(1);
+                let end_1based = ((idx + 1).saturating_mul(bin_size_bp)).min(seq_len_bp);
+                RnaReadSeedHistogramBin {
+                    start_1based,
+                    end_1based,
+                    confirmed_plus: 0,
+                    confirmed_minus: 0,
+                }
+            })
+            .collect()
+    }
+
+    fn build_rna_read_seed_histogram_index(
+        templates: &[SplicingTranscriptTemplate],
+        seq_len_bp: usize,
+        bins: &[RnaReadSeedHistogramBin],
+    ) -> HashMap<u32, Vec<SeedHistogramWeight>> {
+        if seq_len_bp == 0 || bins.is_empty() {
+            return HashMap::new();
+        }
+        let bin_size_bp = bins[0]
+            .end_1based
+            .saturating_sub(bins[0].start_1based)
+            .saturating_add(1)
+            .max(1);
+        let mut expanded_positions: HashMap<u32, HashSet<(usize, bool)>> = HashMap::new();
+        for template in templates {
+            let strand_minus = template.strand.trim() == "-";
+            for (bits, starts) in &template.kmer_positions {
+                let entry = expanded_positions.entry(*bits).or_default();
+                for start in starts {
+                    let Some(pos_1based) = template.genomic_positions_1based.get(*start).copied()
+                    else {
+                        continue;
+                    };
+                    let pos_0based = pos_1based
+                        .saturating_sub(1)
+                        .min(seq_len_bp.saturating_sub(1));
+                    entry.insert((pos_0based, strand_minus));
+                }
+            }
+        }
+        expanded_positions
+            .into_iter()
+            .map(|(bits, by_pos)| {
+                let mut by_bin: HashMap<(usize, bool), u32> = HashMap::new();
+                for (pos_0based, strand_minus) in by_pos {
+                    let bin_index = (pos_0based / bin_size_bp).min(bins.len().saturating_sub(1));
+                    *by_bin.entry((bin_index, strand_minus)).or_insert(0) += 1;
+                }
+                let mut weights = by_bin
+                    .into_iter()
+                    .map(|((bin_index, strand_minus), weight)| SeedHistogramWeight {
+                        bin_index,
+                        strand_minus,
+                        weight,
+                    })
+                    .collect::<Vec<_>>();
+                weights.sort_by(|left, right| {
+                    left.bin_index
+                        .cmp(&right.bin_index)
+                        .then(left.strand_minus.cmp(&right.strand_minus))
+                });
+                (bits, weights)
+            })
+            .collect()
+    }
+
+    fn count_seed_hits_in_window_with_histogram(
+        sequence: &[u8],
+        kmer_len: usize,
+        seed_index: &HashSet<u32>,
+        histogram_index: &HashMap<u32, Vec<SeedHistogramWeight>>,
+        bins: &mut [RnaReadSeedHistogramBin],
+    ) -> (usize, usize) {
+        if kmer_len == 0 || sequence.len() < kmer_len {
+            return (0, 0);
+        }
+        let mut tested = 0usize;
+        let mut matched = 0usize;
+        let mut matched_kmer_counts: HashMap<u32, u32> = HashMap::new();
+        for start in 0..=sequence.len() - kmer_len {
+            let window = &sequence[start..start + kmer_len];
+            let Some(bits) = Self::encode_kmer_bits(window) else {
+                continue;
+            };
+            tested += 1;
+            if seed_index.contains(&bits) {
+                matched += 1;
+                let entry = matched_kmer_counts.entry(bits).or_insert(0);
+                *entry = entry.saturating_add(1);
+            }
+        }
+        for (bits, matched_count) in matched_kmer_counts {
+            if let Some(weights) = histogram_index.get(&bits) {
+                for weight in weights {
+                    let Some(bin) = bins.get_mut(weight.bin_index) else {
+                        continue;
+                    };
+                    let delta = (weight.weight as u64).saturating_mul(matched_count as u64);
+                    if weight.strand_minus {
+                        bin.confirmed_minus = bin.confirmed_minus.saturating_add(delta);
+                    } else {
+                        bin.confirmed_plus = bin.confirmed_plus.saturating_add(delta);
+                    }
+                }
+            }
+        }
+        (tested, matched)
+    }
+
+    fn seed_hit_metrics(
+        tested_kmers: usize,
+        matched_kmers: usize,
+        min_seed_hit_fraction: f64,
+    ) -> (f64, bool, bool) {
+        let seed_hit_fraction = if tested_kmers == 0 {
+            0.0
+        } else {
+            matched_kmers as f64 / tested_kmers as f64
+        };
+        let perfect_seed_match = tested_kmers > 0 && tested_kmers == matched_kmers;
+        let passed_seed_filter = seed_hit_fraction + f64::EPSILON >= min_seed_hit_fraction;
+        (seed_hit_fraction, perfect_seed_match, passed_seed_filter)
+    }
+
+    fn score_density_bin_index(seed_hit_fraction: f64) -> usize {
+        if RNA_READ_SCORE_DENSITY_BIN_COUNT <= 1 {
+            return 0;
+        }
+        let clamped = seed_hit_fraction.clamp(0.0, 1.0);
+        let scaled = (clamped * RNA_READ_SCORE_DENSITY_BIN_COUNT as f64).floor() as usize;
+        scaled.min(RNA_READ_SCORE_DENSITY_BIN_COUNT - 1)
+    }
+
+    fn rna_read_retention_rank(hit: &RnaReadInterpretationHit) -> RnaReadRetentionRank {
+        let seed_hit_ppm = (hit.seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
+        RnaReadRetentionRank {
+            seed_hit_ppm,
+            matched_kmers: hit.matched_kmers,
+            tested_kmers: hit.tested_kmers,
+            read_length_bp: hit.read_length_bp,
+            record_index: hit.record_index,
+        }
+    }
+
+    fn retain_top_rna_read_hit(
+        retained_hits: &mut BinaryHeap<RetainedRnaReadHit>,
+        hit: RnaReadInterpretationHit,
+    ) {
+        let rank = Self::rna_read_retention_rank(&hit);
+        if retained_hits.len() < RNA_READ_RETAINED_HITS_MAX {
+            retained_hits.push(RetainedRnaReadHit { rank, hit });
+            return;
+        }
+        let should_replace = retained_hits
+            .peek()
+            .map(|worst| rank > worst.rank)
+            .unwrap_or(true);
+        if should_replace {
+            let _ = retained_hits.pop();
+            retained_hits.push(RetainedRnaReadHit { rank, hit });
+        }
+    }
+
+    fn make_rna_read_top_hit_preview(hit: &RnaReadInterpretationHit) -> RnaReadTopHitPreview {
+        let sequence_preview = hit.sequence.chars().take(80).collect::<String>();
+        RnaReadTopHitPreview {
+            record_index: hit.record_index,
+            header_id: hit.header_id.clone(),
+            seed_hit_fraction: hit.seed_hit_fraction,
+            matched_kmers: hit.matched_kmers,
+            tested_kmers: hit.tested_kmers,
+            passed_seed_filter: hit.passed_seed_filter,
+            read_length_bp: hit.read_length_bp,
+            sequence: hit.sequence.clone(),
+            sequence_preview,
+        }
+    }
+
+    fn retain_top_rna_read_preview_hit(
+        retained_hits: &mut BinaryHeap<RetainedRnaReadPreviewHit>,
+        hit: &RnaReadInterpretationHit,
+    ) {
+        let rank = Self::rna_read_retention_rank(hit);
+        let preview = Self::make_rna_read_top_hit_preview(hit);
+        if retained_hits.len() < RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX {
+            retained_hits.push(RetainedRnaReadPreviewHit { rank, preview });
+            return;
+        }
+        let should_replace = retained_hits
+            .peek()
+            .map(|worst| rank > worst.rank)
+            .unwrap_or(true);
+        if should_replace {
+            let _ = retained_hits.pop();
+            retained_hits.push(RetainedRnaReadPreviewHit { rank, preview });
+        }
+    }
+
+    fn collect_rna_read_top_hit_previews(
+        retained_hits: &BinaryHeap<RetainedRnaReadPreviewHit>,
+    ) -> Vec<RnaReadTopHitPreview> {
+        let mut rows = retained_hits.iter().cloned().collect::<Vec<_>>();
+        rows.sort_by(|left, right| right.rank.cmp(&left.rank));
+        rows.into_iter().map(|row| row.preview).collect::<Vec<_>>()
+    }
+
+    fn accumulate_support_counts_for_mapping(
+        mapping: &RnaReadMappingHit,
+        splicing: &SplicingExpertView,
+        exon_counts: &mut [usize],
+        junction_counts: &mut [usize],
+    ) {
+        let span_start = mapping.target_start_1based.min(mapping.target_end_1based);
+        let span_end = mapping.target_start_1based.max(mapping.target_end_1based);
+        for (idx, exon) in splicing.unique_exons.iter().enumerate() {
+            if span_start <= exon.end_1based && span_end >= exon.start_1based {
+                exon_counts[idx] = exon_counts[idx].saturating_add(1);
+            }
+        }
+        for (idx, junction) in splicing.junctions.iter().enumerate() {
+            let donor = junction.donor_1based.min(junction.acceptor_1based);
+            let acceptor = junction.donor_1based.max(junction.acceptor_1based);
+            if span_start <= donor && span_end >= acceptor {
+                junction_counts[idx] = junction_counts[idx].saturating_add(1);
+            }
+        }
+    }
+
+    fn build_rna_read_support_frequencies_from_counts(
+        splicing: &SplicingExpertView,
+        exon_counts: &[usize],
+        junction_counts: &[usize],
+        aligned_reads: usize,
+    ) -> (
+        Vec<RnaReadExonSupportFrequency>,
+        Vec<RnaReadJunctionSupportFrequency>,
+    ) {
+        let denom = aligned_reads as f64;
+        let exon = splicing
+            .unique_exons
+            .iter()
+            .enumerate()
+            .map(|(idx, exon)| {
+                let support_read_count = exon_counts[idx];
+                let support_fraction = if aligned_reads == 0 {
+                    0.0
+                } else {
+                    support_read_count as f64 / denom
+                };
+                RnaReadExonSupportFrequency {
+                    start_1based: exon.start_1based,
+                    end_1based: exon.end_1based,
+                    support_read_count,
+                    support_fraction,
+                }
+            })
+            .collect::<Vec<_>>();
+        let junction = splicing
+            .junctions
+            .iter()
+            .enumerate()
+            .map(|(idx, j)| {
+                let support_read_count = junction_counts[idx];
+                let support_fraction = if aligned_reads == 0 {
+                    0.0
+                } else {
+                    support_read_count as f64 / denom
+                };
+                RnaReadJunctionSupportFrequency {
+                    donor_1based: j.donor_1based,
+                    acceptor_1based: j.acceptor_1based,
+                    support_read_count,
+                    support_fraction,
+                }
+            })
+            .collect::<Vec<_>>();
+        (exon, junction)
+    }
+
+    fn make_transcript_template(
+        dna: &DNAsequence,
+        lane: &SplicingTranscriptLane,
+        kmer_len: usize,
+    ) -> SplicingTranscriptTemplate {
+        let forward = dna.forward_bytes();
+        let is_reverse = lane.strand.trim() == "-";
+        let mut sequence = Vec::<u8>::new();
+        let mut genomic_positions_1based = Vec::<usize>::new();
+
+        if is_reverse {
+            for exon in lane.exons.iter().rev() {
+                for pos_1based in (exon.start_1based..=exon.end_1based).rev() {
+                    let idx = pos_1based.saturating_sub(1);
+                    if idx >= forward.len() {
+                        continue;
+                    }
+                    sequence.push(Self::complement_nucleotide_base(forward[idx]));
+                    genomic_positions_1based.push(pos_1based);
+                }
+            }
+        } else {
+            for exon in &lane.exons {
+                for pos_1based in exon.start_1based..=exon.end_1based {
+                    let idx = pos_1based.saturating_sub(1);
+                    if idx >= forward.len() {
+                        continue;
+                    }
+                    sequence.push(Self::normalize_nucleotide_base(forward[idx]));
+                    genomic_positions_1based.push(pos_1based);
+                }
+            }
+        }
+
+        let mut kmer_positions: HashMap<u32, Vec<usize>> = HashMap::new();
+        if kmer_len > 0 && sequence.len() >= kmer_len {
+            for start in 0..=sequence.len() - kmer_len {
+                let window = &sequence[start..start + kmer_len];
+                let Some(bits) = Self::encode_kmer_bits(window) else {
+                    continue;
+                };
+                kmer_positions.entry(bits).or_default().push(start);
+            }
+        }
+
+        SplicingTranscriptTemplate {
+            transcript_feature_id: lane.transcript_feature_id,
+            transcript_id: lane.transcript_id.clone(),
+            transcript_label: lane.label.clone(),
+            strand: lane.strand.clone(),
+            sequence,
+            genomic_positions_1based,
+            kmer_positions,
+        }
+    }
+
+    fn align_read_to_template(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+    ) -> Option<RnaReadMappingHit> {
+        if read.is_empty() || template.sequence.is_empty() {
+            return None;
+        }
+        let mut aligner = bio::alignment::pairwise::Aligner::new(-5, -1, &|a: u8, b: u8| {
+            if a.eq_ignore_ascii_case(&b) {
+                2i32
+            } else {
+                -3i32
+            }
+        });
+        let alignment = aligner.local(read, &template.sequence);
+        if alignment.operations.is_empty() {
+            return None;
+        }
+        let mut matches = 0usize;
+        let mut mismatches = 0usize;
+        let mut indels = 0usize;
+        for op in &alignment.operations {
+            match op {
+                bio::alignment::AlignmentOperation::Match => matches += 1,
+                bio::alignment::AlignmentOperation::Subst => mismatches += 1,
+                bio::alignment::AlignmentOperation::Del => indels += 1,
+                bio::alignment::AlignmentOperation::Ins => indels += 1,
+                bio::alignment::AlignmentOperation::Xclip(_)
+                | bio::alignment::AlignmentOperation::Yclip(_) => {}
+            }
+        }
+        let aligned_columns = matches + mismatches + indels;
+        if aligned_columns == 0 {
+            return None;
+        }
+        let identity_fraction = matches as f64 / aligned_columns as f64;
+        if identity_fraction + f64::EPSILON < config.min_identity_fraction {
+            return None;
+        }
+        let query_span = alignment.xend.saturating_sub(alignment.xstart);
+        let query_coverage_fraction = if read.is_empty() {
+            0.0
+        } else {
+            query_span as f64 / read.len() as f64
+        };
+        let target_start_1based = template
+            .genomic_positions_1based
+            .get(alignment.ystart)
+            .copied()
+            .unwrap_or(1);
+        let target_end_1based = template
+            .genomic_positions_1based
+            .get(alignment.yend.saturating_sub(1))
+            .copied()
+            .unwrap_or(target_start_1based);
+        let (target_start_1based, target_end_1based) = if target_start_1based <= target_end_1based {
+            (target_start_1based, target_end_1based)
+        } else {
+            (target_end_1based, target_start_1based)
+        };
+        Some(RnaReadMappingHit {
+            transcript_feature_id: template.transcript_feature_id,
+            transcript_id: template.transcript_id.clone(),
+            transcript_label: template.transcript_label.clone(),
+            strand: template.strand.clone(),
+            query_start_0based: alignment.xstart,
+            query_end_0based_exclusive: alignment.xend,
+            target_start_1based,
+            target_end_1based,
+            matches,
+            mismatches,
+            score: alignment.score as isize,
+            identity_fraction,
+            query_coverage_fraction,
+        })
+    }
+
+    fn align_read_to_templates(
+        read: &[u8],
+        templates: &[SplicingTranscriptTemplate],
+        config: &RnaReadAlignConfig,
+    ) -> (Option<RnaReadMappingHit>, Vec<RnaReadMappingHit>) {
+        let mut mappings = templates
+            .iter()
+            .filter_map(|template| Self::align_read_to_template(read, template, config))
+            .collect::<Vec<_>>();
+        mappings.sort_by(|left, right| {
+            right
+                .score
+                .cmp(&left.score)
+                .then_with(|| {
+                    right
+                        .identity_fraction
+                        .partial_cmp(&left.identity_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    right
+                        .query_coverage_fraction
+                        .partial_cmp(&left.query_coverage_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then(left.transcript_feature_id.cmp(&right.transcript_feature_id))
+                .then(left.strand.cmp(&right.strand))
+                .then(left.target_start_1based.cmp(&right.target_start_1based))
+        });
+        if mappings.is_empty() {
+            return (None, vec![]);
+        }
+        let best = mappings.first().cloned();
+        let secondary = mappings
+            .into_iter()
+            .skip(1)
+            .take(config.max_secondary_mappings)
+            .collect::<Vec<_>>();
+        (best, secondary)
+    }
+
+    #[allow(dead_code)]
+    fn compute_rna_read_support_frequencies(
+        hits: &[RnaReadInterpretationHit],
+        splicing: &SplicingExpertView,
+    ) -> (
+        Vec<RnaReadExonSupportFrequency>,
+        Vec<RnaReadJunctionSupportFrequency>,
+    ) {
+        let mut exon_counts = vec![0usize; splicing.unique_exons.len()];
+        let mut junction_counts = vec![0usize; splicing.junctions.len()];
+        let mut aligned_reads = 0usize;
+        for hit in hits {
+            let Some(mapping) = &hit.best_mapping else {
+                continue;
+            };
+            aligned_reads = aligned_reads.saturating_add(1);
+            Self::accumulate_support_counts_for_mapping(
+                mapping,
+                splicing,
+                &mut exon_counts,
+                &mut junction_counts,
+            );
+        }
+        Self::build_rna_read_support_frequencies_from_counts(
+            splicing,
+            &exon_counts,
+            &junction_counts,
+            aligned_reads,
+        )
+    }
+
+    fn push_rna_read_report_result_message(
+        &mut self,
+        report: RnaReadInterpretationReport,
+        result: &mut OpResult,
+    ) -> Result<(), EngineError> {
+        let replaced = self
+            .read_rna_read_report_store()
+            .reports
+            .contains_key(report.report_id.as_str());
+        self.upsert_rna_read_report(report.clone())?;
+        result.messages.push(format!(
+            "{} RNA-read report '{}' (profile={}, reads={}, seed_passed={}, aligned={})",
+            if replaced { "Updated" } else { "Created" },
+            report.report_id,
+            report.profile.as_str(),
+            report.read_count_total,
+            report.read_count_seed_passed,
+            report.read_count_aligned
+        ));
+        Ok(())
+    }
+
+    pub fn compute_rna_read_report_with_progress(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        profile: RnaReadInterpretationProfile,
+        input_path: &str,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        align_config: &RnaReadAlignConfig,
+        report_id: Option<&str>,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let mut keep_running = || true;
+        self.compute_rna_read_report_with_progress_and_cancel(
+            seq_id,
+            seed_feature_id,
+            profile,
+            input_path,
+            input_format,
+            scope,
+            seed_filter,
+            align_config,
+            report_id,
+            on_progress,
+            &mut keep_running,
+        )
+    }
+
+    pub fn compute_rna_read_report_with_progress_and_cancel(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        profile: RnaReadInterpretationProfile,
+        input_path: &str,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        align_config: &RnaReadAlignConfig,
+        report_id: Option<&str>,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        should_continue: &mut dyn FnMut() -> bool,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        self.interpret_rna_reads_report_with_progress(
+            seq_id,
+            seed_feature_id,
+            profile,
+            input_path,
+            input_format,
+            scope,
+            seed_filter,
+            align_config,
+            report_id,
+            on_progress,
+            should_continue,
+        )
+    }
+
+    pub fn commit_rna_read_report(
+        &mut self,
+        report: RnaReadInterpretationReport,
+    ) -> Result<OpResult, EngineError> {
+        let op = Operation::InterpretRnaReads {
+            seq_id: report.seq_id.clone(),
+            seed_feature_id: report.seed_feature_id,
+            profile: report.profile,
+            input_path: report.input_path.clone(),
+            input_format: report.input_format,
+            scope: report.scope,
+            seed_filter: report.seed_filter.clone(),
+            align_config: report.align_config.clone(),
+            report_id: Some(report.report_id.clone()),
+        };
+        let run_id = "interactive".to_string();
+        let checkpoint = self.maybe_capture_checkpoint(&op);
+        let mut result = OpResult {
+            op_id: self.next_op_id(),
+            created_seq_ids: vec![],
+            changed_seq_ids: vec![],
+            warnings: vec![],
+            messages: vec![],
+            genome_annotation_projection: None,
+        };
+        self.push_rna_read_report_result_message(report, &mut result)?;
+        self.journal.push(OperationRecord {
+            run_id,
+            op,
+            result: result.clone(),
+        });
+        if let Some(checkpoint) = checkpoint {
+            self.push_undo_checkpoint(checkpoint);
+        }
+        Ok(result)
+    }
+
+    #[allow(dead_code)]
+    fn interpret_rna_reads_report(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        profile: RnaReadInterpretationProfile,
+        input_path: &str,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        align_config: &RnaReadAlignConfig,
+        report_id: Option<&str>,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let mut on_progress = |_progress: OperationProgress| true;
+        let mut keep_running = || true;
+        self.interpret_rna_reads_report_with_progress(
+            seq_id,
+            seed_feature_id,
+            profile,
+            input_path,
+            input_format,
+            scope,
+            seed_filter,
+            align_config,
+            report_id,
+            &mut on_progress,
+            &mut keep_running,
+        )
+    }
+
+    fn interpret_rna_reads_report_with_progress(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        profile: RnaReadInterpretationProfile,
+        input_path: &str,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        seed_filter: &RnaReadSeedFilterConfig,
+        align_config: &RnaReadAlignConfig,
+        report_id: Option<&str>,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        should_continue: &mut dyn FnMut() -> bool,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        if !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1) {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!(
+                    "Profile '{}' is not implemented yet in phase 1",
+                    profile.as_str()
+                ),
+            });
+        }
+        if !matches!(input_format, RnaReadInputFormat::Fasta) {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: format!(
+                    "Input format '{}' is not supported yet in phase 1",
+                    input_format.as_str()
+                ),
+            });
+        }
+        if input_path.trim().to_ascii_lowercase().ends_with(".sra") {
+            return Err(EngineError {
+                code: ErrorCode::Unsupported,
+                message: "Direct .sra input is not supported; convert externally to FASTA first"
+                    .to_string(),
+            });
+        }
+        if seed_filter.kmer_len == 0 || seed_filter.kmer_len > 16 {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "kmer_len must be within 1..=16".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&seed_filter.min_seed_hit_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "min_seed_hit_fraction must be within 0.0..=1.0".to_string(),
+            });
+        }
+
+        let dna = self
+            .state
+            .sequences
+            .get(seq_id)
+            .ok_or_else(|| EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Sequence '{seq_id}' not found"),
+            })?;
+        let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
+        let templates = splicing
+            .transcripts
+            .iter()
+            .map(|lane| Self::make_transcript_template(dna, lane, seed_filter.kmer_len))
+            .filter(|template| !template.sequence.is_empty())
+            .collect::<Vec<_>>();
+        if templates.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!(
+                    "No transcript templates available for splicing scope '{}' on '{}'",
+                    scope.as_str(),
+                    seq_id
+                ),
+            });
+        }
+        let mut seed_index: HashSet<u32> = HashSet::new();
+        for template in &templates {
+            seed_index.extend(template.kmer_positions.keys().copied());
+        }
+        if seed_index.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: "No directional k-mer seeds could be generated from transcript templates"
+                    .to_string(),
+            });
+        }
+        let mut bins = Self::build_rna_read_seed_histogram_bins(dna.len());
+        let histogram_index = Self::build_rna_read_seed_histogram_index(&templates, dna.len(), &bins);
+        let mut score_density_bins = vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT];
+        let mut input_bytes_processed = 0u64;
+        let mut input_bytes_total = std::fs::metadata(input_path)
+            .map(|meta| meta.len())
+            .unwrap_or(0);
+        if !on_progress(OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
+            seq_id: seq_id.to_string(),
+            reads_processed: 0,
+            reads_total: 0,
+            input_bytes_processed,
+            input_bytes_total,
+            seed_passed: 0,
+            aligned: 0,
+            tested_kmers: 0,
+            matched_kmers: 0,
+            update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+            done: false,
+            bins: bins.clone(),
+            score_density_bins: score_density_bins.clone(),
+            top_hits_preview: vec![],
+        })) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read interpretation cancelled before FASTA scan started".to_string(),
+            });
+        }
+        if !should_continue() {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read interpretation cancelled before processing started".to_string(),
+            });
+        }
+        let report_id = match report_id {
+            Some(raw) => Self::normalize_rna_read_report_id(raw)?,
+            None => Self::normalize_rna_read_report_id(&format!(
+                "rna_reads_{}_{}",
+                seq_id,
+                Self::now_unix_ms()
+            ))?,
+        };
+
+        let mut retained_hits = BinaryHeap::<RetainedRnaReadHit>::new();
+        let mut progress_top_hits = BinaryHeap::<RetainedRnaReadPreviewHit>::new();
+        let mut seed_passed = 0usize;
+        let mut aligned = 0usize;
+        let mut reads_processed = 0usize;
+        let mut cumulative_tested_kmers = 0usize;
+        let mut cumulative_matched_kmers = 0usize;
+        let mut support_aligned_reads = 0usize;
+        let mut support_exon_counts = vec![0usize; splicing.unique_exons.len()];
+        let mut support_junction_counts = vec![0usize; splicing.junctions.len()];
+        let final_visit_progress = Self::visit_fasta_records_with_offsets(input_path, &mut |record, visit_progress| {
+            if !should_continue() {
+                return Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "RNA-read interpretation cancelled during FASTA scan".to_string(),
+                });
+            }
+            input_bytes_processed = visit_progress.input_bytes_processed;
+            input_bytes_total = visit_progress.input_bytes_total;
+            let windows = Self::sampled_read_windows(record.sequence.len(), seed_filter);
+            let mut tested_kmers = 0usize;
+            let mut matched_kmers = 0usize;
+            for (start, end) in windows {
+                if !should_continue() {
+                    return Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "RNA-read interpretation cancelled during seed scanning"
+                            .to_string(),
+                    });
+                }
+                let (tested, matched) = Self::count_seed_hits_in_window_with_histogram(
+                    &record.sequence[start..end],
+                    seed_filter.kmer_len,
+                    &seed_index,
+                    &histogram_index,
+                    &mut bins,
+                );
+                tested_kmers = tested_kmers.saturating_add(tested);
+                matched_kmers = matched_kmers.saturating_add(matched);
+            }
+            cumulative_tested_kmers = cumulative_tested_kmers.saturating_add(tested_kmers);
+            cumulative_matched_kmers = cumulative_matched_kmers.saturating_add(matched_kmers);
+            let (seed_hit_fraction, perfect_seed_match, passed_seed_filter) = Self::seed_hit_metrics(
+                tested_kmers,
+                matched_kmers,
+                seed_filter.min_seed_hit_fraction,
+            );
+            let density_idx = Self::score_density_bin_index(seed_hit_fraction);
+            if let Some(bin) = score_density_bins.get_mut(density_idx) {
+                *bin = bin.saturating_add(1);
+            }
+            let (best_mapping, secondary_mappings) = if passed_seed_filter {
+                if !should_continue() {
+                    return Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "RNA-read interpretation cancelled before alignment".to_string(),
+                    });
+                }
+                Self::align_read_to_templates(&record.sequence, &templates, align_config)
+            } else {
+                (None, vec![])
+            };
+            if passed_seed_filter {
+                seed_passed += 1;
+            }
+            if let Some(mapping) = &best_mapping {
+                aligned += 1;
+                support_aligned_reads = support_aligned_reads.saturating_add(1);
+                Self::accumulate_support_counts_for_mapping(
+                    mapping,
+                    &splicing,
+                    &mut support_exon_counts,
+                    &mut support_junction_counts,
+                );
+            }
+            let hit = RnaReadInterpretationHit {
+                record_index: record.record_index,
+                source_byte_offset: record.source_byte_offset,
+                header_id: record.header_id,
+                sequence: String::from_utf8_lossy(&record.sequence).to_string(),
+                read_length_bp: record.sequence.len(),
+                tested_kmers,
+                matched_kmers,
+                seed_hit_fraction,
+                perfect_seed_match,
+                passed_seed_filter,
+                best_mapping,
+                secondary_mappings,
+            };
+            Self::retain_top_rna_read_preview_hit(&mut progress_top_hits, &hit);
+            Self::retain_top_rna_read_hit(&mut retained_hits, hit);
+            reads_processed = reads_processed.saturating_add(1);
+            let should_emit = reads_processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0
+                || reads_processed <= 3;
+            if should_emit
+                && !on_progress(OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
+                    seq_id: seq_id.to_string(),
+                    reads_processed,
+                    reads_total: 0,
+                    input_bytes_processed,
+                    input_bytes_total,
+                    seed_passed,
+                    aligned,
+                    tested_kmers: cumulative_tested_kmers,
+                    matched_kmers: cumulative_matched_kmers,
+                    update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                    done: false,
+                    bins: bins.clone(),
+                    score_density_bins: score_density_bins.clone(),
+                    top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
+                }))
+            {
+                return Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "RNA-read interpretation cancelled during progress reporting"
+                        .to_string(),
+                });
+            }
+            Ok(())
+        })?;
+        input_bytes_processed = final_visit_progress.input_bytes_processed;
+        input_bytes_total = final_visit_progress.input_bytes_total;
+        let reads_total = final_visit_progress.records_processed;
+        let mut hits = retained_hits.into_vec();
+        hits.sort_by(|left, right| right.rank.cmp(&left.rank));
+        let hits = hits.into_iter().map(|row| row.hit).collect::<Vec<_>>();
+        if !on_progress(OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
+            seq_id: seq_id.to_string(),
+            reads_processed: reads_total,
+            reads_total,
+            input_bytes_processed,
+            input_bytes_total,
+            seed_passed,
+            aligned,
+            tested_kmers: cumulative_tested_kmers,
+            matched_kmers: cumulative_matched_kmers,
+            update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+            done: true,
+            bins,
+            score_density_bins: score_density_bins.clone(),
+            top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
+        })) {
+            return Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "RNA-read interpretation cancelled at completion".to_string(),
+            });
+        }
+
+        let (exon_support_frequencies, junction_support_frequencies) =
+            Self::build_rna_read_support_frequencies_from_counts(
+                &splicing,
+                &support_exon_counts,
+                &support_junction_counts,
+                support_aligned_reads,
+            );
+        let mut warnings = Vec::<String>::new();
+        if reads_total > hits.len() {
+            warnings.push(format!(
+                "retained_top_hits={} out of total_reads={} (scored by seed-hit fraction)",
+                hits.len(),
+                reads_total
+            ));
+        }
+
+        Ok(RnaReadInterpretationReport {
+            schema: RNA_READ_REPORT_SCHEMA.to_string(),
+            report_id,
+            seq_id: seq_id.to_string(),
+            seed_feature_id,
+            generated_at_unix_ms: Self::now_unix_ms(),
+            profile,
+            input_path: input_path.to_string(),
+            input_format,
+            scope,
+            seed_filter: seed_filter.clone(),
+            align_config: align_config.clone(),
+            read_count_total: reads_total,
+            read_count_seed_passed: seed_passed,
+            read_count_aligned: aligned,
+            warnings,
+            hits,
+            exon_support_frequencies,
+            junction_support_frequencies,
+        })
+    }
+
     fn read_dotplot_analysis_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> DotplotAnalysisStore {
@@ -9134,9 +11670,7 @@ impl GentleEngine {
         if end > seq_len {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: format!(
-                    "span_end_0based ({end}) must be <= sequence length ({seq_len})"
-                ),
+                message: format!("span_end_0based ({end}) must be <= sequence length ({seq_len})"),
             });
         }
         if end <= start {
@@ -9336,7 +11870,9 @@ impl GentleEngine {
 
     fn upsert_flexibility_track(&mut self, track: FlexibilityTrack) -> Result<(), EngineError> {
         let mut store = self.read_dotplot_analysis_store();
-        store.flexibility_tracks.insert(track.track_id.clone(), track);
+        store
+            .flexibility_tracks
+            .insert(track.track_id.clone(), track);
         self.write_dotplot_analysis_store(store)
     }
 
@@ -9351,7 +11887,9 @@ impl GentleEngine {
             .values()
             .filter(|view| {
                 filter.as_ref().is_none_or(|needle| {
-                    view.seq_id.to_ascii_lowercase().eq_ignore_ascii_case(needle)
+                    view.seq_id
+                        .to_ascii_lowercase()
+                        .eq_ignore_ascii_case(needle)
                 })
             })
             .map(|view| DotplotViewSummary {
@@ -9407,7 +11945,10 @@ impl GentleEngine {
             .values()
             .filter(|track| {
                 filter.as_ref().is_none_or(|needle| {
-                    track.seq_id.to_ascii_lowercase().eq_ignore_ascii_case(needle)
+                    track
+                        .seq_id
+                        .to_ascii_lowercase()
+                        .eq_ignore_ascii_case(needle)
                 })
             })
             .map(|track| FlexibilityTrackSummary {
@@ -16311,10 +18852,16 @@ impl GentleEngine {
             | Operation::GenerateCandidateSetBetweenAnchors { seq_id, .. }
             | Operation::ComputeDotplot { seq_id, .. }
             | Operation::ComputeFlexibilityTrack { seq_id, .. }
+            | Operation::InterpretRnaReads { seq_id, .. }
             | Operation::SetTopology { seq_id, .. }
             | Operation::RecomputeFeatures { seq_id, .. }
             | Operation::AnnotateTfbs { seq_id, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+            }
+            Operation::ListRnaReadReports { seq_id } => {
+                if let Some(seq_id) = seq_id.as_deref() {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
             }
             Operation::RenderPoolGelSvg {
                 inputs,
@@ -16432,7 +18979,13 @@ impl GentleEngine {
         | Operation::ImportGenomeVcfTrack { path, .. }
         | Operation::ImportIsoformPanel {
             panel_path: path, ..
-        } = op
+        }
+        | Operation::InterpretRnaReads {
+            input_path: path, ..
+        }
+        | Operation::ExportRnaReadReport { path, .. }
+        | Operation::ExportRnaReadHitsFasta { path, .. }
+        | Operation::ExportRnaReadSampleSheet { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
@@ -16455,7 +19008,10 @@ impl GentleEngine {
             | Operation::ExportPool { path, .. }
             | Operation::ExportProcessRunBundle { path, .. }
             | Operation::ExportGuideOligos { path, .. }
-            | Operation::ExportGuideProtocolText { path, .. } => {
+            | Operation::ExportGuideProtocolText { path, .. }
+            | Operation::ExportRnaReadReport { path, .. }
+            | Operation::ExportRnaReadHitsFasta { path, .. }
+            | Operation::ExportRnaReadSampleSheet { path, .. } => {
                 push(path);
             }
             _ => {}
@@ -17491,6 +20047,141 @@ impl GentleEngine {
         (2 * at + 4 * gc) as f64
     }
 
+    fn max_contiguous_match_run_with_shift(left: &[u8], right: &[u8]) -> usize {
+        if left.is_empty() || right.is_empty() {
+            return 0;
+        }
+        let mut best = 0usize;
+        let min_shift = -(right.len() as isize) + 1;
+        let max_shift = left.len() as isize - 1;
+        for shift in min_shift..=max_shift {
+            let mut run = 0usize;
+            for (i, left_base) in left.iter().enumerate() {
+                let right_idx = i as isize - shift;
+                if right_idx < 0 || right_idx >= right.len() as isize {
+                    run = 0;
+                    continue;
+                }
+                let right_base = right[right_idx as usize];
+                if left_base.eq_ignore_ascii_case(&right_base) {
+                    run += 1;
+                    best = best.max(run);
+                } else {
+                    run = 0;
+                }
+            }
+        }
+        best
+    }
+
+    fn longest_suffix_match_in_target(source: &[u8], target: &[u8]) -> usize {
+        if source.is_empty() || target.is_empty() {
+            return 0;
+        }
+        for len in (1..=source.len()).rev() {
+            let suffix = &source[source.len() - len..];
+            if Self::find_subsequence(target, suffix, 0).is_some() {
+                return len;
+            }
+        }
+        0
+    }
+
+    fn compute_primer_heuristic_metrics(sequence: &[u8]) -> PrimerHeuristicMetrics {
+        let three_prime_base = sequence
+            .last()
+            .copied()
+            .unwrap_or(b'N')
+            .to_ascii_uppercase();
+        let three_prime_gc_clamp = matches!(three_prime_base, b'G' | b'C');
+        let self_complementary_run_bp = if sequence.is_empty() {
+            0
+        } else {
+            let rc = Self::reverse_complement_bytes(sequence);
+            Self::max_contiguous_match_run_with_shift(sequence, &rc)
+        };
+        PrimerHeuristicMetrics {
+            length_bp: sequence.len(),
+            three_prime_gc_clamp,
+            three_prime_base,
+            longest_homopolymer_run_bp: Self::max_homopolymer_run(sequence),
+            self_complementary_run_bp,
+        }
+    }
+
+    fn compute_primer_pair_dimer_metrics(
+        forward_sequence: &[u8],
+        reverse_sequence: &[u8],
+    ) -> PrimerPairDimerMetrics {
+        if forward_sequence.is_empty() || reverse_sequence.is_empty() {
+            return PrimerPairDimerMetrics::default();
+        }
+        let reverse_rc = Self::reverse_complement_bytes(reverse_sequence);
+        let forward_rc = Self::reverse_complement_bytes(forward_sequence);
+        let max_complementary_run_bp =
+            Self::max_contiguous_match_run_with_shift(forward_sequence, &reverse_rc);
+        let max_3prime_complementary_run_bp =
+            Self::longest_suffix_match_in_target(forward_sequence, &reverse_rc).max(
+                Self::longest_suffix_match_in_target(reverse_sequence, &forward_rc),
+            );
+        PrimerPairDimerMetrics {
+            max_complementary_run_bp,
+            max_3prime_complementary_run_bp,
+        }
+    }
+
+    fn preferred_primer_length_penalty(length_bp: usize) -> f64 {
+        if length_bp < PRIMER_PREFERRED_MIN_LENGTH_BP {
+            let delta = (PRIMER_PREFERRED_MIN_LENGTH_BP - length_bp) as f64;
+            return delta * 3.0;
+        }
+        if length_bp > PRIMER_PREFERRED_MAX_LENGTH_BP {
+            let delta = (length_bp - PRIMER_PREFERRED_MAX_LENGTH_BP) as f64;
+            return delta * 1.5;
+        }
+        0.0
+    }
+
+    fn primer_secondary_structure_penalty(metrics: PrimerHeuristicMetrics) -> f64 {
+        let homopolymer_penalty = if metrics.longest_homopolymer_run_bp
+            > PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+        {
+            (metrics.longest_homopolymer_run_bp - PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP) as f64
+                * 10.0
+        } else {
+            0.0
+        };
+        let self_complementary_penalty = if metrics.self_complementary_run_bp
+            > PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP
+        {
+            (metrics.self_complementary_run_bp - PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP)
+                as f64
+                * 12.0
+        } else {
+            0.0
+        };
+        homopolymer_penalty + self_complementary_penalty
+    }
+
+    fn primer_pair_dimer_penalty(metrics: PrimerPairDimerMetrics) -> f64 {
+        let broad = if metrics.max_complementary_run_bp > PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP {
+            (metrics.max_complementary_run_bp - PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP) as f64
+                * 20.0
+        } else {
+            0.0
+        };
+        let three_prime = if metrics.max_3prime_complementary_run_bp
+            > PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP
+        {
+            (metrics.max_3prime_complementary_run_bp
+                - PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP) as f64
+                * 35.0
+        } else {
+            0.0
+        };
+        broad + three_prime
+    }
+
     fn validate_primer_design_side_constraints(
         label: &str,
         side: &PrimerDesignSideConstraint,
@@ -17552,6 +20243,15 @@ impl GentleEngine {
                 message: format!("{label}.max_anneal_hits must be >= 1"),
             });
         }
+        let tail_5prime = side
+            .non_annealing_5prime_tail
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(Self::normalize_iupac_text)
+            .transpose()?;
+        let tail_5prime_len = tail_5prime.as_ref().map(|v| v.len()).unwrap_or(0);
+        let max_full_length = side.max_length.saturating_add(tail_5prime_len);
         if let Some(raw) = &side.fixed_5prime {
             let norm = Self::normalize_iupac_text(raw)?;
             if norm.is_empty() {
@@ -17560,13 +20260,13 @@ impl GentleEngine {
                     message: format!("{label}.fixed_5prime must not be empty"),
                 });
             }
-            if norm.len() > side.max_length {
+            if norm.len() > max_full_length {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "{label}.fixed_5prime length ({}) must be <= {label}.max_length ({})",
+                        "{label}.fixed_5prime length ({}) must be <= max full primer length ({})",
                         norm.len(),
-                        side.max_length
+                        max_full_length
                     ),
                 });
             }
@@ -17579,13 +20279,13 @@ impl GentleEngine {
                     message: format!("{label}.fixed_3prime must not be empty"),
                 });
             }
-            if norm.len() > side.max_length {
+            if norm.len() > max_full_length {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "{label}.fixed_3prime length ({}) must be <= {label}.max_length ({})",
+                        "{label}.fixed_3prime length ({}) must be <= max full primer length ({})",
                         norm.len(),
-                        side.max_length
+                        max_full_length
                     ),
                 });
             }
@@ -17610,12 +20310,12 @@ impl GentleEngine {
         }
         let mut seen_locks: HashSet<usize> = HashSet::new();
         for lock in &side.locked_positions {
-            if lock.offset_0based >= side.max_length {
+            if lock.offset_0based >= max_full_length {
                 return Err(EngineError {
                     code: ErrorCode::InvalidInput,
                     message: format!(
-                        "{label}.locked_positions offset {} must be < {label}.max_length ({})",
-                        lock.offset_0based, side.max_length
+                        "{label}.locked_positions offset {} must be < max full primer length ({})",
+                        lock.offset_0based, max_full_length
                     ),
                 });
             }
@@ -17655,6 +20355,13 @@ impl GentleEngine {
     fn normalize_primer_side_sequence_constraints(
         side: &PrimerDesignSideConstraint,
     ) -> Result<NormalizedPrimerSideSequenceConstraints, EngineError> {
+        let non_annealing_5prime_tail = side
+            .non_annealing_5prime_tail
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(Self::normalize_iupac_text)
+            .transpose()?;
         let fixed_5prime = side
             .fixed_5prime
             .as_deref()
@@ -17693,6 +20400,7 @@ impl GentleEngine {
             .collect::<Result<Vec<_>, EngineError>>()?;
         locked_positions.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         Ok(NormalizedPrimerSideSequenceConstraints {
+            non_annealing_5prime_tail,
             fixed_5prime,
             fixed_3prime,
             required_motifs,
@@ -17779,13 +20487,18 @@ impl GentleEngine {
                     }
                 }
                 let binding_window = &template[start..end];
-                let primer_bytes = if reverse_orientation {
+                let anneal_bytes = if reverse_orientation {
                     Self::reverse_complement_bytes(binding_window)
                 } else {
                     binding_window.to_vec()
                 };
-                let gc_fraction = Self::sequence_gc_fraction(&primer_bytes).unwrap_or(0.0);
-                let tm_c = Self::estimate_primer_tm_c(&primer_bytes);
+                let mut primer_bytes: Vec<u8> = Vec::new();
+                if let Some(tail) = &sequence_constraints.non_annealing_5prime_tail {
+                    primer_bytes.extend_from_slice(tail.as_bytes());
+                }
+                primer_bytes.extend_from_slice(&anneal_bytes);
+                let gc_fraction = Self::sequence_gc_fraction(&anneal_bytes).unwrap_or(0.0);
+                let tm_c = Self::estimate_primer_tm_c(&anneal_bytes);
                 if gc_fraction < side.min_gc_fraction
                     || gc_fraction > side.max_gc_fraction
                     || tm_c < side.min_tm_c
@@ -17897,6 +20610,25 @@ impl GentleEngine {
         })
     }
 
+    fn annotate_primer_record_heuristics(
+        mut record: PrimerDesignPrimerRecord,
+        anneal_length_bp: usize,
+    ) -> PrimerDesignPrimerRecord {
+        let metrics = Self::compute_primer_heuristic_metrics(record.sequence.as_bytes());
+        record.length_bp = metrics.length_bp;
+        record.anneal_length_bp = anneal_length_bp;
+        record.non_annealing_5prime_tail_bp = metrics.length_bp.saturating_sub(anneal_length_bp);
+        record.three_prime_base = if metrics.length_bp == 0 {
+            "N".to_string()
+        } else {
+            (metrics.three_prime_base as char).to_string()
+        };
+        record.three_prime_gc_clamp = metrics.three_prime_gc_clamp;
+        record.longest_homopolymer_run_bp = metrics.longest_homopolymer_run_bp;
+        record.self_complementary_run_bp = metrics.self_complementary_run_bp;
+        record
+    }
+
     fn sort_and_rank_primer_design_pairs(
         pairs: &mut Vec<PrimerDesignPairRecord>,
         max_pairs: usize,
@@ -17931,6 +20663,20 @@ impl GentleEngine {
         if reverse.end_0based_exclusive <= forward.start_0based {
             return None;
         }
+        let forward_anneal_len = forward
+            .end_0based_exclusive
+            .saturating_sub(forward.start_0based);
+        let reverse_anneal_len = reverse
+            .end_0based_exclusive
+            .saturating_sub(reverse.start_0based);
+        let forward = Self::annotate_primer_record_heuristics(forward, forward_anneal_len);
+        let reverse = Self::annotate_primer_record_heuristics(reverse, reverse_anneal_len);
+        let forward_metrics = Self::compute_primer_heuristic_metrics(forward.sequence.as_bytes());
+        let reverse_metrics = Self::compute_primer_heuristic_metrics(reverse.sequence.as_bytes());
+        let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
+            forward.sequence.as_bytes(),
+            reverse.sequence.as_bytes(),
+        );
         let amplicon_start = forward.start_0based;
         let amplicon_end = reverse.end_0based_exclusive;
         let amplicon_length_bp = amplicon_end.saturating_sub(amplicon_start);
@@ -17940,9 +20686,42 @@ impl GentleEngine {
         let tm_delta_c = (forward.tm_c - reverse.tm_c).abs();
         let tm_delta_ok = tm_delta_c <= max_tm_delta_c;
         let length_penalty = amplicon_length_bp.abs_diff(target_amplicon_bp) as f64;
+        let primer_length_penalty = Self::preferred_primer_length_penalty(forward.anneal_length_bp)
+            + Self::preferred_primer_length_penalty(reverse.anneal_length_bp);
         let hit_penalty =
             (forward.anneal_hits.saturating_sub(1) + reverse.anneal_hits.saturating_sub(1)) as f64;
-        let score = 1000.0 - (tm_delta_c * 20.0) - (length_penalty * 0.1) - (hit_penalty * 10.0);
+        let secondary_penalty = Self::primer_secondary_structure_penalty(forward_metrics)
+            + Self::primer_secondary_structure_penalty(reverse_metrics);
+        let dimer_penalty = Self::primer_pair_dimer_penalty(dimer_metrics);
+        let gc_clamp_bonus = if forward_metrics.three_prime_gc_clamp {
+            8.0
+        } else {
+            -8.0
+        } + if reverse_metrics.three_prime_gc_clamp {
+            8.0
+        } else {
+            -8.0
+        };
+        let score = 1000.0
+            - (tm_delta_c * 20.0)
+            - (length_penalty * 0.1)
+            - (hit_penalty * 10.0)
+            - (primer_length_penalty * 6.0)
+            - secondary_penalty
+            - dimer_penalty
+            + gc_clamp_bonus;
+        let forward_secondary_ok = forward_metrics.longest_homopolymer_run_bp
+            <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+            && forward_metrics.self_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
+        let reverse_secondary_ok = reverse_metrics.longest_homopolymer_run_bp
+            <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+            && reverse_metrics.self_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP;
+        let primer_pair_dimer_risk_low = dimer_metrics.max_complementary_run_bp
+            <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+            && dimer_metrics.max_3prime_complementary_run_bp
+                <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP;
         Some(PrimerDesignPairRecord {
             rank: 0,
             score,
@@ -17952,10 +20731,17 @@ impl GentleEngine {
             amplicon_end_0based_exclusive: amplicon_end,
             amplicon_length_bp,
             tm_delta_c,
+            primer_pair_complementary_run_bp: dimer_metrics.max_complementary_run_bp,
+            primer_pair_3prime_complementary_run_bp: dimer_metrics.max_3prime_complementary_run_bp,
             rule_flags: PrimerDesignPairRuleFlags {
                 roi_covered,
                 amplicon_size_in_range: amplicon_size_ok,
                 tm_delta_in_range: tm_delta_ok,
+                forward_secondary_structure_ok: forward_secondary_ok,
+                reverse_secondary_structure_ok: reverse_secondary_ok,
+                primer_pair_dimer_risk_low,
+                forward_three_prime_gc_clamp: forward_metrics.three_prime_gc_clamp,
+                reverse_three_prime_gc_clamp: reverse_metrics.three_prime_gc_clamp,
             },
         })
     }
@@ -18003,6 +20789,35 @@ impl GentleEngine {
         true
     }
 
+    fn primer_pair_heuristic_advisories(pair: &PrimerDesignPairRecord) -> Vec<String> {
+        let mut issues: Vec<String> = Vec::new();
+        if !pair.rule_flags.forward_three_prime_gc_clamp {
+            issues.push("forward primer lacks 3' GC clamp".to_string());
+        }
+        if !pair.rule_flags.reverse_three_prime_gc_clamp {
+            issues.push("reverse primer lacks 3' GC clamp".to_string());
+        }
+        if !pair.rule_flags.forward_secondary_structure_ok {
+            issues.push(format!(
+                "forward primer may form secondary structure (homopolymer_run={}, self_complement_run={})",
+                pair.forward.longest_homopolymer_run_bp, pair.forward.self_complementary_run_bp
+            ));
+        }
+        if !pair.rule_flags.reverse_secondary_structure_ok {
+            issues.push(format!(
+                "reverse primer may form secondary structure (homopolymer_run={}, self_complement_run={})",
+                pair.reverse.longest_homopolymer_run_bp, pair.reverse.self_complementary_run_bp
+            ));
+        }
+        if !pair.rule_flags.primer_pair_dimer_risk_low {
+            issues.push(format!(
+                "primer-pair dimer risk elevated (max_complement_run={}, max_3prime_complement_run={})",
+                pair.primer_pair_complementary_run_bp, pair.primer_pair_3prime_complementary_run_bp
+            ));
+        }
+        issues
+    }
+
     fn design_primer_pairs_internal(
         template_bytes: &[u8],
         roi_start_0based: usize,
@@ -18044,6 +20859,7 @@ impl GentleEngine {
                         tm_c: fwd.tm_c,
                         gc_fraction: fwd.gc_fraction,
                         anneal_hits: fwd.anneal_hits,
+                        ..PrimerDesignPrimerRecord::default()
                     },
                     PrimerDesignPrimerRecord {
                         sequence: rev.sequence.clone(),
@@ -18052,6 +20868,7 @@ impl GentleEngine {
                         tm_c: rev.tm_c,
                         gc_fraction: rev.gc_fraction,
                         anneal_hits: rev.anneal_hits,
+                        ..PrimerDesignPrimerRecord::default()
                     },
                     roi_start_0based,
                     roi_end_0based,
@@ -18164,19 +20981,24 @@ impl GentleEngine {
                 let probe_mid = (probe_start + probe_end) / 2;
                 let probe_mid_penalty = probe_mid.abs_diff(amplicon_mid) as f64;
                 let score = pair.score - (probe_tm_delta_c * 10.0) - (probe_mid_penalty * 0.05);
-                assays.push(QpcrAssayRecord {
-                    rank: 0,
-                    score,
-                    forward: pair.forward.clone(),
-                    reverse: pair.reverse.clone(),
-                    probe: PrimerDesignPrimerRecord {
+                let probe_record = Self::annotate_primer_record_heuristics(
+                    PrimerDesignPrimerRecord {
                         sequence: probe_candidate.sequence.clone(),
                         start_0based: probe_start,
                         end_0based_exclusive: probe_end,
                         tm_c: probe_candidate.tm_c,
                         gc_fraction: probe_candidate.gc_fraction,
                         anneal_hits: probe_candidate.anneal_hits,
+                        ..PrimerDesignPrimerRecord::default()
                     },
+                    probe_end.saturating_sub(probe_start),
+                );
+                assays.push(QpcrAssayRecord {
+                    rank: 0,
+                    score,
+                    forward: pair.forward.clone(),
+                    reverse: pair.reverse.clone(),
+                    probe: probe_record,
                     amplicon_start_0based: pair.amplicon_start_0based,
                     amplicon_end_0based_exclusive: pair.amplicon_end_0based_exclusive,
                     amplicon_length_bp: pair.amplicon_length_bp,
@@ -18236,16 +21058,61 @@ impl GentleEngine {
         map
     }
 
-    fn probe_primer3_version(executable: &str) -> Option<String> {
-        let output = Command::new(executable).arg("--version").output().ok()?;
-        let mut text = String::from_utf8_lossy(&output.stdout).to_string();
-        if text.trim().is_empty() {
-            text = String::from_utf8_lossy(&output.stderr).to_string();
-        }
-        text.lines()
+    fn first_nonempty_utf8_line(bytes: &[u8]) -> Option<String> {
+        String::from_utf8_lossy(bytes)
+            .lines()
             .map(str::trim)
             .find(|line| !line.is_empty())
             .map(|line| line.to_string())
+    }
+
+    fn probe_primer3_executable_status(executable: &str) -> Primer3PreflightReport {
+        let mut report = Primer3PreflightReport {
+            executable: executable.to_string(),
+            ..Primer3PreflightReport::default()
+        };
+        let started = Instant::now();
+        match Command::new(executable).arg("--version").output() {
+            Ok(output) => {
+                report.reachable = true;
+                report.status_code = output.status.code();
+                report.version_probe_ok = output.status.success();
+                let stdout_line = Self::first_nonempty_utf8_line(&output.stdout);
+                let stderr_line = Self::first_nonempty_utf8_line(&output.stderr);
+                report.version = stdout_line.or_else(|| stderr_line.clone());
+                if !report.version_probe_ok {
+                    report.detail = stderr_line.or_else(|| report.version.clone());
+                }
+            }
+            Err(err) => {
+                report.error = Some(err.to_string());
+            }
+        }
+        report.probe_time_ms = started.elapsed().as_millis();
+        report
+    }
+
+    pub fn primer3_preflight_report(
+        &self,
+        backend_override: Option<PrimerDesignBackend>,
+        primer3_executable_override: Option<&str>,
+    ) -> Primer3PreflightReport {
+        let backend = backend_override.unwrap_or(self.state.parameters.primer_design_backend);
+        let configured_executable = primer3_executable_override
+            .map(str::trim)
+            .unwrap_or_else(|| self.state.parameters.primer3_executable.trim());
+        let executable = if configured_executable.is_empty() {
+            "primer3_core"
+        } else {
+            configured_executable
+        };
+        let mut report = Self::probe_primer3_executable_status(executable);
+        report.backend = backend.as_str().to_string();
+        report
+    }
+
+    fn probe_primer3_version(executable: &str) -> Option<String> {
+        Self::probe_primer3_executable_status(executable).version
     }
 
     fn design_primer_pairs_primer3(
@@ -18393,39 +21260,51 @@ impl GentleEngine {
                 continue;
             }
 
-            let forward_sequence = map
+            let forward_anneal_sequence = map
                 .get(&left_seq_key)
                 .cloned()
                 .unwrap_or_else(|| template_seq[left_start..left_end].to_string())
                 .to_ascii_uppercase();
-            let reverse_sequence = map
+            let reverse_anneal_sequence = map
                 .get(&right_seq_key)
                 .cloned()
                 .unwrap_or_else(|| {
                     Self::reverse_complement(&template_seq[right_start..right_end_exclusive])
                 })
                 .to_ascii_uppercase();
+            let forward_sequence =
+                if let Some(tail) = &forward_sequence_constraints.non_annealing_5prime_tail {
+                    format!("{tail}{forward_anneal_sequence}")
+                } else {
+                    forward_anneal_sequence.clone()
+                };
+            let reverse_sequence =
+                if let Some(tail) = &reverse_sequence_constraints.non_annealing_5prime_tail {
+                    format!("{tail}{reverse_anneal_sequence}")
+                } else {
+                    reverse_anneal_sequence.clone()
+                };
             let forward_tm = map
                 .get(&left_tm_key)
                 .and_then(|raw| raw.parse::<f64>().ok())
-                .unwrap_or_else(|| Self::estimate_primer_tm_c(forward_sequence.as_bytes()));
+                .unwrap_or_else(|| Self::estimate_primer_tm_c(forward_anneal_sequence.as_bytes()));
             let reverse_tm = map
                 .get(&right_tm_key)
                 .and_then(|raw| raw.parse::<f64>().ok())
-                .unwrap_or_else(|| Self::estimate_primer_tm_c(reverse_sequence.as_bytes()));
+                .unwrap_or_else(|| Self::estimate_primer_tm_c(reverse_anneal_sequence.as_bytes()));
             let forward_gc = map
                 .get(&left_gc_key)
                 .and_then(|raw| raw.parse::<f64>().ok())
                 .map(|value| (value / 100.0).clamp(0.0, 1.0))
                 .unwrap_or_else(|| {
-                    Self::sequence_gc_fraction(forward_sequence.as_bytes()).unwrap_or(0.0)
+                    Self::sequence_gc_fraction(forward_anneal_sequence.as_bytes()).unwrap_or(0.0)
                 });
             let reverse_gc = map
                 .get(&right_gc_key)
                 .and_then(|raw| raw.parse::<f64>().ok())
                 .map(|value| (value / 100.0).clamp(0.0, 1.0))
                 .unwrap_or_else(|| {
-                    Self::sequence_gc_fraction(reverse_sequence.as_bytes()).unwrap_or(0.0)
+                    Self::sequence_gc_fraction(reverse_anneal_sequence.as_bytes()).unwrap_or(0.0)
                 });
 
             let left_window = &template_bytes[left_start..left_end];
@@ -18500,6 +21379,7 @@ impl GentleEngine {
                     tm_c: forward_tm,
                     gc_fraction: forward_gc,
                     anneal_hits: forward_anneal_hits,
+                    ..PrimerDesignPrimerRecord::default()
                 },
                 PrimerDesignPrimerRecord {
                     sequence: reverse_sequence,
@@ -18508,6 +21388,7 @@ impl GentleEngine {
                     tm_c: reverse_tm,
                     gc_fraction: reverse_gc,
                     anneal_hits: reverse_anneal_hits,
+                    ..PrimerDesignPrimerRecord::default()
                 },
                 roi_start_0based,
                 roi_end_0based,
@@ -19149,12 +22030,13 @@ impl GentleEngine {
                     annotation_scope,
                     include_genomic_annotation,
                 );
-                let effective_cap = max_annotation_features
-                    .filter(|value| *value > 0)
-                    .or_else(|| {
-                        matches!(requested_scope, GenomeAnnotationScope::Full)
-                            .then_some(DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP)
-                    });
+                let effective_cap =
+                    max_annotation_features
+                        .filter(|value| *value > 0)
+                        .or_else(|| {
+                            matches!(requested_scope, GenomeAnnotationScope::Full)
+                                .then_some(DEFAULT_EXTRACT_REGION_ANNOTATION_FEATURE_CAP)
+                        });
                 let mut genes: Vec<GenomeGeneRecord> = vec![];
                 let mut transcripts: Vec<GenomeTranscriptRecord> = vec![];
                 if !matches!(requested_scope, GenomeAnnotationScope::None) {
@@ -19163,10 +22045,8 @@ impl GentleEngine {
                             genes = records
                                 .into_iter()
                                 .filter(|record| {
-                                    Self::genome_chromosome_matches(
-                                        &record.chromosome,
-                                        &chromosome,
-                                    ) && record.end_1based >= start_1based
+                                    Self::genome_chromosome_matches(&record.chromosome, &chromosome)
+                                        && record.end_1based >= start_1based
                                         && record.start_1based <= end_1based
                                 })
                                 .collect();
@@ -19288,6 +22168,7 @@ impl GentleEngine {
                     fallback_applied: fallback_reason.is_some(),
                     fallback_reason,
                 });
+                self.maybe_attach_known_helper_mcs_annotation(&seq_id, &genome_id, &mut result);
                 let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
                 let inspection = catalog
                     .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
@@ -19335,6 +22216,9 @@ impl GentleEngine {
                 gene_query,
                 occurrence,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             } => {
@@ -19442,7 +22326,28 @@ impl GentleEngine {
                 );
                 let base = output_id.unwrap_or(default_id);
                 let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
-                match catalog.list_gene_transcript_records(
+                let preferred_name = self
+                    .state
+                    .sequences
+                    .get(&seq_id)
+                    .and_then(|dna| {
+                        dna.name()
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|v| !v.is_empty())
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| seq_id.clone());
+                if preferred_name.eq_ignore_ascii_case("<unnamed sequence>")
+                    || preferred_name.eq_ignore_ascii_case("<no name>")
+                {
+                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                        dna.set_name(seq_id.clone());
+                        Self::prepare_sequence(dna);
+                    }
+                }
+
+                let mut transcript_records = match catalog.list_gene_transcript_records(
                     &genome_id,
                     &selected_gene.chromosome,
                     selected_gene.start_1based,
@@ -19451,27 +22356,177 @@ impl GentleEngine {
                     selected_gene.gene_name.as_deref(),
                     cache_dir.as_deref(),
                 ) {
-                    Ok(records) => {
-                        let added = self.attach_transcript_features_to_extracted_gene_sequence(
-                            &seq_id,
-                            selected_gene.start_1based,
-                            selected_gene.end_1based,
-                            &records,
-                        );
-                        if added > 0 {
-                            result.messages.push(format!(
-                                "Attached {} transcript/exon feature(s) to extracted gene '{}'",
-                                added, seq_id
+                    Ok(records) => records,
+                    Err(e) => {
+                        result.warnings.push(format!(
+                            "Could not inspect transcript/exon annotation for extracted gene '{}': {}",
+                            seq_id, e
+                        ));
+                        vec![]
+                    }
+                };
+                if transcript_records.is_empty() {
+                    match catalog.list_gene_transcript_records(
+                        &genome_id,
+                        &selected_gene.chromosome,
+                        selected_gene.start_1based,
+                        selected_gene.end_1based,
+                        None,
+                        None,
+                        cache_dir.as_deref(),
+                    ) {
+                        Ok(mut records) => {
+                            let selected_gene_id_norm = selected_gene
+                                .gene_id
+                                .as_deref()
+                                .map(Self::normalize_id_token)
+                                .filter(|v| !v.is_empty());
+                            let selected_gene_name_norm = selected_gene
+                                .gene_name
+                                .as_deref()
+                                .map(Self::normalize_id_token)
+                                .filter(|v| !v.is_empty());
+                            if selected_gene_id_norm.is_some() || selected_gene_name_norm.is_some()
+                            {
+                                records.retain(|record| {
+                                    let transcript_gene_id_norm = record
+                                        .gene_id
+                                        .as_deref()
+                                        .map(Self::normalize_id_token)
+                                        .filter(|v| !v.is_empty());
+                                    let transcript_gene_name_norm = record
+                                        .gene_name
+                                        .as_deref()
+                                        .map(Self::normalize_id_token)
+                                        .filter(|v| !v.is_empty());
+                                    selected_gene_id_norm
+                                        .as_ref()
+                                        .zip(transcript_gene_id_norm.as_ref())
+                                        .map(|(left, right)| left == right)
+                                        .unwrap_or(false)
+                                        || selected_gene_name_norm
+                                            .as_ref()
+                                            .zip(transcript_gene_name_norm.as_ref())
+                                            .map(|(left, right)| left == right)
+                                            .unwrap_or(false)
+                                });
+                            }
+                            if !records.is_empty() {
+                                result.warnings.push(format!(
+                                    "Gene-scoped transcript filter returned no records for '{}'; using overlap fallback with {} transcript candidate(s).",
+                                    seq_id,
+                                    records.len()
+                                ));
+                                transcript_records = records;
+                            }
+                        }
+                        Err(e) => {
+                            result.warnings.push(format!(
+                                "Could not run transcript fallback for extracted gene '{}': {}",
+                                seq_id, e
                             ));
                         }
                     }
-                    Err(e) => {
-                        result.warnings.push(format!(
-                            "Could not attach transcript/exon features for extracted gene '{}': {}",
-                            seq_id, e
-                        ));
+                }
+
+                let requested_scope = Self::resolve_extract_region_annotation_scope(
+                    annotation_scope,
+                    include_genomic_annotation,
+                );
+                let max_annotation_features = match max_annotation_features {
+                    Some(0) | None => None,
+                    Some(value) => Some(value),
+                };
+                let mut effective_scope = requested_scope;
+                let mut fallback_reason: Option<String> = None;
+                let gene_records = vec![(*selected_gene).clone()];
+                let mut projection = Self::build_extract_region_annotation_projection(
+                    &gene_records,
+                    &transcript_records,
+                    selected_gene.start_1based,
+                    selected_gene.end_1based,
+                    requested_scope,
+                );
+                let candidate_before_fallback = projection.feature_count();
+                if let Some(cap) = max_annotation_features {
+                    if projection.feature_count() > cap {
+                        if matches!(requested_scope, GenomeAnnotationScope::Full) {
+                            let core_projection = Self::build_extract_region_annotation_projection(
+                                &gene_records,
+                                &transcript_records,
+                                selected_gene.start_1based,
+                                selected_gene.end_1based,
+                                GenomeAnnotationScope::Core,
+                            );
+                            if core_projection.feature_count() <= cap {
+                                effective_scope = GenomeAnnotationScope::Core;
+                                projection = core_projection;
+                                fallback_reason = Some(format!(
+                                    "Projected full annotation would attach {} feature(s), exceeding max_annotation_features={cap}; fell back to core projection. Re-run with annotation_scope=full --max-annotation-features 0 to force full transfer.",
+                                    candidate_before_fallback
+                                ));
+                            } else {
+                                effective_scope = GenomeAnnotationScope::None;
+                                projection = ExtractRegionAnnotationProjectionBatch::default();
+                                fallback_reason = Some(format!(
+                                    "Projected annotation exceeded max_annotation_features={cap} even after core fallback; annotation transfer was disabled for this extraction. Re-run with --max-annotation-features 0 for unrestricted transfer."
+                                ));
+                            }
+                        } else {
+                            effective_scope = GenomeAnnotationScope::None;
+                            projection = ExtractRegionAnnotationProjectionBatch::default();
+                            fallback_reason = Some(format!(
+                                "Projected annotation exceeded max_annotation_features={cap}; annotation transfer was disabled for this extraction."
+                            ));
+                        }
                     }
                 }
+                let attached_feature_count = projection.feature_count();
+                let genes_attached = projection.gene_count;
+                let transcripts_attached = projection.transcript_count;
+                let exons_attached = projection.exon_count;
+                let cds_attached = projection.cds_count;
+                if attached_feature_count > 0 {
+                    if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
+                        dna.features_mut().extend(projection.features);
+                        Self::prepare_sequence(dna);
+                    }
+                    result.messages.push(format!(
+                        "Attached {} genomic annotation feature(s) to extracted gene '{}' (scope={} -> {}, genes={}, transcripts={}, exons={}, cds={})",
+                        attached_feature_count,
+                        seq_id,
+                        requested_scope.as_str(),
+                        effective_scope.as_str(),
+                        genes_attached,
+                        transcripts_attached,
+                        exons_attached,
+                        cds_attached
+                    ));
+                } else if !matches!(requested_scope, GenomeAnnotationScope::None) {
+                    result.warnings.push(format!(
+                        "No overlapping genomic annotation features were attached to extracted gene '{}'",
+                        seq_id
+                    ));
+                }
+                if let Some(reason) = fallback_reason.as_ref() {
+                    result.warnings.push(reason.clone());
+                }
+                result.genome_annotation_projection = Some(GenomeAnnotationProjectionTelemetry {
+                    requested_scope: requested_scope.as_str().to_string(),
+                    effective_scope: effective_scope.as_str().to_string(),
+                    max_features_cap: max_annotation_features,
+                    candidate_feature_count: candidate_before_fallback,
+                    attached_feature_count,
+                    dropped_feature_count: candidate_before_fallback
+                        .saturating_sub(attached_feature_count),
+                    genes_attached,
+                    transcripts_attached,
+                    exons_attached,
+                    cds_attached,
+                    fallback_applied: fallback_reason.is_some(),
+                    fallback_reason,
+                });
+                self.maybe_attach_known_helper_mcs_annotation(&seq_id, &genome_id, &mut result);
                 let source_plan = catalog.source_plan(&genome_id, cache_dir.as_deref()).ok();
                 let inspection = catalog
                     .inspect_prepared_genome(&genome_id, cache_dir.as_deref())
@@ -20352,8 +23407,7 @@ impl GentleEngine {
                 if accession_trimmed.is_empty() {
                     return Err(EngineError {
                         code: ErrorCode::InvalidInput,
-                        message:
-                            "FetchGenBankAccession requires a non-empty accession".to_string(),
+                        message: "FetchGenBankAccession requires a non-empty accession".to_string(),
                     });
                 }
                 let (source_url, text) = Self::fetch_genbank_accession_text(accession_trimmed)?;
@@ -20387,7 +23441,11 @@ impl GentleEngine {
                 let base = as_id.unwrap_or_else(|| accession_trimmed.to_string());
                 let seq_id = self.unique_seq_id(&base);
                 self.state.sequences.insert(seq_id.clone(), dna);
-                self.add_lineage_node(&seq_id, SequenceOrigin::ImportedGenomic, Some(&result.op_id));
+                self.add_lineage_node(
+                    &seq_id,
+                    SequenceOrigin::ImportedGenomic,
+                    Some(&result.op_id),
+                );
 
                 let imported_anchor = self
                     .state
@@ -21796,6 +24854,16 @@ impl GentleEngine {
                     report.template,
                     report.pair_count
                 ));
+                if let Some(top_pair) = report.pairs.first() {
+                    let advisories = Self::primer_pair_heuristic_advisories(top_pair);
+                    if !advisories.is_empty() {
+                        result.warnings.push(format!(
+                            "Top primer pair in report '{}' has heuristic advisories: {}",
+                            report.report_id,
+                            advisories.join("; ")
+                        ));
+                    }
+                }
                 if report.pair_count == 0 {
                     result.warnings.push(format!(
                         "No primer pairs satisfied constraints for report '{}'",
@@ -22114,6 +25182,56 @@ impl GentleEngine {
                     report.template,
                     report.assay_count
                 ));
+                if let Some(top_assay) = report.assays.first() {
+                    let dimer_metrics = Self::compute_primer_pair_dimer_metrics(
+                        top_assay.forward.sequence.as_bytes(),
+                        top_assay.reverse.sequence.as_bytes(),
+                    );
+                    let pair_like = PrimerDesignPairRecord {
+                        rank: top_assay.rank,
+                        score: top_assay.score,
+                        forward: top_assay.forward.clone(),
+                        reverse: top_assay.reverse.clone(),
+                        amplicon_start_0based: top_assay.amplicon_start_0based,
+                        amplicon_end_0based_exclusive: top_assay.amplicon_end_0based_exclusive,
+                        amplicon_length_bp: top_assay.amplicon_length_bp,
+                        tm_delta_c: top_assay.primer_tm_delta_c,
+                        primer_pair_complementary_run_bp: dimer_metrics.max_complementary_run_bp,
+                        primer_pair_3prime_complementary_run_bp: dimer_metrics
+                            .max_3prime_complementary_run_bp,
+                        rule_flags: PrimerDesignPairRuleFlags {
+                            roi_covered: top_assay.rule_flags.roi_covered,
+                            amplicon_size_in_range: top_assay.rule_flags.amplicon_size_in_range,
+                            tm_delta_in_range: top_assay.rule_flags.primer_tm_delta_in_range,
+                            forward_secondary_structure_ok: top_assay
+                                .forward
+                                .longest_homopolymer_run_bp
+                                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                                && top_assay.forward.self_complementary_run_bp
+                                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
+                            reverse_secondary_structure_ok: top_assay
+                                .reverse
+                                .longest_homopolymer_run_bp
+                                <= PRIMER_RECOMMENDED_MAX_HOMOPOLYMER_RUN_BP
+                                && top_assay.reverse.self_complementary_run_bp
+                                    <= PRIMER_RECOMMENDED_MAX_SELF_COMPLEMENTARY_RUN_BP,
+                            primer_pair_dimer_risk_low: dimer_metrics.max_complementary_run_bp
+                                <= PRIMER_RECOMMENDED_MAX_PAIR_DIMER_RUN_BP
+                                && dimer_metrics.max_3prime_complementary_run_bp
+                                    <= PRIMER_RECOMMENDED_MAX_PAIR_3PRIME_DIMER_RUN_BP,
+                            forward_three_prime_gc_clamp: top_assay.forward.three_prime_gc_clamp,
+                            reverse_three_prime_gc_clamp: top_assay.reverse.three_prime_gc_clamp,
+                        },
+                    };
+                    let advisories = Self::primer_pair_heuristic_advisories(&pair_like);
+                    if !advisories.is_empty() {
+                        result.warnings.push(format!(
+                            "Top qPCR primer pair in report '{}' has heuristic advisories: {}",
+                            report.report_id,
+                            advisories.join("; ")
+                        ));
+                    }
+                }
                 if report.assay_count == 0 {
                     result.warnings.push(format!(
                         "No qPCR assays satisfied constraints for report '{}'",
@@ -22142,8 +25260,11 @@ impl GentleEngine {
                     })?;
                 let seq_text = dna.get_forward_string().to_ascii_uppercase();
                 let seq_bytes = seq_text.as_bytes();
-                let (span_start_0based, span_end_0based) =
-                    Self::resolve_analysis_span(seq_bytes.len(), span_start_0based, span_end_0based)?;
+                let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
+                    seq_bytes.len(),
+                    span_start_0based,
+                    span_end_0based,
+                )?;
                 let span = &seq_bytes[span_start_0based..span_end_0based];
                 let (points, truncated) = Self::compute_dotplot_points(
                     span,
@@ -22215,8 +25336,11 @@ impl GentleEngine {
                     })?;
                 let seq_text = dna.get_forward_string().to_ascii_uppercase();
                 let seq_bytes = seq_text.as_bytes();
-                let (span_start_0based, span_end_0based) =
-                    Self::resolve_analysis_span(seq_bytes.len(), span_start_0based, span_end_0based)?;
+                let (span_start_0based, span_end_0based) = Self::resolve_analysis_span(
+                    seq_bytes.len(),
+                    span_start_0based,
+                    span_end_0based,
+                )?;
                 let span = &seq_bytes[span_start_0based..span_end_0based];
                 let bins = Self::compute_flexibility_track_bins(
                     span,
@@ -22225,7 +25349,10 @@ impl GentleEngine {
                     bin_bp,
                     smoothing_bp,
                 )?;
-                let min_score = bins.iter().map(|bin| bin.score).fold(f64::INFINITY, f64::min);
+                let min_score = bins
+                    .iter()
+                    .map(|bin| bin.score)
+                    .fold(f64::INFINITY, f64::min);
                 let max_score = bins
                     .iter()
                     .map(|bin| bin.score)
@@ -22268,6 +25395,93 @@ impl GentleEngine {
                     span_start_0based,
                     span_end_0based,
                     track.bins.len()
+                ));
+            }
+            Operation::InterpretRnaReads {
+                seq_id,
+                seed_feature_id,
+                profile,
+                input_path,
+                input_format,
+                scope,
+                seed_filter,
+                align_config,
+                report_id,
+            } => {
+                let mut keep_running = || true;
+                let report = self.interpret_rna_reads_report_with_progress(
+                    &seq_id,
+                    seed_feature_id,
+                    profile,
+                    &input_path,
+                    input_format,
+                    scope,
+                    &seed_filter,
+                    &align_config,
+                    report_id.as_deref(),
+                    on_progress,
+                    &mut keep_running,
+                )?;
+                self.push_rna_read_report_result_message(report, &mut result)?;
+            }
+            Operation::ListRnaReadReports { seq_id } => {
+                let rows = self.list_rna_read_reports(seq_id.as_deref());
+                result.messages.push(format!(
+                    "RNA-read reports: {} row(s){}",
+                    rows.len(),
+                    seq_id
+                        .as_deref()
+                        .map(|s| format!(" (seq_id='{}')", s))
+                        .unwrap_or_default()
+                ));
+            }
+            Operation::ShowRnaReadReport { report_id } => {
+                let report = self.get_rna_read_report(&report_id)?;
+                result.messages.push(format!(
+                    "RNA-read report '{}' (profile={}, reads={}, seed_passed={}, aligned={})",
+                    report.report_id,
+                    report.profile.as_str(),
+                    report.read_count_total,
+                    report.read_count_seed_passed,
+                    report.read_count_aligned
+                ));
+            }
+            Operation::ExportRnaReadReport { report_id, path } => {
+                let report = self.export_rna_read_report(&report_id, &path)?;
+                result.messages.push(format!(
+                    "Exported RNA-read report '{}' to '{}'",
+                    report.report_id, path
+                ));
+            }
+            Operation::ExportRnaReadHitsFasta {
+                report_id,
+                path,
+                selection,
+            } => {
+                let count = self.export_rna_read_hits_fasta(&report_id, &path, selection)?;
+                result.messages.push(format!(
+                    "Exported {} RNA-read hit sequence(s) from '{}' to '{}' (selection={})",
+                    count,
+                    report_id,
+                    path,
+                    selection.as_str()
+                ));
+            }
+            Operation::ExportRnaReadSampleSheet {
+                path,
+                seq_id,
+                report_ids,
+                append,
+            } => {
+                let export = self.export_rna_read_sample_sheet(
+                    &path,
+                    seq_id.as_deref(),
+                    &report_ids,
+                    append,
+                )?;
+                result.messages.push(format!(
+                    "Exported RNA-read sample sheet '{}' with {} report row(s) (append={})",
+                    export.path, export.report_count, export.appended
                 ));
             }
             Operation::ExtractRegion {
@@ -24412,6 +27626,26 @@ exit 2
         script_path.display().to_string()
     }
 
+    #[cfg(unix)]
+    fn install_fake_primer3(path: &Path) -> String {
+        let script_path = path.join("fake_primer3.sh");
+        let script = r#"#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "primer3_core synthetic-fixture 2.6.1"
+  exit 0
+fi
+echo "unexpected args: $@" >&2
+exit 2
+"#;
+        std::fs::write(&script_path, script).expect("write fake primer3");
+        let mut perms = std::fs::metadata(&script_path)
+            .expect("metadata fake primer3")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script_path, perms).expect("chmod fake primer3");
+        script_path.display().to_string()
+    }
+
     fn file_url(path: &Path) -> String {
         format!("file://{}", path.display())
     }
@@ -24837,6 +28071,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -24854,6 +28089,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -24915,6 +28151,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -24932,6 +28169,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 10,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -24990,6 +28228,38 @@ exit 2
         assert!(err.message.contains("Primer3 backend executable"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_primer3_preflight_report_success() {
+        let mut engine = GentleEngine::new();
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+        let tmp = tempdir().expect("tempdir");
+        let fake_primer3 = install_fake_primer3(tmp.path());
+        let report = engine.primer3_preflight_report(None, Some(fake_primer3.as_str()));
+        assert_eq!(report.backend, "primer3");
+        assert_eq!(report.executable, fake_primer3);
+        assert!(report.reachable);
+        assert!(report.version_probe_ok);
+        assert_eq!(
+            report.version.as_deref(),
+            Some("primer3_core synthetic-fixture 2.6.1")
+        );
+        assert!(report.error.is_none());
+    }
+
+    #[test]
+    fn test_primer3_preflight_report_missing_executable() {
+        let mut engine = GentleEngine::new();
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+        let report =
+            engine.primer3_preflight_report(None, Some("/definitely/missing/primer3_core"));
+        assert_eq!(report.backend, "primer3");
+        assert_eq!(report.executable, "/definitely/missing/primer3_core");
+        assert!(!report.reachable);
+        assert!(!report.version_probe_ok);
+        assert!(report.error.is_some());
+    }
+
     #[test]
     fn test_design_primer_pairs_rejects_invalid_roi() {
         let mut state = ProjectState::default();
@@ -25043,6 +28313,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 100,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -25060,6 +28331,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 100,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -25077,6 +28349,7 @@ exit 2
                     min_gc_fraction: 0.0,
                     max_gc_fraction: 1.0,
                     max_anneal_hits: 100,
+                    non_annealing_5prime_tail: None,
                     fixed_5prime: None,
                     fixed_3prime: None,
                     required_motifs: vec![],
@@ -25218,6 +28491,115 @@ exit 2
             .expect("failing report");
         assert_eq!(failing.pair_count, 0);
         assert!(failing.rejection_summary.primer_constraint_failure > 0);
+    }
+
+    #[test]
+    fn test_non_annealing_5prime_tail_is_included_but_tm_gc_use_anneal_segment() {
+        let template_seq = "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG";
+        let mut state = ProjectState::default();
+        state.sequences.insert("tpl".to_string(), seq(template_seq));
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Internal;
+
+        let mut forward = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+        let mut reverse = PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(90),
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward: forward.clone(),
+                reverse: reverse.clone(),
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("no_tail".to_string()),
+            })
+            .expect("no-tail primer design");
+        let no_tail = engine
+            .get_primer_design_report("no_tail")
+            .expect("no-tail report");
+        assert_eq!(no_tail.pair_count, 1);
+        let no_tail_pair = &no_tail.pairs[0];
+
+        forward.non_annealing_5prime_tail = Some("GAATTC".to_string());
+        reverse.non_annealing_5prime_tail = Some("CTCGAG".to_string());
+        engine
+            .apply(Operation::DesignPrimerPairs {
+                template: "tpl".to_string(),
+                roi_start_0based: 40,
+                roi_end_0based: 80,
+                forward,
+                reverse,
+                pair_constraints: PrimerDesignPairConstraint::default(),
+                min_amplicon_bp: 40,
+                max_amplicon_bp: 150,
+                max_tm_delta_c: Some(100.0),
+                max_pairs: Some(10),
+                report_id: Some("with_tail".to_string()),
+            })
+            .expect("tail primer design");
+        let with_tail = engine
+            .get_primer_design_report("with_tail")
+            .expect("tail report");
+        assert_eq!(with_tail.pair_count, 1);
+        let with_tail_pair = &with_tail.pairs[0];
+
+        assert!(with_tail_pair.forward.sequence.starts_with("GAATTC"));
+        assert!(with_tail_pair.reverse.sequence.starts_with("CTCGAG"));
+        assert_eq!(with_tail_pair.forward.anneal_length_bp, 20);
+        assert_eq!(with_tail_pair.reverse.anneal_length_bp, 20);
+        assert_eq!(with_tail_pair.forward.non_annealing_5prime_tail_bp, 6);
+        assert_eq!(with_tail_pair.reverse.non_annealing_5prime_tail_bp, 6);
+        assert_eq!(
+            with_tail_pair.forward.start_0based,
+            no_tail_pair.forward.start_0based
+        );
+        assert_eq!(
+            with_tail_pair.reverse.start_0based,
+            no_tail_pair.reverse.start_0based
+        );
+        assert!(
+            (with_tail_pair.forward.tm_c - no_tail_pair.forward.tm_c).abs() < f64::EPSILON,
+            "forward anneal Tm should stay unchanged when adding non-annealing tail"
+        );
+        assert!(
+            (with_tail_pair.reverse.tm_c - no_tail_pair.reverse.tm_c).abs() < f64::EPSILON,
+            "reverse anneal Tm should stay unchanged when adding non-annealing tail"
+        );
+        assert!(
+            (with_tail_pair.forward.gc_fraction - no_tail_pair.forward.gc_fraction).abs()
+                < f64::EPSILON,
+            "forward anneal GC should stay unchanged when adding non-annealing tail"
+        );
+        assert!(
+            (with_tail_pair.reverse.gc_fraction - no_tail_pair.reverse.gc_fraction).abs()
+                < f64::EPSILON,
+            "reverse anneal GC should stay unchanged when adding non-annealing tail"
+        );
     }
 
     #[test]
@@ -25454,6 +28836,86 @@ exit 2
             .get_qpcr_design_report("failing_qpcr_probe_constraints")
             .expect("failing qpcr report");
         assert_eq!(failing.assay_count, 0);
+    }
+
+    #[test]
+    fn test_primer_design_defaults_follow_20_to_30bp_window() {
+        let side = PrimerDesignSideConstraint::default();
+        assert_eq!(side.min_length, 20);
+        assert_eq!(side.max_length, 30);
+    }
+
+    #[test]
+    fn test_primer_heuristics_detect_gc_clamp_and_homopolymer_runs() {
+        let metrics = GentleEngine::compute_primer_heuristic_metrics(b"ATTTTTCG");
+        assert_eq!(metrics.length_bp, 8);
+        assert_eq!(metrics.three_prime_base, b'G');
+        assert!(metrics.three_prime_gc_clamp);
+        assert_eq!(metrics.longest_homopolymer_run_bp, 5);
+    }
+
+    #[test]
+    fn test_primer_pair_dimer_metrics_detect_3prime_complementarity() {
+        let metrics = GentleEngine::compute_primer_pair_dimer_metrics(b"ACGTTTGGGG", b"CCCCAAAA");
+        assert!(metrics.max_complementary_run_bp >= 4);
+        assert!(metrics.max_3prime_complementary_run_bp >= 4);
+    }
+
+    #[test]
+    fn test_primer_pair_scoring_penalizes_dimer_prone_pairs() {
+        let forward = PrimerDesignPrimerRecord {
+            sequence: "ATGCGTACGCGTACGCGTAC".to_string(),
+            start_0based: 10,
+            end_0based_exclusive: 31,
+            tm_c: 62.0,
+            gc_fraction: 0.57,
+            anneal_hits: 1,
+            ..PrimerDesignPrimerRecord::default()
+        };
+        let reverse_good = PrimerDesignPrimerRecord {
+            sequence: "TATATGCGATATATGCGATC".to_string(),
+            start_0based: 70,
+            end_0based_exclusive: 91,
+            tm_c: 62.0,
+            gc_fraction: 0.45,
+            anneal_hits: 1,
+            ..PrimerDesignPrimerRecord::default()
+        };
+        let reverse_bad = PrimerDesignPrimerRecord {
+            sequence: GentleEngine::reverse_complement(&forward.sequence),
+            start_0based: 70,
+            end_0based_exclusive: 91,
+            tm_c: 62.0,
+            gc_fraction: 0.57,
+            anneal_hits: 1,
+            ..PrimerDesignPrimerRecord::default()
+        };
+
+        let good = GentleEngine::build_primer_design_pair_record(
+            forward.clone(),
+            reverse_good,
+            40,
+            60,
+            80,
+            220,
+            3.0,
+            120,
+        )
+        .expect("good pair");
+        let bad = GentleEngine::build_primer_design_pair_record(
+            forward,
+            reverse_bad,
+            40,
+            60,
+            80,
+            220,
+            3.0,
+            120,
+        )
+        .expect("bad pair");
+        assert!(good.score > bad.score);
+        assert!(good.rule_flags.primer_pair_dimer_risk_low);
+        assert!(!bad.rule_flags.primer_pair_dimer_risk_low);
     }
 
     #[test]
@@ -26534,7 +29996,11 @@ exit 2
         let td = tempdir().unwrap();
         let mock_dir = td.path().join("mock");
         fs::create_dir_all(&mock_dir).unwrap();
-        fs::copy("test_files/tp73.ncbi.gb", mock_dir.join("NC_000001.gbwithparts")).unwrap();
+        fs::copy(
+            "test_files/tp73.ncbi.gb",
+            mock_dir.join("NC_000001.gbwithparts"),
+        )
+        .unwrap();
         let efetch_template = format!("file://{}/{{accession}}.{{rettype}}", mock_dir.display());
         let _efetch_env = EnvVarGuard::set("GENTLE_NCBI_EFETCH_URL", &efetch_template);
 
@@ -27408,7 +30874,13 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             .insert("s".to_string(), splicing_test_sequence());
         let engine = GentleEngine::from_state(state);
         let view = engine
-            .inspect_feature_expert("s", &FeatureExpertTarget::SplicingFeature { feature_id: 0 })
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::SplicingFeature {
+                    feature_id: 0,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                },
+            )
             .unwrap();
         match view {
             FeatureExpertView::Splicing(splicing) => {
@@ -27463,7 +30935,13 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         state.sequences.insert("s".to_string(), dna);
         let engine = GentleEngine::from_state(state);
         let view = engine
-            .inspect_feature_expert("s", &FeatureExpertTarget::SplicingFeature { feature_id: 0 })
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::SplicingFeature {
+                    feature_id: 0,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                },
+            )
             .expect("inspect splicing");
         let FeatureExpertView::Splicing(splicing) = view else {
             panic!("expected splicing view");
@@ -27502,7 +30980,13 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         state.sequences.insert("s".to_string(), dna);
         let engine = GentleEngine::from_state(state);
         let view = engine
-            .inspect_feature_expert("s", &FeatureExpertTarget::SplicingFeature { feature_id: 0 })
+            .inspect_feature_expert(
+                "s",
+                &FeatureExpertTarget::SplicingFeature {
+                    feature_id: 0,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                },
+            )
             .expect("inspect splicing");
         let FeatureExpertView::Splicing(splicing) = view else {
             panic!("expected splicing view");
@@ -27587,7 +31071,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         let result = engine
             .apply(Operation::RenderFeatureExpertSvg {
                 seq_id: "s".to_string(),
-                target: FeatureExpertTarget::SplicingFeature { feature_id: 0 },
+                target: FeatureExpertTarget::SplicingFeature {
+                    feature_id: 0,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                },
                 path: path_text.clone(),
             })
             .unwrap();
@@ -28968,6 +32455,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 gene_query: "MYGENE".to_string(),
                 occurrence: None,
                 output_id: Some("toy_gene".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str),
                 cache_dir: None,
             })
@@ -29030,7 +32520,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
                 "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
                 "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\tCDS\t2\t4\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
                 "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+                "chr1\tsrc\tCDS\t9\t11\t.\t+\t2\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
             ),
         )
         .unwrap();
@@ -29069,12 +32561,26 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 gene_query: "MYGENE".to_string(),
                 occurrence: None,
                 output_id: Some("toy_gene".to_string()),
+                annotation_scope: Some(GenomeAnnotationScope::Full),
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path.to_string_lossy().to_string()),
                 cache_dir: None,
             })
             .unwrap();
         assert!(extract_gene.messages.iter().any(|m| m.contains("Attached")));
         let loaded_gene = engine.state().sequences.get("toy_gene").unwrap();
+        assert_eq!(loaded_gene.name().as_deref(), Some("toy_gene"));
+        let gene_feature = loaded_gene
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+            .expect("expected extracted gene feature");
+        assert!(
+            gene_feature
+                .qualifier_values("gene_id".into())
+                .any(|value| value == "GENE1")
+        );
         let tx_feature = loaded_gene
             .features()
             .iter()
@@ -29089,6 +32595,208 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         collect_location_ranges_usize(&tx_feature.location, &mut exons);
         exons.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         assert_eq!(exons, vec![(0, 4), (8, 12)]);
+        assert!(
+            loaded_gene
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
+        );
+        assert!(
+            loaded_gene
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("cds"))
+        );
+    }
+
+    #[test]
+    fn test_extract_genome_gene_include_annotation_false_disables_projection() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\tCDS\t2\t4\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+                "chr1\tsrc\tCDS\t9\t11\t.\t+\t2\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+            ),
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let extract_gene = engine
+            .apply(Operation::ExtractGenomeGene {
+                genome_id: "ToyGenome".to_string(),
+                gene_query: "MYGENE".to_string(),
+                occurrence: None,
+                output_id: Some("toy_gene_no_annotation".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: Some(false),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let loaded_gene = engine
+            .state()
+            .sequences
+            .get("toy_gene_no_annotation")
+            .unwrap();
+        assert!(
+            loaded_gene.features().is_empty(),
+            "annotation-disabled extraction should not attach features"
+        );
+        let projection = extract_gene
+            .genome_annotation_projection
+            .as_ref()
+            .expect("genome_annotation_projection telemetry");
+        assert_eq!(projection.requested_scope, "none");
+        assert_eq!(projection.effective_scope, "none");
+        assert_eq!(projection.attached_feature_count, 0);
+        assert!(!projection.fallback_applied);
+    }
+
+    #[test]
+    fn test_extract_genome_gene_annotation_cap_falls_back_to_core() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">chr1\nACGTACGTACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            concat!(
+                "chr1\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+                "chr1\tsrc\ttranscript\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t1\t4\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"1\";\n",
+                "chr1\tsrc\tCDS\t2\t4\t.\t+\t0\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+                "chr1\tsrc\texon\t9\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\"; exon_number \"2\";\n",
+                "chr1\tsrc\tCDS\t9\t11\t.\t+\t2\tgene_id \"GENE1\"; gene_name \"MYGENE\"; transcript_id \"TX1\";\n",
+            ),
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let extract_gene = engine
+            .apply(Operation::ExtractGenomeGene {
+                genome_id: "ToyGenome".to_string(),
+                gene_query: "MYGENE".to_string(),
+                occurrence: None,
+                output_id: Some("toy_gene_cap_fallback".to_string()),
+                annotation_scope: Some(GenomeAnnotationScope::Full),
+                max_annotation_features: Some(2),
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .unwrap();
+
+        let loaded_gene = engine
+            .state()
+            .sequences
+            .get("toy_gene_cap_fallback")
+            .unwrap();
+        assert!(
+            loaded_gene
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("gene"))
+        );
+        assert!(
+            loaded_gene
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("mrna"))
+        );
+        assert!(
+            !loaded_gene
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
+        );
+        assert!(
+            !loaded_gene
+                .features()
+                .iter()
+                .any(|feature| feature.kind.to_string().eq_ignore_ascii_case("cds"))
+        );
+        let projection = extract_gene
+            .genome_annotation_projection
+            .as_ref()
+            .expect("genome_annotation_projection telemetry");
+        assert_eq!(projection.requested_scope, "full");
+        assert_eq!(projection.effective_scope, "core");
+        assert_eq!(projection.max_features_cap, Some(2));
+        assert_eq!(projection.attached_feature_count, 2);
+        assert!(projection.fallback_applied);
+        assert!(
+            projection
+                .fallback_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("fell back to core projection")
+        );
     }
 
     #[test]
@@ -29153,8 +32861,16 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 cache_dir: None,
             })
             .unwrap();
-        assert_eq!(with_annotation.created_seq_ids, vec!["toy_slice_ann".to_string()]);
-        assert!(with_annotation.messages.iter().any(|m| m.contains("Attached")));
+        assert_eq!(
+            with_annotation.created_seq_ids,
+            vec!["toy_slice_ann".to_string()]
+        );
+        assert!(
+            with_annotation
+                .messages
+                .iter()
+                .any(|m| m.contains("Attached"))
+        );
         let telemetry = with_annotation
             .genome_annotation_projection
             .as_ref()
@@ -29296,7 +33012,12 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 cache_dir: None,
             })
             .unwrap();
-        assert!(result.warnings.iter().any(|w| w.contains("fell back to core")));
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("fell back to core"))
+        );
         let telemetry = result
             .genome_annotation_projection
             .as_ref()
@@ -29309,22 +33030,26 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(telemetry.cds_attached == 0);
 
         let seq = engine.state().sequences.get("toy_slice_capped").unwrap();
-        assert!(seq
-            .features()
-            .iter()
-            .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene")));
-        assert!(seq
-            .features()
-            .iter()
-            .any(|f| f.kind.to_string().eq_ignore_ascii_case("mRNA")));
-        assert!(!seq
-            .features()
-            .iter()
-            .any(|f| f.kind.to_string().eq_ignore_ascii_case("exon")));
-        assert!(!seq
-            .features()
-            .iter()
-            .any(|f| f.kind.to_string().eq_ignore_ascii_case("CDS")));
+        assert!(
+            seq.features()
+                .iter()
+                .any(|f| f.kind.to_string().eq_ignore_ascii_case("gene"))
+        );
+        assert!(
+            seq.features()
+                .iter()
+                .any(|f| f.kind.to_string().eq_ignore_ascii_case("mRNA"))
+        );
+        assert!(
+            !seq.features()
+                .iter()
+                .any(|f| f.kind.to_string().eq_ignore_ascii_case("exon"))
+        );
+        assert!(
+            !seq.features()
+                .iter()
+                .any(|f| f.kind.to_string().eq_ignore_ascii_case("CDS"))
+        );
     }
 
     #[test]
@@ -30776,6 +34501,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 gene_query: "bla".to_string(),
                 occurrence: Some(1),
                 output_id: Some("helper_bla".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
                 catalog_path: Some(catalog_path_str.clone()),
                 cache_dir: None,
             })
@@ -30801,6 +34529,354 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(
             extract_region.created_seq_ids,
             vec!["helper_head".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_extract_rebase_enzyme_names_from_text_handles_spaced_ecori() {
+        let names = GentleEngine::extract_rebase_enzyme_names_from_text(
+            "Multiple Cloning Site (MCS); contains BamHI, SmaI and EcoR I",
+        );
+        assert!(names.iter().any(|name| name == "BamHI"));
+        assert!(names.iter().any(|name| name == "SmaI"));
+        assert!(names.iter().any(|name| name == "EcoRI"));
+    }
+
+    #[test]
+    fn test_extract_helper_region_auto_annotates_puc_mcs() {
+        for (genome_id, expected_preset, motif) in [
+            ("Helper pUC19", "pUC19", PUC19_MCS_SEQUENCE),
+            ("Helper pUC18", "pUC18", PUC18_MCS_SEQUENCE),
+        ] {
+            let td = tempdir().unwrap();
+            let root = td.path();
+            let cache_dir = root.join("cache");
+            let seq_path = root.join("helper.fa");
+            let ann_path = root.join("helper.gff3");
+            let catalog_path = root.join("helper_catalog.json");
+
+            let flank = "A".repeat(120);
+            let tail = "T".repeat(120);
+            let sequence = format!("{flank}{motif}{tail}");
+            fs::write(&seq_path, format!(">chr_helper\n{}\n", sequence.as_str())).unwrap();
+            fs::write(
+                &ann_path,
+                "##gff-version 3\nchr_helper\tGENtle\tgene\t5\t40\t.\t+\t.\tID=bla;Name=bla\n",
+            )
+            .unwrap();
+            fs::write(
+                &catalog_path,
+                format!(
+                    r#"{{
+  "{genome_id}": {{
+    "description": "synthetic helper",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                    seq_path.display(),
+                    ann_path.display(),
+                    cache_dir.display()
+                ),
+            )
+            .unwrap();
+            let catalog_path_str = catalog_path.to_string_lossy().to_string();
+            let mut engine = GentleEngine::new();
+            engine
+                .apply(Operation::PrepareGenome {
+                    genome_id: genome_id.to_string(),
+                    catalog_path: Some(catalog_path_str.clone()),
+                    cache_dir: None,
+                    timeout_seconds: None,
+                })
+                .unwrap();
+            let extract = engine
+                .apply(Operation::ExtractGenomeRegion {
+                    genome_id: genome_id.to_string(),
+                    chromosome: "chr_helper".to_string(),
+                    start_1based: 1,
+                    end_1based: sequence.len(),
+                    output_id: Some("helper_slice".to_string()),
+                    annotation_scope: None,
+                    max_annotation_features: None,
+                    include_genomic_annotation: None,
+                    catalog_path: Some(catalog_path_str),
+                    cache_dir: None,
+                })
+                .unwrap();
+            assert!(
+                extract
+                    .messages
+                    .iter()
+                    .any(|line| line.contains("Annotated helper MCS")),
+                "missing helper MCS message for {genome_id}: {:?}",
+                extract.messages
+            );
+            let helper_slice = engine.state().sequences.get("helper_slice").unwrap();
+            let mcs_features: Vec<_> = helper_slice
+                .features()
+                .iter()
+                .filter(|feature| GentleEngine::is_generated_helper_mcs_feature(feature))
+                .collect();
+            assert_eq!(mcs_features.len(), 1, "expected one generated MCS feature");
+            let mcs_feature = mcs_features[0];
+            assert_eq!(
+                GentleEngine::feature_qualifier_text(mcs_feature, "mcs_preset").as_deref(),
+                Some(expected_preset)
+            );
+            assert!(
+                GentleEngine::feature_qualifier_text(mcs_feature, "note")
+                    .as_deref()
+                    .map(|value| value.contains(PUC_MCS_EXPECTED_SITES))
+                    .unwrap_or(false)
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_helper_region_skips_mcs_annotation_when_motif_not_unique() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let cache_dir = root.join("cache");
+        let seq_path = root.join("helper.fa");
+        let ann_path = root.join("helper.gff3");
+        let catalog_path = root.join("helper_catalog.json");
+        let sequence = format!(
+            "{}{}{}{}{}",
+            "A".repeat(80),
+            PUC19_MCS_SEQUENCE,
+            "C".repeat(40),
+            PUC19_MCS_SEQUENCE,
+            "T".repeat(80)
+        );
+        fs::write(&seq_path, format!(">chr_helper\n{}\n", sequence.as_str())).unwrap();
+        fs::write(
+            &ann_path,
+            "##gff-version 3\nchr_helper\tGENtle\tgene\t5\t40\t.\t+\t.\tID=bla;Name=bla\n",
+        )
+        .unwrap();
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Helper pUC19": {{
+    "description": "synthetic helper",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                seq_path.display(),
+                ann_path.display(),
+                cache_dir.display()
+            ),
+        )
+        .unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "Helper pUC19".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let extract = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "Helper pUC19".to_string(),
+                chromosome: "chr_helper".to_string(),
+                start_1based: 1,
+                end_1based: sequence.len(),
+                output_id: Some("helper_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(
+            extract
+                .warnings
+                .iter()
+                .any(|line| line.contains("expected exactly one")),
+            "missing uniqueness warning: {:?}",
+            extract.warnings
+        );
+        let helper_slice = engine.state().sequences.get("helper_slice").unwrap();
+        assert!(
+            helper_slice
+                .features()
+                .iter()
+                .all(|feature| !GentleEngine::is_generated_helper_mcs_feature(feature))
+        );
+    }
+
+    #[test]
+    fn test_extract_helper_region_prefers_existing_mcs_annotation() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let cache_dir = root.join("cache");
+        let seq_path = root.join("helper.fa");
+        let ann_path = root.join("helper.gff3");
+        let catalog_path = root.join("helper_catalog.json");
+        let sequence = format!(
+            "{}{}{}",
+            "A".repeat(120),
+            PUC19_MCS_SEQUENCE,
+            "T".repeat(120)
+        );
+        fs::write(&seq_path, format!(">chr_helper\n{}\n", sequence.as_str())).unwrap();
+        fs::write(
+            &ann_path,
+            "##gff-version 3\nchr_helper\tGENtle\tgene\t121\t180\t.\t+\t.\tID=mcs1;Name=Multiple Cloning Site (MCS) BamHI SmaI EcoR I\n",
+        )
+        .unwrap();
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Helper pUC19": {{
+    "description": "synthetic helper",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                seq_path.display(),
+                ann_path.display(),
+                cache_dir.display()
+            ),
+        )
+        .unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "Helper pUC19".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let extract = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "Helper pUC19".to_string(),
+                chromosome: "chr_helper".to_string(),
+                start_1based: 1,
+                end_1based: sequence.len(),
+                output_id: Some("helper_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(
+            extract
+                .messages
+                .iter()
+                .any(|line| line.contains("Detected existing MCS annotation")),
+            "missing source-annotation preference message: {:?}",
+            extract.messages
+        );
+        let helper_slice = engine.state().sequences.get("helper_slice").unwrap();
+        let source_mcs = helper_slice
+            .features()
+            .iter()
+            .find(|feature| GentleEngine::feature_looks_like_mcs(feature))
+            .expect("source MCS feature");
+        let linked = GentleEngine::feature_qualifier_text(source_mcs, "mcs_expected_sites")
+            .unwrap_or_default();
+        assert!(linked.contains("BamHI"), "missing BamHI in '{linked}'");
+        assert!(linked.contains("EcoRI"), "missing EcoRI in '{linked}'");
+        assert!(linked.contains("SmaI"), "missing SmaI in '{linked}'");
+        assert!(
+            helper_slice
+                .features()
+                .iter()
+                .all(|feature| !GentleEngine::is_generated_helper_mcs_feature(feature))
+        );
+    }
+
+    #[test]
+    fn test_extract_helper_region_does_not_apply_mcs_fallback_for_non_puc_ids() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let cache_dir = root.join("cache");
+        let seq_path = root.join("helper.fa");
+        let ann_path = root.join("helper.gff3");
+        let catalog_path = root.join("helper_catalog.json");
+        let sequence = format!(
+            "{}{}{}",
+            "A".repeat(120),
+            PUC19_MCS_SEQUENCE,
+            "T".repeat(120)
+        );
+        fs::write(&seq_path, format!(">chr_helper\n{}\n", sequence.as_str())).unwrap();
+        fs::write(
+            &ann_path,
+            "##gff-version 3\nchr_helper\tGENtle\tgene\t5\t40\t.\t+\t.\tID=bla;Name=bla\n",
+        )
+        .unwrap();
+        fs::write(
+            &catalog_path,
+            format!(
+                r#"{{
+  "Helper pGEX-like": {{
+    "description": "synthetic helper",
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+                seq_path.display(),
+                ann_path.display(),
+                cache_dir.display()
+            ),
+        )
+        .unwrap();
+        let catalog_path_str = catalog_path.to_string_lossy().to_string();
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "Helper pGEX-like".to_string(),
+                catalog_path: Some(catalog_path_str.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let extract = engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "Helper pGEX-like".to_string(),
+                chromosome: "chr_helper".to_string(),
+                start_1based: 1,
+                end_1based: sequence.len(),
+                output_id: Some("helper_slice".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path_str),
+                cache_dir: None,
+            })
+            .unwrap();
+        assert!(
+            extract
+                .messages
+                .iter()
+                .all(|line| !line.contains("helper MCS")),
+            "unexpected helper MCS message: {:?}",
+            extract.messages
+        );
+        let helper_slice = engine.state().sequences.get("helper_slice").unwrap();
+        assert!(
+            helper_slice
+                .features()
+                .iter()
+                .all(|feature| !GentleEngine::is_generated_helper_mcs_feature(feature))
         );
     }
 
@@ -32463,6 +36539,630 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(track.bin_bp, 4);
         assert_eq!(track.bins.len(), 6);
         assert!(track.max_score >= track.min_score);
+    }
+
+    #[test]
+    fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
+        let td = tempdir().expect("tempdir");
+        let fasta_gz = td.path().join("reads.fa.gz");
+        write_gzip(
+            &fasta_gz,
+            ">read_1 comment\nAUGT\n>read_2\nCC\nGG\n",
+        );
+
+        let records = GentleEngine::parse_fasta_records_with_offsets(
+            fasta_gz.to_str().expect("utf-8 path"),
+        )
+        .expect("parse gzip FASTA");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].header_id, "read_1");
+        assert_eq!(records[0].sequence, b"ATGT".to_vec());
+        assert_eq!(records[1].header_id, "read_2");
+        assert_eq!(records[1].sequence, b"CCGG".to_vec());
+        assert!(records[1].source_byte_offset > records[0].source_byte_offset);
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_accepts_gzip_fasta_input() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+
+        let td = tempdir().expect("tempdir");
+        let input_gz = td.path().join("reads.fa.gz");
+        write_gzip(&input_gz, &format!(">read_1\n{read_sequence}\n"));
+
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_gz.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_gz".to_string()),
+            })
+            .expect("interpret gzip FASTA");
+
+        let report = engine
+            .get_rna_read_report("rna_reads_gz")
+            .expect("stored RNA-read report");
+        assert_eq!(report.read_count_total, 1);
+        assert_eq!(report.hits[0].header_id, "read_1");
+        assert!(report.hits[0].passed_seed_filter);
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_progress_reports_histogram_updates() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_many.fa");
+        let mut fasta = String::new();
+        for idx in 0..1001usize {
+            fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, read_sequence));
+        }
+        fs::write(&input_path, fasta).expect("write reads");
+
+        let mut progress_events = Vec::<RnaReadInterpretProgress>::new();
+        engine
+            .apply_with_progress(
+                Operation::InterpretRnaReads {
+                    seq_id: "seq_a".to_string(),
+                    seed_feature_id: feature_id,
+                    profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                    input_path: input_path.display().to_string(),
+                    input_format: RnaReadInputFormat::Fasta,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                    seed_filter: RnaReadSeedFilterConfig::default(),
+                    align_config: RnaReadAlignConfig::default(),
+                    report_id: Some("rna_reads_progress".to_string()),
+                },
+                |progress| {
+                    if let OperationProgress::RnaReadInterpret(p) = progress {
+                        progress_events.push(p);
+                    }
+                    true
+                },
+            )
+            .expect("interpret reads with progress");
+
+        assert!(!progress_events.is_empty());
+        assert_eq!(progress_events.first().map(|p| p.reads_processed), Some(0));
+        assert!(progress_events.iter().any(|p| p.reads_processed >= 1000));
+        assert!(
+            progress_events.iter().any(|p| {
+                !p.done
+                    && p.reads_total == 0
+                    && p.reads_processed >= RNA_READ_PROGRESS_UPDATE_EVERY_READS
+                    && p.score_density_bins.iter().any(|count| *count > 0)
+            }),
+            "expected non-final streaming progress event with non-empty score density bins"
+        );
+        assert!(
+            progress_events.iter().any(|p| {
+                !p.done
+                    && p.reads_total == 0
+                    && p.input_bytes_total > 0
+                    && p.input_bytes_processed > 0
+            }),
+            "expected byte-level streaming progress events while total reads are still unknown"
+        );
+        let last = progress_events.last().expect("last progress");
+        assert!(last.done);
+        assert_eq!(last.reads_processed, 1001);
+        assert_eq!(last.reads_total, 1001);
+        assert!(last.input_bytes_total > 0);
+        assert_eq!(last.input_bytes_processed, last.input_bytes_total);
+        assert!(!last.bins.is_empty());
+        assert!(
+            last.bins
+                .iter()
+                .any(|bin| bin.confirmed_plus > 0 || bin.confirmed_minus > 0)
+        );
+        assert!(!last.score_density_bins.is_empty());
+        assert!(last.score_density_bins.iter().any(|count| *count > 0));
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_cancel_check_stops_quickly() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_cancel.fa");
+        let mut fasta = String::new();
+        for idx in 0..200usize {
+            fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, read_sequence));
+        }
+        fs::write(&input_path, fasta).expect("write reads");
+
+        let mut progress_events = 0usize;
+        let mut checks = 0usize;
+        let result = engine.compute_rna_read_report_with_progress_and_cancel(
+            "seq_a",
+            feature_id,
+            RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path.to_str().expect("path"),
+            RnaReadInputFormat::Fasta,
+            SplicingScopePreset::AllOverlappingBothStrands,
+            &RnaReadSeedFilterConfig::default(),
+            &RnaReadAlignConfig::default(),
+            Some("rna_reads_cancel"),
+            &mut |_progress| {
+                progress_events = progress_events.saturating_add(1);
+                true
+            },
+            &mut || {
+                checks = checks.saturating_add(1);
+                checks <= 2
+            },
+        );
+        let err = result.expect_err("cancellation should abort run");
+        assert!(err.message.to_ascii_lowercase().contains("cancel"));
+        assert!(progress_events <= 3);
+    }
+
+    #[test]
+    fn test_rna_read_seed_hit_metrics_threshold_boundaries() {
+        let (fraction, perfect, passed) = GentleEngine::seed_hit_metrics(10, 10, 0.30);
+        assert!((fraction - 1.0).abs() < f64::EPSILON);
+        assert!(perfect);
+        assert!(passed);
+
+        let (fraction, perfect, passed) = GentleEngine::seed_hit_metrics(10, 3, 0.30);
+        assert!((fraction - 0.30).abs() < 1e-12);
+        assert!(!perfect);
+        assert!(passed);
+
+        let (fraction, perfect, passed) = GentleEngine::seed_hit_metrics(10, 2, 0.30);
+        assert!((fraction - 0.20).abs() < 1e-12);
+        assert!(!perfect);
+        assert!(!passed);
+
+        let (fraction, perfect, passed) = GentleEngine::seed_hit_metrics(0, 0, 0.30);
+        assert_eq!(fraction, 0.0);
+        assert!(!perfect);
+        assert!(!passed);
+    }
+
+    #[test]
+    fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
+        let read = b"ACGTTGCAACGT";
+        let kmer_len = 3usize;
+        let mut bins = GentleEngine::build_rna_read_seed_histogram_bins(12);
+        let histogram_index: HashMap<u32, Vec<SeedHistogramWeight>> = HashMap::new();
+
+        let mut all_seed_bits = HashSet::new();
+        for start in 0..=read.len() - kmer_len {
+            let bits = GentleEngine::encode_kmer_bits(&read[start..start + kmer_len])
+                .expect("bits");
+            all_seed_bits.insert(bits);
+        }
+        assert!(!all_seed_bits.is_empty());
+
+        let (tested_all, matched_all) = GentleEngine::count_seed_hits_in_window_with_histogram(
+            read,
+            kmer_len,
+            &all_seed_bits,
+            &histogram_index,
+            &mut bins,
+        );
+        assert!(tested_all > 0);
+        assert_eq!(matched_all, tested_all);
+        let (fraction_all, perfect_all, passed_all) =
+            GentleEngine::seed_hit_metrics(tested_all, matched_all, 0.30);
+        assert!((fraction_all - 1.0).abs() < 1e-12);
+        assert!(perfect_all);
+        assert!(passed_all);
+
+        let empty_seed_index = HashSet::new();
+        let (tested_none, matched_none) = GentleEngine::count_seed_hits_in_window_with_histogram(
+            read,
+            kmer_len,
+            &empty_seed_index,
+            &histogram_index,
+            &mut bins,
+        );
+        assert_eq!(tested_none, tested_all);
+        assert_eq!(matched_none, 0);
+        let (fraction_none, perfect_none, passed_none) =
+            GentleEngine::seed_hit_metrics(tested_none, matched_none, 0.30);
+        assert_eq!(fraction_none, 0.0);
+        assert!(!perfect_none);
+        assert!(!passed_none);
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_populates_exon_and_junction_support_frequencies() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads.fa");
+        fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_support".to_string()),
+            })
+            .expect("interpret reads");
+        let report = engine
+            .get_rna_read_report("rna_reads_support")
+            .expect("report");
+        assert!(!report.exon_support_frequencies.is_empty());
+        assert!(
+            report
+                .exon_support_frequencies
+                .iter()
+                .any(|row| row.support_read_count > 0)
+        );
+        assert!(!report.junction_support_frequencies.is_empty());
+    }
+
+    #[test]
+    fn test_export_rna_read_sample_sheet_writes_frequency_columns() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads.fa");
+        fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_sheet".to_string()),
+            })
+            .expect("interpret reads");
+        let sheet_path = td.path().join("sample_sheet.tsv");
+        let export = engine
+            .export_rna_read_sample_sheet(
+                sheet_path.to_str().expect("sheet path"),
+                Some("seq_a"),
+                &[],
+                false,
+            )
+            .expect("export sample sheet");
+        assert_eq!(export.report_count, 1);
+        let text = fs::read_to_string(&sheet_path).expect("read sample sheet");
+        assert!(text.contains("exon_support_frequencies_json"));
+        assert!(text.contains("junction_support_frequencies_json"));
+        assert!(text.contains("rna_reads_sheet"));
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_many.fa");
+        let mut fasta = String::new();
+        for idx in 0..5105usize {
+            fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, read_sequence));
+        }
+        fs::write(&input_path, fasta).expect("write reads");
+
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_top5000".to_string()),
+            })
+            .expect("interpret reads");
+        let report = engine
+            .get_rna_read_report("rna_reads_top5000")
+            .expect("report");
+        assert_eq!(report.read_count_total, 5105);
+        assert_eq!(report.hits.len(), 5000);
+        assert_eq!(report.read_count_seed_passed, 5105);
+        assert_eq!(report.read_count_aligned, 5105);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("retained_top_hits=5000"))
+        );
+        assert_eq!(
+            report.hits.iter().map(|hit| hit.record_index).max(),
+            Some(4999)
+        );
+    }
+
+    #[test]
+    fn test_export_rna_seed_hash_catalog_writes_hash_sequences_and_positions() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let td = tempdir().expect("tempdir");
+        let output_path = td.path().join("seed_hash_catalog.tsv");
+        let mut seed_filter = RnaReadSeedFilterConfig::default();
+        seed_filter.kmer_len = 9;
+        let (rows, unique_hashes) = engine
+            .export_rna_seed_hash_catalog(
+                "seq_a",
+                feature_id,
+                SplicingScopePreset::AllOverlappingBothStrands,
+                &seed_filter,
+                output_path.to_str().expect("catalog path"),
+            )
+            .expect("export seed hash catalog");
+        assert!(rows > 0);
+        assert!(unique_hashes > 0);
+        let text = fs::read_to_string(&output_path).expect("read seed hash catalog");
+        assert!(text.contains("seed_bits"));
+        assert!(text.contains("kmer_sequence"));
+        assert!(text.contains("genomic_pos_1based"));
+    }
+
+    #[test]
+    fn test_collect_rna_seed_hash_catalog_rows_deduplicates_overlapping_templates() {
+        let kmer_len = 3usize;
+        let bits = GentleEngine::encode_kmer_bits(b"ACG").expect("seed bits");
+        let template_a = SplicingTranscriptTemplate {
+            transcript_feature_id: 10,
+            transcript_id: "tx_a".to_string(),
+            transcript_label: "tx_a".to_string(),
+            strand: "+".to_string(),
+            sequence: b"ACG".to_vec(),
+            genomic_positions_1based: vec![100, 101, 102],
+            kmer_positions: HashMap::from([(bits, vec![0])]),
+        };
+        let template_b = SplicingTranscriptTemplate {
+            transcript_feature_id: 11,
+            transcript_id: "tx_b".to_string(),
+            transcript_label: "tx_b".to_string(),
+            strand: "+".to_string(),
+            sequence: b"ACG".to_vec(),
+            genomic_positions_1based: vec![100, 101, 102],
+            kmer_positions: HashMap::from([(bits, vec![0])]),
+        };
+        let rows =
+            GentleEngine::collect_rna_seed_hash_catalog_rows(&[template_a, template_b], kmer_len);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].seed_bits, bits);
+        assert_eq!(rows[0].kmer_sequence, "ACG");
+        assert_eq!(rows[0].genomic_pos_1based, 100);
+    }
+
+    #[test]
+    fn test_build_rna_read_seed_histogram_index_deduplicates_shared_template_positions() {
+        let bits = GentleEngine::encode_kmer_bits(b"ACG").expect("seed bits");
+        let template_a = SplicingTranscriptTemplate {
+            transcript_feature_id: 10,
+            transcript_id: "tx_a".to_string(),
+            transcript_label: "tx_a".to_string(),
+            strand: "+".to_string(),
+            sequence: b"ACG".to_vec(),
+            genomic_positions_1based: vec![100, 101, 102],
+            kmer_positions: HashMap::from([(bits, vec![0])]),
+        };
+        let template_b = SplicingTranscriptTemplate {
+            transcript_feature_id: 11,
+            transcript_id: "tx_b".to_string(),
+            transcript_label: "tx_b".to_string(),
+            strand: "+".to_string(),
+            sequence: b"ACG".to_vec(),
+            genomic_positions_1based: vec![100, 101, 102],
+            kmer_positions: HashMap::from([(bits, vec![0])]),
+        };
+        let bins = GentleEngine::build_rna_read_seed_histogram_bins(300);
+        let histogram = GentleEngine::build_rna_read_seed_histogram_index(
+            &[template_a, template_b],
+            300,
+            &bins,
+        );
+        let weights = histogram.get(&bits).expect("weights for seed bit");
+        assert_eq!(weights.len(), 1);
+        assert_eq!(weights[0].weight, 1);
     }
 
     #[test]

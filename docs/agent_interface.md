@@ -178,7 +178,7 @@ In short:
 Example command suggestions (valid through Agent Assistant execution path):
 
 - `genomes blast "Human GRCh38 Ensembl 116" ACGTACGT --task blastn-short --max-hits 20`
-- `helpers blast-track "Plasmid pUC19 (local)" ACGTACGT seq1 --track-name primer_offtarget --clear-existing`
+- `helpers blast-track "Plasmid pUC19 (online)" ACGTACGT seq1 --track-name primer_offtarget --clear-existing`
 
 ## Safety and governance notes
 

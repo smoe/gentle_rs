@@ -1,5 +1,5 @@
 {
-   "command_count": 197,
+   "command_count": 202,
    "commands": [
       {
          "aliases": [
@@ -1049,6 +1049,18 @@
             "gui-shell",
             "cli-direct"
          ],
+         "path": "primers preflight",
+         "summary": "Probe Primer3 backend reachability/version for the selected backend/executable settings.",
+         "usage": "primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
          "path": "primers seed-from-feature",
          "summary": "Resolve one feature ROI and emit seeded DesignPrimerPairs/DesignQpcrAssays operation payloads.",
          "usage": "primers seed-from-feature SEQ_ID FEATURE_ID"
@@ -1212,6 +1224,72 @@
          "path": "flex show",
          "summary": "Inspect one persisted flexibility track payload by ID.",
          "usage": "flex show TRACK_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "InterpretRnaReads"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads interpret",
+         "summary": "Interpret RNA reads (Nanopore cDNA phase-1 profile) against splicing-derived transcript templates.",
+         "usage": "rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads list-reports",
+         "summary": "List persisted RNA-read interpretation reports.",
+         "usage": "rna-reads list-reports [SEQ_ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads show-report",
+         "summary": "Inspect one persisted RNA-read interpretation report by ID.",
+         "usage": "rna-reads show-report REPORT_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadReport"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-report",
+         "summary": "Write one persisted RNA-read interpretation report to JSON.",
+         "usage": "rna-reads export-report REPORT_ID OUTPUT.json"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadHitsFasta"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-hits-fasta",
+         "summary": "Export selected interpreted RNA-read hit sequences to FASTA.",
+         "usage": "rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
       },
       {
          "aliases": [],

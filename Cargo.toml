@@ -6,7 +6,7 @@ keywords = ["plasmid", "vector", "primer", "biology", "pcr", "cloning"]
 categories = ["science", "science::bioinformatics"]
 repository = "https://github.com/magnusmanske/gentle_rs/"
 readme = "README.md"
-version = "0.1.0-internal.1"
+version = "0.1.0-internal.2"
 edition = "2024"
 default-run = "gentle"
 build = "build.rs"
@@ -94,6 +94,7 @@ sha1 = "0.10"
 rustyline = "*"
 mlua = { version = "*", features = ["lua54", "vendored", "serialize"] }
 deno_core = "*"
+deno_error = "*"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.5.2"

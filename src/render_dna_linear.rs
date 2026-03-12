@@ -16,7 +16,8 @@ use crate::{
     render_dna::RestrictionEnzymePosition,
 };
 use eframe::egui::{
-    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, Vec2,
+    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind,
+    Vec2,
 };
 use gb_io::seq::Feature;
 use std::collections::{BTreeSet, HashMap};
@@ -31,6 +32,7 @@ const MIN_FEATURE_GAP: f32 = 4.0;
 const MIN_BASELINE_MARGIN: f32 = 8.0;
 const BASELINE_TOP_PADDING: f32 = 26.0;
 const BASELINE_BOTTOM_PADDING: f32 = 24.0;
+const BASELINE_VISIBILITY_MARGIN: f32 = 10.0;
 const BASELINE_SIDE_MIN_EXTENT: f32 = 20.0;
 const LABEL_ROW_HEIGHT: f32 = 12.0;
 const LABEL_CHAR_WIDTH: f32 = 6.5;
@@ -1006,11 +1008,24 @@ impl RenderDnaLinear {
         let baseline = self.area.top() + BASELINE_TOP_PADDING + reserved_half + top_target_extent;
         let baseline_min = self.area.top() + BASELINE_TOP_PADDING + reserved_half;
         let baseline_max = self.area.bottom() - BASELINE_BOTTOM_PADDING - reserved_half;
-        self.baseline_y = if baseline_min <= baseline_max {
+        let baseline_without_offset = if baseline_min <= baseline_max {
             baseline.clamp(baseline_min, baseline_max)
         } else {
             self.area.center().y
-        } + vertical_offset_px;
+        };
+        let visible_top = self.area.top() + BASELINE_VISIBILITY_MARGIN;
+        let visible_bottom = self.area.bottom() - BASELINE_VISIBILITY_MARGIN;
+        let effective_vertical_offset_px =
+            if visible_top.is_finite() && visible_bottom.is_finite() && visible_top <= visible_bottom
+            {
+                vertical_offset_px.clamp(
+                    visible_top - baseline_without_offset,
+                    visible_bottom - baseline_without_offset,
+                )
+            } else {
+                vertical_offset_px
+            };
+        self.baseline_y = baseline_without_offset + effective_vertical_offset_px;
 
         let top_scale = if top_natural_extent > 0.0 {
             (top_target_extent / top_natural_extent).clamp(0.1, 1.0)
@@ -1282,12 +1297,7 @@ impl RenderDnaLinear {
         if status.active_mode == SequenceBaseRenderMode::Condensed10Row {
             return false;
         }
-        let hide_when_bases_visible = self
-            .display
-            .read()
-            .map(|display| display.linear_hide_backbone_when_sequence_bases_visible())
-            .unwrap_or(false);
-        !(hide_when_bases_visible && status.bases_visible())
+        true
     }
 
     fn draw_backbone(&self, painter: &egui::Painter, viewport: LinearViewport) {
@@ -2111,7 +2121,7 @@ impl RenderDnaLinear {
                     Stroke::new(1.5, Color32::WHITE)
                 };
                 for exon_rect in &feature.exon_rects {
-                    painter.rect_stroke(exon_rect.expand(1.0), 2.0, stroke);
+                    painter.rect_stroke(exon_rect.expand(1.0), 2.0, stroke, StrokeKind::Inside);
                 }
             }
 
@@ -2224,6 +2234,7 @@ impl RenderDnaLinear {
                 label_bg,
                 2.0,
                 Stroke::new(1.0, feature.color.gamma_multiply(0.75)),
+                StrokeKind::Inside,
             );
             painter.text(
                 label_bg.center(),
@@ -2370,15 +2381,16 @@ impl RenderDnaLinear {
             return;
         }
 
-        self.draw_name_and_length(ui.painter(), viewport);
-        self.draw_gc_contents(ui.painter(), viewport);
-        self.draw_methylation_sites(ui.painter(), viewport, detail);
-        self.draw_backbone(ui.painter(), viewport);
-        self.draw_bp_ticks(ui.painter(), viewport);
-        self.draw_sequence_bases(ui.painter(), viewport);
-        self.draw_open_reading_frames(ui.painter(), viewport, detail);
-        self.draw_features(ui.painter(), detail);
-        self.draw_restriction_enzyme_sites(ui.painter(), viewport, detail);
+        let painter = ui.painter_at(self.area);
+        self.draw_name_and_length(&painter, viewport);
+        self.draw_gc_contents(&painter, viewport);
+        self.draw_methylation_sites(&painter, viewport, detail);
+        self.draw_backbone(&painter, viewport);
+        self.draw_bp_ticks(&painter, viewport);
+        self.draw_sequence_bases(&painter, viewport);
+        self.draw_open_reading_frames(&painter, viewport, detail);
+        self.draw_features(&painter, detail);
+        self.draw_restriction_enzyme_sites(&painter, viewport, detail);
     }
 }
 
@@ -2436,6 +2448,32 @@ mod tests {
         shifted_renderer.layout_features(viewport);
         let delta = shifted_renderer.baseline_y() - base_renderer.baseline_y();
         assert!((delta - 48.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn baseline_clamps_extreme_vertical_offset_to_keep_dna_visible() {
+        let mut renderer = test_renderer(1200);
+        {
+            let mut display = renderer.display.write().expect("display");
+            display.set_linear_view_vertical_offset_px(10_000.0);
+        }
+        renderer.layout_features(LinearViewport {
+            start: 0,
+            end: 1200,
+            span: 1200,
+        });
+        let baseline_y = renderer.baseline_y();
+        let area = renderer.area;
+        assert!(
+            baseline_y >= area.top() + BASELINE_VISIBILITY_MARGIN - 0.01,
+            "baseline_y={baseline_y} area_top={}",
+            area.top()
+        );
+        assert!(
+            baseline_y <= area.bottom() - BASELINE_VISIBILITY_MARGIN + 0.01,
+            "baseline_y={baseline_y} area_bottom={}",
+            area.bottom()
+        );
     }
 
     #[test]

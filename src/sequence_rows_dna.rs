@@ -4,7 +4,7 @@ use crate::{
     dna_display::DnaDisplay, dna_sequence::DNAsequence, iupac_code::IupacCode,
     render_sequence::RenderSequence,
 };
-use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, Vec2};
+use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use std::sync::{Arc, RwLock};
 
 const MAX_SEQUENCE_PANEL_BP: usize = 100_000;
@@ -164,6 +164,7 @@ impl RowDna {
                                 0.0,
                                 Color32::LIGHT_GRAY,
                                 Stroke::NONE,
+                                StrokeKind::Inside,
                             );
                         }
                     }

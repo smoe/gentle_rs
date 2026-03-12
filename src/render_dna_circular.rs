@@ -286,11 +286,11 @@ impl RenderDnaCircular {
         if !Self::is_rect_usable(self.area) {
             return;
         }
+        let painter = ui.painter_at(self.area);
 
         if self.sequence_length <= 0 {
-            let painter = ui.painter();
-            self.draw_main_label(painter);
-            self.draw_bp(painter);
+            self.draw_main_label(&painter);
+            self.draw_bp(&painter);
             return;
         }
 
@@ -299,17 +299,16 @@ impl RenderDnaCircular {
             self.layout_was_updated();
         }
 
-        let painter = ui.painter();
-        self.draw_selection(painter);
-        self.draw_backbone(painter);
-        self.draw_gc_contents(painter);
-        self.draw_methylation_sites(painter);
-        self.draw_main_label(painter);
-        self.draw_bp(painter);
-        self.draw_open_reading_frames(painter);
-        self.draw_restriction_enzyme_sites(painter);
-        self.draw_features(painter);
-        self.draw_hovered_feature(painter);
+        self.draw_selection(&painter);
+        self.draw_backbone(&painter);
+        self.draw_gc_contents(&painter);
+        self.draw_methylation_sites(&painter);
+        self.draw_main_label(&painter);
+        self.draw_bp(&painter);
+        self.draw_open_reading_frames(&painter);
+        self.draw_restriction_enzyme_sites(&painter);
+        self.draw_features(&painter);
+        self.draw_hovered_feature(&painter);
     }
 
     /// Draws a filled circular section

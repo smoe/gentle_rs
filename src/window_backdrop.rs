@@ -23,6 +23,16 @@ const DEFAULT_POOL_TINT_RGB: [u8; 3] = [148, 95, 58];
 const DEFAULT_CONFIGURATION_TINT_RGB: [u8; 3] = [169, 118, 79];
 const DEFAULT_HELP_TINT_RGB: [u8; 3] = [141, 92, 56];
 const BACKDROP_TEXTURE_HINT_PX: f32 = 1024.0;
+const BACKDROP_IMAGE_TINT_RGB: [u8; 3] = [255, 252, 214];
+const BACKDROP_TINT_BRIGHTEN_GAMMA: f32 = 1.18;
+const BACKDROP_IMAGE_OPACITY_SCALE: f32 = 0.50;
+const BACKDROP_TINT_OPACITY_SCALE: f32 = 0.42;
+const BACKDROP_WARM_ACCENT_BLEND: f32 = 0.28;
+const BACKDROP_WARM_ACCENT_RGB: [u8; 3] = [255, 230, 156];
+const BACKDROP_BASE_FILL_RGB: [u8; 3] = [247, 243, 232];
+const BACKDROP_BASE_ACCENT_BLEND: f32 = 0.10;
+const BACKDROP_CONTENT_VEIL_RGB: [u8; 3] = [251, 249, 242];
+const BACKDROP_OVERDRAW_PX: f32 = 2.0;
 
 fn default_main_image_path() -> String {
     DEFAULT_MAIN_IMAGE_PATH.to_string()
@@ -272,6 +282,39 @@ fn alpha_to_u8(opacity: f32) -> u8 {
     (opacity.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
+fn kind_image_opacity_scale(kind: WindowBackdropKind) -> f32 {
+    match kind {
+        WindowBackdropKind::Main => 0.86,
+        WindowBackdropKind::Sequence => 0.40,
+        WindowBackdropKind::Splicing => 0.28,
+        WindowBackdropKind::Pool => 0.35,
+        WindowBackdropKind::Configuration => 0.48,
+        WindowBackdropKind::Help => 0.44,
+    }
+}
+
+fn kind_tint_opacity_scale(kind: WindowBackdropKind) -> f32 {
+    match kind {
+        WindowBackdropKind::Main => 0.64,
+        WindowBackdropKind::Sequence => 0.40,
+        WindowBackdropKind::Splicing => 0.34,
+        WindowBackdropKind::Pool => 0.38,
+        WindowBackdropKind::Configuration => 0.50,
+        WindowBackdropKind::Help => 0.46,
+    }
+}
+
+fn kind_content_veil_opacity(kind: WindowBackdropKind) -> f32 {
+    match kind {
+        WindowBackdropKind::Main => 0.24,
+        WindowBackdropKind::Sequence => 0.48,
+        WindowBackdropKind::Splicing => 0.58,
+        WindowBackdropKind::Pool => 0.50,
+        WindowBackdropKind::Configuration => 0.40,
+        WindowBackdropKind::Help => 0.38,
+    }
+}
+
 fn backdrop_texture_hint() -> Vec2 {
     Vec2::splat(BACKDROP_TEXTURE_HINT_PX)
 }
@@ -492,16 +535,58 @@ pub fn paint_window_backdrop(
         return;
     }
 
-    let rect = ui.max_rect();
-    let accent = settings.tint_color_for_kind(kind);
-    let tint_alpha = alpha_to_u8(settings.tint_opacity);
-    let image_alpha = alpha_to_u8(settings.image_opacity);
+    // Overdraw slightly to avoid thin panel-edge seams from backend sampling/frame rounding.
+    let rect = ui.max_rect().expand(BACKDROP_OVERDRAW_PX);
+    // Keep a warm, low-contrast palette even when backend color management changes.
+    let base_accent = settings.tint_color_for_kind(kind);
+    let blend = BACKDROP_WARM_ACCENT_BLEND.clamp(0.0, 1.0);
+    let mixed_r = ((base_accent.r() as f32 * (1.0 - blend))
+        + (BACKDROP_WARM_ACCENT_RGB[0] as f32 * blend))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let mixed_g = ((base_accent.g() as f32 * (1.0 - blend))
+        + (BACKDROP_WARM_ACCENT_RGB[1] as f32 * blend))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let mixed_b = ((base_accent.b() as f32 * (1.0 - blend))
+        + (BACKDROP_WARM_ACCENT_RGB[2] as f32 * blend))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let accent = Color32::from_rgb(mixed_r, mixed_g, mixed_b)
+        .gamma_multiply(BACKDROP_TINT_BRIGHTEN_GAMMA);
+    let tint_alpha = alpha_to_u8(
+        settings.tint_opacity * BACKDROP_TINT_OPACITY_SCALE * kind_tint_opacity_scale(kind),
+    );
+    let image_alpha = alpha_to_u8(
+        settings.image_opacity * BACKDROP_IMAGE_OPACITY_SCALE * kind_image_opacity_scale(kind),
+    );
     let painter = ui.painter_at(rect);
+
+    // Provide a deterministic light base so image/tint do not blend against a dark panel clear color.
+    let base_blend = BACKDROP_BASE_ACCENT_BLEND.clamp(0.0, 1.0);
+    let base_r = ((BACKDROP_BASE_FILL_RGB[0] as f32 * (1.0 - base_blend))
+        + (accent.r() as f32 * base_blend))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let base_g = ((BACKDROP_BASE_FILL_RGB[1] as f32 * (1.0 - base_blend))
+        + (accent.g() as f32 * base_blend))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    let base_b = ((BACKDROP_BASE_FILL_RGB[2] as f32 * (1.0 - base_blend))
+        + (accent.b() as f32 * base_blend))
+        .round()
+        .clamp(0.0, 255.0) as u8;
+    painter.rect_filled(rect, 0.0, Color32::from_rgb(base_r, base_g, base_b));
 
     if settings.draw_images && image_alpha > 0 {
         let path = settings.image_path_for_kind(kind).trim();
         if let Some(resolved_uri) = resolve_runtime_asset_uri(path) {
-            let image_tint = Color32::from_rgba_unmultiplied(196, 196, 196, image_alpha);
+            let image_tint = Color32::from_rgba_unmultiplied(
+                BACKDROP_IMAGE_TINT_RGB[0],
+                BACKDROP_IMAGE_TINT_RGB[1],
+                BACKDROP_IMAGE_TINT_RGB[2],
+                image_alpha,
+            );
             match egui::Image::new(resolved_uri)
                 .show_loading_spinner(false)
                 // Use a stable texture-size hint instead of current viewport dimensions,
@@ -529,6 +614,20 @@ pub fn paint_window_backdrop(
             rect,
             0.0,
             Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), tint_alpha),
+        );
+    }
+
+    let veil_alpha = alpha_to_u8(kind_content_veil_opacity(kind));
+    if veil_alpha > 0 {
+        painter.rect_filled(
+            rect,
+            0.0,
+            Color32::from_rgba_unmultiplied(
+                BACKDROP_CONTENT_VEIL_RGB[0],
+                BACKDROP_CONTENT_VEIL_RGB[1],
+                BACKDROP_CONTENT_VEIL_RGB[2],
+                veil_alpha,
+            ),
         );
     }
 

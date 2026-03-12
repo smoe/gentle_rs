@@ -57,6 +57,8 @@ Tabs:
     - styling editor is a table (`Window`, `Tint`, `Path`, `Actions`)
     - row actions include `Browse...`, `Clear`, and `Reset Color`
     - tint/image opacity controls
+    - backdrop compositing keeps a warm/yellow visual tone by default even
+      under newer `egui` color-management behavior
   - Applies to sequence windows through the shared engine display state.
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
@@ -102,6 +104,22 @@ Sequence window screenshot:
 
 ![GENtle sequence window](screenshots/screenshot_GUI_sequence.png)<br>
 *Figure: Sequence window with map and sequence panels.*
+
+Primary map modes (linear topology):
+
+- `Standard map`
+  - regular linear feature-map rendering
+- `Splicing map`
+  - transcript/exon lane rendering for selected `mRNA`/`exon` features
+- `Dotplot map`
+  - bounded local self-dotplot workflow for promoter-scale inspection
+  - default compute span uses viewport-centered `half_window_bp=500` (±500 bp)
+  - optional paired flexibility-track panel (`AT richness` / `AT skew`)
+  - linked crosshair:
+    - hover for live `x/y` coordinates in the plotted span
+    - click to lock crosshair and sync shared sequence selection to the
+      corresponding interval
+    - right-click to clear the locked crosshair
 
 Linear map zoom detail:
 
@@ -157,15 +175,20 @@ Feature tree grouping:
 - The feature-tree pane is horizontally resizable; when narrowed, the tree uses
   horizontal scrolling for long labels.
 - For large/feature-dense sequences, initial feature-tree/detail rendering can
-  be deferred to improve window-open responsiveness; use `Load feature tree now`
-  in the left pane to enable full tree/details rendering on demand.
+  be deferred to improve window-open responsiveness and is then auto-loaded on
+  the next frame (no manual button click required).
 - Feature detail text remains below the feature tree in the left pane and uses
   the configurable feature-detail font size.
+- The feature tree/details pane is top-aligned with the map and stretched to
+  fill map-panel height, so no unused bottom gap is left above the sequence
+  text panel.
 - When multi-selection is active, the feature-tree header shows a
   `Multi-select active (N)` chip and a one-click `Clear multi-select` action.
 - Right-clicking a feature row opens per-feature actions:
   - `Focus feature (current zoom)`
   - `Fit feature in view` (linear map mode)
+  - `Use as promoter anchor (Engine Ops)` for `mRNA`/`transcript` rows
+    (seeds anchored extraction defaults with strand-aware boundary/direction)
 - `Filter` narrows all feature rows in the tree.
   - free text searches kind/label/range and selected qualifiers
   - scoped terms are supported:
@@ -207,6 +230,35 @@ Feature tree grouping:
   - `Send Group ROI -> Primer/qPCR`
   - seeds ROI start/end fields in Engine Ops primer and qPCR design forms from
     the current splicing-group genomic bounds.
+- The splicing expert window also includes `Nanopore cDNA interpretation`:
+  - phase-1 FASTA input run panel for `InterpretRnaReads`
+    (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
+  - input FASTA path can be selected via file picker (`Browse...`) in addition
+    to manual path entry
+  - default splicing scope is broad (`all overlapping / both strands`) with
+    optional narrowing presets
+  - advanced seed/alignment constants are editable (`k=9`, `420`, `140x3`,
+    `min-hit=0.30` defaults)
+  - run executes asynchronously (non-blocking UI) with live read-progress
+    indicators
+  - running seed-confirmation histogram is updated every 1000 reads and shown as
+    genomic-position bars (`+` strand upward, `-` strand downward)
+  - bar heights use a square-root scale so low-frequency bins remain visible
+    while high-frequency bins are still comparable
+  - red seed-anchor dots are overlaid on the histogram baseline (`+` above,
+    `-` below) with hover details (hash bits, sequence, genomic position,
+    transcript)
+  - exon spans are overlaid in the same histogram (green top guide segments)
+    for direct seed-location vs exon-context inspection
+  - `Best-performing reads so far` is shown live during execution; selecting a
+    row recomputes that read's seed hashes in-window and highlights supported
+    positions in green with a displayed recompute time
+  - a `Seed hash preview` panel lists representative seed rows in-window and
+    full detail remains exportable via `Export Seed Hash Catalog (TSV)...`
+  - `Export RNA sample sheet ...` writes a TSV summary for current-sequence
+    reports, including exon/junction support-frequency JSON columns
+  - executes read-only interpretation/report generation (no direct feature
+    mutation).
 
 Circular map label behavior:
 
@@ -260,6 +312,11 @@ Patterns menu:
     - `macros template-import PATH` (auto-import linked template)
     - `macros template-run TEMPLATE_NAME --bind ... --validate-only`
     - `macros template-run TEMPLATE_NAME --bind ... --transactional`
+  - Gibson topology guard:
+    - sequence bindings show live topology (`sequence | linear|circular | N bp`)
+    - if a Gibson input is circular, preflight and execution are blocked
+    - `Linearize Vector...` creates a branched copy, sets topology to linear,
+      and auto-rebinds that routine input
   - export stage uses shared process artifact route:
     - `export-run-bundle OUTPUT.run_bundle.json`
 - `Patterns -> Routine catalog`
@@ -375,6 +432,13 @@ The top toolbar in each DNA window provides these controls (left to right):
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).
 19. Engine Ops
    - Shows/hides strict operation controls for explicit engine workflows.
+   - Digest quick-fill actions:
+     - `Use MCS enzymes`: fills digest enzyme list from MCS feature context
+       (normalized to REBASE canonical names).
+     - `Single-cutters (REBASE)`: fills digest list with enzymes cutting exactly
+       once in the active sequence.
+     - `Single-cutters in CDS`: same single-cutter filter constrained to
+       cleavage positions inside CDS features.
 20. Shell
    - Shows/hides the in-window GENtle Shell panel.
    - Uses the same shared command parser/executor as `gentle_cli shell`.
@@ -1011,6 +1075,20 @@ in-silico selection outputs.
 The Engine Ops panel includes `Primer and qPCR design reports` for explicit
 `DesignPrimerPairs` and `DesignQpcrAssays` execution on the active sequence.
 
+Primer backend/preflight controls:
+
+- dedicated `Primer backend and Primer3 preflight` block above the design forms
+- configurable fields:
+  - `backend` (`auto` / `internal` / `primer3`)
+  - `primer3 executable` (path, default `primer3_core`)
+- actions:
+  - `Apply Primer Backend` (persists `primer_design_backend` and
+    `primer3_executable` engine parameters)
+  - `Probe Primer3` (runs availability/version probe and reports status)
+  - `Reload from Engine` (refreshes controls from current engine parameters)
+- preflight status line reports reachability, resolved executable, backend, and
+  probe timing.
+
 Primer pairs form:
 
 - ROI and amplicon controls:
@@ -1021,7 +1099,9 @@ Primer pairs form:
 - side constraints (`Forward side`, `Reverse side`):
   - core fields: length bounds, optional location/start/end, Tm bounds, GC bounds,
     `max anneal hits`
+  - default length bounds in GUI forms: `20..30`
   - sequence constraints:
+    - `5' tail (non-annealing)` (e.g. restriction site/adaptor prefix)
     - `fixed 5'`, `fixed 3'`
     - `required motifs`, `forbidden motifs` (comma-separated IUPAC motifs)
     - `locked positions` as `offset:base,offset:base`
@@ -1054,6 +1134,14 @@ Buttons:
 
 Both operations persist reports into project metadata (same report store used by
 CLI/shared-shell `primers ...` commands).
+
+Heuristic guidance surfaced in reports/warnings:
+
+- primer ranking prefers `20..30 bp` side lengths and similar primer Tm
+- 3' GC clamp (`G/C`) is preferred but not hard-required
+- penalties are applied for homopolymer/self-complementary runs and primer-dimer risk
+- anneal `Tm/GC/hits` ignore non-annealing 5' tails; dimer/structure diagnostics still use full oligo sequence
+- `Show report_id` includes top-candidate clamp/dimer diagnostics in the status line
 
 ## Anchored Region Extraction (Engine Ops)
 
@@ -1182,13 +1270,14 @@ Reference-genome workflow is split into separate dialogs (masks) launched from
 the main project window menu. `Prepare Reference Genome...` opens as its own
 standalone window/viewport (not embedded in the project canvas):
 
-- `File -> Prepare Reference Genome...` (or `Genome -> Prepare Reference Genome...`)
-- `File -> Prepared References...` (or `Genome -> Prepared References...`)
-- `File -> Retrieve Genome Sequence...` (or `Genome -> Retrieve Genome Sequence...`)
-- `File -> BLAST Genome Sequence...` (or `Genome -> BLAST Genome Sequence...`)
-- `File -> Prepare Helper Genome...` (or `Genome -> Prepare Helper Genome...`)
-- `File -> Retrieve Helper Sequence...` (or `Genome -> Retrieve Helper Sequence...`)
-- `File -> BLAST Helper Sequence...` (or `Genome -> BLAST Helper Sequence...`)
+- `Genome -> Prepare Reference Genome...`
+- `Genome -> Prepared References...`
+- `Genome -> Retrieve Genomic Sequence...`
+- `Genome -> BLAST Genome Sequence...`
+- `Genome -> Prepare Helper Genome...`
+- `Genome -> Retrieve Helper Sequence...`
+- `Genome -> BLAST Helper Sequence...`
+- `Genome -> Import Genome Track...`
 - `File -> Agent Assistant...`
 
 Recommended flow:
@@ -1208,7 +1297,7 @@ Recommended flow:
      resolution fails (for example wrong GTF path), the next retry reuses the
      local FASTA instead of downloading it again
 2. Extract a region when needed:
-   - open `Retrieve Genome Sequence...`
+   - open `Retrieve Genomic Sequence...`
    - select the same `genome` from dropdown
    - retrieval dropdown lists only genomes already prepared in the selected
      `catalog` + `cache_dir`
@@ -1218,11 +1307,22 @@ Recommended flow:
    - tune `Top matches` to cap candidate scanning on very large genomes
    - browse candidates page-by-page (`Prev`/`Next`) to avoid rendering huge lists
    - click a filtered gene to auto-fill `chr`, `start_1based`, `end_1based`
-   - optionally edit coordinates and set `output_id`
-   - `include genomic annotation` is enabled by default for explicit region extraction
-     and attaches overlapping gene/transcript annotation when available
+   - selecting a gene also auto-fills a deterministic default `output_id`
+     (`<genome>_<gene>_<start>_<end>`); you can still override it manually
+   - annotation transfer controls for genome extraction:
+     - `include genomic annotation` (default on)
+     - `annotation scope` (`none` / `core` / `full`)
+     - optional `max annotation features` cap (empty = unlimited, `0` = explicit unlimited)
+   - extraction status reports structured annotation projection outcome
+     (`requested/effective scope`, attached/dropped feature counts,
+     attached gene/transcript/exon/CDS counts, optional fallback reason)
    - click `Extract Selected Gene` (engine op `ExtractGenomeGene`) or
      `Extract Region` (explicit coordinate extraction)
+   - `Extract Selected Gene` now follows the same annotation transfer controls
+     as `Extract Region`:
+     - default (`annotation scope=core`) attaches gene + transcript context
+     - `annotation scope=full` additionally attaches exon + CDS subfeatures
+     - `annotation scope=none` (or unchecked include flag) disables transfer
    - coordinates are 1-based and inclusive
 3. Run BLAST searches against prepared references:
    - open `BLAST Genome Sequence...`
@@ -1360,8 +1460,10 @@ Notes:
   S288c (Ensembl 113 and 116), and `LocalProject` (backed by
   `test_files/fixtures/genomes/AB011549.2.fa` +
   `test_files/fixtures/genomes/AB011549.2.gb`).
-- A curated starter catalog for local helper systems is available at
-  `assets/helper_genomes.json` (plasmid/lentivirus/adenovirus/AAV plus yeast/E. coli host references).
+- A curated starter helper catalog is available at
+  `assets/helper_genomes.json` (host references plus common online vector backbones).
+  For lab-specific unpublished/local vectors, copy this file and add
+  `sequence_local` / `annotations_local` entries for your installation.
 - Catalog entries may specify `ncbi_assembly_accession` + `ncbi_assembly_name`
   instead of explicit remote URLs. In that case GENtle derives NCBI GenBank/RefSeq
   FTP URLs for sequence (`*_genomic.fna.gz`) and annotation (`*_genomic.gff.gz`)
@@ -1370,6 +1472,12 @@ Notes:
   non-assembly records). If explicit URLs are absent, GENtle derives NCBI EFetch
   sources for FASTA sequence plus GenBank annotation (`gbwithparts`) and then
   indexes extracted feature records for search/retrieval.
+- For helper IDs containing `pUC18` or `pUC19`, extracted helper sequences get
+  a deterministic fallback MCS (`misc_feature`) annotation when source
+  annotation does not already include one and exactly one canonical MCS motif is
+  detected (non-unique matches are warned and skipped).
+- MCS feature details expose `mcs_expected_sites` (REBASE-normalized enzyme
+  names) so users can preferentially pick enzymes declared for that MCS.
 - Malformed GTF/GFF lines are now reported as warnings with file/line context
   while valid gene records continue to be indexed.
 - Genome track import accepts BED (`.bed` / `.bed.gz`) and BigWig (`.bw` / `.bigWig`) inputs.
@@ -1462,17 +1570,21 @@ Use the top application menu:
 - `File -> Open Recent Project...`
 - `File -> Open Tutorial Project...`
 - `File -> Close Project`
-- `File -> Prepare Reference Genome...`
-- `File -> Prepared References...`
-- `File -> Retrieve Genome Sequence...`
-- `File -> BLAST Genome Sequence...`
-- `File -> Prepare Helper Genome...`
-- `File -> BLAST Helper Sequence...`
-- `File -> Retrieve Helper Sequence...`
 - `File -> Import REBASE Data...`
 - `File -> Import JASPAR Data...`
 - `File -> Save Project...`
 - `File -> Export DALG SVG...`
+
+Genome operations are available from the dedicated `Genome` menu:
+
+- `Genome -> Prepare Reference Genome...`
+- `Genome -> Prepared References...`
+- `Genome -> Retrieve Genomic Sequence...`
+- `Genome -> BLAST Genome Sequence...`
+- `Genome -> Import Genome Track...`
+- `Genome -> Prepare Helper Genome...`
+- `Genome -> Retrieve Helper Sequence...`
+- `Genome -> BLAST Helper Sequence...`
 
 `Close Project` availability:
 
@@ -1499,7 +1611,7 @@ Tutorial projects:
 
 Shortcut:
 
-- `Cmd+Shift+G` opens `Retrieve Genome Sequence...`.
+- `Cmd+Shift+G` opens `Retrieve Genomic Sequence...`.
 - `Cmd+Shift+P` opens `Prepare Reference Genome...`.
 - `Cmd+Shift+L` opens `BLAST Genome Sequence...`.
 

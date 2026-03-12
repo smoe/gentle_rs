@@ -30,8 +30,7 @@ Structured workflow examples:
 - schema: `gentle.workflow_example.v1`
 - includes GUI-first parity skeleton:
   - `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
-  - companion walkthrough: `docs/tutorial/tp73_promoter_luciferase_gui.md`
-  - narrative showcase page: `docs/tutorial/tp73_promoter_luciferase_showcase.md`
+  - merged canonical tutorial: `docs/tutorial/tp73_promoter_luciferase_gui.md`
 - on-demand snippet generation (CLI/shell/JS/Lua):
   - `cargo run --bin gentle_examples_docs -- generate`
 - validation only:
@@ -170,6 +169,26 @@ Dotplot/flexibility capability status:
   `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
 - `gentle_lua`: baseline support via `apply_operation` (`ComputeDotplot`,
   `ComputeFlexibilityTrack`); dedicated convenience wrappers pending.
+
+RNA-read interpretation capability status (Nanopore cDNA phase-1):
+
+- `gentle_cli`: supported via shared-shell/direct commands:
+  - `rna-reads interpret`
+  - `rna-reads list-reports`
+  - `rna-reads show-report`
+  - `rna-reads export-report`
+  - `rna-reads export-hits-fasta`
+  - `rna-reads export-sample-sheet`
+  backed by `InterpretRnaReads`, `ListRnaReadReports`, `ShowRnaReadReport`,
+  `ExportRnaReadReport`, `ExportRnaReadHitsFasta`, and
+  `ExportRnaReadSampleSheet`.
+  Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
+  Progress output includes periodic `progress rna-reads ...` lines during
+  `apply_with_progress` runs.
+- `gentle_js`: baseline support via `apply_operation` for the same operation
+  family.
+- `gentle_lua`: baseline support via `apply_operation` for the same operation
+  family.
 
 Feature-expert SVG parity status:
 
@@ -351,7 +370,7 @@ Exit methods:
     - Convenience wrapper around engine `PrepareGenome`.
 17. `extract_genome_region(state, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+18. `extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 19. `blast_reference_genome(genome_id, query_sequence, max_hits, task, catalog_path, cache_dir, options_json)`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
@@ -587,7 +606,7 @@ Exit methods:
     - Convenience wrapper around engine `PrepareGenome`.
 17. `extract_genome_region(project, genome_id, chromosome, start_1based, end_1based, output_id, catalog_path, cache_dir)`
     - Convenience wrapper around engine `ExtractGenomeRegion`.
-18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir)`
+18. `extract_genome_gene(project, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features)`
     - Convenience wrapper around engine `ExtractGenomeGene`.
 19. `blast_reference_genome(genome_id, query_sequence, [max_hits], [task], [catalog_path], [cache_dir], [options_json])`
     - Runs BLAST (`blastn`/`blastn-short`) against a prepared reference genome.
@@ -715,10 +734,10 @@ cargo run --bin gentle_cli -- tracks import-bigwig grch38_tp53 data/chipseq/sign
 cargo run --bin gentle_cli -- tracks import-vcf grch38_tp53 data/variants/sample.vcf.gz --name Variants --min-score 20 --clear-existing
 cargo run --bin gentle_cli -- helpers list
 cargo run --bin gentle_cli -- helpers validate-catalog
-cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (local)"
-cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (local)" --cache-dir data/helper_genomes --timeout-secs 600
-cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (local)" --filter bla --limit 20
-cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (local)" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":95.0}}' --cache-dir data/helper_genomes
+cargo run --bin gentle_cli -- helpers status "Plasmid pUC19 (online)"
+cargo run --bin gentle_cli -- helpers prepare "Plasmid pUC19 (online)" --cache-dir data/helper_genomes --timeout-secs 600
+cargo run --bin gentle_cli -- helpers genes "Plasmid pUC19 (online)" --filter bla --limit 20
+cargo run --bin gentle_cli -- helpers blast "Plasmid pUC19 (online)" ACGTACGTACGT --task blastn-short --max-hits 10 --options-json '{"thresholds":{"min_identity_percent":95.0}}' --cache-dir data/helper_genomes
 cargo run --bin gentle_cli -- candidates generate sgrnas chr1_window --length 20 --step 1 --feature-kind gene --max-distance 500 --limit 5000
 cargo run --bin gentle_cli -- candidates score sgrnas gc_balance "100 * (gc_fraction - at_fraction)"
 cargo run --bin gentle_cli -- candidates score-weighted sgrnas priority --term gc_fraction:0.7:max --term distance_to_seq_start_bp:0.3:min --normalize
@@ -816,7 +835,7 @@ Shared shell command:
     - `genomes blast-cancel JOB_ID`
     - `genomes blast-list`
     - `genomes extract-region GENOME_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `helpers list [--catalog PATH]`
     - `helpers validate-catalog [--catalog PATH]`
     - `helpers status HELPER_ID [--catalog PATH] [--cache-dir PATH]`
@@ -828,7 +847,7 @@ Shared shell command:
     - `helpers blast-cancel JOB_ID`
     - `helpers blast-list`
     - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
-    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+    - `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
     - `tracks import-bed SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-bigwig SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
     - `tracks import-vcf SEQ_ID PATH [--name NAME] [--min-score N] [--max-score N] [--clear-existing]`
@@ -876,6 +895,7 @@ Shared shell command:
     - `guides protocol-export GUIDE_SET_ID OUTPUT_PATH [--oligo-set ID] [--no-qc]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers preflight [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers seed-from-feature SEQ_ID FEATURE_ID`
     - `primers seed-from-splicing SEQ_ID FEATURE_ID`
     - `primers list-reports`
@@ -890,11 +910,20 @@ Shared shell command:
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
+    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads list-reports [SEQ_ID]`
+    - `rna-reads show-report REPORT_ID`
+    - `rna-reads export-report REPORT_ID OUTPUT.json`
+    - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
+    - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
     - Primer request payload notes (`primers design` / `primers design-qpcr`):
       - `forward`/`reverse`/`probe` side constraints support optional
         sequence filters:
-        `fixed_5prime`, `fixed_3prime`, `required_motifs[]`,
-        `forbidden_motifs[]`, `locked_positions[]`.
+        `non_annealing_5prime_tail`, `fixed_5prime`, `fixed_3prime`,
+        `required_motifs[]`, `forbidden_motifs[]`, `locked_positions[]`.
+      - `non_annealing_5prime_tail` is added to the oligo sequence while
+        anneal `tm_c`/`gc_fraction`/`anneal_hits` remain computed on the
+        template-binding segment only.
       - `pair_constraints` is optional and supports:
         `require_roi_flanking`, amplicon motif filters, and fixed amplicon
         start/end coordinates.
@@ -1153,7 +1182,7 @@ Genome convenience commands:
   - legacy `--include-genomic-annotation` maps to `--annotation-scope core`.
   - legacy `--no-include-genomic-annotation` maps to `--annotation-scope none`.
   - Result payload includes `genome_annotation_projection` telemetry.
-- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+- `genomes extract-gene GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Runs engine `ExtractGenomeGene`.
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Runs engine `ExtendGenomeAnchor`.
@@ -1193,8 +1222,16 @@ Helper convenience commands:
   - Same behavior as `genomes blast-list`, scoped to helper jobs.
 - `helpers extract-region HELPER_ID CHR START END [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-region`, with helper-catalog default.
-- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]`
+  - For helper IDs containing `pUC18`/`pUC19`, GENtle auto-attaches a
+    canonical MCS `misc_feature` when no MCS annotation is present in source
+    annotation and exactly one canonical MCS motif is found.
+  - MCS features expose `mcs_expected_sites` with REBASE-normalized enzyme names
+    when recognizable from source/fallback annotation text.
+- `helpers extract-gene HELPER_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]`
   - Same behavior as `genomes extract-gene`, with helper-catalog default.
+  - pUC18/pUC19 helper extractions apply the same automatic MCS fallback
+    annotation behavior when applicable (non-unique motif matches are warned and
+    skipped).
 - `helpers extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Same behavior as `genomes extend-anchor`, with helper-catalog default.
 - `helpers verify-anchor SEQ_ID [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`

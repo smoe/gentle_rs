@@ -14,6 +14,46 @@ use crate::{
 };
 use deno_core::*;
 use serde::Serialize;
+use std::borrow::Cow;
+
+#[derive(Debug)]
+struct JsAnyhow(deno_core::anyhow::Error);
+
+impl From<deno_core::anyhow::Error> for JsAnyhow {
+    fn from(value: deno_core::anyhow::Error) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for JsAnyhow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl std::error::Error for JsAnyhow {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
+impl deno_error::JsErrorClass for JsAnyhow {
+    fn get_class(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Error")
+    }
+
+    fn get_message(&self) -> Cow<'static, str> {
+        Cow::Owned(self.0.to_string())
+    }
+
+    fn get_additional_properties(&self) -> deno_error::AdditionalProperties {
+        Box::new(std::iter::empty())
+    }
+
+    fn get_ref(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+        self
+    }
+}
 
 fn empty_to_none(value: &str) -> Option<&str> {
     let trimmed = value.trim();
@@ -28,7 +68,7 @@ fn compose_blast_request_override(
     max_hits: u32,
     task: &str,
     options_json: &str,
-) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+) -> Result<serde_json::Value, JsAnyhow> {
     let mut request = serde_json::Map::new();
     request.insert(
         "max_hits".to_string(),
@@ -77,22 +117,27 @@ struct ShellUtilityApplyResponse {
 fn sync_report_from_shell_output(
     output: serde_json::Value,
     context: &str,
-) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+) -> Result<resource_sync::SyncReport, JsAnyhow> {
     let Some(report_value) = output.get("report").cloned() else {
         return Err(deno_core::anyhow::anyhow!(
             "{context}: missing 'report' field in shell output"
-        ));
+        )
+        .into());
     };
-    serde_json::from_value(report_value).map_err(|e| {
-        deno_core::anyhow::anyhow!("{context}: could not parse sync report from shell output: {e}")
-    })
+    serde_json::from_value(report_value)
+        .map_err(|e| {
+            deno_core::anyhow::anyhow!(
+                "{context}: could not parse sync report from shell output: {e}"
+            )
+        })
+        .map_err(Into::into)
 }
 
 fn sync_rebase_resource_impl(
     input: &str,
     output: &str,
     commercial_only: bool,
-) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+) -> Result<resource_sync::SyncReport, JsAnyhow> {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let command = ShellCommand::ResourcesSyncRebase {
         input: input.to_string(),
@@ -107,7 +152,7 @@ fn sync_rebase_resource_impl(
 fn sync_jaspar_resource_impl(
     input: &str,
     output: &str,
-) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+) -> Result<resource_sync::SyncReport, JsAnyhow> {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let command = ShellCommand::ResourcesSyncJaspar {
         input: input.to_string(),
@@ -122,7 +167,7 @@ fn import_pool_impl(
     state: ProjectState,
     input: &str,
     prefix: &str,
-) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
     let mut engine = GentleEngine::from_state(state);
     let prefix = if prefix.trim().is_empty() {
         "pool".to_string()
@@ -144,7 +189,7 @@ fn import_pool_impl(
 
 fn list_agent_systems_impl(
     catalog_path: &str,
-) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+) -> Result<serde_json::Value, JsAnyhow> {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let command = ShellCommand::AgentsList {
         catalog_path: empty_to_none(catalog_path).map(str::to_string),
@@ -164,7 +209,7 @@ fn ask_agent_system_impl(
     execute_all: bool,
     execute_indices: &[u32],
     include_state_summary: bool,
-) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
     let mut engine = GentleEngine::from_state(state);
     let command = ShellCommand::AgentsAsk {
         system_id: system_id.to_string(),
@@ -193,8 +238,8 @@ fn ask_agent_system_impl(
 
 #[op2]
 #[serde]
-fn load_dna(#[string] path: &str) -> Result<DNAsequence, deno_core::anyhow::Error> {
-    let mut dna = GENtleApp::load_from_file(path)?;
+fn load_dna(#[string] path: &str) -> Result<DNAsequence, JsAnyhow> {
+    let mut dna = GENtleApp::load_from_file(path).map_err(deno_core::anyhow::Error::from)?;
 
     // Add default enzymes and stuff
     *dna.restriction_enzymes_mut() = active_restriction_enzymes();
@@ -210,7 +255,7 @@ fn sync_rebase_resource(
     #[string] input: &str,
     #[string] output: &str,
     commercial_only: bool,
-) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+) -> Result<resource_sync::SyncReport, JsAnyhow> {
     sync_rebase_resource_impl(input, output, commercial_only)
 }
 
@@ -219,7 +264,7 @@ fn sync_rebase_resource(
 fn sync_jaspar_resource(
     #[string] input: &str,
     #[string] output: &str,
-) -> Result<resource_sync::SyncReport, deno_core::anyhow::Error> {
+) -> Result<resource_sync::SyncReport, JsAnyhow> {
     sync_jaspar_resource_impl(input, output)
 }
 
@@ -229,7 +274,7 @@ fn import_pool(
     #[serde] state: ProjectState,
     #[string] input: &str,
     #[string] prefix: &str,
-) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
     import_pool_impl(state, input, prefix)
 }
 
@@ -237,15 +282,15 @@ fn import_pool(
 fn write_gb(
     #[serde] seq: DNAsequence,
     #[string] path: &str,
-) -> Result<(), deno_core::anyhow::Error> {
-    seq.write_genbank_file(path)?;
+) -> Result<(), JsAnyhow> {
+    seq.write_genbank_file(path).map_err(deno_core::anyhow::Error::from)?;
     Ok(())
 }
 
 #[op2]
 #[serde]
-fn load_project(#[string] path: &str) -> Result<ProjectState, deno_core::anyhow::Error> {
-    let state = ProjectState::load_from_path(path)?;
+fn load_project(#[string] path: &str) -> Result<ProjectState, JsAnyhow> {
+    let state = ProjectState::load_from_path(path).map_err(deno_core::anyhow::Error::from)?;
     Ok(state)
 }
 
@@ -253,14 +298,16 @@ fn load_project(#[string] path: &str) -> Result<ProjectState, deno_core::anyhow:
 fn save_project(
     #[serde] state: ProjectState,
     #[string] path: &str,
-) -> Result<(), deno_core::anyhow::Error> {
-    state.save_to_path(path)?;
+) -> Result<(), JsAnyhow> {
+    state
+        .save_to_path(path)
+        .map_err(deno_core::anyhow::Error::from)?;
     Ok(())
 }
 
 #[op2]
 #[serde]
-fn capabilities() -> Result<crate::engine::Capabilities, deno_core::anyhow::Error> {
+fn capabilities() -> Result<crate::engine::Capabilities, JsAnyhow> {
     Ok(GentleEngine::capabilities())
 }
 
@@ -268,7 +315,7 @@ fn capabilities() -> Result<crate::engine::Capabilities, deno_core::anyhow::Erro
 #[serde]
 fn state_summary(
     #[serde] state: ProjectState,
-) -> Result<EngineStateSummary, deno_core::anyhow::Error> {
+) -> Result<EngineStateSummary, JsAnyhow> {
     let engine = GentleEngine::from_state(state);
     Ok(engine.summarize_state())
 }
@@ -277,7 +324,7 @@ fn state_summary(
 #[serde]
 fn inspect_dna_ladders(
     #[string] name_filter: &str,
-) -> Result<crate::engine::DnaLadderCatalog, deno_core::anyhow::Error> {
+) -> Result<crate::engine::DnaLadderCatalog, JsAnyhow> {
     Ok(GentleEngine::inspect_dna_ladders(empty_to_none(
         name_filter,
     )))
@@ -287,7 +334,7 @@ fn inspect_dna_ladders(
 #[serde]
 fn inspect_rna_ladders(
     #[string] name_filter: &str,
-) -> Result<crate::engine::RnaLadderCatalog, deno_core::anyhow::Error> {
+) -> Result<crate::engine::RnaLadderCatalog, JsAnyhow> {
     Ok(GentleEngine::inspect_rna_ladders(empty_to_none(
         name_filter,
     )))
@@ -298,9 +345,10 @@ fn inspect_rna_ladders(
 fn export_dna_ladders(
     #[string] path: &str,
     #[string] name_filter: &str,
-) -> Result<crate::engine::DnaLadderExportReport, deno_core::anyhow::Error> {
+) -> Result<crate::engine::DnaLadderExportReport, JsAnyhow> {
     GentleEngine::export_dna_ladders(path, empty_to_none(name_filter))
         .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+        .map_err(Into::into)
 }
 
 #[op2]
@@ -308,25 +356,27 @@ fn export_dna_ladders(
 fn export_rna_ladders(
     #[string] path: &str,
     #[string] name_filter: &str,
-) -> Result<crate::engine::RnaLadderExportReport, deno_core::anyhow::Error> {
+) -> Result<crate::engine::RnaLadderExportReport, JsAnyhow> {
     GentleEngine::export_rna_ladders(path, empty_to_none(name_filter))
         .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+        .map_err(Into::into)
 }
 
 #[op2]
 #[serde]
 fn list_reference_genomes(
     #[string] catalog_path: &str,
-) -> Result<Vec<String>, deno_core::anyhow::Error> {
+) -> Result<Vec<String>, JsAnyhow> {
     GentleEngine::list_reference_genomes(empty_to_none(catalog_path))
         .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+        .map_err(Into::into)
 }
 
 #[op2]
 #[serde]
 fn list_agent_systems(
     #[string] catalog_path: &str,
-) -> Result<serde_json::Value, deno_core::anyhow::Error> {
+) -> Result<serde_json::Value, JsAnyhow> {
     list_agent_systems_impl(catalog_path)
 }
 
@@ -341,7 +391,7 @@ fn ask_agent_system(
     execute_all: bool,
     #[serde] execute_indices: Vec<u32>,
     include_state_summary: bool,
-) -> Result<ShellUtilityApplyResponse, deno_core::anyhow::Error> {
+) -> Result<ShellUtilityApplyResponse, JsAnyhow> {
     ask_agent_system_impl(
         state.unwrap_or_default(),
         system_id,
@@ -360,7 +410,7 @@ fn is_reference_genome_prepared(
     #[string] genome_id: &str,
     #[string] catalog_path: &str,
     #[string] cache_dir: &str,
-) -> Result<GenomePreparedResponse, deno_core::anyhow::Error> {
+) -> Result<GenomePreparedResponse, JsAnyhow> {
     let prepared = GentleEngine::is_reference_genome_prepared(
         empty_to_none(catalog_path),
         genome_id,
@@ -376,13 +426,14 @@ fn list_reference_genome_genes(
     #[string] genome_id: &str,
     #[string] catalog_path: &str,
     #[string] cache_dir: &str,
-) -> Result<Vec<crate::genomes::GenomeGeneRecord>, deno_core::anyhow::Error> {
+) -> Result<Vec<crate::genomes::GenomeGeneRecord>, JsAnyhow> {
     GentleEngine::list_reference_genome_genes(
         empty_to_none(catalog_path),
         genome_id,
         empty_to_none(cache_dir),
     )
     .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    .map_err(Into::into)
 }
 
 #[op2]
@@ -395,7 +446,7 @@ fn blast_reference_genome(
     #[string] catalog_path: &str,
     #[string] cache_dir: &str,
     #[string] options_json: &str,
-) -> Result<crate::genomes::GenomeBlastReport, deno_core::anyhow::Error> {
+) -> Result<crate::genomes::GenomeBlastReport, JsAnyhow> {
     let request = compose_blast_request_override(max_hits, task, options_json)?;
     GentleEngine::blast_reference_genome_with_request_options(
         empty_to_none(catalog_path),
@@ -405,6 +456,7 @@ fn blast_reference_genome(
         empty_to_none(cache_dir),
     )
     .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    .map_err(Into::into)
 }
 
 #[op2]
@@ -417,7 +469,7 @@ fn blast_helper_genome(
     #[string] catalog_path: &str,
     #[string] cache_dir: &str,
     #[string] options_json: &str,
-) -> Result<crate::genomes::GenomeBlastReport, deno_core::anyhow::Error> {
+) -> Result<crate::genomes::GenomeBlastReport, JsAnyhow> {
     let request = compose_blast_request_override(max_hits, task, options_json)?;
     GentleEngine::blast_helper_genome_with_request_options(
         genome_id,
@@ -427,6 +479,7 @@ fn blast_helper_genome(
         empty_to_none(cache_dir),
     )
     .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    .map_err(Into::into)
 }
 
 #[op2]
@@ -434,10 +487,10 @@ fn blast_helper_genome(
 fn apply_operation(
     #[serde] state: ProjectState,
     #[string] op_json: &str,
-) -> Result<OperationApplyResponse, deno_core::anyhow::Error> {
-    let op: Operation = serde_json::from_str(op_json)?;
+) -> Result<OperationApplyResponse, JsAnyhow> {
+    let op: Operation = serde_json::from_str(op_json).map_err(deno_core::anyhow::Error::from)?;
     let mut engine = GentleEngine::from_state(state);
-    let result = engine.apply(op)?;
+    let result = engine.apply(op).map_err(deno_core::anyhow::Error::from)?;
     Ok(OperationApplyResponse {
         state: engine.state().clone(),
         result,
@@ -449,10 +502,13 @@ fn apply_operation(
 fn apply_workflow(
     #[serde] state: ProjectState,
     #[string] workflow_json: &str,
-) -> Result<WorkflowApplyResponse, deno_core::anyhow::Error> {
-    let workflow: Workflow = serde_json::from_str(workflow_json)?;
+) -> Result<WorkflowApplyResponse, JsAnyhow> {
+    let workflow: Workflow =
+        serde_json::from_str(workflow_json).map_err(deno_core::anyhow::Error::from)?;
     let mut engine = GentleEngine::from_state(state);
-    let results = engine.apply_workflow(workflow)?;
+    let results = engine
+        .apply_workflow(workflow)
+        .map_err(deno_core::anyhow::Error::from)?;
     Ok(WorkflowApplyResponse {
         state: engine.state().clone(),
         results,
@@ -465,11 +521,16 @@ fn inspect_feature_expert(
     #[serde] state: ProjectState,
     #[string] seq_id: &str,
     #[string] target_json: &str,
-) -> Result<serde_json::Value, deno_core::anyhow::Error> {
-    let target: FeatureExpertTarget = serde_json::from_str(target_json)?;
+) -> Result<serde_json::Value, JsAnyhow> {
+    let target: FeatureExpertTarget =
+        serde_json::from_str(target_json).map_err(deno_core::anyhow::Error::from)?;
     let engine = GentleEngine::from_state(state);
-    let view = engine.inspect_feature_expert(seq_id, &target)?;
-    serde_json::to_value(view).map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+    let view = engine
+        .inspect_feature_expert(seq_id, &target)
+        .map_err(deno_core::anyhow::Error::from)?;
+    serde_json::to_value(view)
+        .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
+        .map_err(Into::into)
 }
 
 pub struct JavaScriptInterface {
@@ -707,13 +768,15 @@ impl JavaScriptInterface {
           			}
           		});
           	}
-          	function extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir) {
+          	function extract_genome_gene(state, genome_id, gene_query, occurrence, output_id, catalog_path, cache_dir, annotation_scope, max_annotation_features) {
           		return apply_operation(state, {
           			ExtractGenomeGene: {
           				genome_id: genome_id,
           				gene_query: gene_query,
           				occurrence: occurrence ?? null,
           				output_id: output_id ?? null,
+          				annotation_scope: annotation_scope ?? null,
+          				max_annotation_features: (max_annotation_features === undefined || max_annotation_features === null) ? null : Number(max_annotation_features),
           				catalog_path: catalog_path ?? null,
           				cache_dir: cache_dir ?? null
           			}

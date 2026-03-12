@@ -1,174 +1,275 @@
-# TP73 Promoter -> Luciferase Reporter (GUI-first Tutorial)
+# TP73 Promoter -> Luciferase Reporter (GUI Tutorial with Matching CLI Commands)
 
-This tutorial defines a practical planning workflow for a TP73 promoter
-luciferase assay with a GUI-first path and explicit command-line parity.
+This tutorial is a GUI-first walkthrough for planning a TP73 promoter luciferase
+construct in GENtle.
+
+It has two goals:
+
+1. plan one concrete biological workflow (TP73 promoter fragment into a
+   luciferase reporter context), and
+2. learn how each GUI action maps to a functionally equivalent
+   command-line command.
+
+That GUI/CLI mapping helps in both directions:
+
+- you can transfer the same process to other genes/targets,
+- you can interpret agent-proposed shell/CLI commands with confidence.
 
 Primary vector reference:
 
-- Promega luciferase sequence (NCBI Nucleotide):
-  [AY738222](https://www.ncbi.nlm.nih.gov/nuccore/AY738222)
+- Promega luciferase context sequence: [AY738222](https://www.ncbi.nlm.nih.gov/nuccore/AY738222)
 
-Canonical workflow skeleton:
+## Scope
 
-- `/Users/u005069/GitHub/gentle_rs/docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
-- schema: `gentle.workflow_example.v1`
-- mode: `test_mode = "skip"` (contains external-input placeholders by design)
+This tutorial covers computer-based planning and documentation:
 
-## Scope and intent
+1. retrieve TP73 genomic context,
+2. extract promoter candidates,
+3. import luciferase vector sequence,
+4. preview assembly candidate(s),
+5. design verification assays,
+6. document and export results.
 
-The tutorial covers in-silico planning and communication:
-
-1. target-locus retrieval and anchored promoter extraction
-2. promoter-fragment candidate generation
-3. reporter-vector import and assembly preview
-4. primer/qPCR design for build verification
-5. lineage/report export for collaboration
-
-Wet-lab execution (transfection/luciferase readout/statistics) is out of scope.
+Wet-lab execution (transfection, luciferase readout, statistics) is out of
+scope for this page.
 
 ## Prerequisites
 
-1. GENtle desktop app running.
-2. Genome catalog available (`assets/genomes.json`).
-3. Optional local fallback file for the vector:
+1. GENtle desktop application running.
+2. Genome catalog available at `assets/genomes.json`.
+3. `assets/genomes.json` may be either:
+   - kept at project defaults (recommended for common genomes), or
+   - edited locally for custom/local mirror sources.
+4. Internet connection for online fetch operations, or local fallback inputs.
+5. Optional local fallback file for AY738222:
    - `data/tutorial_inputs/AY738222_promega_luciferase.gb`
-4. Optional promoter evidence tracks (`.bed`, `.bigWig`, `.vcf`) for
-   prioritization.
 
-## Step-by-step (GUI first, parity visible)
-
-### Step 1: Prepare and retrieve TP73 genomic context
+## Step 1: Prepare and Retrieve TP73 Genomic Context
 
 GUI:
 
 1. `File -> Prepare Reference Genome...`
 2. choose `Human GRCh38 Ensembl 116`
-3. `Prepare`
-4. `File -> Retrieve Genome Sequence...`
-5. gene query: `TP73`
+3. click `Prepare`
+4. `File -> Retrieve Genomic Sequence...`
+5. query gene `TP73`
 6. select occurrence `1`
-7. output id: `grch38_tp73`
+7. output id `grch38_tp73`
 
-Parity map:
+GUI/CLI mapping:
 
-| GUI action | Engine operation | CLI parity (optional) |
+| GUI action | Engine operation | CLI equivalent |
 | --- | --- | --- |
 | Prepare reference | `PrepareGenome` | `gentle_cli genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes` |
 | Retrieve TP73 gene | `ExtractGenomeGene` | `gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 --output-id grch38_tp73 --catalog assets/genomes.json --cache-dir data/genomes` |
 
-### Step 2: Extend anchor and isolate promoter candidates
+## Step 2: Extend Anchor and Extract Promoter Candidates
 
-GUI:
+There are two GUI routes for the same underlying function:
+
+1. sequence-window quick controls (anchor extension row directly under the
+   sequence toolbar: `Extend 5'`, `Extend 3'`), and
+2. full **Engine Operations panel** (shown in UI as `Engine Ops`) for complete
+   anchored extraction settings.
+
+GUI (recommended order):
 
 1. open sequence `grch38_tp73`
-2. in Engine Ops, extend `5'` by `2500 bp`
-3. open `Extract Anchored`
-4. anchor = `FeatureBoundary(kind=gene,label=TP73,boundary=Start,occurrence=0)`
-5. direction = `Upstream`
-6. target length = `1200`, tolerance = `200`
-7. output prefix = `tp73_promoter_fragment`
-8. run extraction
+2. extend `5'` by `2500 bp` (quick controls or Engine Operations panel)
+3. open the anchored extraction form in the Engine Operations panel
+4. set:
+   - anchor = `FeatureBoundary(kind=gene,label=TP73,boundary=Start,occurrence=0)`
+   - direction = `Upstream`
+   - target length = `1200`
+   - tolerance = `200`
+   - output prefix = `tp73_promoter_fragment`
+5. execute extraction
 
-Parity map:
+GUI/CLI mapping:
 
-| GUI action | Engine operation | CLI parity (optional) |
+| GUI action | Engine operation | CLI equivalent |
 | --- | --- | --- |
 | Extend 5' anchor | `ExtendGenomeAnchor` | `gentle_cli genomes extend-anchor grch38_tp73 5p 2500 --output-id grch38_tp73_promoter_context --catalog assets/genomes.json --cache-dir data/genomes` |
-| Promoter candidate extraction | `ExtractAnchoredRegion` | Use `gentle_cli workflow` with the canonical JSON example for full payload parity |
+| Anchored promoter extraction | `ExtractAnchoredRegion` | `gentle_cli workflow @docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json` |
 
-### Step 3: Import luciferase vector sequence (AY738222)
+### Step 2b (Optional but Recommended): Dotplot Checkpoint
 
 GUI:
 
-1. open the GUI Shell (`Shell` button)
-2. run:
-   - `genbank fetch AY738222 --as-id promega_luciferase_ay738222`
-3. confirm the created sequence appears in project lineage/state
-4. optional fallback when offline:
-   - `File -> Open...` local file `data/tutorial_inputs/AY738222_promega_luciferase.gb`
+1. switch sequence map to `Dotplot map`
+2. start with the default local window size
+3. click `Compute dotplot`
+4. hover for coordinates, left-click to lock crosshair
+5. use locked coordinate as reproducible reference when choosing final
+   promoter candidate boundaries
 
-Parity map:
+Purpose:
 
-| GUI action | Engine operation | CLI parity (optional) |
+- local repeat/structure inspection before committing a candidate for assembly
+  and primer design.
+
+## Step 3: Import Luciferase Vector AY738222 (GUI-Native)
+
+Primary GUI route:
+
+1. `File -> Fetch GenBank Accession...`
+2. accession = `AY738222`
+3. optional `as_id` = `promega_luciferase_ay738222`
+4. click `Fetch and Import`
+
+Offline fallback GUI route:
+
+1. `File -> Open Sequence...`
+2. choose local file `data/tutorial_inputs/AY738222_promega_luciferase.gb`
+
+GUI/CLI mapping:
+
+| GUI action | Engine operation | CLI equivalent |
 | --- | --- | --- |
-| Fetch AY738222 in GUI Shell | `FetchGenBankAccession` | `gentle_cli shell 'genbank fetch AY738222 --as-id promega_luciferase_ay738222'` |
-| Local fallback file import | `LoadFile` | `gentle_cli op '{"LoadFile":{"path":"data/tutorial_inputs/AY738222_promega_luciferase.gb","as_id":"promega_luciferase_ay738222"}}' --confirm` |
+| Fetch AY738222 | `FetchGenBankAccession` | `gentle_cli shell 'genbank fetch AY738222 --as-id promega_luciferase_ay738222'` |
+| Local file import | `LoadFile` | `gentle_cli op '{"LoadFile":{"path":"data/tutorial_inputs/AY738222_promega_luciferase.gb","as_id":"promega_luciferase_ay738222"}}' --confirm` |
 
-### Step 4: Create assembly preview (GUI routine path recommended)
+## Step 4: Assembly Preview (Biology and Run Behavior)
 
-Recommended GUI path:
+Biological intent:
 
-1. `Patterns -> Routine Assistant...`
+- combine a selected TP73 promoter fragment with a luciferase vector context to
+  create a reporter construct candidate in the model for downstream validation
+  design.
+
+In GENtle, the routine assistant loads a stored cloning routine template, while
+you provide the actual sequence inputs loaded in Steps 2 and 3.
+
+GUI:
+
+1. open `Patterns -> Routine Assistant...`
 2. choose `Gibson Two-Fragment Overlap Preview`
 3. bind:
    - `left_seq_id = tp73_promoter_fragment_1`
    - `right_seq_id = promega_luciferase_ay738222`
-   - `overlap_bp = 20` (or your design)
-4. run preflight (`validate only`)
-5. run transactional execution
+   - `overlap_bp = 20` (example)
+   - if the vector binding is circular, use `Linearize Vector...` in this
+     window before running preflight
+4. run **input check** (`Validate only`)
+5. run **apply run** (`Transactional`)
 
-Parity map:
+Biological meaning of `overlap_bp = 20`:
 
-| GUI action | Engine route | CLI parity (optional) |
+- this is the overlap length (20 nucleotides) of homologous sequence expected
+  between promoter-fragment end and vector-fragment end,
+- in overlap-based assembly (for example Gibson-style design), that homology
+  determines how specifically and robustly fragments anneal at the intended
+  junction,
+- `20 bp` is a practical starting point: usually long enough for specific
+  junction pairing while still easy to realize in designed fragment ends.
+
+Definitions:
+
+- **Input check** (`Validate only`): validates inputs/constraints and reports
+  feasibility without changing project state.
+- **Transactional run**: applies all routine steps as one all-or-nothing run;
+  any failure rolls back all intermediate changes.
+
+GUI/CLI mapping:
+
+| GUI action | Engine route | CLI equivalent |
 | --- | --- | --- |
-| Gibson routine assistant | `macros template-run ... --validate-only` then transactional run | `gentle_cli shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=tp73_promoter_fragment_1 --bind right_seq_id=promega_luciferase_ay738222 --bind overlap_bp=20 --bind assembly_prefix=tp73_luc_demo --bind output_id=tp73_luc_construct_preview --validate-only'` |
+| Routine validate-only | `macros template-run ... --validate-only` | `gentle_cli shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=tp73_promoter_fragment_1 --bind right_seq_id=promega_luciferase_ay738222 --bind overlap_bp=20 --bind assembly_prefix=tp73_luc_demo --bind output_id=tp73_luc_construct_preview --validate-only'` |
+| Routine apply run (all-or-nothing) | `macros template-run ... --transactional` | same command without `--validate-only` |
 
-Note:
+## Step 5: Verification Assays (Why PCR and qPCR)
 
-- The canonical JSON skeleton currently uses a deterministic `Ligation + Branch`
-  preview to keep operation-level parity explicit. For practical planning, the
-  GUI routine-assistant Gibson path is preferred.
+Why PCR here:
 
-### Step 5: Design verification primers and qPCR assays
+- after designing a promoter->vector construct, PCR primer pairs are used to
+  verify the expected assembly (for example promoter/vector junction presence,
+  insert size/orientation checks, colony/plasmid QC).
+
+Why qPCR appears here:
+
+- qPCR is **optional** for promoter-luciferase planning,
+- it can be useful for short-amplicon quantitative checks (for example DNA
+  copy-number normalization or expression-related follow-up workflows),
+- standard luciferase reporter assays can be completed without qPCR if your
+  experimental design does not require quantitative nucleic-acid readouts.
+
+Background references:
+
+- [PCR](https://en.wikipedia.org/wiki/Polymerase_chain_reaction)
+- [Quantitative PCR (qPCR)](https://en.wikipedia.org/wiki/Quantitative_PCR)
 
 GUI:
 
 1. open construct preview sequence
-2. Engine Ops -> `Primer and qPCR design reports`
-3. set ROI around promoter/vector junction
+2. Engine Operations panel -> `Primer and qPCR design reports`
+3. set the region of interest (ROI) around the planned promoter/vector junction
 4. run `Design Primer Pairs`
-5. run `Design qPCR Assays`
-6. inspect and export reports
+5. optionally run `Design qPCR Assays`
+6. review and export reports
 
-Parity map:
+GUI/CLI mapping:
 
-| GUI action | Engine operation | CLI parity (optional) |
+| GUI action | Engine operation | CLI equivalent |
 | --- | --- | --- |
-| Primer pairs | `DesignPrimerPairs` | `gentle_cli primers design @request.design_primer_pairs.json` |
-| qPCR assays | `DesignQpcrAssays` | `gentle_cli primers design-qpcr @request.design_qpcr.json` |
-| Report export | report store helpers | `gentle_cli primers export-report REPORT_ID out.json` / `gentle_cli primers export-qpcr-report REPORT_ID out.json` |
+| Primer design report | `DesignPrimerPairs` | `gentle_cli primers design @request.design_primer_pairs.json` |
+| qPCR design report | `DesignQpcrAssays` | `gentle_cli primers design-qpcr @request.design_qpcr.json` |
+| Report export | report export helpers | `gentle_cli primers export-report REPORT_ID out.json` and `gentle_cli primers export-qpcr-report REPORT_ID out.json` |
 
-### Step 6: Package results for communication
+## Step 6: Documentation and Handoff
+
+Treat this as required project documentation, not an optional extra.
 
 GUI:
 
-1. verify lineage graph nodes for:
-   - TP73 anchor/extension
-   - extracted promoter candidate(s)
-   - imported AY738222 vector
+1. verify lineage includes:
+   - TP73 retrieval/extension
+   - promoter candidate selection
+   - AY738222 import
    - assembly preview output
-2. export sequence/SVG artifacts
-3. save project `.gentle.json`
+   - primer/qPCR report IDs
+2. export sequence and SVG artifacts relevant for review
+3. save project as `.gentle.json`
+4. record parameter choices and IDs in your experiment notes
 
-Parity map:
+## Same Steps Across Interfaces (Short Summary)
 
-| GUI action | Engine/adapter route | CLI parity (optional) |
-| --- | --- | --- |
-| Save and export artifacts | shared engine export operations | `gentle_cli save` + `gentle_cli render-svg ...` + report-export commands |
+The same logical workflow can be expressed via:
 
-## Recommended success criteria
+- GUI operations,
+- direct `gentle_cli` commands,
+- shared shell commands (`gentle_cli shell '...'`),
+- other script integrations that call the same core engine functions.
 
-1. You can regenerate one promoter candidate deterministically from the same
-   anchor/extraction parameters.
-2. The luciferase vector input ID is stable and referenced in lineage.
-3. A single construct-preview ID is used consistently in primer and qPCR
-   reports.
-4. GUI and CLI routes describe the same operation semantics for each step.
+In this tutorial, this means the same biological step is executed in the same
+way regardless of GUI, CLI, or shell route.
 
-## Notes on current limits
+## Recommended Success Criteria
 
-1. This tutorial is intentionally planning-focused.
-2. Detailed wet-lab protocol logic (for example exact vector chemistry,
-   transfection, luminometer analysis) remains user-owned.
-3. Use promoter-track overlays (BED/BigWig/VCF) before final fragment selection
-   when regulatory confidence is critical.
+1. The same promoter candidate can be regenerated from the same anchor/extract
+   parameters.
+2. The vector import ID is stable and traceable.
+3. Primer/qPCR reports refer to the same construct ID.
+4. GUI actions and CLI commands do the same thing at each step.
+
+## Reference Workflow JSON (Appendix)
+
+Reference example file:
+
+- `docs/examples/workflows/tp73_promoter_luciferase_assay_planning.json`
+
+Associated metadata in that file:
+
+- format tag: `gentle.workflow_example.v1`
+- `test_mode: "skip"`
+
+Meaning:
+
+- The JSON is a machine-readable workflow example used for reproducible
+  GUI/CLI/agent consistency checks.
+- It is maintained in-repository as reference documentation for this
+  tutorial scenario.
+- `test_mode: "skip"` indicates external inputs are intentionally involved
+  (for example online fetch/prepared genome assumptions), so default automated
+  tests only
+  check the JSON structure for this example instead of always executing it
+  end-to-end.

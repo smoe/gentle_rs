@@ -142,30 +142,38 @@ impl WindowDna {
                     }
                 });
             });
-            egui::CentralPanel::default().show(ctx, |ui| {
-                let kind = if self.main_area.opened_from_pool_context() {
-                    WindowBackdropKind::Pool
-                } else {
-                    WindowBackdropKind::Sequence
-                };
-                let settings = current_window_backdrop_settings();
-                paint_window_backdrop(ui, kind, &settings);
-                if self.pending_dna_load.is_some() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(48.0);
-                        ui.add(egui::Spinner::new());
-                        ui.add_space(6.0);
-                        ui.label(
-                            "Opening sequence window: loading sequence content in background...",
-                        );
+            let kind = if self.main_area.opened_from_pool_context() {
+                WindowBackdropKind::Pool
+            } else {
+                WindowBackdropKind::Sequence
+            };
+            let settings = current_window_backdrop_settings();
+            if self.pending_dna_load.is_some() {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show(ctx, |ui| {
+                        paint_window_backdrop(ui, kind, &settings);
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(48.0);
+                            ui.add(egui::Spinner::new());
+                            ui.add_space(6.0);
+                            ui.label(
+                                "Opening sequence window: loading sequence content in background...",
+                            );
+                        });
                     });
-                    ctx.request_repaint();
-                } else if let Some(message) = self.deferred_load_message.as_deref() {
-                    ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
-                } else {
-                    self.main_area.render(ctx, ui);
-                }
-            });
+                ctx.request_repaint();
+            } else if let Some(message) = self.deferred_load_message.as_deref() {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show(ctx, |ui| {
+                        paint_window_backdrop(ui, kind, &settings);
+                        ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
+                    });
+            } else {
+                // MainAreaDna owns the root panel layout for sequence windows.
+                self.main_area.render(ctx);
+            }
         }));
         if result.is_err() {
             eprintln!("E WindowDna: recovered from panic while rendering DNA window");
@@ -178,6 +186,12 @@ impl WindowDna {
 
     pub fn sequence_id(&self) -> Option<String> {
         self.main_area.sequence_id().map(|v| v.to_string())
+    }
+
+    pub fn collect_open_auxiliary_window_entries(
+        &self,
+    ) -> Vec<(egui::ViewportId, String, String)> {
+        self.main_area.collect_open_auxiliary_window_entries()
     }
 
     pub fn set_pool_context(&mut self, pool_seq_ids: Vec<String>) {

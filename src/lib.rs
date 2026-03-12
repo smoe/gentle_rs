@@ -7,7 +7,6 @@ use amino_acids::AminoAcids;
 use dna_ladder::{LadderCatalog, default_dna_ladders, default_rna_ladders};
 use enzymes::Enzymes;
 use lazy_static::lazy_static;
-use translations::Translations;
 
 /// About/help metadata and version presentation helpers.
 pub mod about;
@@ -99,8 +98,6 @@ pub mod shell_docs;
 pub mod tf_motifs;
 /// Process-local tool-path override registry.
 pub mod tool_overrides;
-/// UI translation catalogs and language helpers.
-pub mod translations;
 /// UniProt/SWISS-PROT parsing contracts and projection payload models.
 pub mod uniprot;
 /// Generic GUI window abstraction.
@@ -113,9 +110,6 @@ pub mod window_dna;
 pub mod workflow_examples;
 
 lazy_static! {
-    // Interface translations
-    pub static ref TRANSLATIONS: Translations = Translations::default();
-
     // Restriction enzymes and proteases
     pub static ref ENZYMES: Enzymes = Enzymes::default();
 

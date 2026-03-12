@@ -17,6 +17,8 @@ checks.
 - `resources/`
   - `jaspar.edge.pfm`
   - `rebase.edge.withrefm`
+- `primer3/`
+  - `pairs.location_5_60.kv`
 
 ## Provenance and usage
 
@@ -68,6 +70,23 @@ checks.
   - `src/engine_shell.rs` shared-shell execution tests for
     `resources sync-rebase`.
   - Runtime paths `resources sync-rebase` / GUI import dialog.
+
+### `primer3/pairs.location_5_60.kv`
+
+- Origin: hand-crafted synthetic Primer3 key/value response fixture.
+- Deterministic self-creation:
+  - create a plain-text file with:
+    - `PRIMER_PAIR_NUM_RETURNED=1`
+    - `PRIMER_LEFT_0=5,20`
+    - `PRIMER_RIGHT_0=79,20`
+    - `PRIMER_PAIR_0_PRODUCT_SIZE=75`
+    - terminal `=`
+- Primary usage:
+  - `src/engine_shell.rs` adapter-equivalence tests for
+    internal-vs-Primer3 primer report normalization using a fake local
+    `primer3_core` script.
+- Purpose: deterministic offline coverage for Primer3 normalization/provenance
+  behavior without requiring a system Primer3 installation in CI.
 
 ## Large exploratory XML samples
 

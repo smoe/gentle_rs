@@ -37,7 +37,9 @@ use crate::{
         GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
         MacroInstanceStatus, Operation, PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState, RenderSvgMode,
-        SequenceAnchor, WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
+        RnaReadAlignConfig, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile,
+        RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
+        WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
     enzymes::active_restriction_enzymes,
@@ -658,6 +660,9 @@ pub enum ShellCommand {
         gene_query: String,
         occurrence: Option<usize>,
         output_id: Option<String>,
+        annotation_scope: Option<GenomeAnnotationScope>,
+        max_annotation_features: Option<usize>,
+        include_genomic_annotation: Option<bool>,
         catalog_path: Option<String>,
         cache_dir: Option<String>,
     },
@@ -967,6 +972,10 @@ pub enum ShellCommand {
         backend: Option<PrimerDesignBackend>,
         primer3_executable: Option<String>,
     },
+    PrimersPreflight {
+        backend: Option<PrimerDesignBackend>,
+        primer3_executable: Option<String>,
+    },
     PrimersListReports,
     PrimersShowReport {
         report_id: String,
@@ -1014,6 +1023,38 @@ pub enum ShellCommand {
     },
     FlexShow {
         track_id: String,
+    },
+    RnaReadsInterpret {
+        seq_id: String,
+        seed_feature_id: usize,
+        input_path: String,
+        profile: RnaReadInterpretationProfile,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        seed_filter: RnaReadSeedFilterConfig,
+        align_config: RnaReadAlignConfig,
+        report_id: Option<String>,
+    },
+    RnaReadsListReports {
+        seq_id: Option<String>,
+    },
+    RnaReadsShowReport {
+        report_id: String,
+    },
+    RnaReadsExportReport {
+        report_id: String,
+        path: String,
+    },
+    RnaReadsExportHitsFasta {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+    },
+    RnaReadsExportSampleSheet {
+        path: String,
+        seq_id: Option<String>,
+        report_ids: Vec<String>,
+        append: bool,
     },
     SetParameter {
         name: String,
@@ -4178,6 +4219,9 @@ impl ShellCommand {
                 gene_query,
                 occurrence,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             } => {
@@ -4190,8 +4234,26 @@ impl ShellCommand {
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "-".to_string());
                 let output = output_id.clone().unwrap_or_else(|| "-".to_string());
+                let scope = annotation_scope
+                    .map(|value| value.as_str().to_string())
+                    .or_else(|| {
+                        include_genomic_annotation.map(|v| {
+                            if v {
+                                "core(legacy-flag)".to_string()
+                            } else {
+                                "none(legacy-flag)".to_string()
+                            }
+                        })
+                    })
+                    .unwrap_or_else(|| "core(default)".to_string());
+                let max_features = max_annotation_features
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
+                let include_annotation = include_genomic_annotation
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string());
                 format!(
-                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', catalog='{catalog}', cache='{cache}')"
+                    "extract {label} gene '{gene_query}' from '{genome_id}' (occurrence={occ}, output='{output}', annotation_scope={scope}, max_annotation_features={max_features}, include_genomic_annotation={include_annotation}, catalog='{catalog}', cache='{cache}')"
                 )
             }
             Self::ReferenceExtendAnchor {
@@ -4963,6 +5025,20 @@ impl ShellCommand {
                     .filter(|v| !v.is_empty())
                     .unwrap_or("default"),
             ),
+            Self::PrimersPreflight {
+                backend,
+                primer3_executable,
+            } => format!(
+                "probe Primer3 backend availability/version (backend='{}', primer3_executable='{}')",
+                backend
+                    .map(PrimerDesignBackend::as_str)
+                    .unwrap_or("default"),
+                primer3_executable
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("default"),
+            ),
             Self::PrimersListReports => "list stored primer-design reports".to_string(),
             Self::PrimersShowReport { report_id } => {
                 format!("show stored primer-design report '{}'", report_id)
@@ -4992,7 +5068,9 @@ impl ShellCommand {
             } => format!(
                 "compute dotplot for '{}' (span={}..{}, mode={}, word_size={}, step_bp={}, max_mismatches={}, tile_bp={}, id='{}')",
                 seq_id,
-                span_start_0based.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                span_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
                 span_end_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "seq_end".to_string()),
@@ -5029,7 +5107,9 @@ impl ShellCommand {
             } => format!(
                 "compute flexibility track for '{}' (span={}..{}, model={}, bin_bp={}, smoothing_bp={}, id='{}')",
                 seq_id,
-                span_start_0based.map(|v| v.to_string()).unwrap_or_else(|| "0".to_string()),
+                span_start_0based
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string()),
                 span_end_0based
                     .map(|v| v.to_string())
                     .unwrap_or_else(|| "seq_end".to_string()),
@@ -5053,6 +5133,77 @@ impl ShellCommand {
             Self::FlexShow { track_id } => {
                 format!("show stored flexibility track '{}'", track_id)
             }
+            Self::RnaReadsInterpret {
+                seq_id,
+                seed_feature_id,
+                input_path,
+                profile,
+                input_format,
+                scope,
+                seed_filter,
+                align_config,
+                report_id,
+            } => format!(
+                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}')",
+                input_path,
+                seq_id,
+                seed_feature_id,
+                profile.as_str(),
+                input_format.as_str(),
+                scope.as_str(),
+                seed_filter.kmer_len,
+                seed_filter.short_full_hash_max_bp,
+                seed_filter.long_window_bp,
+                seed_filter.long_window_count,
+                seed_filter.min_seed_hit_fraction,
+                align_config.band_width_bp,
+                align_config.min_identity_fraction,
+                align_config.max_secondary_mappings,
+                report_id
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("auto")
+            ),
+            Self::RnaReadsListReports { seq_id } => format!(
+                "list stored RNA-read reports{}",
+                seq_id
+                    .as_deref()
+                    .map(|id| format!(" for '{}'", id))
+                    .unwrap_or_default()
+            ),
+            Self::RnaReadsShowReport { report_id } => {
+                format!("show stored RNA-read report '{}'", report_id)
+            }
+            Self::RnaReadsExportReport { report_id, path } => format!(
+                "export stored RNA-read report '{}' to '{}'",
+                report_id, path
+            ),
+            Self::RnaReadsExportHitsFasta {
+                report_id,
+                path,
+                selection,
+            } => format!(
+                "export RNA-read hits from '{}' to '{}' (selection={})",
+                report_id,
+                path,
+                selection.as_str()
+            ),
+            Self::RnaReadsExportSampleSheet {
+                path,
+                seq_id,
+                report_ids,
+                append,
+            } => format!(
+                "export RNA-read sample sheet to '{}' (seq_id='{}', report_ids={}, append={})",
+                path,
+                seq_id.as_deref().unwrap_or("*"),
+                if report_ids.is_empty() {
+                    "*".to_string()
+                } else {
+                    report_ids.join(",")
+                },
+                append
+            ),
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "genome_anchor_prepared_fallback_policy"
                 | "genome_anchor_fallback_mode"
@@ -5178,6 +5329,7 @@ impl ShellCommand {
                 | Self::PrimersDesignQpcr { .. }
                 | Self::DotplotCompute { .. }
                 | Self::FlexCompute { .. }
+                | Self::RnaReadsInterpret { .. }
                 | Self::SetParameter { .. }
                 | Self::Op { .. }
                 | Self::Workflow { .. }
@@ -5868,7 +6020,10 @@ fn parse_feature_expert_target_tokens(
             let feature_id = tokens[1]
                 .parse::<usize>()
                 .map_err(|e| format!("Invalid splicing feature id '{}': {e}", tokens[1]))?;
-            Ok(FeatureExpertTarget::SplicingFeature { feature_id })
+            Ok(FeatureExpertTarget::SplicingFeature {
+                feature_id,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+            })
         }
         "isoform" => {
             if tokens.len() != 2 {
@@ -6662,8 +6817,7 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                         cache_dir = Some(parse_option_path(tokens, &mut idx, "--cache-dir", label)?)
                     }
                     "--annotation-scope" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
+                        let raw = parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
                         let scope = match raw.trim().to_ascii_lowercase().as_str() {
                             "none" => GenomeAnnotationScope::None,
                             "core" => GenomeAnnotationScope::Core,
@@ -6739,13 +6893,16 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
         "extract-gene" => {
             if tokens.len() < 4 {
                 return Err(format!(
-                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--catalog PATH] [--cache-dir PATH]"
+                    "{label} extract-gene requires GENOME_ID QUERY [--occurrence N] [--output-id ID] [--annotation-scope none|core|full] [--max-annotation-features N] [--include-genomic-annotation|--no-include-genomic-annotation] [--catalog PATH] [--cache-dir PATH]"
                 ));
             }
             let genome_id = tokens[2].clone();
             let gene_query = tokens[3].clone();
             let mut occurrence: Option<usize> = None;
             let mut output_id: Option<String> = None;
+            let mut annotation_scope: Option<GenomeAnnotationScope> = None;
+            let mut max_annotation_features: Option<usize> = None;
+            let mut include_genomic_annotation: Option<bool> = None;
             let mut catalog_path: Option<String> = None;
             let mut cache_dir: Option<String> = None;
             let mut idx = 4usize;
@@ -6764,6 +6921,42 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     "--output-id" => {
                         output_id = Some(parse_option_path(tokens, &mut idx, "--output-id", label)?)
                     }
+                    "--annotation-scope" => {
+                        let raw = parse_option_path(tokens, &mut idx, "--annotation-scope", label)?;
+                        let scope = match raw.trim().to_ascii_lowercase().as_str() {
+                            "none" => GenomeAnnotationScope::None,
+                            "core" => GenomeAnnotationScope::Core,
+                            "full" => GenomeAnnotationScope::Full,
+                            other => {
+                                return Err(format!(
+                                    "Invalid --annotation-scope value '{other}' for {label} extract-gene (expected none|core|full)"
+                                ));
+                            }
+                        };
+                        annotation_scope = Some(scope);
+                    }
+                    "--max-annotation-features" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-annotation-features",
+                            label,
+                        )?;
+                        let parsed = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --max-annotation-features value '{raw}' for {label} extract-gene: {e}"
+                            )
+                        })?;
+                        max_annotation_features = Some(parsed);
+                    }
+                    "--include-genomic-annotation" => {
+                        include_genomic_annotation = Some(true);
+                        idx += 1;
+                    }
+                    "--no-include-genomic-annotation" => {
+                        include_genomic_annotation = Some(false);
+                        idx += 1;
+                    }
                     "--catalog" => {
                         catalog_path =
                             Some(parse_option_path(tokens, &mut idx, "--catalog", label)?)
@@ -6776,12 +6969,32 @@ fn parse_reference_command(tokens: &[String], helper_mode: bool) -> Result<Shell
                     }
                 }
             }
+            if let Some(include) = include_genomic_annotation {
+                let mapped_scope = if include {
+                    GenomeAnnotationScope::Core
+                } else {
+                    GenomeAnnotationScope::None
+                };
+                if let Some(explicit_scope) = annotation_scope {
+                    if explicit_scope != mapped_scope {
+                        return Err(format!(
+                            "Conflicting annotation options for {label} extract-gene: --annotation-scope={} with legacy include/no-include flag",
+                            explicit_scope.as_str()
+                        ));
+                    }
+                } else {
+                    annotation_scope = Some(mapped_scope);
+                }
+            }
             Ok(ShellCommand::ReferenceExtractGene {
                 helper_mode,
                 genome_id,
                 gene_query,
                 occurrence,
                 output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
                 catalog_path,
                 cache_dir,
             })
@@ -8590,7 +8803,7 @@ fn build_seeded_qpcr_operation(
 fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "primers requires a subcommand: design, design-qpcr, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
+            "primers requires a subcommand: design, design-qpcr, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report"
                 .to_string(),
         );
     }
@@ -8675,6 +8888,36 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 primer3_executable,
             })
         }
+        "preflight" => {
+            let mut backend: Option<PrimerDesignBackend> = None;
+            let mut primer3_executable: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--backend" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--backend", "primers preflight")?;
+                        backend = Some(parse_primer_design_backend(&raw)?);
+                    }
+                    "--primer3-exec" | "--primer3-executable" => {
+                        let flag = tokens[idx].clone();
+                        primer3_executable = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &flag,
+                            "primers preflight",
+                        )?);
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for primers preflight"));
+                    }
+                }
+            }
+            Ok(ShellCommand::PrimersPreflight {
+                backend,
+                primer3_executable,
+            })
+        }
         "seed-from-feature" => {
             if tokens.len() != 4 {
                 return Err("primers seed-from-feature requires SEQ_ID FEATURE_ID".to_string());
@@ -8748,7 +8991,7 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
             })
         }
         other => Err(format!(
-            "Unknown primers subcommand '{other}' (expected design, design-qpcr, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
+            "Unknown primers subcommand '{other}' (expected design, design-qpcr, preflight, seed-from-feature, seed-from-splicing, list-reports, show-report, export-report, list-qpcr-reports, show-qpcr-report, export-qpcr-report)"
         )),
     }
 }
@@ -8756,10 +8999,13 @@ fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_dotplot_mode(raw: &str) -> Result<DotplotMode, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "self_forward" | "self-forward" | "forward" | "self" => Ok(DotplotMode::SelfForward),
-        "self_reverse_complement" | "self-reverse-complement" | "self_revcomp"
-        | "self-revcomp" | "revcomp" | "reverse_complement" | "reverse-complement" => {
-            Ok(DotplotMode::SelfReverseComplement)
-        }
+        "self_reverse_complement"
+        | "self-reverse-complement"
+        | "self_revcomp"
+        | "self-revcomp"
+        | "revcomp"
+        | "reverse_complement"
+        | "reverse-complement" => Ok(DotplotMode::SelfReverseComplement),
         other => Err(format!(
             "Unsupported dotplot mode '{other}', expected self_forward or self_reverse_complement"
         )),
@@ -8774,6 +9020,61 @@ fn parse_flexibility_model(raw: &str) -> Result<FlexibilityModel, String> {
         "at_skew" | "at-skew" | "skew" => Ok(FlexibilityModel::AtSkew),
         other => Err(format!(
             "Unsupported flexibility model '{other}', expected at_richness or at_skew"
+        )),
+    }
+}
+
+fn parse_rna_read_profile(raw: &str) -> Result<RnaReadInterpretationProfile, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "nanopore_cdna_v1" | "nanopore" | "nanopore_cdna" => {
+            Ok(RnaReadInterpretationProfile::NanoporeCdnaV1)
+        }
+        "short_read_v1" | "shortread" | "short_read" => {
+            Ok(RnaReadInterpretationProfile::ShortReadV1)
+        }
+        "transposon_v1" | "transposon" => Ok(RnaReadInterpretationProfile::TransposonV1),
+        other => Err(format!(
+            "Unsupported RNA-read profile '{other}', expected nanopore_cdna_v1|short_read_v1|transposon_v1"
+        )),
+    }
+}
+
+fn parse_rna_read_input_format(raw: &str) -> Result<RnaReadInputFormat, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "fasta" | "fa" => Ok(RnaReadInputFormat::Fasta),
+        other => Err(format!(
+            "Unsupported RNA-read input format '{other}', expected fasta"
+        )),
+    }
+}
+
+fn parse_splicing_scope_preset(raw: &str) -> Result<SplicingScopePreset, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all_overlapping_both_strands" | "all" | "broad" => {
+            Ok(SplicingScopePreset::AllOverlappingBothStrands)
+        }
+        "target_group_any_strand" | "target_group" | "group" => {
+            Ok(SplicingScopePreset::TargetGroupAnyStrand)
+        }
+        "all_overlapping_target_strand" | "target_strand" | "strand" => {
+            Ok(SplicingScopePreset::AllOverlappingTargetStrand)
+        }
+        "target_group_target_strand" | "group_strand" | "legacy" => {
+            Ok(SplicingScopePreset::TargetGroupTargetStrand)
+        }
+        other => Err(format!(
+            "Unsupported scope preset '{other}', expected all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand"
+        )),
+    }
+}
+
+fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelection, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "all" => Ok(RnaReadHitSelection::All),
+        "seed_passed" | "seed" => Ok(RnaReadHitSelection::SeedPassed),
+        "aligned" => Ok(RnaReadHitSelection::Aligned),
+        other => Err(format!(
+            "Unsupported hit selection '{other}', expected all|seed_passed|aligned"
         )),
     }
 }
@@ -8813,32 +9114,25 @@ fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         })?);
                     }
                     "--end" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--end", "dotplot compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--end", "dotplot compute")?;
                         span_end_0based = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --end value '{raw}' for dotplot compute: {e}")
                         })?);
                     }
                     "--mode" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--mode", "dotplot compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--mode", "dotplot compute")?;
                         mode = parse_dotplot_mode(&raw)?;
                     }
                     "--word-size" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--word-size",
-                            "dotplot compute",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--word-size", "dotplot compute")?;
                         word_size = raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --word-size value '{raw}' for dotplot compute: {e}")
                         })?;
                     }
                     "--step" | "--step-bp" => {
                         let flag = tokens[idx].clone();
-                        let raw =
-                            parse_option_path(tokens, &mut idx, &flag, "dotplot compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, &flag, "dotplot compute")?;
                         step_bp = raw.parse::<usize>().map_err(|e| {
                             format!("Invalid {flag} value '{raw}' for dotplot compute: {e}")
                         })?;
@@ -8857,19 +9151,14 @@ fn parse_dotplot_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         })?;
                     }
                     "--tile-bp" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--tile-bp",
-                            "dotplot compute",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--tile-bp", "dotplot compute")?;
                         tile_bp = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --tile-bp value '{raw}' for dotplot compute: {e}")
                         })?);
                     }
                     "--id" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--id", "dotplot compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--id", "dotplot compute")?;
                         dotplot_id = Some(raw);
                     }
                     other => {
@@ -8945,8 +9234,7 @@ fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--start" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--start", "flex compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--start", "flex compute")?;
                         span_start_0based = Some(raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --start value '{raw}' for flex compute: {e}")
                         })?);
@@ -8958,28 +9246,20 @@ fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         })?);
                     }
                     "--model" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--model", "flex compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--model", "flex compute")?;
                         model = parse_flexibility_model(&raw)?;
                     }
                     "--bin-bp" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--bin-bp", "flex compute")?;
+                        let raw = parse_option_path(tokens, &mut idx, "--bin-bp", "flex compute")?;
                         bin_bp = raw.parse::<usize>().map_err(|e| {
                             format!("Invalid --bin-bp value '{raw}' for flex compute: {e}")
                         })?;
                     }
                     "--smoothing-bp" => {
-                        let raw = parse_option_path(
-                            tokens,
-                            &mut idx,
-                            "--smoothing-bp",
-                            "flex compute",
-                        )?;
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--smoothing-bp", "flex compute")?;
                         smoothing_bp = Some(raw.parse::<usize>().map_err(|e| {
-                            format!(
-                                "Invalid --smoothing-bp value '{raw}' for flex compute: {e}"
-                            )
+                            format!("Invalid --smoothing-bp value '{raw}' for flex compute: {e}")
                         })?);
                     }
                     "--id" => {
@@ -9025,6 +9305,314 @@ fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         other => Err(format!(
             "Unknown flex subcommand '{other}' (expected compute, list, show)"
+        )),
+    }
+}
+
+fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "rna-reads requires a subcommand: interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet"
+                .to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "interpret" => {
+            if tokens.len() < 5 {
+                return Err(
+                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                        .to_string(),
+                );
+            }
+            let seq_id = tokens[2].trim().to_string();
+            if seq_id.is_empty() {
+                return Err("rna-reads interpret SEQ_ID must not be empty".to_string());
+            }
+            let seed_feature_id = tokens[3].parse::<usize>().map_err(|e| {
+                format!(
+                    "Invalid FEATURE_ID '{}' for rna-reads interpret: {e}",
+                    tokens[3]
+                )
+            })?;
+            let input_path = tokens[4].trim().to_string();
+            if input_path.is_empty() {
+                return Err("rna-reads interpret INPUT.fa[.gz] must not be empty".to_string());
+            }
+            let mut profile = RnaReadInterpretationProfile::NanoporeCdnaV1;
+            let mut input_format = RnaReadInputFormat::Fasta;
+            let mut scope = SplicingScopePreset::AllOverlappingBothStrands;
+            let mut seed_filter = RnaReadSeedFilterConfig::default();
+            let mut align_config = RnaReadAlignConfig::default();
+            let mut report_id: Option<String> = None;
+            let mut idx = 5usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--report-id" => {
+                        report_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "rna-reads interpret",
+                        )?);
+                    }
+                    "--profile" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--profile",
+                            "rna-reads interpret",
+                        )?;
+                        profile = parse_rna_read_profile(&raw)?;
+                    }
+                    "--format" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--format", "rna-reads interpret")?;
+                        input_format = parse_rna_read_input_format(&raw)?;
+                    }
+                    "--scope" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--scope", "rna-reads interpret")?;
+                        scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--kmer-len" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--kmer-len",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.kmer_len = raw.parse::<usize>().map_err(|e| {
+                            format!("Invalid --kmer-len value '{raw}' for rna-reads interpret: {e}")
+                        })?;
+                    }
+                    "--short-max-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--short-max-bp",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.short_full_hash_max_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --short-max-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--long-window-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--long-window-bp",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.long_window_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --long-window-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--long-window-count" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--long-window-count",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.long_window_count = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --long-window-count value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--min-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-seed-hit-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-seed-hit-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--align-band-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-band-bp",
+                            "rna-reads interpret",
+                        )?;
+                        align_config.band_width_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --align-band-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--align-min-identity" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--align-min-identity",
+                            "rna-reads interpret",
+                        )?;
+                        align_config.min_identity_fraction = raw.parse::<f64>().map_err(|e| {
+                            format!(
+                                "Invalid --align-min-identity value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--max-secondary-mappings" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-secondary-mappings",
+                            "rna-reads interpret",
+                        )?;
+                        align_config.max_secondary_mappings =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-secondary-mappings value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    other => {
+                        return Err(format!("Unknown option '{other}' for rna-reads interpret"));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsInterpret {
+                seq_id,
+                seed_feature_id,
+                input_path,
+                profile,
+                input_format,
+                scope,
+                seed_filter,
+                align_config,
+                report_id,
+            })
+        }
+        "list-reports" => {
+            if tokens.len() > 3 {
+                return Err(
+                    "rna-reads list-reports expects at most one optional SEQ_ID".to_string()
+                );
+            }
+            let seq_id = if tokens.len() == 3 {
+                let value = tokens[2].trim();
+                if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                }
+            } else {
+                None
+            };
+            Ok(ShellCommand::RnaReadsListReports { seq_id })
+        }
+        "show-report" => {
+            if tokens.len() != 3 {
+                return Err("rna-reads show-report requires REPORT_ID".to_string());
+            }
+            Ok(ShellCommand::RnaReadsShowReport {
+                report_id: tokens[2].clone(),
+            })
+        }
+        "export-report" => {
+            if tokens.len() != 4 {
+                return Err("rna-reads export-report requires REPORT_ID OUTPUT.json".to_string());
+            }
+            Ok(ShellCommand::RnaReadsExportReport {
+                report_id: tokens[2].clone(),
+                path: tokens[3].clone(),
+            })
+        }
+        "export-hits-fasta" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-hits-fasta requires REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::Aligned;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-hits-fasta",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-hits-fasta"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportHitsFasta {
+                report_id,
+                path,
+                selection,
+            })
+        }
+        "export-sample-sheet" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "rna-reads export-sample-sheet requires OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]"
+                        .to_string(),
+                );
+            }
+            let path = tokens[2].clone();
+            let mut seq_id: Option<String> = None;
+            let mut report_ids: Vec<String> = vec![];
+            let mut append = false;
+            let mut idx = 3usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--seq-id" => {
+                        let raw =
+                            parse_option_path(tokens, &mut idx, "--seq-id", "rna-reads export-sample-sheet")?;
+                        seq_id = Some(raw);
+                    }
+                    "--report-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-id",
+                            "rna-reads export-sample-sheet",
+                        )?;
+                        report_ids.push(raw);
+                    }
+                    "--append" => {
+                        append = true;
+                        idx += 1;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-sample-sheet"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportSampleSheet {
+                path,
+                seq_id,
+                report_ids,
+                append,
+            })
+        }
+        other => Err(format!(
+            "Unknown rna-reads subcommand '{other}' (expected interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet)"
         )),
     }
 }
@@ -10251,6 +10839,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         "dotplot" => parse_dotplot_command(tokens),
         "flex" => parse_flex_command(tokens),
+        "rna-reads" | "rna_reads" | "rnareads" => parse_rna_reads_command(tokens),
         "ui" => parse_ui_command(tokens),
         "agents" => parse_agents_command(tokens),
         "routines" => parse_routines_command(tokens),
@@ -13038,6 +13627,9 @@ pub fn execute_shell_command_with_options(
             gene_query,
             occurrence,
             output_id,
+            annotation_scope,
+            max_annotation_features,
+            include_genomic_annotation,
             catalog_path,
             cache_dir,
         } => {
@@ -13047,6 +13639,9 @@ pub fn execute_shell_command_with_options(
                     gene_query: gene_query.clone(),
                     occurrence: *occurrence,
                     output_id: output_id.clone(),
+                    annotation_scope: *annotation_scope,
+                    max_annotation_features: *max_annotation_features,
+                    include_genomic_annotation: *include_genomic_annotation,
                     catalog_path: operation_catalog_path(catalog_path, *helper_mode),
                     cache_dir: cache_dir.clone(),
                 })
@@ -14386,6 +14981,7 @@ pub fn execute_shell_command_with_options(
                     seq_id,
                     &FeatureExpertTarget::SplicingFeature {
                         feature_id: *feature_id,
+                        scope: SplicingScopePreset::AllOverlappingBothStrands,
                     },
                 )
                 .map_err(|e| e.to_string())?;
@@ -14579,6 +15175,19 @@ pub fn execute_shell_command_with_options(
                     "result": op_result,
                     "report": selected_report,
                     "effective_backend": effective_backend,
+                }),
+            }
+        }
+        ShellCommand::PrimersPreflight {
+            backend,
+            primer3_executable,
+        } => {
+            let report = engine.primer3_preflight_report(*backend, primer3_executable.as_deref());
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.primer3_preflight.v1",
+                    "preflight": report,
                 }),
             }
         }
@@ -14804,6 +15413,129 @@ pub fn execute_shell_command_with_options(
                 }),
             }
         }
+        ShellCommand::RnaReadsInterpret {
+            seq_id,
+            seed_feature_id,
+            input_path,
+            profile,
+            input_format,
+            scope,
+            seed_filter,
+            align_config,
+            report_id,
+        } => {
+            let op_result = engine
+                .apply(Operation::InterpretRnaReads {
+                    seq_id: seq_id.clone(),
+                    seed_feature_id: *seed_feature_id,
+                    profile: *profile,
+                    input_path: input_path.clone(),
+                    input_format: *input_format,
+                    scope: *scope,
+                    seed_filter: seed_filter.clone(),
+                    align_config: align_config.clone(),
+                    report_id: report_id.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = if let Some(id) = report_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                engine.get_rna_read_report(id).ok()
+            } else {
+                engine
+                    .list_rna_read_reports(Some(seq_id.as_str()))
+                    .into_iter()
+                    .max_by_key(|row| row.generated_at_unix_ms)
+                    .and_then(|row| engine.get_rna_read_report(row.report_id.as_str()).ok())
+            };
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "result": op_result,
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsListReports { seq_id } => {
+            let rows = engine.list_rna_read_reports(seq_id.as_deref());
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_report_list.v1",
+                    "report_count": rows.len(),
+                    "reports": rows,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsShowReport { report_id } => {
+            let report = engine
+                .get_rna_read_report(report_id)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "report": report,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportReport { report_id, path } => {
+            let report = engine
+                .export_rna_read_report(report_id, path)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_report_export.v1",
+                    "report_id": report.report_id,
+                    "path": path,
+                    "read_count_total": report.read_count_total,
+                    "read_count_seed_passed": report.read_count_seed_passed,
+                    "read_count_aligned": report.read_count_aligned,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportHitsFasta {
+            report_id,
+            path,
+            selection,
+        } => {
+            let written = engine
+                .export_rna_read_hits_fasta(report_id, path, *selection)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.rna_read_hits_fasta_export.v1",
+                    "report_id": report_id,
+                    "path": path,
+                    "selection": selection.as_str(),
+                    "written_records": written,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportSampleSheet {
+            path,
+            seq_id,
+            report_ids,
+            append,
+        } => {
+            let export = engine
+                .export_rna_read_sample_sheet(path, seq_id.as_deref(), report_ids, *append)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "path": export.path,
+                    "report_count": export.report_count,
+                    "append": export.appended,
+                    "seq_id": seq_id,
+                    "report_ids": report_ids,
+                }),
+            }
+        }
         ShellCommand::SetParameter { name, value_json } => {
             let raw = parse_json_payload(value_json)?;
             let value: serde_json::Value = serde_json::from_str(&raw)
@@ -14873,6 +15605,9 @@ mod tests {
     use crate::dna_sequence::DNAsequence;
     use gb_io::seq::{Feature, FeatureKind, Location};
     use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::tempdir;
 
@@ -14914,6 +15649,29 @@ mod tests {
             "{}/test_files/fixtures/resources/{name}",
             env!("CARGO_MANIFEST_DIR")
         )
+    }
+
+    fn primer3_fixture_path(name: &str) -> String {
+        format!(
+            "{}/test_files/fixtures/primer3/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        )
+    }
+
+    #[cfg(unix)]
+    fn install_fake_primer3(path: &Path, fixture_path: &Path) -> String {
+        let script_path = path.join("fake_primer3.sh");
+        let script = format!(
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"primer3_core synthetic-fixture 2.6.1\"\n  exit 0\nfi\ncat \"{}\"\n",
+            fixture_path.display()
+        );
+        std::fs::write(&script_path, script).expect("write fake primer3");
+        let mut perms = std::fs::metadata(&script_path)
+            .expect("metadata fake primer3")
+            .permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script_path, perms).expect("chmod fake primer3");
+        script_path.display().to_string()
     }
 
     #[test]
@@ -15497,6 +16255,27 @@ mod tests {
                 primer3_executable,
             } => {
                 assert_eq!(request_json, "@request.json");
+                assert_eq!(backend, Some(PrimerDesignBackend::Primer3));
+                assert_eq!(
+                    primer3_executable.as_deref(),
+                    Some("/opt/primer3/primer3_core")
+                );
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_primers_preflight_with_backend_overrides() {
+        let cmd = parse_shell_line(
+            "primers preflight --backend primer3 --primer3-exec /opt/primer3/primer3_core",
+        )
+        .expect("parse command");
+        match cmd {
+            ShellCommand::PrimersPreflight {
+                backend,
+                primer3_executable,
+            } => {
                 assert_eq!(backend, Some(PrimerDesignBackend::Primer3));
                 assert_eq!(
                     primer3_executable.as_deref(),
@@ -18938,6 +19717,176 @@ filter set1 set2 --metric score --min 10
         assert!(text.contains("gentle.primer_design_report.v1"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn execute_primers_design_internal_vs_primer3_fixture_normalization_parity() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence(
+                "ACGTTGCATGTCAGTACGATCGTACGTAGCTAGTCGATCGTACGATCGTAGCTAGCATCGATGCTAGCTAGTACGTAGCATCGATCGTAGCTAGCATGCTAGCTAGTCGATCGATCGTACGATCG",
+            )
+            .expect("sequence"),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        let tmp = tempdir().expect("tempdir");
+        let fixture_path = Path::new(&primer3_fixture_path("pairs.location_5_60.kv")).to_path_buf();
+        let fake_primer3 = install_fake_primer3(tmp.path(), &fixture_path);
+
+        let forward = crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(5),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+        let reverse = crate::engine::PrimerDesignSideConstraint {
+            min_length: 20,
+            max_length: 20,
+            location_0based: Some(60),
+            start_0based: None,
+            end_0based: None,
+            min_tm_c: 0.0,
+            max_tm_c: 100.0,
+            min_gc_fraction: 0.0,
+            max_gc_fraction: 1.0,
+            max_anneal_hits: 1000,
+            ..Default::default()
+        };
+
+        let internal_request = serde_json::to_string(&Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward: forward.clone(),
+            reverse: reverse.clone(),
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("internal_norm".to_string()),
+        })
+        .expect("serialize internal request");
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersDesign {
+                request_json: internal_request,
+                backend: Some(PrimerDesignBackend::Internal),
+                primer3_executable: None,
+            },
+        )
+        .expect("primers design internal");
+        let internal = engine
+            .get_primer_design_report("internal_norm")
+            .expect("internal report");
+
+        let primer3_request = serde_json::to_string(&Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 40,
+            roi_end_0based: 80,
+            forward,
+            reverse,
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 150,
+            pair_constraints: crate::engine::PrimerDesignPairConstraint::default(),
+            max_tm_delta_c: Some(100.0),
+            max_pairs: Some(10),
+            report_id: Some("primer3_norm".to_string()),
+        })
+        .expect("serialize primer3 request");
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersDesign {
+                request_json: primer3_request,
+                backend: Some(PrimerDesignBackend::Primer3),
+                primer3_executable: Some(fake_primer3.clone()),
+            },
+        )
+        .expect("primers design primer3");
+        let primer3 = engine
+            .get_primer_design_report("primer3_norm")
+            .expect("primer3 report");
+
+        assert_eq!(internal.template, primer3.template);
+        assert_eq!(internal.roi_start_0based, primer3.roi_start_0based);
+        assert_eq!(internal.roi_end_0based, primer3.roi_end_0based);
+        assert_eq!(internal.min_amplicon_bp, primer3.min_amplicon_bp);
+        assert_eq!(internal.max_amplicon_bp, primer3.max_amplicon_bp);
+        assert_eq!(internal.pair_count, 1);
+        assert_eq!(primer3.pair_count, 1);
+        let internal_pair = internal.pairs.first().expect("internal pair");
+        let primer3_pair = primer3.pairs.first().expect("primer3 pair");
+        assert_eq!(
+            internal_pair.forward.start_0based,
+            primer3_pair.forward.start_0based
+        );
+        assert_eq!(
+            internal_pair.forward.end_0based_exclusive,
+            primer3_pair.forward.end_0based_exclusive
+        );
+        assert_eq!(
+            internal_pair.reverse.start_0based,
+            primer3_pair.reverse.start_0based
+        );
+        assert_eq!(
+            internal_pair.reverse.end_0based_exclusive,
+            primer3_pair.reverse.end_0based_exclusive
+        );
+        assert_eq!(
+            internal_pair.amplicon_length_bp,
+            primer3_pair.amplicon_length_bp
+        );
+        assert_eq!(primer3.backend.requested, "primer3");
+        assert_eq!(primer3.backend.used, "primer3");
+        assert_eq!(
+            primer3.backend.primer3_executable.as_deref(),
+            Some(fake_primer3.as_str())
+        );
+        assert_eq!(
+            primer3.backend.primer3_version.as_deref(),
+            Some("primer3_core synthetic-fixture 2.6.1")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn execute_primers_preflight_reports_reachable_primer3() {
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let tmp = tempdir().expect("tempdir");
+        let fixture_path = Path::new(&primer3_fixture_path("pairs.location_5_60.kv")).to_path_buf();
+        let fake_primer3 = install_fake_primer3(tmp.path(), &fixture_path);
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PrimersPreflight {
+                backend: Some(PrimerDesignBackend::Primer3),
+                primer3_executable: Some(fake_primer3.clone()),
+            },
+        )
+        .expect("primers preflight");
+        assert!(!out.state_changed);
+        assert_eq!(
+            out.output["schema"].as_str(),
+            Some("gentle.primer3_preflight.v1")
+        );
+        assert_eq!(out.output["preflight"]["reachable"].as_bool(), Some(true));
+        assert_eq!(
+            out.output["preflight"]["version_probe_ok"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(out.output["preflight"]["backend"].as_str(), Some("primer3"));
+        assert_eq!(
+            out.output["preflight"]["executable"].as_str(),
+            Some(fake_primer3.as_str())
+        );
+    }
+
     #[test]
     fn execute_primers_design_qpcr_list_show_export() {
         let mut state = ProjectState::default();
@@ -20028,6 +20977,62 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
     }
 
     #[test]
+    fn parse_genomes_extract_gene_with_scope_and_cap() {
+        let cmd = parse_shell_line(
+            "genomes extract-gene ToyGenome MYGENE --annotation-scope full --max-annotation-features 120 --output-id out",
+        )
+        .expect("parse genomes extract-gene with scope and cap");
+        match cmd {
+            ShellCommand::ReferenceExtractGene {
+                helper_mode,
+                genome_id,
+                gene_query,
+                output_id,
+                annotation_scope,
+                max_annotation_features,
+                include_genomic_annotation,
+                ..
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome".to_string());
+                assert_eq!(gene_query, "MYGENE".to_string());
+                assert_eq!(output_id, Some("out".to_string()));
+                assert_eq!(annotation_scope, Some(GenomeAnnotationScope::Full));
+                assert_eq!(max_annotation_features, Some(120));
+                assert_eq!(include_genomic_annotation, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_genomes_extract_gene_with_annotation_flag() {
+        let cmd = parse_shell_line(
+            "genomes extract-gene ToyGenome MYGENE --include-genomic-annotation --output-id out",
+        )
+        .expect("parse genomes extract-gene with annotation flag");
+        match cmd {
+            ShellCommand::ReferenceExtractGene {
+                helper_mode,
+                genome_id,
+                gene_query,
+                output_id,
+                annotation_scope,
+                include_genomic_annotation,
+                ..
+            } => {
+                assert!(!helper_mode);
+                assert_eq!(genome_id, "ToyGenome".to_string());
+                assert_eq!(gene_query, "MYGENE".to_string());
+                assert_eq!(output_id, Some("out".to_string()));
+                assert_eq!(annotation_scope, Some(GenomeAnnotationScope::Core));
+                assert_eq!(include_genomic_annotation, Some(true));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
     fn parse_genomes_extract_region_with_annotation_flag() {
         let cmd = parse_shell_line(
             "genomes extract-region ToyGenome chr1 100 250 --include-genomic-annotation --output-id out",
@@ -20826,7 +21831,10 @@ op {"Reverse":{"input":"missing","output_id":"bad"}}"#
                 assert_eq!(seq_id, "s");
                 assert_eq!(
                     target,
-                    FeatureExpertTarget::SplicingFeature { feature_id: 11 }
+                    FeatureExpertTarget::SplicingFeature {
+                        feature_id: 11,
+                        scope: SplicingScopePreset::AllOverlappingBothStrands,
+                    }
                 );
             }
             other => panic!("unexpected command: {other:?}"),
@@ -21298,7 +22306,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         engine
             .apply(Operation::RenderFeatureExpertSvg {
                 seq_id: "seq_a".to_string(),
-                target: FeatureExpertTarget::SplicingFeature { feature_id },
+                target: FeatureExpertTarget::SplicingFeature {
+                    feature_id,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                },
                 path: op_path.clone(),
             })
             .expect("render splicing op route");
@@ -21307,7 +22318,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
             &mut engine,
             &ShellCommand::RenderFeatureExpertSvg {
                 seq_id: "seq_a".to_string(),
-                target: FeatureExpertTarget::SplicingFeature { feature_id },
+                target: FeatureExpertTarget::SplicingFeature {
+                    feature_id,
+                    scope: SplicingScopePreset::AllOverlappingBothStrands,
+                },
                 output: shell_path.clone(),
             },
         )
@@ -21380,6 +22394,83 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn parse_rna_reads_commands() {
+        let interpret = parse_shell_line(
+            "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --short-max-bp 420 --long-window-bp 140 --long-window-count 3 --min-seed-hit-fraction 0.30 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
+        )
+        .expect("parse rna-reads interpret");
+        match interpret {
+            ShellCommand::RnaReadsInterpret {
+                seq_id,
+                seed_feature_id,
+                input_path,
+                scope,
+                seed_filter,
+                align_config,
+                report_id,
+                ..
+            } => {
+                assert_eq!(seq_id, "seq_a");
+                assert_eq!(seed_feature_id, 7);
+                assert_eq!(input_path, "reads.fa");
+                assert_eq!(scope, SplicingScopePreset::TargetGroupAnyStrand);
+                assert_eq!(seed_filter.kmer_len, 9);
+                assert_eq!(seed_filter.short_full_hash_max_bp, 420);
+                assert_eq!(seed_filter.long_window_bp, 140);
+                assert_eq!(seed_filter.long_window_count, 3);
+                assert!((seed_filter.min_seed_hit_fraction - 0.30).abs() < f64::EPSILON);
+                assert_eq!(align_config.band_width_bp, 24);
+                assert!((align_config.min_identity_fraction - 0.60).abs() < f64::EPSILON);
+                assert_eq!(align_config.max_secondary_mappings, 2);
+                assert_eq!(report_id.as_deref(), Some("tp73_reads"));
+            }
+            other => panic!("expected RnaReadsInterpret, got {other:?}"),
+        }
+
+        let list =
+            parse_shell_line("rna-reads list-reports seq_a").expect("parse rna-reads list-reports");
+        assert!(matches!(
+            list,
+            ShellCommand::RnaReadsListReports { seq_id } if seq_id.as_deref() == Some("seq_a")
+        ));
+
+        let show =
+            parse_shell_line("rna-reads show-report tp73_reads").expect("parse rna-reads show");
+        assert!(matches!(
+            show,
+            ShellCommand::RnaReadsShowReport { report_id } if report_id == "tp73_reads"
+        ));
+
+        let export = parse_shell_line("rna-reads export-report tp73_reads out.json")
+            .expect("parse rna-reads export-report");
+        assert!(matches!(
+            export,
+            ShellCommand::RnaReadsExportReport { report_id, path } if report_id == "tp73_reads" && path == "out.json"
+        ));
+
+        let export_hits =
+            parse_shell_line("rna-reads export-hits-fasta tp73_reads hits.fa --selection aligned")
+                .expect("parse rna-reads export-hits-fasta");
+        assert!(matches!(
+            export_hits,
+            ShellCommand::RnaReadsExportHitsFasta { report_id, path, selection } if report_id == "tp73_reads" && path == "hits.fa" && selection == RnaReadHitSelection::Aligned
+        ));
+
+        let export_sheet = parse_shell_line(
+            "rna-reads export-sample-sheet samples.tsv --seq-id seq_a --report-id tp73_reads --append",
+        )
+        .expect("parse rna-reads export-sample-sheet");
+        assert!(matches!(
+            export_sheet,
+            ShellCommand::RnaReadsExportSampleSheet { path, seq_id, report_ids, append }
+                if path == "samples.tsv"
+                    && seq_id.as_deref() == Some("seq_a")
+                    && report_ids == vec!["tp73_reads".to_string()]
+                    && append
+        ));
+    }
+
+    #[test]
     fn execute_dotplot_and_flex_commands_store_payloads() {
         let mut state = ProjectState::default();
         state.sequences.insert(
@@ -21441,6 +22532,122 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         )
         .expect("list flex tracks");
         assert_eq!(flex_list.output["track_count"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn execute_rna_reads_commands_store_and_export_reports() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), tp53_isoform_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let fasta_dir = tempdir().expect("tempdir");
+        let input_path = fasta_dir.path().join("reads.fa");
+        fs::write(
+            &input_path,
+            ">read_1\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCTATGGAAACTACTTCCTAATGGGCCCGGATTCCTTTTCTCTGTGAACCTTCCCGATGATGATGGAGGTGGAATGGAGGAGCCGCAGTCA\n",
+        )
+        .expect("write input fasta");
+        let report_id = "rna_reads_test".to_string();
+        let run = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsInterpret {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                input_path: input_path.display().to_string(),
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some(report_id.clone()),
+            },
+        )
+        .expect("execute rna-reads interpret");
+        assert!(run.state_changed);
+        assert_eq!(
+            run.output["report"]["report_id"].as_str(),
+            Some(report_id.as_str())
+        );
+        assert_eq!(run.output["report"]["read_count_total"].as_u64(), Some(1));
+
+        let listed = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsListReports {
+                seq_id: Some("seq_a".to_string()),
+            },
+        )
+        .expect("list rna-read reports");
+        assert_eq!(listed.output["report_count"].as_u64(), Some(1));
+
+        let shown = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsShowReport {
+                report_id: report_id.clone(),
+            },
+        )
+        .expect("show rna-read report");
+        assert_eq!(
+            shown.output["report"]["report_id"].as_str(),
+            Some(report_id.as_str())
+        );
+
+        let exported_report = fasta_dir.path().join("report.json");
+        let export_result = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsExportReport {
+                report_id: report_id.clone(),
+                path: exported_report.display().to_string(),
+            },
+        )
+        .expect("export rna-read report");
+        assert_eq!(
+            export_result.output["report_id"].as_str(),
+            Some(report_id.as_str())
+        );
+        assert!(exported_report.exists());
+
+        let exported_hits = fasta_dir.path().join("hits.fa");
+        let export_hits_result = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsExportHitsFasta {
+                report_id,
+                path: exported_hits.display().to_string(),
+                selection: RnaReadHitSelection::All,
+            },
+        )
+        .expect("export rna-read hits");
+        assert_eq!(
+            export_hits_result.output["written_records"].as_u64(),
+            Some(1)
+        );
+        let fasta_text = fs::read_to_string(exported_hits).expect("read exported hits");
+        assert!(fasta_text.contains(">read_1"));
+
+        let exported_sheet = fasta_dir.path().join("samples.tsv");
+        let export_sheet_result = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsExportSampleSheet {
+                path: exported_sheet.display().to_string(),
+                seq_id: Some("seq_a".to_string()),
+                report_ids: vec![],
+                append: false,
+            },
+        )
+        .expect("export rna-read sample sheet");
+        assert_eq!(export_sheet_result.output["report_count"].as_u64(), Some(1));
+        let sheet_text = fs::read_to_string(exported_sheet).expect("read sample sheet");
+        assert!(sheet_text.contains("sample_id"));
+        assert!(sheet_text.contains("exon_support_frequencies_json"));
     }
 
     #[test]

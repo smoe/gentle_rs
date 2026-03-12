@@ -3,10 +3,15 @@
 This project publishes installable desktop packages for:
 
 - macOS: `.dmg`
-- Windows: `.msi`
+- Windows: `.zip` (contains `gentle.exe`)
 
-Linux installable packaging is intentionally deferred. The target is Debian
-packaging once dependency packaging is finalized.
+Linux installable packaging is intentionally deferred. Until Debian packaging is
+ready, releases should default Linux distribution metadata to `tarball`.
+
+Linux distribution intent is now tracked as a release attribute (`deferred`,
+`deb`, `appimage`, `rpm`, or `tarball`) in a release-metadata JSON asset so
+each release records the planned Linux channel explicitly. Current default:
+`tarball`.
 
 ## Source Archive Exclusions
 
@@ -35,21 +40,29 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
   - Does not publish release assets.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered by tag pushes matching `v*`.
-  - Can also be run manually via `workflow_dispatch` with a `tag` input.
+  - Can also be run manually via `workflow_dispatch` with inputs:
+    - `tag`
+    - `linux_distribution` (`deferred|deb|appimage|rpm|tarball`)
   - Builds macOS and Windows installers, runs smoke checks, and publishes assets
     to the corresponding GitHub Release.
+  - Also publishes a release-attributes JSON file:
+    - `gentle-<tag>-release-attributes.json`
+    - schema marker: `gentle.release_attributes.v1`
+    - includes selected `linux_distribution`.
 
 ## Artifact Naming
 
 Release assets are normalized to:
 
 - `gentle-<tag>-macos-<arch>.dmg`
-- `gentle-<tag>-windows-<arch>.msi`
+- `gentle-<tag>-windows-<arch>.zip`
+- `gentle-<tag>-release-attributes.json`
 
 Example:
 
 - `gentle-v0.1.0-macos-arm64.dmg`
-- `gentle-v0.1.0-windows-x64.msi`
+- `gentle-v0.1.0-windows-x64.zip`
+- `gentle-v0.1.0-release-attributes.json`
 
 ## Standard Tagged Release
 
@@ -65,6 +78,7 @@ Example:
 Use Actions → `Release Installers` → `Run workflow` and provide:
 
 - `tag`: an existing tag (for example `v0.1.0`)
+- `linux_distribution`: planned Linux channel for this release metadata
 
 This rebuilds installers and updates assets on that tag’s release.
 
@@ -74,7 +88,7 @@ This rebuilds installers and updates assets on that tag’s release.
   - mounts the `.dmg`
   - verifies an `.app` bundle exists with `Contents/Info.plist`
 - Windows:
-  - performs MSI administrative extract (`msiexec /a`)
+  - extracts the ZIP package
   - verifies `gentle.exe` is present and non-empty
 
 ## Rollback / Recovery
@@ -89,6 +103,7 @@ If a release artifact is broken:
 
 ## Internal Release Notes
 
-For internal tags, keep a versioned release-notes document under `docs/`, e.g.:
+For internal tags, keep a versioned release-notes document at repository root,
+e.g.:
 
-- `docs/release_notes_v0.1.0-internal.2.md`
+- `release_notes_v0.1.0-internal.2.md`

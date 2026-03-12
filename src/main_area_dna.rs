@@ -5,23 +5,28 @@ use crate::{
     dna_sequence::DNAsequence,
     engine::{
         AnchorBoundary, AnchorDirection, AnchoredRegionAnchor, CandidateFeatureStrandRelation,
-        CandidateRecord, CandidateSetOperator, DisplayTarget, Engine, EngineError, ErrorCode,
-        ExportFormat, GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine,
-        LigationProtocol, LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress,
-        PcrPrimerSpec, PrimerDesignBaseLock, PrimerDesignPairConstraint,
-        PrimerDesignSideConstraint, RenderSvgMode, SequenceGenomeAnchorSummary, SnpMutationSpec,
-        TfThresholdOverride, TfbsProgress, Workflow,
+        CandidateRecord, CandidateSetOperator, DisplayTarget, DotplotMode, DotplotView, Engine,
+        EngineError, ErrorCode, ExportFormat, FlexibilityModel, FlexibilityTrack,
+        GenomeAnchorPreparedFallbackPolicy, GenomeAnchorSide, GentleEngine, LigationProtocol,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PcrPrimerSpec,
+        PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
+        PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig, RnaReadInputFormat,
+        RnaReadHitSelection, RnaReadInterpretProgress, RnaReadInterpretationProfile,
+        RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
+        SequenceGenomeAnchorSummary,
+        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
         shell_help_text,
     },
+    enzymes::active_restriction_enzymes,
     feature_expert::{
         FeatureExpertTarget, FeatureExpertView, IsoformArchitectureExpertView,
         RestrictionSiteExpertView, SplicingExonSummary, SplicingExpertView, TfbsExpertView,
         compute_splicing_exon_transition_matrix,
     },
-    feature_location::collect_location_ranges_usize,
+    feature_location::{collect_location_ranges_usize, feature_is_reverse},
     gc_contents::GcContents,
     icons::*,
     iupac_code::IupacCode,
@@ -50,6 +55,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, RwLock,
+        atomic::{AtomicBool, Ordering as AtomicOrdering},
         mpsc::{self, Receiver, TryRecvError},
     },
     time::{Duration, Instant},
@@ -61,6 +67,7 @@ enum PrimaryMapMode {
     #[default]
     Standard,
     Splicing,
+    Dotplot,
 }
 
 impl PrimaryMapMode {
@@ -68,6 +75,7 @@ impl PrimaryMapMode {
         match self {
             Self::Standard => "Standard map",
             Self::Splicing => "Splicing map",
+            Self::Dotplot => "Dotplot map",
         }
     }
 }
@@ -85,6 +93,7 @@ struct PrimerSideConstraintUiState {
     min_gc_fraction: String,
     max_gc_fraction: String,
     max_anneal_hits: String,
+    non_annealing_5prime_tail: String,
     fixed_5prime: String,
     fixed_3prime: String,
     required_motifs: String,
@@ -95,8 +104,8 @@ struct PrimerSideConstraintUiState {
 impl Default for PrimerSideConstraintUiState {
     fn default() -> Self {
         Self {
-            min_length: "18".to_string(),
-            max_length: "24".to_string(),
+            min_length: "20".to_string(),
+            max_length: "30".to_string(),
             location_0based: String::new(),
             start_0based: String::new(),
             end_0based: String::new(),
@@ -105,6 +114,7 @@ impl Default for PrimerSideConstraintUiState {
             min_gc_fraction: "0.35".to_string(),
             max_gc_fraction: "0.70".to_string(),
             max_anneal_hits: "1".to_string(),
+            non_annealing_5prime_tail: String::new(),
             fixed_5prime: String::new(),
             fixed_3prime: String::new(),
             required_motifs: String::new(),
@@ -204,6 +214,82 @@ impl Default for QpcrDesignOpsUiState {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct DotplotOpsUiState {
+    half_window_bp: String,
+    word_size: String,
+    step_bp: String,
+    max_mismatches: String,
+    tile_bp: String,
+    mode: DotplotMode,
+    dotplot_id: String,
+    show_flexibility_track: bool,
+    flex_model: FlexibilityModel,
+    flex_bin_bp: String,
+    flex_smoothing_bp: String,
+    flex_track_id: String,
+}
+
+impl Default for DotplotOpsUiState {
+    fn default() -> Self {
+        Self {
+            half_window_bp: "500".to_string(),
+            word_size: "9".to_string(),
+            step_bp: "4".to_string(),
+            max_mismatches: "1".to_string(),
+            tile_bp: String::new(),
+            mode: DotplotMode::SelfReverseComplement,
+            dotplot_id: "dotplot_primary".to_string(),
+            show_flexibility_track: true,
+            flex_model: FlexibilityModel::AtRichness,
+            flex_bin_bp: "25".to_string(),
+            flex_smoothing_bp: "75".to_string(),
+            flex_track_id: "flex_primary".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+struct RnaReadInterpretOpsUiState {
+    input_path: String,
+    report_id: String,
+    scope: SplicingScopePreset,
+    profile: RnaReadInterpretationProfile,
+    input_format: RnaReadInputFormat,
+    kmer_len: String,
+    short_full_hash_max_bp: String,
+    long_window_bp: String,
+    long_window_count: String,
+    min_seed_hit_fraction: String,
+    align_band_width_bp: String,
+    align_min_identity_fraction: String,
+    align_max_secondary_mappings: String,
+    show_advanced: bool,
+}
+
+impl Default for RnaReadInterpretOpsUiState {
+    fn default() -> Self {
+        Self {
+            input_path: String::new(),
+            report_id: String::new(),
+            scope: SplicingScopePreset::AllOverlappingBothStrands,
+            profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_format: RnaReadInputFormat::Fasta,
+            kmer_len: "9".to_string(),
+            short_full_hash_max_bp: "420".to_string(),
+            long_window_bp: "140".to_string(),
+            long_window_count: "3".to_string(),
+            min_seed_hit_fraction: "0.30".to_string(),
+            align_band_width_bp: "24".to_string(),
+            align_min_identity_fraction: "0.60".to_string(),
+            align_max_secondary_mappings: "3".to_string(),
+            show_advanced: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum PendingGenomeAnchorAction {
     Extend {
@@ -232,6 +318,10 @@ struct EngineOpsUiState {
     show_shell: bool,
     #[serde(default)]
     primary_map_mode: PrimaryMapMode,
+    #[serde(default)]
+    dotplot_ui: DotplotOpsUiState,
+    #[serde(default)]
+    rna_reads_ui: RnaReadInterpretOpsUiState,
     #[serde(default)]
     shell_command_text: String,
     digest_enzymes_text: String,
@@ -279,6 +369,12 @@ struct EngineOpsUiState {
     primer_design_ui: PrimerDesignOpsUiState,
     #[serde(default)]
     qpcr_design_ui: QpcrDesignOpsUiState,
+    #[serde(default = "default_primer_backend_auto")]
+    primer_backend: PrimerDesignBackend,
+    #[serde(default = "default_primer3_executable")]
+    primer3_executable: String,
+    #[serde(default)]
+    primer3_preflight_status: String,
     #[serde(default)]
     extract_from: String,
     #[serde(default)]
@@ -539,10 +635,12 @@ mod tests {
     use crate::{
         dna_sequence::DNAsequence,
         engine::{
-            Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation,
+            Engine, GentleEngine, LinearSequenceLetterLayoutMode, Operation, PrimerDesignBackend,
             PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState,
+            SplicingScopePreset,
         },
-        feature_expert::SplicingExpertView,
+        enzymes::active_restriction_enzymes,
+        feature_expert::{IsoformArchitectureExpertView, SplicingExpertView},
         linear_base_routing::{LinearBaseRenderMode, LinearBaseRoutePolicy},
     };
     use gb_io::seq::{Feature, FeatureKind, Location};
@@ -581,6 +679,14 @@ mod tests {
         } else {
             trimmed.to_string()
         }
+    }
+
+    fn restriction_ready_dna(sequence: &str) -> DNAsequence {
+        let mut dna = DNAsequence::from_sequence(sequence).expect("sequence");
+        *dna.restriction_enzymes_mut() = active_restriction_enzymes();
+        dna.set_max_restriction_enzyme_sites(Some(2));
+        dna.update_computed_features();
+        dna
     }
 
     fn write_single_line_fasta_index(path: &Path, sequence_len: usize) {
@@ -778,6 +884,70 @@ mod tests {
     }
 
     #[test]
+    fn extract_rebase_enzyme_names_from_text_handles_ecor_i_spacing() {
+        let lookup = MainAreaDna::rebase_name_lookup_by_normalized();
+        let names = MainAreaDna::extract_rebase_enzyme_names_from_text(
+            "Multiple Cloning Site (MCS); contains BamHI, SmaI and EcoR I",
+            &lookup,
+        );
+        assert!(names.iter().any(|name| name == "BamHI"));
+        assert!(names.iter().any(|name| name == "SmaI"));
+        assert!(names.iter().any(|name| name == "EcoRI"));
+    }
+
+    #[test]
+    fn use_mcs_enzymes_prefills_digest_from_mcs_feature() {
+        let mut dna = restriction_ready_dna("TTTGAATTCTTTGGATCCTTT");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("misc_feature"),
+            location: Location::simple_range(1, 5),
+            qualifiers: vec![
+                (
+                    "label".into(),
+                    Some("Multiple Cloning Site (MCS)".to_string()),
+                ),
+                (
+                    "note".into(),
+                    Some("contains BamHI, SmaI and EcoR I".to_string()),
+                ),
+            ],
+        });
+        let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);
+        area.set_digest_enzymes_from_mcs();
+        let selected = MainAreaDna::parse_ids(&area.digest_enzymes_text);
+        assert!(selected.iter().any(|name| name == "BamHI"));
+        assert!(selected.iter().any(|name| name == "EcoRI"));
+        assert!(!selected.iter().any(|name| name == "SmaI"));
+        assert!(area.op_status.contains("MCS-linked enzyme"));
+    }
+
+    #[test]
+    fn single_cutter_cds_filter_excludes_non_cds_single_cutters() {
+        let mut dna = restriction_ready_dna(&format!(
+            "{}{}{}{}",
+            "GAATTC",
+            "A".repeat(16),
+            "GGATCC",
+            "A".repeat(20)
+        ));
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("CDS"),
+            location: Location::simple_range(20, 30),
+            qualifiers: vec![("label".into(), Some("coding".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, Some("s".to_string()), None);
+        area.set_digest_enzymes_single_cutters(false);
+        let all_single = MainAreaDna::parse_ids(&area.digest_enzymes_text);
+        assert!(all_single.iter().any(|name| name == "EcoRI"));
+        assert!(all_single.iter().any(|name| name == "BamHI"));
+
+        area.set_digest_enzymes_single_cutters(true);
+        let cds_single = MainAreaDna::parse_ids(&area.digest_enzymes_text);
+        assert!(cds_single.iter().any(|name| name == "BamHI"));
+        assert!(!cds_single.iter().any(|name| name == "EcoRI"));
+    }
+
+    #[test]
     fn parse_positive_usize_text_rejects_zero_and_non_integer() {
         assert!(
             MainAreaDna::parse_positive_usize_text("0", "extension length")
@@ -798,6 +968,16 @@ mod tests {
         assert!(!area.feature_tree_deferred_until_interaction);
         area.defer_feature_tree_until_interaction();
         assert!(area.feature_tree_deferred_until_interaction);
+    }
+
+    #[test]
+    fn auto_enable_deferred_feature_tree_flips_flag_once() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.defer_feature_tree_until_interaction();
+        assert!(area.maybe_auto_enable_deferred_feature_tree());
+        assert!(!area.feature_tree_deferred_until_interaction);
+        assert!(!area.maybe_auto_enable_deferred_feature_tree());
     }
 
     #[test]
@@ -1360,6 +1540,45 @@ mod tests {
     }
 
     #[test]
+    fn seed_anchored_promoter_from_forward_mrna_feature_uses_start_and_upstream() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::simple_range(10, 40),
+            qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.seed_anchored_promoter_from_feature_id(0);
+
+        assert!(area.anchored_mode_feature);
+        assert_eq!(area.anchored_feature_kind, "mRNA");
+        assert_eq!(area.anchored_feature_label, "TP73");
+        assert!(area.anchored_feature_boundary_start);
+        assert!(area.anchored_direction_upstream);
+        assert_eq!(area.anchored_output_prefix, "promoter_tp73");
+    }
+
+    #[test]
+    fn seed_anchored_promoter_from_reverse_mrna_feature_uses_end_and_downstream() {
+        let mut dna = DNAsequence::from_sequence("A".repeat(200).as_str()).expect("sequence");
+        dna.features_mut().push(Feature {
+            kind: FeatureKind::from("mRNA"),
+            location: Location::Complement(Box::new(Location::simple_range(10, 40))),
+            qualifiers: vec![("gene".into(), Some("TP73".to_string()))],
+        });
+        let mut area = MainAreaDna::new(dna, None, None);
+
+        area.seed_anchored_promoter_from_feature_id(0);
+
+        assert_eq!(area.anchored_feature_kind, "mRNA");
+        assert_eq!(area.anchored_feature_label, "TP73");
+        assert!(!area.anchored_feature_boundary_start);
+        assert!(!area.anchored_direction_upstream);
+        assert_eq!(area.anchored_output_prefix, "promoter_tp73");
+    }
+
+    #[test]
     fn refresh_from_engine_sequence_state_reloads_open_sequence() {
         let initial_dna = DNAsequence::from_sequence("AAAA").expect("sequence");
         let mut updated_dna = DNAsequence::from_sequence("AAAA").expect("sequence");
@@ -1563,6 +1782,18 @@ mod tests {
     }
 
     #[test]
+    fn linear_vertical_fit_delta_clamp_limits_extreme_pan() {
+        assert_eq!(
+            MainAreaDna::clamp_linear_vertical_fit_delta(12_000.0, 0.0, 400.0),
+            800.0
+        );
+        assert_eq!(
+            MainAreaDna::clamp_linear_vertical_fit_delta(-12_000.0, 0.0, 400.0),
+            -800.0
+        );
+    }
+
+    #[test]
     fn view_svg_export_profiles_scale_canvas_and_context() {
         let screen =
             MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::Screen, 1280.0, true, true);
@@ -1620,6 +1851,58 @@ mod tests {
     }
 
     #[test]
+    fn collect_open_auxiliary_window_entries_includes_splicing_and_isoform_windows() {
+        let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+        let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+        area.show_splicing_expert_window = true;
+        area.splicing_expert_window_view = Some(SplicingExpertView {
+            seq_id: "seq1".to_string(),
+            target_feature_id: 17,
+            group_label: "TP73".to_string(),
+            strand: "+".to_string(),
+            region_start_1based: 1,
+            region_end_1based: 4,
+            transcript_count: 0,
+            unique_exon_count: 0,
+            instruction: "splicing".to_string(),
+            transcripts: vec![],
+            unique_exons: vec![],
+            matrix_rows: vec![],
+            boundaries: vec![],
+            junctions: vec![],
+            events: vec![],
+        });
+        area.show_isoform_expert_window = true;
+        area.isoform_expert_window_panel_id = Some("TA".to_string());
+        area.isoform_expert_window_view = Some(IsoformArchitectureExpertView {
+            seq_id: "seq1".to_string(),
+            panel_id: "TA".to_string(),
+            gene_symbol: "TP73".to_string(),
+            transcript_geometry_mode: "exon".to_string(),
+            panel_source: None,
+            region_start_1based: 1,
+            region_end_1based: 4,
+            instruction: "isoform".to_string(),
+            transcript_lanes: vec![],
+            protein_lanes: vec![],
+            warnings: vec![],
+        });
+
+        let entries = area.collect_open_auxiliary_window_entries();
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .any(|(_, title, _)| title.contains("Splicing Expert - TP73 (seq1)"))
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|(_, title, _)| title.contains("Isoform Expert - TA (seq1)"))
+        );
+    }
+
+    #[test]
     fn current_engine_ops_state_records_primary_map_mode() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let mut area = MainAreaDna::new(dna, None, None);
@@ -1636,6 +1919,108 @@ mod tests {
         value.as_object_mut().unwrap().remove("primary_map_mode");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.primary_map_mode, PrimaryMapMode::Standard);
+    }
+
+    #[test]
+    fn dotplot_ui_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().remove("dotplot_ui");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.dotplot_ui.half_window_bp, "500");
+        assert_eq!(decoded.dotplot_ui.word_size, "9");
+        assert_eq!(
+            decoded.dotplot_ui.mode,
+            crate::engine::DotplotMode::SelfReverseComplement
+        );
+    }
+
+    #[test]
+    fn rna_reads_ui_defaults_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().remove("rna_reads_ui");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.rna_reads_ui.kmer_len, "9");
+        assert_eq!(decoded.rna_reads_ui.short_full_hash_max_bp, "420");
+        assert_eq!(decoded.rna_reads_ui.long_window_bp, "140");
+        assert_eq!(decoded.rna_reads_ui.min_seed_hit_fraction, "0.30");
+        assert_eq!(
+            decoded.rna_reads_ui.scope,
+            SplicingScopePreset::AllOverlappingBothStrands
+        );
+    }
+
+    #[test]
+    fn primer_backend_controls_default_when_missing_in_serialized_engine_ops_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().remove("primer_backend");
+        value.as_object_mut().unwrap().remove("primer3_executable");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.primer_backend, PrimerDesignBackend::Auto);
+        assert_eq!(decoded.primer3_executable, "primer3_core");
+    }
+
+    #[test]
+    fn new_area_syncs_primer_backend_controls_from_engine_parameters() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            DNAsequence::from_sequence("ACGTACGT").unwrap(),
+        );
+        let mut engine = GentleEngine::from_state(state);
+        engine.state_mut().parameters.primer_design_backend = PrimerDesignBackend::Primer3;
+        engine.state_mut().parameters.primer3_executable = "/tmp/fake_primer3_core".to_string();
+        let engine = Arc::new(RwLock::new(engine));
+
+        let area = MainAreaDna::new(
+            DNAsequence::from_sequence("ACGTACGT").unwrap(),
+            Some("tpl".to_string()),
+            Some(engine),
+        );
+        assert_eq!(area.primer_backend, PrimerDesignBackend::Primer3);
+        assert_eq!(area.primer3_executable, "/tmp/fake_primer3_core");
+    }
+
+    #[test]
+    fn bounded_center_window_keeps_requested_span_near_edges() {
+        let window = MainAreaDna::bounded_center_window(80_000, 120, 500).expect("window");
+        assert_eq!(window, (0, 1001));
+        let window = MainAreaDna::bounded_center_window(80_000, 79_900, 500).expect("window");
+        assert_eq!(window, (78_999, 80_000));
+    }
+
+    #[test]
+    fn bounded_center_window_returns_none_for_empty_sequence() {
+        assert!(MainAreaDna::bounded_center_window(0, 0, 500).is_none());
+    }
+
+    #[test]
+    fn dotplot_crosshair_selection_bounds_spans_inclusive_interval() {
+        assert_eq!(
+            MainAreaDna::dotplot_crosshair_selection_bounds(12, 20, 100),
+            Some((12, 21))
+        );
+        assert_eq!(
+            MainAreaDna::dotplot_crosshair_selection_bounds(20, 12, 100),
+            Some((12, 21))
+        );
+        assert_eq!(
+            MainAreaDna::dotplot_crosshair_selection_bounds(99, 99, 100),
+            Some((99, 100))
+        );
+    }
+
+    #[test]
+    fn dotplot_crosshair_selection_bounds_handles_empty_sequence() {
+        assert_eq!(
+            MainAreaDna::dotplot_crosshair_selection_bounds(0, 0, 0),
+            None
+        );
     }
 
     #[test]
@@ -1679,6 +2064,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_primer_backend_auto() -> PrimerDesignBackend {
+    PrimerDesignBackend::Auto
+}
+
+fn default_primer3_executable() -> String {
+    "primer3_core".to_string()
+}
+
 fn default_zero_f64() -> f64 {
     0.0
 }
@@ -1698,11 +2091,14 @@ fn default_feature_tree_panel_width() -> f32 {
 const TOP_PANEL_ICON_SIZE_PX: f32 = 20.0;
 const UI_SIZE_MIN_PX: f32 = 1.0;
 const UI_SIZE_MAX_PX: f32 = 4096.0;
+const ENABLE_LINEAR_VERTICAL_PAN: bool = false;
+const ENABLE_SEQUENCE_WINDOW_BACKDROP_IMAGES: bool = false;
 const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
 const FEATURE_TREE_MAX_WIDTH_PX: f32 = 680.0;
 const DECLUTTER_NOISE_SCORE_THRESHOLD: usize = 100;
 const DECLUTTER_VISIBLE_FEATURE_THRESHOLD: usize = 70;
+const DOTPLOT_RENDER_MAX_POINTS: usize = 120_000;
 const POOL_GEL_LADDER_PRESETS: [(&str, &str); 5] = [
     ("Auto", ""),
     ("NEB 100bp + 1kb", "NEB 100bp DNA Ladder,NEB 1kb DNA Ladder"),
@@ -1910,6 +2306,20 @@ struct TfbsTask {
 }
 
 #[derive(Clone, Debug)]
+enum RnaReadTaskMessage {
+    Progress(RnaReadInterpretProgress),
+    Done(Result<OpResult, EngineError>),
+}
+
+#[derive(Clone, Debug)]
+struct RnaReadTask {
+    started: Instant,
+    input_path: String,
+    cancel_requested: Arc<AtomicBool>,
+    receiver: Arc<Mutex<Receiver<RnaReadTaskMessage>>>,
+}
+
+#[derive(Clone, Debug)]
 pub struct MainAreaDna {
     dna: Arc<RwLock<DNAsequence>>,
     dna_display: Arc<RwLock<DnaDisplay>>,
@@ -1920,6 +2330,8 @@ pub struct MainAreaDna {
     show_sequence: bool, // TODO move to DnaDisplay
     show_map: bool,      // TODO move to DnaDisplay
     primary_map_mode: PrimaryMapMode,
+    dotplot_ui: DotplotOpsUiState,
+    rna_reads_ui: RnaReadInterpretOpsUiState,
     show_engine_ops: bool,
     show_shell: bool,
     shell_command_text: String,
@@ -1963,6 +2375,9 @@ pub struct MainAreaDna {
     pcr_mut_alt: String,
     primer_design_ui: PrimerDesignOpsUiState,
     qpcr_design_ui: QpcrDesignOpsUiState,
+    primer_backend: PrimerDesignBackend,
+    primer3_executable: String,
+    primer3_preflight_status: String,
     extract_from: String,
     extract_to: String,
     extract_output_id: String,
@@ -2045,6 +2460,10 @@ pub struct MainAreaDna {
     tfbs_clear_existing: bool,
     tfbs_task: Option<TfbsTask>,
     tfbs_progress: Option<TfbsProgress>,
+    rna_read_task: Option<RnaReadTask>,
+    rna_read_progress: Option<RnaReadInterpretProgress>,
+    rna_seed_catalog_preview: Vec<RnaSeedHashCatalogEntry>,
+    rna_seed_highlight_record_index: Option<usize>,
     vcf_display_required_info_keys: String,
     isoform_panel_path: String,
     isoform_panel_id: String,
@@ -2101,6 +2520,13 @@ pub struct MainAreaDna {
     linear_drag_selection_anchor_bp: Option<usize>,
     linear_pan_drag_origin_bp: Option<(usize, f32)>,
     last_linear_map_width_px: f32,
+    dotplot_cached_view: Option<DotplotView>,
+    dotplot_cached_flex_track: Option<FlexibilityTrack>,
+    dotplot_cache_seq_id: String,
+    dotplot_cache_view_id: String,
+    dotplot_cache_track_id: String,
+    dotplot_hover_crosshair_bp: Option<(usize, usize)>,
+    dotplot_locked_crosshair_bp: Option<(usize, usize)>,
 }
 
 impl MainAreaDna {
@@ -2164,6 +2590,8 @@ impl MainAreaDna {
             show_sequence: true,
             show_map: true,
             primary_map_mode: PrimaryMapMode::Standard,
+            dotplot_ui: DotplotOpsUiState::default(),
+            rna_reads_ui: RnaReadInterpretOpsUiState::default(),
             show_engine_ops: false,
             show_shell: false,
             shell_command_text: "state-summary".to_string(),
@@ -2207,6 +2635,9 @@ impl MainAreaDna {
             pcr_mut_alt: "G".to_string(),
             primer_design_ui: PrimerDesignOpsUiState::default(),
             qpcr_design_ui: QpcrDesignOpsUiState::default(),
+            primer_backend: PrimerDesignBackend::Auto,
+            primer3_executable: "primer3_core".to_string(),
+            primer3_preflight_status: String::new(),
             extract_from: "0".to_string(),
             extract_to: "0".to_string(),
             extract_output_id: String::new(),
@@ -2290,6 +2721,10 @@ impl MainAreaDna {
             tfbs_clear_existing: true,
             tfbs_task: None,
             tfbs_progress: None,
+            rna_read_task: None,
+            rna_read_progress: None,
+            rna_seed_catalog_preview: vec![],
+            rna_seed_highlight_record_index: None,
             vcf_display_required_info_keys: String::new(),
             isoform_panel_path: "assets/panels/tp53_isoforms_v1.json".to_string(),
             isoform_panel_id: "tp53_isoforms_v1".to_string(),
@@ -2346,9 +2781,17 @@ impl MainAreaDna {
             linear_drag_selection_anchor_bp: None,
             linear_pan_drag_origin_bp: None,
             last_linear_map_width_px: 0.0,
+            dotplot_cached_view: None,
+            dotplot_cached_flex_track: None,
+            dotplot_cache_seq_id: String::new(),
+            dotplot_cache_view_id: String::new(),
+            dotplot_cache_track_id: String::new(),
+            dotplot_hover_crosshair_bp: None,
+            dotplot_locked_crosshair_bp: None,
         };
         ret.sync_from_engine_display();
         ret.load_engine_ops_state();
+        ret.sync_primer_backend_controls_from_engine();
         ret
     }
 
@@ -2374,6 +2817,15 @@ impl MainAreaDna {
 
     pub fn defer_feature_tree_until_interaction(&mut self) {
         self.feature_tree_deferred_until_interaction = true;
+    }
+
+    fn maybe_auto_enable_deferred_feature_tree(&mut self) -> bool {
+        if self.feature_tree_deferred_until_interaction {
+            self.feature_tree_deferred_until_interaction = false;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn refresh_from_engine_sequence_state(&mut self) {
@@ -2419,9 +2871,20 @@ impl MainAreaDna {
             self.clear_feature_focus();
         }
         self.description_cache_initialized = false;
+        self.invalidate_dotplot_cache();
         self.mark_dna_layout_dirty();
         self.reconcile_linear_viewport_after_dna_replace(previous_len);
         self.update_dna_map();
+    }
+
+    fn invalidate_dotplot_cache(&mut self) {
+        self.dotplot_cached_view = None;
+        self.dotplot_cached_flex_track = None;
+        self.dotplot_cache_seq_id.clear();
+        self.dotplot_cache_view_id.clear();
+        self.dotplot_cache_track_id.clear();
+        self.dotplot_hover_crosshair_bp = None;
+        self.dotplot_locked_crosshair_bp = None;
     }
 
     fn mark_dna_layout_dirty(&self) {
@@ -2434,22 +2897,22 @@ impl MainAreaDna {
         if self.is_circular() {
             return;
         }
-        let new_len = self
-            .dna
-            .read()
-            .map(|dna| dna.len())
-            .unwrap_or_default();
+        let new_len = self.dna.read().map(|dna| dna.len()).unwrap_or_default();
         if new_len == 0 {
             return;
         }
         let (start_bp, span_bp) = self
             .dna_display
             .read()
-            .map(|display| (display.linear_view_start_bp(), display.linear_view_span_bp()))
+            .map(|display| {
+                (
+                    display.linear_view_start_bp(),
+                    display.linear_view_span_bp(),
+                )
+            })
             .unwrap_or((0, new_len));
 
-        let was_full_sequence_view =
-            previous_len > 0 && (span_bp == 0 || span_bp >= previous_len);
+        let was_full_sequence_view = previous_len > 0 && (span_bp == 0 || span_bp >= previous_len);
         if was_full_sequence_view && new_len > previous_len {
             self.set_linear_viewport(0, new_len);
             return;
@@ -3069,41 +3532,78 @@ impl MainAreaDna {
         }
     }
 
-    pub fn render(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    pub fn render(&mut self, ctx: &egui::Context) {
         self.prefill_container_ids();
         self.poll_tfbs_task(ctx);
+        self.poll_rna_read_task(ctx);
         self.sync_from_engine_display();
-        egui::TopBottomPanel::top("dna_top_buttons").show(ctx, |ui| {
+        let backdrop_kind = if self.opened_from_pool_context {
+            WindowBackdropKind::Pool
+        } else {
+            WindowBackdropKind::Sequence
+        };
+        let mut backdrop_settings = current_window_backdrop_settings();
+        if !ENABLE_SEQUENCE_WINDOW_BACKDROP_IMAGES
+            && matches!(backdrop_kind, WindowBackdropKind::Sequence | WindowBackdropKind::Pool)
+        {
+            backdrop_settings.draw_images = false;
+            backdrop_settings.show_text_watermark = false;
+        }
+        if !ENABLE_LINEAR_VERTICAL_PAN
+            && !self.is_circular()
+            && self.current_linear_vertical_offset_px().abs() > f32::EPSILON
+        {
+            self.set_linear_vertical_offset_px(0.0);
+        }
+        let panel_scope = self
+            .seq_id
+            .as_deref()
+            .unwrap_or("<no-seq-id>")
+            .to_owned();
+        let top_panel_id = egui::Id::new(("dna_top_buttons", panel_scope.clone()));
+        egui::TopBottomPanel::top(top_panel_id).show(ctx, |ui| {
             self.render_top_panel(ui);
         });
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
 
         if self.show_map {
             if self.show_sequence && !auto_hidden_sequence_panel {
-                let full_height = ui.available_rect_before_wrap().height();
-                egui::TopBottomPanel::bottom("dna_sequence")
+                let full_height = ctx.content_rect().height().max(240.0);
+                let bottom_panel_id = egui::Id::new(("dna_sequence", panel_scope.clone()));
+                egui::TopBottomPanel::bottom(bottom_panel_id)
                     .resizable(true)
                     .default_height(full_height / 2.0)
                     .max_height(full_height / 2.0)
                     .min_height(full_height / 4.0)
                     .show(ctx, |ui| {
+                        paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                         self.render_sequence(ui);
                     });
                 let frame = Frame::default();
                 egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                    paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_middle(ctx, ui);
                 });
             } else if auto_hidden_sequence_panel {
                 egui::CentralPanel::default().show(ctx, |ui| {
+                    paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.render_middle(ctx, ui);
                 });
             } else {
                 egui::CentralPanel::default().show(ctx, |ui| {
+                    paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                     self.update_dna_map();
                     if !self.is_circular()
-                        && matches!(self.primary_map_mode, PrimaryMapMode::Splicing)
+                        && matches!(
+                            self.primary_map_mode,
+                            PrimaryMapMode::Splicing | PrimaryMapMode::Dotplot
+                        )
                     {
-                        self.render_primary_splicing_map_ui(ui);
+                        if matches!(self.primary_map_mode, PrimaryMapMode::Dotplot) {
+                            self.render_primary_dotplot_map_ui(ui);
+                        } else {
+                            self.render_primary_splicing_map_ui(ui);
+                        }
                     } else {
                         ui.add(self.map_dna.to_owned());
                     }
@@ -3111,6 +3611,7 @@ impl MainAreaDna {
             }
         } else {
             egui::CentralPanel::default().show(ctx, |ui| {
+                paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
                 self.render_sequence(ui);
             });
         }
@@ -3122,11 +3623,11 @@ impl MainAreaDna {
         ui.horizontal_wrapped(|ui| {
             let icon_size = Self::top_panel_icon_size(ui);
             let layer_counts = self.compute_layer_visibility_counts();
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_CIRCULAR_LINEAR
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             );
             let response = ui
                 .add(button)
@@ -3162,11 +3663,11 @@ impl MainAreaDna {
                 }
             }
 
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_SHOW_SEQUENCE
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             )
             .selected(self.show_sequence);
             let response = ui
@@ -3177,11 +3678,11 @@ impl MainAreaDna {
                 self.set_display_visibility(DisplayTarget::SequencePanel, self.show_sequence);
             };
 
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_SHOW_MAP
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             )
             .selected(self.show_map);
             let response = ui
@@ -3193,18 +3694,46 @@ impl MainAreaDna {
             };
 
             if !self.is_circular() {
-                let splicing_mode_active = matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
-                let response = ui
-                    .selectable_label(splicing_mode_active, "Splicing map")
+                let mut next_mode = self.primary_map_mode;
+                if ui
+                    .selectable_label(
+                        matches!(self.primary_map_mode, PrimaryMapMode::Standard),
+                        "Standard map",
+                    )
+                    .on_hover_text("Show regular linear sequence-feature map rendering")
+                    .clicked()
+                {
+                    next_mode = PrimaryMapMode::Standard;
+                }
+                if ui
+                    .selectable_label(
+                        matches!(self.primary_map_mode, PrimaryMapMode::Splicing),
+                        "Splicing map",
+                    )
                     .on_hover_text(
-                        "Toggle primary map rendering between standard feature map and transcript/exon splicing lanes for selected mRNA/exon features",
-                    );
-                if response.clicked() {
-                    self.primary_map_mode = if splicing_mode_active {
-                        PrimaryMapMode::Standard
-                    } else {
-                        PrimaryMapMode::Splicing
-                    };
+                        "Show transcript/exon splicing lanes for selected mRNA/exon features",
+                    )
+                    .clicked()
+                {
+                    next_mode = PrimaryMapMode::Splicing;
+                }
+                if ui
+                    .selectable_label(
+                        matches!(self.primary_map_mode, PrimaryMapMode::Dotplot),
+                        "Dotplot map",
+                    )
+                    .on_hover_text(
+                        "Show promoter-oriented self-dotplot view with optional flexibility track",
+                    )
+                    .clicked()
+                {
+                    next_mode = PrimaryMapMode::Dotplot;
+                }
+                if next_mode != self.primary_map_mode {
+                    self.primary_map_mode = next_mode;
+                    if matches!(self.primary_map_mode, PrimaryMapMode::Dotplot) {
+                        self.ensure_dotplot_cache_current();
+                    }
                     self.save_engine_ops_state();
                 }
                 let (start_bp, span_bp, sequence_length) = self.current_linear_viewport();
@@ -3299,7 +3828,7 @@ impl MainAreaDna {
                         .clicked()
                     {
                         self.apply_map_view_preset(preset);
-                        ui.close_menu();
+                        ui.close();
                     }
                 }
                 ui.separator();
@@ -3309,7 +3838,7 @@ impl MainAreaDna {
                     .clicked()
                 {
                     self.apply_declutter_action(&layer_counts);
-                    ui.close_menu();
+                    ui.close();
                 }
 
                 ui.separator();
@@ -3896,11 +4425,11 @@ impl MainAreaDna {
                 .expect("DNA display lock poisoned")
                 .show_restriction_enzyme_sites();
             let re_count = layer_counts.restriction_site_count;
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_RESTRICTION_ENZYMES
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             )
             .selected(re_active);
             let response = ui
@@ -3927,11 +4456,11 @@ impl MainAreaDna {
                 .expect("DNA display lock poisoned")
                 .show_gc_contents();
             let gc_count = layer_counts.gc_region_count;
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_GC_CONTENT
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             )
             .selected(gc_active);
             let response = ui
@@ -3960,11 +4489,11 @@ impl MainAreaDna {
                 )
             };
             let orf_count = layer_counts.orf_count;
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_OPEN_READING_FRAMES
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             )
             .selected(orf_active);
             let response = ui.add_enabled(!orf_suppressed_for_anchor, button).on_hover_text(
@@ -3997,11 +4526,11 @@ impl MainAreaDna {
                 .expect("DNA display lock poisoned")
                 .show_methylation_sites();
             let methylation_count = layer_counts.methylation_site_count;
-            let button = egui::ImageButton::new(
+            let button = egui::Button::image(
                 ICON_METHYLATION_SITES
                     .clone()
                     .fit_to_exact_size(icon_size)
-                    .rounding(5.0),
+                    .corner_radius(5.0),
             )
             .selected(methylation_active);
             let response = ui
@@ -4053,7 +4582,7 @@ impl MainAreaDna {
                             "current sequence selection",
                         );
                     }
-                    ui.close_menu();
+                    ui.close();
                 }
 
                 let selected_feature_id = self
@@ -4082,7 +4611,7 @@ impl MainAreaDna {
                             &format!("feature n-{feature_id}"),
                         );
                     }
-                    ui.close_menu();
+                    ui.close();
                 }
             });
             if ui
@@ -4153,7 +4682,7 @@ impl MainAreaDna {
                     .clicked()
                 {
                     self.export_active_view_svg(ViewSvgExportProfile::WideContext);
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui
                     .button("Export print A3 SVG")
@@ -4161,7 +4690,7 @@ impl MainAreaDna {
                     .clicked()
                 {
                     self.export_active_view_svg(ViewSvgExportProfile::PrintA3Landscape);
-                    ui.close_menu();
+                    ui.close();
                 }
                 ui.separator();
                 ui.small(
@@ -4380,6 +4909,35 @@ impl MainAreaDna {
                                 output_prefix: Some(self.digest_prefix_text.clone()),
                             });
                         }
+                    }
+                });
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .small_button("Use MCS enzymes")
+                        .on_hover_text(
+                            "Fill digest enzymes from MCS feature annotations (prefers mcs_expected_sites; normalized to REBASE names).",
+                        )
+                        .clicked()
+                    {
+                        self.set_digest_enzymes_from_mcs();
+                    }
+                    if ui
+                        .small_button("Single-cutters (REBASE)")
+                        .on_hover_text(
+                            "Filter all active REBASE enzymes to those cutting exactly once in this sequence.",
+                        )
+                        .clicked()
+                    {
+                        self.set_digest_enzymes_single_cutters(false);
+                    }
+                    if ui
+                        .small_button("Single-cutters in CDS")
+                        .on_hover_text(
+                            "Filter to single-cut enzymes whose cleavage position falls inside a CDS feature.",
+                        )
+                        .clicked()
+                    {
+                        self.set_digest_enzymes_single_cutters(true);
                     }
                 });
 
@@ -5041,21 +5599,7 @@ impl MainAreaDna {
                     )
                     .clicked()
                 {
-                    self.anchored_mode_feature = true;
-                    self.anchored_feature_kind = "CDS".to_string();
-                    self.anchored_feature_label.clear();
-                    self.anchored_feature_boundary_start = true;
-                    self.anchored_feature_occurrence = "0".to_string();
-                    self.anchored_direction_upstream = true;
-                    self.anchored_target_len = "500".to_string();
-                    self.anchored_tolerance = "100".to_string();
-                    self.anchored_required_re_sites.clear();
-                    self.anchored_required_tf_motifs.clear();
-                    self.anchored_forward_primer.clear();
-                    self.anchored_reverse_primer.clear();
-                    self.anchored_output_prefix = "promoter".to_string();
-                    self.anchored_unique = false;
-                    self.anchored_max_candidates = "20".to_string();
+                    self.apply_anchored_promoter_preset_defaults();
                 }
                 ui.horizontal(|ui| {
                     ui.checkbox(
@@ -6416,6 +6960,15 @@ impl MainAreaDna {
         viewport_center - content_center
     }
 
+    fn clamp_linear_vertical_fit_delta(delta: f32, area_top: f32, area_bottom: f32) -> f32 {
+        if !delta.is_finite() || !area_top.is_finite() || !area_bottom.is_finite() {
+            return 0.0;
+        }
+        let viewport_height = (area_bottom - area_top).abs();
+        let max_delta = (viewport_height * 2.0).clamp(200.0, 5_000.0);
+        delta.clamp(-max_delta, max_delta)
+    }
+
     fn fit_linear_features_in_view(&self) {
         if self.is_circular() {
             return;
@@ -6433,6 +6986,7 @@ impl MainAreaDna {
             content_bottom,
             12.0,
         );
+        let delta = Self::clamp_linear_vertical_fit_delta(delta, area_top, area_bottom);
         self.pan_linear_vertical_viewport(delta);
     }
 
@@ -7144,6 +7698,7 @@ impl MainAreaDna {
                             },
                             egui::Color32::from_rgb(120, 53, 15),
                         ),
+                        egui::StrokeKind::Inside,
                     );
                     let phase_info = transcript
                         .exon_cds_phases
@@ -7439,10 +7994,900 @@ impl MainAreaDna {
         }
     }
 
+    fn dotplot_ids_for_active_sequence(&self) -> Vec<String> {
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return vec![];
+        };
+        let Some(engine) = self.engine.as_ref() else {
+            return vec![];
+        };
+        let Ok(guard) = engine.read() else {
+            return vec![];
+        };
+        guard
+            .list_dotplot_views(Some(seq_id))
+            .into_iter()
+            .map(|row| row.dotplot_id)
+            .collect()
+    }
+
+    fn flexibility_track_ids_for_active_sequence(&self) -> Vec<String> {
+        let Some(seq_id) = self.seq_id.as_deref() else {
+            return vec![];
+        };
+        let Some(engine) = self.engine.as_ref() else {
+            return vec![];
+        };
+        let Ok(guard) = engine.read() else {
+            return vec![];
+        };
+        guard
+            .list_flexibility_tracks(Some(seq_id))
+            .into_iter()
+            .map(|row| row.track_id)
+            .collect()
+    }
+
+    fn bounded_center_window(
+        sequence_len: usize,
+        center_0based: usize,
+        half_window_bp: usize,
+    ) -> Option<(usize, usize)> {
+        if sequence_len == 0 {
+            return None;
+        }
+        let half_window_bp = half_window_bp.max(1);
+        let center_0based = center_0based.min(sequence_len.saturating_sub(1));
+        let target_span = half_window_bp
+            .saturating_mul(2)
+            .saturating_add(1)
+            .min(sequence_len);
+        let mut start = center_0based.saturating_sub(half_window_bp);
+        let mut end = center_0based
+            .saturating_add(half_window_bp)
+            .saturating_add(1)
+            .min(sequence_len);
+        let current_span = end.saturating_sub(start);
+        if current_span < target_span {
+            let deficit = target_span - current_span;
+            let shift_left = deficit.min(start);
+            start = start.saturating_sub(shift_left);
+            let remaining = deficit.saturating_sub(shift_left);
+            end = end.saturating_add(remaining).min(sequence_len);
+            let second_span = end.saturating_sub(start);
+            if second_span < target_span {
+                let second_deficit = target_span - second_span;
+                start = start.saturating_sub(second_deficit.min(start));
+            }
+        }
+        if end <= start {
+            end = (start + 1).min(sequence_len);
+        }
+        Some((start, end))
+    }
+
+    fn default_dotplot_span_for_view(&self, half_window_bp: usize) -> Option<(usize, usize)> {
+        let sequence_len = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        if sequence_len == 0 {
+            return None;
+        }
+        let center_0based = if self.is_circular() {
+            sequence_len / 2
+        } else {
+            let (start_bp, span_bp, _) = self.current_linear_viewport();
+            if span_bp == 0 {
+                sequence_len / 2
+            } else {
+                start_bp
+                    .saturating_add(span_bp / 2)
+                    .min(sequence_len.saturating_sub(1))
+            }
+        };
+        Self::bounded_center_window(sequence_len, center_0based, half_window_bp)
+    }
+
+    fn ensure_dotplot_cache_current(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.invalidate_dotplot_cache();
+            return;
+        };
+        let Some(engine) = self.engine.as_ref() else {
+            self.invalidate_dotplot_cache();
+            return;
+        };
+        let mut selected_view_id = self.dotplot_ui.dotplot_id.trim().to_string();
+        let mut selected_track_id = self.dotplot_ui.flex_track_id.trim().to_string();
+        let Ok(guard) = engine.read() else {
+            return;
+        };
+        if selected_view_id.is_empty()
+            && let Some(row) = guard.list_dotplot_views(Some(seq_id.as_str())).last()
+        {
+            selected_view_id = row.dotplot_id.clone();
+        }
+        if selected_track_id.is_empty()
+            && let Some(row) = guard.list_flexibility_tracks(Some(seq_id.as_str())).last()
+        {
+            selected_track_id = row.track_id.clone();
+        }
+        if self.dotplot_cache_seq_id == seq_id
+            && self.dotplot_cache_view_id == selected_view_id
+            && self.dotplot_cache_track_id == selected_track_id
+        {
+            return;
+        }
+        let view = if selected_view_id.is_empty() {
+            None
+        } else {
+            guard
+                .get_dotplot_view(selected_view_id.as_str())
+                .ok()
+                .filter(|row| row.seq_id == seq_id)
+        };
+        let track = if selected_track_id.is_empty() {
+            None
+        } else {
+            guard
+                .get_flexibility_track(selected_track_id.as_str())
+                .ok()
+                .filter(|row| row.seq_id == seq_id)
+        };
+        drop(guard);
+
+        let mut changed = false;
+        if self.dotplot_ui.dotplot_id.trim().is_empty() && !selected_view_id.is_empty() {
+            self.dotplot_ui.dotplot_id = selected_view_id.clone();
+            changed = true;
+        }
+        if self.dotplot_ui.flex_track_id.trim().is_empty() && !selected_track_id.is_empty() {
+            self.dotplot_ui.flex_track_id = selected_track_id.clone();
+            changed = true;
+        }
+
+        self.dotplot_cached_view = view;
+        self.dotplot_cached_flex_track = track;
+        self.dotplot_cache_seq_id = seq_id;
+        self.dotplot_cache_view_id = selected_view_id;
+        self.dotplot_cache_track_id = selected_track_id;
+        if changed {
+            self.save_engine_ops_state();
+        }
+    }
+
+    fn compute_primary_dotplot(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected for dotplot computation".to_string();
+            return;
+        };
+        let half_window_bp = match Self::parse_positive_usize_text(
+            &self.dotplot_ui.half_window_bp,
+            "dotplot half_window_bp",
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let word_size = match Self::parse_positive_usize_text(
+            &self.dotplot_ui.word_size,
+            "dotplot word_size",
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let step_bp =
+            match Self::parse_positive_usize_text(&self.dotplot_ui.step_bp, "dotplot step_bp") {
+                Ok(v) => v,
+                Err(e) => {
+                    self.op_status = e;
+                    return;
+                }
+            };
+        let max_mismatches = match Self::parse_optional_usize_text(
+            &self.dotplot_ui.max_mismatches,
+            "dotplot max_mismatches",
+        ) {
+            Ok(Some(v)) => v,
+            Ok(None) => 0,
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let tile_bp =
+            match Self::parse_optional_usize_text(&self.dotplot_ui.tile_bp, "dotplot tile_bp") {
+                Ok(v) => v.filter(|value| *value > 0),
+                Err(e) => {
+                    self.op_status = e;
+                    return;
+                }
+            };
+        let Some((span_start_0based, span_end_0based)) =
+            self.default_dotplot_span_for_view(half_window_bp)
+        else {
+            self.op_status = "Active sequence is empty; dotplot span unavailable".to_string();
+            return;
+        };
+        if span_end_0based.saturating_sub(span_start_0based) < word_size {
+            self.op_status = format!(
+                "Dotplot span {}..{} is smaller than word_size {}",
+                span_start_0based, span_end_0based, word_size
+            );
+            return;
+        }
+        let store_as = if self.dotplot_ui.dotplot_id.trim().is_empty() {
+            format!("{seq_id}.dotplot")
+        } else {
+            self.dotplot_ui.dotplot_id.trim().to_string()
+        };
+        self.dotplot_ui.dotplot_id = store_as.clone();
+        self.apply_operation_with_feedback(Operation::ComputeDotplot {
+            seq_id,
+            span_start_0based: Some(span_start_0based),
+            span_end_0based: Some(span_end_0based),
+            mode: self.dotplot_ui.mode,
+            word_size,
+            step_bp,
+            max_mismatches,
+            tile_bp,
+            store_as: Some(store_as),
+        });
+        self.invalidate_dotplot_cache();
+        self.ensure_dotplot_cache_current();
+        self.save_engine_ops_state();
+    }
+
+    fn compute_primary_flexibility_track(&mut self) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected for flexibility computation".to_string();
+            return;
+        };
+        let half_window_bp = match Self::parse_positive_usize_text(
+            &self.dotplot_ui.half_window_bp,
+            "flexibility half_window_bp",
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let bin_bp = match Self::parse_positive_usize_text(
+            &self.dotplot_ui.flex_bin_bp,
+            "flexibility bin_bp",
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let smoothing_bp = match Self::parse_optional_usize_text(
+            &self.dotplot_ui.flex_smoothing_bp,
+            "flexibility smoothing_bp",
+        ) {
+            Ok(v) => v.filter(|value| *value > 0),
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let Some((span_start_0based, span_end_0based)) =
+            self.default_dotplot_span_for_view(half_window_bp)
+        else {
+            self.op_status = "Active sequence is empty; flexibility span unavailable".to_string();
+            return;
+        };
+        let store_as = if self.dotplot_ui.flex_track_id.trim().is_empty() {
+            format!("{seq_id}.flex")
+        } else {
+            self.dotplot_ui.flex_track_id.trim().to_string()
+        };
+        self.dotplot_ui.flex_track_id = store_as.clone();
+        self.apply_operation_with_feedback(Operation::ComputeFlexibilityTrack {
+            seq_id,
+            span_start_0based: Some(span_start_0based),
+            span_end_0based: Some(span_end_0based),
+            model: self.dotplot_ui.flex_model,
+            bin_bp,
+            smoothing_bp,
+            store_as: Some(store_as),
+        });
+        self.invalidate_dotplot_cache();
+        self.ensure_dotplot_cache_current();
+        self.save_engine_ops_state();
+    }
+
+    fn dotplot_crosshair_selection_bounds(
+        x_0based: usize,
+        y_0based: usize,
+        sequence_length: usize,
+    ) -> Option<(usize, usize)> {
+        if sequence_length == 0 {
+            return None;
+        }
+        let max_idx = sequence_length.saturating_sub(1);
+        let x = x_0based.min(max_idx);
+        let y = y_0based.min(max_idx);
+        let from = x.min(y);
+        let mut to = x.max(y).saturating_add(1).min(sequence_length);
+        if to <= from {
+            to = (from + 1).min(sequence_length);
+        }
+        Some((from, to))
+    }
+
+    fn sync_selection_to_dotplot_crosshair(
+        &mut self,
+        x_0based: usize,
+        y_0based: usize,
+        request_scroll: bool,
+    ) {
+        let sequence_length = self.dna.read().ok().map(|dna| dna.len()).unwrap_or(0);
+        let Some((from, to)) =
+            Self::dotplot_crosshair_selection_bounds(x_0based, y_0based, sequence_length)
+        else {
+            return;
+        };
+        if let Ok(mut display) = self.dna_display.write() {
+            display.select(Selection::new(from, to, sequence_length));
+        }
+        if request_scroll {
+            self.map_sequence.request_scroll_to_selection();
+        }
+    }
+
+    fn render_dotplot_density_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        view: &DotplotView,
+        flex_track: Option<&FlexibilityTrack>,
+    ) {
+        let desired_w = ui.available_width().max(740.0);
+        let desired_h = if flex_track.is_some() { 470.0 } else { 390.0 };
+        let (canvas_rect, response) =
+            ui.allocate_exact_size(Vec2::new(desired_w, desired_h), egui::Sense::hover());
+        let painter = ui.painter_at(canvas_rect);
+        painter.rect_filled(canvas_rect, 6.0, egui::Color32::from_rgb(248, 250, 252));
+        painter.rect_stroke(
+            canvas_rect,
+            6.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+
+        let top_margin = 12.0;
+        let left_margin = 16.0;
+        let right_margin = 16.0;
+        let bottom_margin = 16.0;
+        let flex_height = if flex_track.is_some() { 108.0 } else { 0.0 };
+        let gap = if flex_track.is_some() { 10.0 } else { 0.0 };
+        let dotplot_rect = egui::Rect::from_min_max(
+            egui::pos2(
+                canvas_rect.left() + left_margin,
+                canvas_rect.top() + top_margin,
+            ),
+            egui::pos2(
+                canvas_rect.right() - right_margin,
+                canvas_rect.bottom() - bottom_margin - flex_height - gap,
+            ),
+        );
+        painter.rect_filled(dotplot_rect, 4.0, egui::Color32::from_rgb(255, 255, 255));
+        painter.rect_stroke(
+            dotplot_rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+            egui::StrokeKind::Inside,
+        );
+
+        for tick_idx in 1..10 {
+            let frac = tick_idx as f32 / 10.0;
+            let x = dotplot_rect.left() + frac * dotplot_rect.width();
+            let y = dotplot_rect.top() + frac * dotplot_rect.height();
+            painter.line_segment(
+                [
+                    egui::pos2(x, dotplot_rect.top()),
+                    egui::pos2(x, dotplot_rect.bottom()),
+                ],
+                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(dotplot_rect.left(), y),
+                    egui::pos2(dotplot_rect.right(), y),
+                ],
+                egui::Stroke::new(0.5, egui::Color32::from_rgb(241, 245, 249)),
+            );
+        }
+        painter.line_segment(
+            [dotplot_rect.left_top(), dotplot_rect.right_bottom()],
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(148, 163, 184)),
+        );
+
+        let span = view
+            .span_end_0based
+            .saturating_sub(view.span_start_0based)
+            .max(1);
+        let span_max = span.saturating_sub(1).max(1);
+        let cols = dotplot_rect.width().max(2.0).round() as i32;
+        let rows = dotplot_rect.height().max(2.0).round() as i32;
+        let sample_stride = (view.points.len() / DOTPLOT_RENDER_MAX_POINTS).max(1);
+        let mut cells: HashMap<(i32, i32), (usize, usize)> = HashMap::new();
+        for point in view.points.iter().step_by(sample_stride) {
+            let x_local = point
+                .x_0based
+                .saturating_sub(view.span_start_0based)
+                .min(span_max);
+            let y_local = point
+                .y_0based
+                .saturating_sub(view.span_start_0based)
+                .min(span_max);
+            let x_frac = (x_local as f32 / span_max as f32).clamp(0.0, 1.0);
+            let y_frac = (y_local as f32 / span_max as f32).clamp(0.0, 1.0);
+            let x_cell = ((x_frac * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
+            let y_cell = ((y_frac * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
+            let entry = cells
+                .entry((x_cell, y_cell))
+                .or_insert((0, point.mismatches));
+            entry.0 = entry.0.saturating_add(1);
+            entry.1 = entry.1.min(point.mismatches);
+        }
+        let max_cell_count = cells.values().map(|(count, _)| *count).max().unwrap_or(1) as f32;
+        for ((x_cell, y_cell), (count, min_mismatch)) in &cells {
+            let density = (*count as f32 / max_cell_count).clamp(0.0, 1.0).sqrt();
+            let mismatch_frac = if view.max_mismatches == 0 {
+                0.0
+            } else {
+                (*min_mismatch as f32 / view.max_mismatches as f32).clamp(0.0, 1.0)
+            };
+            let rgb = Self::mix_rgb([29, 78, 216], [180, 83, 9], mismatch_frac);
+            let alpha = (35.0 + 220.0 * density).round() as u8;
+            let color = egui::Color32::from_rgba_unmultiplied(rgb[0], rgb[1], rgb[2], alpha);
+            let x0 = dotplot_rect.left() + (*x_cell as f32 / cols as f32) * dotplot_rect.width();
+            let x1 =
+                dotplot_rect.left() + ((*x_cell + 1) as f32 / cols as f32) * dotplot_rect.width();
+            let y0 = dotplot_rect.top() + (*y_cell as f32 / rows as f32) * dotplot_rect.height();
+            let y1 =
+                dotplot_rect.top() + ((*y_cell + 1) as f32 / rows as f32) * dotplot_rect.height();
+            painter.rect_filled(
+                egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1)),
+                0.0,
+                color,
+            );
+        }
+
+        painter.text(
+            egui::pos2(dotplot_rect.left(), dotplot_rect.bottom() + 2.0),
+            egui::Align2::LEFT_TOP,
+            format!("{}", view.span_start_0based.saturating_add(1)),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(dotplot_rect.right(), dotplot_rect.bottom() + 2.0),
+            egui::Align2::RIGHT_TOP,
+            format!("{}", view.span_end_0based),
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(71, 85, 105),
+        );
+        painter.text(
+            egui::pos2(dotplot_rect.left() + 2.0, dotplot_rect.top() + 2.0),
+            egui::Align2::LEFT_TOP,
+            "y",
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(100, 116, 139),
+        );
+        painter.text(
+            egui::pos2(dotplot_rect.right() - 2.0, dotplot_rect.bottom() - 2.0),
+            egui::Align2::RIGHT_BOTTOM,
+            "x",
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_rgb(100, 116, 139),
+        );
+
+        let mut hovered_crosshair_bp: Option<(usize, usize)> = None;
+        if response.hovered()
+            && let Some(pointer) = response.hover_pos()
+            && dotplot_rect.contains(pointer)
+        {
+            let fx = ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
+            let fy = ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
+            let x_bp = view.span_start_0based + (fx * span_max as f32).round() as usize;
+            let y_bp = view.span_start_0based + (fy * span_max as f32).round() as usize;
+            hovered_crosshair_bp = Some((x_bp, y_bp));
+            let x_cell = ((fx * (cols - 1) as f32).round() as i32).clamp(0, cols - 1);
+            let y_cell = ((fy * (rows - 1) as f32).round() as i32).clamp(0, rows - 1);
+            let cell_payload = cells.get(&(x_cell, y_cell)).cloned().unwrap_or((0, 0));
+            response.clone().on_hover_ui_at_pointer(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "x={} y={} | cell density={} min-mismatches={}",
+                        x_bp.saturating_add(1),
+                        y_bp.saturating_add(1),
+                        cell_payload.0,
+                        cell_payload.1
+                    ))
+                    .monospace()
+                    .size(self.feature_details_font_size()),
+                );
+                ui.small("Click to lock crosshair + sync sequence selection");
+            });
+        }
+        self.dotplot_hover_crosshair_bp = hovered_crosshair_bp;
+        if response.clicked_by(egui::PointerButton::Primary)
+            && let Some(pointer) = response.interact_pointer_pos()
+            && dotplot_rect.contains(pointer)
+        {
+            let fx = ((pointer.x - dotplot_rect.left()) / dotplot_rect.width()).clamp(0.0, 1.0);
+            let fy = ((pointer.y - dotplot_rect.top()) / dotplot_rect.height()).clamp(0.0, 1.0);
+            let x_bp = view.span_start_0based + (fx * span_max as f32).round() as usize;
+            let y_bp = view.span_start_0based + (fy * span_max as f32).round() as usize;
+            self.dotplot_locked_crosshair_bp = Some((x_bp, y_bp));
+            self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true);
+        }
+        if response.clicked_by(egui::PointerButton::Secondary) {
+            self.dotplot_locked_crosshair_bp = None;
+            self.dotplot_hover_crosshair_bp = None;
+        }
+
+        let active_crosshair = self
+            .dotplot_locked_crosshair_bp
+            .or(self.dotplot_hover_crosshair_bp);
+        if let Some((x_bp, y_bp)) = active_crosshair {
+            let x_local = x_bp.saturating_sub(view.span_start_0based).min(span_max) as f32;
+            let y_local = y_bp.saturating_sub(view.span_start_0based).min(span_max) as f32;
+            let x = dotplot_rect.left() + (x_local / span_max as f32) * dotplot_rect.width();
+            let y = dotplot_rect.top() + (y_local / span_max as f32) * dotplot_rect.height();
+            let is_locked = self.dotplot_locked_crosshair_bp == Some((x_bp, y_bp));
+            let crosshair_color = if is_locked {
+                egui::Color32::from_rgb(190, 24, 93)
+            } else {
+                egui::Color32::from_rgb(15, 23, 42)
+            };
+            painter.line_segment(
+                [
+                    egui::pos2(x, dotplot_rect.top()),
+                    egui::pos2(x, dotplot_rect.bottom()),
+                ],
+                egui::Stroke::new(if is_locked { 1.6 } else { 1.1 }, crosshair_color),
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(dotplot_rect.left(), y),
+                    egui::pos2(dotplot_rect.right(), y),
+                ],
+                egui::Stroke::new(if is_locked { 1.6 } else { 1.1 }, crosshair_color),
+            );
+            painter.circle_filled(
+                egui::pos2(x, y),
+                if is_locked { 2.8 } else { 2.0 },
+                crosshair_color,
+            );
+            let dx = x_bp.max(y_bp).saturating_sub(x_bp.min(y_bp));
+            painter.text(
+                egui::pos2(dotplot_rect.left() + 4.0, dotplot_rect.top() + 14.0),
+                egui::Align2::LEFT_TOP,
+                format!(
+                    "{} x={} y={} Δ={} bp",
+                    if is_locked { "locked" } else { "hover" },
+                    x_bp.saturating_add(1),
+                    y_bp.saturating_add(1),
+                    dx
+                ),
+                egui::FontId::monospace(10.0),
+                crosshair_color,
+            );
+        }
+
+        if let Some(track) = flex_track {
+            let flex_rect = egui::Rect::from_min_max(
+                egui::pos2(dotplot_rect.left(), dotplot_rect.bottom() + gap),
+                egui::pos2(dotplot_rect.right(), canvas_rect.bottom() - bottom_margin),
+            );
+            painter.rect_filled(flex_rect, 4.0, egui::Color32::from_rgb(255, 255, 255));
+            painter.rect_stroke(
+                flex_rect,
+                4.0,
+                egui::Stroke::new(1.0, egui::Color32::from_rgb(203, 213, 225)),
+                egui::StrokeKind::Inside,
+            );
+            let score_span = (track.max_score - track.min_score).abs().max(1e-12);
+            let span_bp = track
+                .span_end_0based
+                .saturating_sub(track.span_start_0based)
+                .max(1) as f32;
+            let mut points: Vec<egui::Pos2> = vec![];
+            for bin in &track.bins {
+                let x_frac = (bin.start_0based.saturating_sub(track.span_start_0based) as f32
+                    / span_bp)
+                    .clamp(0.0, 1.0);
+                let y_frac = ((bin.score - track.min_score) / score_span).clamp(0.0, 1.0) as f32;
+                points.push(egui::pos2(
+                    flex_rect.left() + x_frac * flex_rect.width(),
+                    flex_rect.bottom() - y_frac * flex_rect.height(),
+                ));
+            }
+            for segment in points.windows(2) {
+                let [left, right] = [segment[0], segment[1]];
+                painter.line_segment(
+                    [left, right],
+                    egui::Stroke::new(1.5, egui::Color32::from_rgb(22, 101, 52)),
+                );
+            }
+            painter.text(
+                egui::pos2(flex_rect.left() + 4.0, flex_rect.top() + 4.0),
+                egui::Align2::LEFT_TOP,
+                format!(
+                    "{} [{}..{}] min={:.3} max={:.3}",
+                    track.model.as_str(),
+                    track.span_start_0based.saturating_add(1),
+                    track.span_end_0based,
+                    track.min_score,
+                    track.max_score
+                ),
+                egui::FontId::monospace(9.5),
+                egui::Color32::from_rgb(15, 23, 42),
+            );
+        }
+    }
+
+    fn render_primary_dotplot_map_ui(&mut self, ui: &mut egui::Ui) {
+        let panel_width = ui.available_width().max(600.0);
+        self.last_linear_map_width_px = panel_width;
+        self.ensure_dotplot_cache_current();
+        let mut save_state = false;
+        let dotplot_ids = self.dotplot_ids_for_active_sequence();
+        let track_ids = self.flexibility_track_ids_for_active_sequence();
+
+        egui::Frame::NONE
+            .fill(egui::Color32::from_gray(249))
+            .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
+            .show(ui, |ui| {
+                ui.set_width(panel_width);
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new(self.primary_map_mode.label()).strong())
+                        .on_hover_text(
+                            "Promoter-oriented self dotplot and flexibility track view for a bounded local span",
+                        );
+                    ui.label(
+                        egui::RichText::new(
+                            "Default compute span is viewport-centered ±half_window_bp (500 bp each side by default).",
+                        )
+                        .size(self.feature_details_font_size()),
+                    );
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Mode");
+                        egui::ComboBox::from_id_salt(format!(
+                            "dotplot_mode_{}",
+                            self.seq_id.as_deref().unwrap_or("<none>")
+                        ))
+                        .selected_text(self.dotplot_ui.mode.as_str())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::SelfForward,
+                                DotplotMode::SelfForward.as_str(),
+                            );
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.mode,
+                                DotplotMode::SelfReverseComplement,
+                                DotplotMode::SelfReverseComplement.as_str(),
+                            );
+                        });
+                        ui.label("half_window_bp");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.half_window_bp);
+                        ui.label("word");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.word_size);
+                        ui.label("step");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.step_bp);
+                        ui.label("mismatches");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.max_mismatches);
+                        ui.label("tile_bp");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.tile_bp);
+                        if ui
+                            .button("Compute dotplot")
+                            .on_hover_text("Run ComputeDotplot on bounded local span via engine")
+                            .clicked()
+                        {
+                            self.compute_primary_dotplot();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("dotplot_id");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.dotplot_id);
+                        if !dotplot_ids.is_empty() {
+                            let selected = if self.dotplot_ui.dotplot_id.trim().is_empty() {
+                                "<select>".to_string()
+                            } else {
+                                self.dotplot_ui.dotplot_id.clone()
+                            };
+                            egui::ComboBox::from_id_salt(format!(
+                                "dotplot_select_{}",
+                                self.seq_id.as_deref().unwrap_or("<none>")
+                            ))
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for id in &dotplot_ids {
+                                    if ui
+                                        .selectable_label(self.dotplot_ui.dotplot_id == *id, id)
+                                        .clicked()
+                                    {
+                                        self.dotplot_ui.dotplot_id = id.clone();
+                                        self.invalidate_dotplot_cache();
+                                        save_state = true;
+                                    }
+                                }
+                            });
+                        }
+                        if ui
+                            .small_button("Load")
+                            .on_hover_text("Load selected dotplot_id from engine metadata")
+                            .clicked()
+                        {
+                            self.invalidate_dotplot_cache();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.checkbox(
+                            &mut self.dotplot_ui.show_flexibility_track,
+                            "Show flexibility track",
+                        );
+                        ui.label("model");
+                        egui::ComboBox::from_id_salt(format!(
+                            "flex_model_{}",
+                            self.seq_id.as_deref().unwrap_or("<none>")
+                        ))
+                        .selected_text(self.dotplot_ui.flex_model.as_str())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.flex_model,
+                                FlexibilityModel::AtRichness,
+                                FlexibilityModel::AtRichness.as_str(),
+                            );
+                            ui.selectable_value(
+                                &mut self.dotplot_ui.flex_model,
+                                FlexibilityModel::AtSkew,
+                                FlexibilityModel::AtSkew.as_str(),
+                            );
+                        });
+                        ui.label("bin_bp");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.flex_bin_bp);
+                        ui.label("smoothing_bp");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.flex_smoothing_bp);
+                        if ui
+                            .button("Compute flexibility")
+                            .on_hover_text(
+                                "Run ComputeFlexibilityTrack on bounded local span via engine",
+                            )
+                            .clicked()
+                        {
+                            self.compute_primary_flexibility_track();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("flex_track_id");
+                        ui.text_edit_singleline(&mut self.dotplot_ui.flex_track_id);
+                        if !track_ids.is_empty() {
+                            let selected = if self.dotplot_ui.flex_track_id.trim().is_empty() {
+                                "<select>".to_string()
+                            } else {
+                                self.dotplot_ui.flex_track_id.clone()
+                            };
+                            egui::ComboBox::from_id_salt(format!(
+                                "flex_select_{}",
+                                self.seq_id.as_deref().unwrap_or("<none>")
+                            ))
+                            .selected_text(selected)
+                            .show_ui(ui, |ui| {
+                                for id in &track_ids {
+                                    if ui
+                                        .selectable_label(self.dotplot_ui.flex_track_id == *id, id)
+                                        .clicked()
+                                    {
+                                        self.dotplot_ui.flex_track_id = id.clone();
+                                        self.invalidate_dotplot_cache();
+                                        save_state = true;
+                                    }
+                                }
+                            });
+                        }
+                        if ui
+                            .small_button("Load")
+                            .on_hover_text("Load selected flexibility track from engine metadata")
+                            .clicked()
+                        {
+                            self.invalidate_dotplot_cache();
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        if let Some((x_bp, y_bp)) = self.dotplot_locked_crosshair_bp {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "locked crosshair x={} y={} Δ={} bp",
+                                    x_bp.saturating_add(1),
+                                    y_bp.saturating_add(1),
+                                    x_bp.max(y_bp).saturating_sub(x_bp.min(y_bp))
+                                ))
+                                .monospace()
+                                .size(self.feature_details_font_size()),
+                            );
+                            if ui
+                                .small_button("Re-sync selection")
+                                .on_hover_text(
+                                    "Apply locked crosshair interval to shared sequence selection",
+                                )
+                                .clicked()
+                            {
+                                self.sync_selection_to_dotplot_crosshair(x_bp, y_bp, true);
+                            }
+                            if ui
+                                .small_button("Clear crosshair")
+                                .on_hover_text("Clear locked crosshair anchor")
+                                .clicked()
+                            {
+                                self.dotplot_locked_crosshair_bp = None;
+                            }
+                        } else {
+                            ui.small(
+                                "Hover inside dotplot for live crosshair. Click to lock and sync sequence selection. Right-click to clear.",
+                            );
+                        }
+                    });
+
+                    self.ensure_dotplot_cache_current();
+                    let cached_view = self.dotplot_cached_view.clone();
+                    let cached_track = self.dotplot_cached_flex_track.clone();
+                    match cached_view.as_ref() {
+                        Some(view) => {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "dotplot '{}' span {}..{} | mode={} | word={} step={} mismatches={} | points={}",
+                                    view.dotplot_id,
+                                    view.span_start_0based.saturating_add(1),
+                                    view.span_end_0based,
+                                    view.mode.as_str(),
+                                    view.word_size,
+                                    view.step_bp,
+                                    view.max_mismatches,
+                                    view.point_count
+                                ))
+                                .monospace()
+                                .size(self.feature_details_font_size()),
+                            );
+                            let flex_track = if self.dotplot_ui.show_flexibility_track {
+                                cached_track.as_ref()
+                            } else {
+                                None
+                            };
+                            self.render_dotplot_density_ui(ui, view, flex_track);
+                        }
+                        None => {
+                            ui.add_space(6.0);
+                            ui.label(
+                                "No dotplot payload selected. Compute one with current bounded span, or select an existing dotplot_id.",
+                            );
+                        }
+                    }
+                });
+            });
+        if save_state {
+            self.save_engine_ops_state();
+        }
+    }
+
     fn render_primary_splicing_map_ui(&mut self, ui: &mut egui::Ui) {
         let panel_width = ui.available_width().max(600.0);
         self.last_linear_map_width_px = panel_width;
-        egui::Frame::none()
+        egui::Frame::NONE
             .fill(egui::Color32::from_gray(249))
             .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(206)))
             .show(ui, |ui| {
@@ -8074,6 +9519,46 @@ impl MainAreaDna {
         egui::ViewportId::from_hash_of(("splicing_expert_viewport", seq_id, feature_id))
     }
 
+    fn splicing_expert_window_title(view: &SplicingExpertView) -> String {
+        format!("Splicing Expert - {} ({})", view.group_label, view.seq_id)
+    }
+
+    fn isoform_expert_window_title(panel_id: &str, seq_id: &str) -> String {
+        format!("Isoform Expert - {panel_id} ({seq_id})")
+    }
+
+    pub fn collect_open_auxiliary_window_entries(
+        &self,
+    ) -> Vec<(egui::ViewportId, String, String)> {
+        let mut entries = Vec::new();
+        if self.show_splicing_expert_window {
+            if let Some(view) = self.splicing_expert_window_view.as_ref() {
+                entries.push((
+                    Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id),
+                    Self::splicing_expert_window_title(view),
+                    format!(
+                        "Splicing expert for feature n-{} on '{}'",
+                        view.target_feature_id, view.seq_id
+                    ),
+                ));
+            }
+        }
+        if self.show_isoform_expert_window {
+            if let Some(view) = self.isoform_expert_window_view.as_ref() {
+                let panel_id = self
+                    .isoform_expert_window_panel_id
+                    .as_deref()
+                    .unwrap_or(view.panel_id.as_str());
+                entries.push((
+                    Self::isoform_expert_viewport_id(&view.seq_id, panel_id),
+                    Self::isoform_expert_window_title(panel_id, &view.seq_id),
+                    format!("Isoform architecture panel '{panel_id}' on '{}'", view.seq_id),
+                ));
+            }
+        }
+        entries
+    }
+
     fn render_splicing_expert_window(&mut self, ctx: &egui::Context) {
         if !self.show_splicing_expert_window {
             return;
@@ -8082,7 +9567,7 @@ impl MainAreaDna {
             self.show_splicing_expert_window = false;
             return;
         };
-        let title = format!("Splicing Expert - {} ({})", view.group_label, view.seq_id);
+        let title = Self::splicing_expert_window_title(&view);
         let viewport_id = Self::splicing_expert_viewport_id(&view.seq_id, view.target_feature_id);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
@@ -8152,6 +9637,7 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         view: &SplicingExpertView,
     ) {
+        let mut persist_ui_state = false;
         ui.horizontal_wrapped(|ui| {
             let action = ui.button("Send Group ROI -> Primer/qPCR").on_hover_text(
                 "Seed Primer/qPCR design ROI from current splicing-group genomic interval and open Engine Ops",
@@ -8174,7 +9660,1441 @@ impl MainAreaDna {
                     .color(egui::Color32::from_rgb(100, 116, 139)),
             );
         });
+        ui.add_space(4.0);
+        egui::CollapsingHeader::new("Nanopore cDNA interpretation")
+            .default_open(false)
+            .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Phase-1 path: FASTA input (.fa/.fasta, optional .gz); .sra requires external conversion.",
+                    )
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
+                );
+                let controls_enabled = self.rna_read_task.is_none();
+                ui.add_enabled_ui(controls_enabled, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Input FASTA");
+                        if ui
+                            .text_edit_singleline(&mut self.rna_reads_ui.input_path)
+                            .changed()
+                        {
+                            persist_ui_state = true;
+                        }
+                        if ui.button("Browse...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("FASTA", &["fa", "fasta", "gz"])
+                                .pick_file()
+                            {
+                                self.rna_reads_ui.input_path = path.display().to_string();
+                                persist_ui_state = true;
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Report ID");
+                        if ui
+                            .text_edit_singleline(&mut self.rna_reads_ui.report_id)
+                            .changed()
+                        {
+                            persist_ui_state = true;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Scope");
+                        egui::ComboBox::from_id_salt(format!(
+                            "rna_read_scope_{}_{}",
+                            view.seq_id, view.target_feature_id
+                        ))
+                        .selected_text(Self::splicing_scope_label(self.rna_reads_ui.scope))
+                        .show_ui(ui, |ui| {
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_reads_ui.scope,
+                                    SplicingScopePreset::AllOverlappingBothStrands,
+                                    "All overlapping (both strands)",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_reads_ui.scope,
+                                    SplicingScopePreset::TargetGroupAnyStrand,
+                                    "Target group (any strand)",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_reads_ui.scope,
+                                    SplicingScopePreset::AllOverlappingTargetStrand,
+                                    "All overlapping (target strand)",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_reads_ui.scope,
+                                    SplicingScopePreset::TargetGroupTargetStrand,
+                                    "Target group (target strand)",
+                                )
+                                .changed();
+                        });
+                        persist_ui_state |= ui
+                            .checkbox(&mut self.rna_reads_ui.show_advanced, "Show advanced")
+                            .changed();
+                    });
+                    ui.label(
+                        egui::RichText::new(
+                            "Profile: nanopore_cdna_v1 | Input: fasta | Seed defaults: k=9 short<420 long=3x140 min-hit=0.30",
+                        )
+                        .size(9.0)
+                        .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                    if self.rna_reads_ui.show_advanced {
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("k-mer");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.rna_reads_ui.kmer_len)
+                                        .desired_width(46.0),
+                                )
+                                .changed();
+                            ui.label("short<");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.short_full_hash_max_bp,
+                                    )
+                                    .desired_width(54.0),
+                                )
+                                .changed();
+                            ui.label("long window");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.rna_reads_ui.long_window_bp)
+                                        .desired_width(54.0),
+                                )
+                                .changed();
+                            ui.label("count");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.rna_reads_ui.long_window_count)
+                                        .desired_width(42.0),
+                                )
+                                .changed();
+                            ui.label("min hit");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.min_seed_hit_fraction,
+                                    )
+                                    .desired_width(56.0),
+                                )
+                                .changed();
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("align band");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.align_band_width_bp,
+                                    )
+                                    .desired_width(54.0),
+                                )
+                                .changed();
+                            ui.label("min identity");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.align_min_identity_fraction,
+                                    )
+                                    .desired_width(56.0),
+                                )
+                                .changed();
+                            ui.label("max secondary");
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.align_max_secondary_mappings,
+                                    )
+                                    .desired_width(42.0),
+                                )
+                                .changed();
+                        });
+                    }
+                });
+                if !controls_enabled {
+                    ui.small(
+                        egui::RichText::new("Input/advanced controls are locked while a run is active.")
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                    );
+                }
+                let mut highlight_selection_update: Option<Option<usize>> = None;
+                if let Some(task) = &self.rna_read_task {
+                    let compression = Self::rna_reads_input_compression_label(&task.input_path);
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new());
+                        if let Some(progress) = &self.rna_read_progress {
+                            let elapsed_s = task.started.elapsed().as_secs_f64().max(0.001);
+                            let reads_per_sec = progress.reads_processed as f64 / elapsed_s;
+                            let percent = if progress.reads_total == 0 {
+                                0.0
+                            } else {
+                                (progress.reads_processed as f64 / progress.reads_total as f64)
+                                    * 100.0
+                            };
+                            if progress.reads_total == 0 {
+                                let byte_progress = if progress.input_bytes_total == 0 {
+                                    "unknown".to_string()
+                                } else {
+                                    format!(
+                                        "{}/{} ({:.1}%)",
+                                        Self::format_bytes_compact(progress.input_bytes_processed),
+                                        Self::format_bytes_compact(progress.input_bytes_total),
+                                        (progress.input_bytes_processed as f64
+                                            / progress.input_bytes_total as f64)
+                                            * 100.0
+                                    )
+                                };
+                                ui.label(format!(
+                                    "Nanopore interpretation running: streaming FASTA ({compression}), sequences-read={}, bytes={}, {:.1} reads/s, seed-passed={}, aligned={}, elapsed {:.1}s",
+                                    progress.reads_processed,
+                                    byte_progress,
+                                    reads_per_sec,
+                                    progress.seed_passed,
+                                    progress.aligned,
+                                    task.started.elapsed().as_secs_f32()
+                                ));
+                            } else {
+                                ui.label(format!(
+                                    "Nanopore interpretation running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, seed-passed={}, aligned={}, elapsed {:.1}s",
+                                    progress.reads_processed,
+                                    progress.reads_total,
+                                    percent,
+                                    reads_per_sec,
+                                    progress.seed_passed,
+                                    progress.aligned,
+                                    task.started.elapsed().as_secs_f32()
+                                ));
+                            }
+                        } else {
+                            ui.label(format!(
+                                "Nanopore interpretation running: input='{}' ({compression}), {:.1}s elapsed",
+                                task.input_path,
+                                task.started.elapsed().as_secs_f32()
+                            ));
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        let cancel_requested =
+                            task.cancel_requested.load(AtomicOrdering::Relaxed);
+                        if cancel_requested {
+                            ui.small(
+                                egui::RichText::new("Cancel requested... waiting for worker to stop.")
+                                    .color(egui::Color32::from_rgb(220, 38, 38)),
+                            );
+                        } else if ui.button("Cancel Nanopore interpretation").clicked() {
+                            task.cancel_requested
+                                .store(true, AtomicOrdering::Relaxed);
+                            self.op_status = "Cancel requested for RNA-read interpretation"
+                                .to_string();
+                        }
+                    });
+                    if let Some(progress) = &self.rna_read_progress {
+                        let percent = if progress.reads_total == 0 {
+                            0.0
+                        } else {
+                            (progress.reads_processed as f32 / progress.reads_total as f32)
+                                .clamp(0.0, 1.0)
+                        };
+                        if progress.reads_total == 0 {
+                            if progress.input_bytes_total > 0 {
+                                let byte_fraction = (progress.input_bytes_processed as f32
+                                    / progress.input_bytes_total as f32)
+                                    .clamp(0.0, 1.0);
+                                ui.add(
+                                    egui::ProgressBar::new(byte_fraction)
+                                        .show_percentage()
+                                        .text(format!(
+                                            "Streaming input FASTA ({compression}) bytes {}/{} | records-read={} (update stride: {})",
+                                            Self::format_bytes_compact(progress.input_bytes_processed),
+                                            Self::format_bytes_compact(progress.input_bytes_total),
+                                            progress.reads_processed,
+                                            progress.update_every_reads,
+                                        )),
+                                );
+                            } else {
+                                ui.add(
+                                    egui::ProgressBar::new(0.0).animate(true).text(format!(
+                                        "Streaming input FASTA ({compression}) records-read={} (update stride: {})",
+                                        progress.reads_processed,
+                                        progress.update_every_reads,
+                                    )),
+                                );
+                            }
+                        } else {
+                            ui.add(
+                                egui::ProgressBar::new(percent).show_percentage().text(format!(
+                                    "Reads processed: {}/{} (update stride: {})",
+                                    progress.reads_processed,
+                                    progress.reads_total,
+                                    progress.update_every_reads,
+                                )),
+                            );
+                        }
+                        let matched_ratio = if progress.tested_kmers == 0 {
+                            0.0
+                        } else {
+                            progress.matched_kmers as f64 / progress.tested_kmers as f64
+                        };
+                        ui.small(format!(
+                            "Cumulative seed confirmations: {}/{} ({:.3})",
+                            progress.matched_kmers, progress.tested_kmers, matched_ratio
+                        ));
+                        self.render_rna_read_seed_histogram(
+                            ui,
+                            progress,
+                            &self.rna_seed_catalog_preview,
+                            view,
+                        );
+                        self.render_rna_read_score_density_plot(ui, progress);
+                        highlight_selection_update =
+                            self.render_rna_read_top_hits_preview(ui, progress);
+                    }
+                } else if let Some(progress) = &self.rna_read_progress {
+                    ui.small(format!(
+                        "Last run: reads {}/{} | seed-passed={} | aligned={} | matched/tested={}/{}",
+                        progress.reads_processed,
+                        progress.reads_total,
+                        progress.seed_passed,
+                        progress.aligned,
+                        progress.matched_kmers,
+                        progress.tested_kmers
+                    ));
+                    self.render_rna_read_seed_histogram(
+                        ui,
+                        progress,
+                        &self.rna_seed_catalog_preview,
+                        view,
+                    );
+                    self.render_rna_read_score_density_plot(ui, progress);
+                    highlight_selection_update =
+                        self.render_rna_read_top_hits_preview(ui, progress);
+                }
+                if let Some(next_selection) = highlight_selection_update {
+                    self.rna_seed_highlight_record_index = next_selection;
+                }
+                if self.rna_read_task.is_none() {
+                    let report_id = self.rna_reads_ui.report_id.trim();
+                    if !report_id.is_empty() {
+                        if let Some(engine) = &self.engine {
+                            if let Ok(guard) = engine.read() {
+                                if let Ok(report) = guard.get_rna_read_report(report_id) {
+                                    ui.small(format!(
+                                        "Report '{}': retained_hits={} / total_reads={} | seed-passed={} | aligned={}",
+                                        report.report_id,
+                                        report.hits.len(),
+                                        report.read_count_total,
+                                        report.read_count_seed_passed,
+                                        report.read_count_aligned
+                                    ));
+                                    if !report.warnings.is_empty() {
+                                        for warning in report.warnings.iter().take(2) {
+                                            ui.small(
+                                                egui::RichText::new(format!("warning: {warning}"))
+                                                    .color(egui::Color32::from_rgb(180, 83, 9)),
+                                            );
+                                        }
+                                    }
+                                    ui.collapsing("Retained read preview (top 20)", |ui| {
+                                        egui::ScrollArea::vertical()
+                                            .max_height(140.0)
+                                            .show(ui, |ui| {
+                                                for hit in report.hits.iter().take(20) {
+                                                    let seq_preview = hit
+                                                        .sequence
+                                                        .chars()
+                                                        .take(48)
+                                                        .collect::<String>();
+                                                    ui.monospace(format!(
+                                                        "#{} {} score={:.3} matched/tested={}/{} pass={} seq={}",
+                                                        hit.record_index + 1,
+                                                        hit.header_id,
+                                                        hit.seed_hit_fraction,
+                                                        hit.matched_kmers,
+                                                        hit.tested_kmers,
+                                                        hit.passed_seed_filter,
+                                                        seq_preview,
+                                                    ));
+                                                }
+                                            });
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                if ui
+                    .add_enabled(
+                        self.rna_read_task.is_none(),
+                        egui::Button::new("Run Nanopore cDNA interpretation"),
+                    )
+                    .clicked()
+                {
+                    self.run_splicing_rna_read_interpretation(view);
+                }
+                if ui
+                    .add_enabled(
+                        self.rna_read_task.is_none(),
+                        egui::Button::new("Export Seed Hash Catalog (TSV)..."),
+                    )
+                    .clicked()
+                {
+                    self.export_splicing_seed_hash_catalog(view);
+                }
+                if ui
+                    .add_enabled(
+                        self.rna_read_task.is_none(),
+                        egui::Button::new("Export Retained Top Reads (FASTA)..."),
+                    )
+                    .clicked()
+                {
+                    self.export_retained_rna_hits_fasta();
+                }
+                if ui
+                    .button("Export RNA sample sheet (all reports for current sequence)...")
+                    .clicked()
+                {
+                    let default_name = format!("{}_rna_read_sample_sheet.tsv", view.seq_id);
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_file_name(&default_name)
+                        .add_filter("TSV", &["tsv", "txt"])
+                        .save_file()
+                    {
+                        self.apply_operation_with_feedback(Operation::ExportRnaReadSampleSheet {
+                            path: path.display().to_string(),
+                            seq_id: Some(view.seq_id.clone()),
+                            report_ids: vec![],
+                            append: false,
+                        });
+                    }
+                }
+            });
+        if persist_ui_state {
+            self.save_engine_ops_state();
+        }
         ui.separator();
+    }
+
+    fn splicing_scope_label(scope: SplicingScopePreset) -> &'static str {
+        match scope {
+            SplicingScopePreset::AllOverlappingBothStrands => "all-overlap / both-strands",
+            SplicingScopePreset::TargetGroupAnyStrand => "target-group / any-strand",
+            SplicingScopePreset::AllOverlappingTargetStrand => "all-overlap / target-strand",
+            SplicingScopePreset::TargetGroupTargetStrand => "target-group / target-strand",
+        }
+    }
+
+    fn rna_reads_input_compression_label(path: &str) -> &'static str {
+        if path.trim().to_ascii_lowercase().ends_with(".gz") {
+            "gzip"
+        } else {
+            "plain"
+        }
+    }
+
+    fn refresh_rna_seed_catalog_preview(
+        &mut self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        scope: SplicingScopePreset,
+        kmer_len: usize,
+    ) {
+        let Some(engine) = self.engine.clone() else {
+            self.rna_seed_catalog_preview.clear();
+            return;
+        };
+        let mut seed_filter = RnaReadSeedFilterConfig::default();
+        seed_filter.kmer_len = kmer_len;
+        let preview = match engine.read() {
+            Ok(guard) => {
+                guard.collect_rna_seed_hash_catalog(seq_id, seed_feature_id, scope, &seed_filter)
+            }
+            Err(_) => Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Engine lock poisoned while preparing RNA seed-hash preview".to_string(),
+            }),
+        };
+        match preview {
+            Ok(rows) => {
+                self.rna_seed_catalog_preview = rows;
+            }
+            Err(err) => {
+                self.rna_seed_catalog_preview.clear();
+                self.op_status = format!("RNA seed-hash preview unavailable: {}", err.message);
+            }
+        }
+    }
+
+    fn format_bytes_compact(bytes: u64) -> String {
+        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+        let mut value = bytes as f64;
+        let mut unit = 0usize;
+        while value >= 1024.0 && unit + 1 < UNITS.len() {
+            value /= 1024.0;
+            unit += 1;
+        }
+        if unit == 0 {
+            format!("{bytes} {}", UNITS[unit])
+        } else {
+            format!("{value:.2} {}", UNITS[unit])
+        }
+    }
+
+    fn rna_seed_base_to_bits(base: u8) -> Option<u32> {
+        match base.to_ascii_uppercase() {
+            b'A' => Some(0),
+            b'C' => Some(1),
+            b'G' => Some(2),
+            b'T' | b'U' => Some(3),
+            _ => None,
+        }
+    }
+
+    fn encode_rna_seed_bits(window: &[u8]) -> Option<u32> {
+        let mut bits = 0u32;
+        for base in window {
+            let value = Self::rna_seed_base_to_bits(*base)?;
+            bits = (bits << 2) | value;
+        }
+        Some(bits)
+    }
+
+    fn collect_read_seed_bits(sequence: &str, kmer_len: usize) -> HashSet<u32> {
+        let bytes = sequence.as_bytes();
+        if kmer_len == 0 || bytes.len() < kmer_len {
+            return HashSet::new();
+        }
+        let mut out = HashSet::<u32>::new();
+        for start in 0..=bytes.len() - kmer_len {
+            if let Some(bits) = Self::encode_rna_seed_bits(&bytes[start..start + kmer_len]) {
+                out.insert(bits);
+            }
+        }
+        out
+    }
+
+    fn selected_rna_top_hit_preview<'a>(
+        &self,
+        progress: &'a RnaReadInterpretProgress,
+    ) -> Option<&'a RnaReadTopHitPreview> {
+        let selected_index = self.rna_seed_highlight_record_index?;
+        progress
+            .top_hits_preview
+            .iter()
+            .find(|row| row.record_index == selected_index)
+    }
+
+    fn run_splicing_rna_read_interpretation(&mut self, view: &SplicingExpertView) {
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected".to_string();
+            return;
+        };
+        if self.rna_read_task.is_some() {
+            self.op_status = "RNA-read interpretation is already running".to_string();
+            return;
+        }
+        let input_path = self.rna_reads_ui.input_path.trim().to_string();
+        if input_path.is_empty() {
+            let message = "RNA-read interpretation requires an input FASTA path".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let kmer_len = match Self::parse_positive_usize_text(&self.rna_reads_ui.kmer_len, "k-mer") {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        if !(1..=16).contains(&kmer_len) {
+            let message = "Invalid k-mer: expected within 1..=16".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let short_full_hash_max_bp = match Self::parse_positive_usize_text(
+            &self.rna_reads_ui.short_full_hash_max_bp,
+            "short_full_hash_max_bp",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let long_window_bp = match Self::parse_positive_usize_text(
+            &self.rna_reads_ui.long_window_bp,
+            "long_window_bp",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let long_window_count = match Self::parse_positive_usize_text(
+            &self.rna_reads_ui.long_window_count,
+            "long_window_count",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let min_seed_hit_fraction = match Self::parse_required_f64_text(
+            &self.rna_reads_ui.min_seed_hit_fraction,
+            "min_seed_hit_fraction",
+        ) {
+            Ok(value) if (0.0..=1.0).contains(&value) => value,
+            Ok(_) => {
+                let message =
+                    "Invalid min_seed_hit_fraction: expected within 0.0..=1.0".to_string();
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let band_width_bp = match Self::parse_positive_usize_text(
+            &self.rna_reads_ui.align_band_width_bp,
+            "align_band_width_bp",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let min_identity_fraction = match Self::parse_required_f64_text(
+            &self.rna_reads_ui.align_min_identity_fraction,
+            "align_min_identity_fraction",
+        ) {
+            Ok(value) if (0.0..=1.0).contains(&value) => value,
+            Ok(_) => {
+                let message =
+                    "Invalid align_min_identity_fraction: expected within 0.0..=1.0".to_string();
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let max_secondary_mappings = match Self::parse_required_usize_text(
+            &self.rna_reads_ui.align_max_secondary_mappings,
+            "align_max_secondary_mappings",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let report_id = {
+            let raw = self.rna_reads_ui.report_id.trim();
+            if raw.is_empty() {
+                None
+            } else {
+                Some(raw.to_string())
+            }
+        };
+        self.save_engine_ops_state();
+        self.refresh_rna_seed_catalog_preview(
+            &seq_id,
+            view.target_feature_id,
+            self.rna_reads_ui.scope,
+            kmer_len,
+        );
+        self.start_rna_read_interpretation(Operation::InterpretRnaReads {
+            seq_id,
+            seed_feature_id: view.target_feature_id,
+            profile: self.rna_reads_ui.profile,
+            input_path: input_path.clone(),
+            input_format: self.rna_reads_ui.input_format,
+            scope: self.rna_reads_ui.scope,
+            seed_filter: RnaReadSeedFilterConfig {
+                kmer_len,
+                short_full_hash_max_bp,
+                long_window_bp,
+                long_window_count,
+                min_seed_hit_fraction,
+            },
+            align_config: RnaReadAlignConfig {
+                band_width_bp,
+                min_identity_fraction,
+                max_secondary_mappings,
+            },
+            report_id,
+        });
+    }
+
+    fn export_splicing_seed_hash_catalog(&mut self, view: &SplicingExpertView) {
+        if self.rna_read_task.is_some() {
+            self.op_status =
+                "Seed-hash catalog export is disabled while RNA-read interpretation is running"
+                    .to_string();
+            return;
+        }
+        let Some(seq_id) = self.seq_id.clone() else {
+            self.op_status = "No active sequence selected".to_string();
+            return;
+        };
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let kmer_len = match Self::parse_positive_usize_text(&self.rna_reads_ui.kmer_len, "k-mer") {
+            Ok(value) if (1..=16).contains(&value) => value,
+            Ok(_) => {
+                let message = "Invalid k-mer: expected within 1..=16".to_string();
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let default_name = format!("{seq_id}_seed_hash_catalog_k{kmer_len}.tsv");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("TSV", &["tsv", "txt"])
+            .save_file()
+        else {
+            return;
+        };
+        let path_text = path.display().to_string();
+        let mut seed_filter = RnaReadSeedFilterConfig::default();
+        seed_filter.kmer_len = kmer_len;
+        let export_result = match engine.read() {
+            Ok(guard) => guard.export_rna_seed_hash_catalog(
+                &seq_id,
+                view.target_feature_id,
+                self.rna_reads_ui.scope,
+                &seed_filter,
+                &path_text,
+            ),
+            Err(_) => Err(EngineError {
+                code: ErrorCode::Internal,
+                message: "Engine lock poisoned while exporting seed-hash catalog".to_string(),
+            }),
+        };
+        match export_result {
+            Ok((rows, unique_hashes)) => {
+                self.op_status = format!(
+                    "Exported RNA seed-hash catalog: rows={rows}, unique_hashes={unique_hashes}, path='{path_text}'"
+                );
+            }
+            Err(err) => {
+                self.op_status = err.message.clone();
+                self.op_error_popup = Some(err.message);
+            }
+        }
+    }
+
+    fn export_retained_rna_hits_fasta(&mut self) {
+        let report_id = self.rna_reads_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            let message = "Set a Report ID first to export retained reads".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let default_name = format!("{report_id}_retained_reads.fa");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("FASTA", &["fa", "fasta"])
+            .save_file()
+        else {
+            return;
+        };
+        self.apply_operation_with_feedback(Operation::ExportRnaReadHitsFasta {
+            report_id,
+            path: path.display().to_string(),
+            selection: RnaReadHitSelection::All,
+        });
+    }
+
+    fn start_rna_read_interpretation(&mut self, op: Operation) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        if self.rna_read_task.is_some() {
+            self.op_status = "RNA-read interpretation is already running".to_string();
+            return;
+        }
+        let input_path = match &op {
+            Operation::InterpretRnaReads { input_path, .. } => input_path.clone(),
+            _ => "<unknown>".to_string(),
+        };
+        let started = Instant::now();
+        let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
+        self.rna_read_progress = None;
+        self.rna_seed_highlight_record_index = None;
+        self.op_status = format!(
+            "RNA-read interpretation started (Nanopore cDNA): '{}'",
+            input_path
+        );
+        self.rna_read_task = Some(RnaReadTask {
+            started,
+            input_path: input_path.clone(),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
+            receiver: Arc::new(Mutex::new(rx)),
+        });
+        let cancel_requested = self
+            .rna_read_task
+            .as_ref()
+            .map(|task| task.cancel_requested.clone())
+            .expect("rna-read task just set");
+        let (
+            seq_id,
+            seed_feature_id,
+            profile,
+            input_path,
+            input_format,
+            scope,
+            seed_filter,
+            align_config,
+            report_id,
+        ) = match op {
+            Operation::InterpretRnaReads {
+                seq_id,
+                seed_feature_id,
+                profile,
+                input_path,
+                input_format,
+                scope,
+                seed_filter,
+                align_config,
+                report_id,
+            } => (
+                seq_id,
+                seed_feature_id,
+                profile,
+                input_path,
+                input_format,
+                scope,
+                seed_filter,
+                align_config,
+                report_id,
+            ),
+            other => {
+                self.op_status = format!("Unsupported RNA-read worker operation: {other:?}");
+                self.rna_read_task = None;
+                return;
+            }
+        };
+        std::thread::spawn(move || {
+            let tx_progress = tx.clone();
+            let cancel_for_progress = Arc::clone(&cancel_requested);
+            let cancel_for_compute = Arc::clone(&cancel_requested);
+            let report = match engine.read() {
+                Ok(guard) => {
+                    let mut should_continue =
+                        move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
+                    guard.compute_rna_read_report_with_progress_and_cancel(
+                        &seq_id,
+                        seed_feature_id,
+                        profile,
+                        &input_path,
+                        input_format,
+                        scope,
+                        &seed_filter,
+                        &align_config,
+                        report_id.as_deref(),
+                        &mut move |progress| {
+                            if cancel_for_progress.load(AtomicOrdering::Relaxed) {
+                                return false;
+                            }
+                            let OperationProgress::RnaReadInterpret(p) = progress else {
+                                return true;
+                            };
+                            let _ = tx_progress.send(RnaReadTaskMessage::Progress(p));
+                            !cancel_for_progress.load(AtomicOrdering::Relaxed)
+                        },
+                        &mut should_continue,
+                    )
+                }
+                Err(_) => Err(EngineError {
+                    code: ErrorCode::Internal,
+                    message: "Engine lock poisoned while preparing RNA-read interpretation"
+                        .to_string(),
+                }),
+            };
+            let outcome = match report {
+                Ok(report) => match engine.write() {
+                    Ok(mut guard) => guard.commit_rna_read_report(report),
+                    Err(_) => Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "Engine lock poisoned while committing RNA-read report"
+                            .to_string(),
+                    }),
+                },
+                Err(err) => Err(err),
+            };
+            let _ = tx.send(RnaReadTaskMessage::Done(outcome));
+        });
+    }
+
+    fn poll_rna_read_task(&mut self, ctx: &egui::Context) {
+        if self.rna_read_task.is_none() {
+            return;
+        }
+        let mut done: Option<Result<OpResult, EngineError>> = None;
+        if let Some(task) = &self.rna_read_task {
+            let compression = Self::rna_reads_input_compression_label(&task.input_path);
+            ctx.request_repaint_after(Duration::from_millis(100));
+            match task.receiver.lock() {
+                Ok(rx) => {
+                    const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 64;
+                    let mut processed_progress = 0usize;
+                    loop {
+                        match rx.try_recv() {
+                            Ok(RnaReadTaskMessage::Progress(progress)) => {
+                                self.rna_read_progress = Some(progress);
+                                processed_progress = processed_progress.saturating_add(1);
+                                if processed_progress >= MAX_PROGRESS_MESSAGES_PER_TICK {
+                                    break;
+                                }
+                            }
+                            Ok(RnaReadTaskMessage::Done(res)) => {
+                                done = Some(res);
+                                break;
+                            }
+                            Err(TryRecvError::Disconnected) => {
+                                done = Some(Err(EngineError {
+                                    code: ErrorCode::Internal,
+                                    message: "RNA-read worker disconnected unexpectedly".to_string(),
+                                }));
+                                break;
+                            }
+                            Err(TryRecvError::Empty) => break,
+                        }
+                    }
+                    if done.is_none() {
+                        if let Some(progress) = &self.rna_read_progress {
+                            let elapsed_s = task.started.elapsed().as_secs_f64().max(0.001);
+                            let reads_per_sec = progress.reads_processed as f64 / elapsed_s;
+                            let percent = if progress.reads_total == 0 {
+                                0.0
+                            } else {
+                                (progress.reads_processed as f64 / progress.reads_total as f64)
+                                    * 100.0
+                            };
+                            self.op_status = if progress.reads_total == 0 {
+                                let byte_progress = if progress.input_bytes_total == 0 {
+                                    "bytes=?".to_string()
+                                } else {
+                                    format!(
+                                        "bytes={}/{} ({:.1}%)",
+                                        Self::format_bytes_compact(progress.input_bytes_processed),
+                                        Self::format_bytes_compact(progress.input_bytes_total),
+                                        (progress.input_bytes_processed as f64
+                                            / progress.input_bytes_total as f64)
+                                            * 100.0
+                                    )
+                                };
+                                format!(
+                                    "RNA-read interpretation scanning input FASTA ({compression}): sequences-read={}, {}, {:.1} reads/s, seed-passed={}, aligned={}, matched_kmers={}, elapsed {:.1}s",
+                                    progress.reads_processed,
+                                    byte_progress,
+                                    reads_per_sec,
+                                    progress.seed_passed,
+                                    progress.aligned,
+                                    progress.matched_kmers,
+                                    task.started.elapsed().as_secs_f32()
+                                )
+                            } else {
+                                format!(
+                                    "RNA-read interpretation running: reads {}/{} ({:.1}%), input={compression}, {:.1} reads/s, seed-passed={}, aligned={}, matched_kmers={}, elapsed {:.1}s",
+                                    progress.reads_processed,
+                                    progress.reads_total,
+                                    percent,
+                                    reads_per_sec,
+                                    progress.seed_passed,
+                                    progress.aligned,
+                                    progress.matched_kmers,
+                                    task.started.elapsed().as_secs_f32()
+                                )
+                            };
+                        } else {
+                            self.op_status = format!(
+                                "RNA-read interpretation running... input='{}' ({compression}), {:.1}s elapsed",
+                                task.input_path,
+                                task.started.elapsed().as_secs_f32()
+                            );
+                        }
+                    }
+                }
+                Err(_) => {
+                    done = Some(Err(EngineError {
+                        code: ErrorCode::Internal,
+                        message: "RNA-read progress channel lock poisoned".to_string(),
+                    }));
+                }
+            }
+        }
+
+        if let Some(done) = done {
+            let (started, cancel_requested) = self
+                .rna_read_task
+                .as_ref()
+                .map(|task| {
+                    (
+                        task.started,
+                        task.cancel_requested.load(AtomicOrdering::Relaxed),
+                    )
+                })
+                .unwrap_or_else(|| (Instant::now(), false));
+            self.rna_read_task = None;
+            match done {
+                Ok(result) => self.handle_operation_success(result, started),
+                Err(err) => {
+                    let cancelled = cancel_requested
+                        && err
+                            .message
+                            .to_ascii_lowercase()
+                            .contains("cancel");
+                    if cancelled {
+                        self.op_status = format!(
+                            "RNA-read interpretation cancelled after {:.1}s",
+                            started.elapsed().as_secs_f32()
+                        );
+                    } else {
+                        self.handle_operation_error(err, started);
+                    }
+                }
+            }
+        }
+    }
+
+    fn render_rna_read_seed_histogram(
+        &self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+        seed_catalog: &[RnaSeedHashCatalogEntry],
+        view: &SplicingExpertView,
+    ) {
+        if progress.bins.is_empty() {
+            ui.small("No seed-confirmation histogram bins available yet.");
+            return;
+        }
+        let desired = Vec2::new(ui.available_width().max(280.0), 150.0);
+        let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        let border = egui::Stroke::new(1.0, egui::Color32::from_gray(120));
+        painter.rect_stroke(rect, 4.0, border, egui::StrokeKind::Inside);
+
+        let mid_y = rect.center().y;
+        painter.line_segment(
+            [egui::pos2(rect.left(), mid_y), egui::pos2(rect.right(), mid_y)],
+            egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+        );
+
+        let max_count = progress
+            .bins
+            .iter()
+            .map(|bin| bin.confirmed_plus.max(bin.confirmed_minus))
+            .max()
+            .unwrap_or(0)
+            .max(1);
+        let max_count_sqrt = (max_count as f32).sqrt().max(1.0);
+        let half_h = (rect.height() * 0.44).max(1.0);
+        let bin_w = rect.width() / progress.bins.len().max(1) as f32;
+        for (idx, bin) in progress.bins.iter().enumerate() {
+            let x0 = rect.left() + idx as f32 * bin_w + 0.8;
+            let x1 = if idx + 1 == progress.bins.len() {
+                rect.right() - 0.8
+            } else {
+                rect.left() + (idx + 1) as f32 * bin_w - 0.8
+            };
+            if x1 <= x0 {
+                continue;
+            }
+            if bin.confirmed_plus > 0 {
+                let h = (((bin.confirmed_plus as f32).sqrt() / max_count_sqrt) * half_h).max(1.0);
+                let y0 = mid_y - h;
+                let mut y1 = mid_y - 0.6;
+                if y1 <= y0 {
+                    y1 = y0 + 1.0;
+                }
+                let bar = egui::Rect::from_min_max(
+                    egui::pos2(x0, y0),
+                    egui::pos2(x1, y1),
+                );
+                painter.rect_filled(bar, 0.0, egui::Color32::from_rgb(37, 99, 235));
+            }
+            if bin.confirmed_minus > 0 {
+                let h =
+                    (((bin.confirmed_minus as f32).sqrt() / max_count_sqrt) * half_h).max(1.0);
+                let y0 = mid_y + 0.6;
+                let mut y1 = mid_y + h;
+                if y1 <= y0 {
+                    y1 = y0 + 1.0;
+                }
+                let bar = egui::Rect::from_min_max(
+                    egui::pos2(x0, y0),
+                    egui::pos2(x1, y1),
+                );
+                painter.rect_filled(bar, 0.0, egui::Color32::from_rgb(249, 115, 22));
+            }
+        }
+        let left_label = progress
+            .bins
+            .first()
+            .map(|bin| bin.start_1based)
+            .unwrap_or(1);
+        let right_label = progress
+            .bins
+            .last()
+            .map(|bin| bin.end_1based)
+            .unwrap_or(left_label);
+        let left_f = left_label as f32;
+        let right_f = right_label.max(left_label) as f32;
+        let span = (right_f - left_f).max(1.0);
+
+        for exon in &view.unique_exons {
+            if exon.end_1based < left_label || exon.start_1based > right_label {
+                continue;
+            }
+            let start_t = ((exon.start_1based as f32 - left_f) / span).clamp(0.0, 1.0);
+            let end_t = ((exon.end_1based as f32 - left_f) / span).clamp(0.0, 1.0);
+            let x0 = rect.left() + start_t * rect.width();
+            let mut x1 = rect.left() + end_t * rect.width();
+            if x1 <= x0 {
+                x1 = x0 + 1.0;
+            }
+            let exon_rect = egui::Rect::from_min_max(
+                egui::pos2(x0, rect.top() + 4.0),
+                egui::pos2(x1, rect.top() + 8.0),
+            );
+            painter.rect_filled(exon_rect, 1.0, egui::Color32::from_rgb(34, 197, 94));
+        }
+        painter.text(
+            egui::pos2(rect.left() + 4.0, rect.bottom() - 14.0),
+            egui::Align2::LEFT_BOTTOM,
+            format!("{left_label}"),
+            egui::TextStyle::Small.resolve(ui.style()),
+            egui::Color32::from_gray(120),
+        );
+        painter.text(
+            egui::pos2(rect.right() - 4.0, rect.bottom() - 14.0),
+            egui::Align2::RIGHT_BOTTOM,
+            format!("{right_label}"),
+            egui::TextStyle::Small.resolve(ui.style()),
+            egui::Color32::from_gray(120),
+        );
+        if !seed_catalog.is_empty() {
+            let selected_top_hit = self.selected_rna_top_hit_preview(progress);
+            let selected_kmer_len = seed_catalog
+                .first()
+                .map(|row| row.kmer_sequence.len())
+                .filter(|len| *len > 0)
+                .unwrap_or_else(|| {
+                    self.rna_reads_ui
+                        .kmer_len
+                        .trim()
+                        .parse::<usize>()
+                        .ok()
+                        .filter(|len| *len > 0)
+                        .unwrap_or(9)
+                });
+            let recompute_started = Instant::now();
+            let selected_seed_bits = selected_top_hit
+                .map(|row| Self::collect_read_seed_bits(&row.sequence, selected_kmer_len))
+                .unwrap_or_default();
+            let recompute_elapsed_ms = recompute_started.elapsed().as_secs_f64() * 1000.0;
+            let dot_offset = 6.0;
+            let dot_color = egui::Color32::from_rgb(220, 38, 38);
+            let selected_color = egui::Color32::from_rgb(22, 163, 74);
+            let mut hovered: Option<(f32, &RnaSeedHashCatalogEntry)> = None;
+            let pointer = response.hover_pos();
+            let mut plus_unique = HashSet::<usize>::new();
+            let mut minus_unique = HashSet::<usize>::new();
+            let mut rendered_pixel_buckets = HashSet::<(i32, bool)>::new();
+            let mut selected_supported_positions = 0usize;
+            let mut selected_supported_pixel_buckets = HashSet::<(i32, bool)>::new();
+            for entry in seed_catalog {
+                if entry.genomic_pos_1based < left_label || entry.genomic_pos_1based > right_label {
+                    continue;
+                }
+                let t = ((entry.genomic_pos_1based as f32 - left_f) / span).clamp(0.0, 1.0);
+                let x = rect.left() + t * rect.width();
+                let strand_minus = entry.strand.trim() == "-";
+                let y = if strand_minus {
+                    mid_y + dot_offset
+                } else {
+                    mid_y - dot_offset
+                };
+                let pixel_x = ((x - rect.left()).round() as i32).clamp(0, rect.width() as i32);
+                rendered_pixel_buckets.insert((pixel_x, strand_minus));
+                if strand_minus {
+                    minus_unique.insert(entry.genomic_pos_1based);
+                } else {
+                    plus_unique.insert(entry.genomic_pos_1based);
+                }
+                painter.circle_filled(egui::pos2(x, y), 1.6, dot_color);
+                if !selected_seed_bits.is_empty() && selected_seed_bits.contains(&entry.seed_bits) {
+                    selected_supported_positions =
+                        selected_supported_positions.saturating_add(1);
+                    selected_supported_pixel_buckets.insert((pixel_x, strand_minus));
+                    let spike_tip = if strand_minus {
+                        y + 5.0
+                    } else {
+                        y - 5.0
+                    };
+                    painter.line_segment(
+                        [egui::pos2(x, y), egui::pos2(x, spike_tip)],
+                        egui::Stroke::new(1.2, selected_color),
+                    );
+                    painter.circle_filled(egui::pos2(x, y), 2.5, selected_color);
+                }
+                if let Some(pointer_pos) = pointer {
+                    let dx = pointer_pos.x - x;
+                    let dy = pointer_pos.y - y;
+                    let dist_sq = dx * dx + dy * dy;
+                    if dist_sq <= 81.0 {
+                        match hovered {
+                            Some((best_dist_sq, _)) if dist_sq >= best_dist_sq => {}
+                            _ => hovered = Some((dist_sq, entry)),
+                        }
+                    }
+                }
+            }
+            if let Some((_, entry)) = hovered {
+                response.clone().on_hover_ui_at_pointer(|ui| {
+                    ui.monospace(format!(
+                        "seed={} ({:08X}) seq={}",
+                        entry.seed_bits, entry.seed_bits, entry.kmer_sequence
+                    ));
+                    ui.monospace(format!(
+                        "genomic={} strand={} template_offset={}",
+                        entry.genomic_pos_1based, entry.strand, entry.template_offset_0based
+                    ));
+                    ui.label(format!(
+                        "transcript n-{} {}",
+                        entry.transcript_feature_id, entry.transcript_id
+                    ));
+                });
+            }
+            ui.small(format!(
+                "Seed hashes indexed: {} rows | unique genomic starts: {} (+{} / -{}) | rendered dot buckets at current width: {}",
+                seed_catalog.len(),
+                plus_unique.len() + minus_unique.len(),
+                plus_unique.len(),
+                minus_unique.len(),
+                rendered_pixel_buckets.len(),
+            ));
+            if let Some(selected) = selected_top_hit {
+                ui.small(format!(
+                    "Selected top read #{} supports {} hash positions ({} visible pixel buckets); hash recompute {:.2} ms",
+                    selected.record_index + 1,
+                    selected_supported_positions,
+                    selected_supported_pixel_buckets.len(),
+                    recompute_elapsed_ms,
+                ));
+            } else {
+                ui.small("Select one of the best-performing reads to light supported hash positions in green.");
+            }
+        }
+        ui.small(
+            "Seed-confirmation frequency by genomic position (blue/orange bars, sqrt-scaled). Red dots mark indexed seed-hash starts (+ above baseline, - below). Green top segments mark exon spans in current splicing scope.",
+        );
+        ui.collapsing("Seed hash preview (first 120)", |ui| {
+            if seed_catalog.is_empty() {
+                ui.small("No seed-hash catalog loaded for preview.");
+                return;
+            }
+            ui.small(format!(
+                "Loaded seed hashes: {} (showing first 120; export TSV for full list).",
+                seed_catalog.len()
+            ));
+            egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
+                for entry in seed_catalog.iter().take(120) {
+                    ui.monospace(format!(
+                        "{}\t{}\t{}\t{}\t{}",
+                        entry.genomic_pos_1based,
+                        entry.strand,
+                        entry.kmer_sequence,
+                        entry.seed_bits,
+                        entry.transcript_id,
+                    ));
+                }
+            });
+        });
+    }
+
+    fn render_rna_read_score_density_plot(
+        &self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+    ) {
+        if progress.score_density_bins.is_empty() {
+            ui.small("No score-density bins available yet.");
+            return;
+        }
+        ui.small("Seed-hit score density across tested reads");
+        let desired = Vec2::new(ui.available_width().max(280.0), 120.0);
+        let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+            egui::StrokeKind::Inside,
+        );
+        let max_count = progress.score_density_bins.iter().copied().max().unwrap_or(0);
+        if max_count == 0 {
+            painter.text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "Awaiting scored reads",
+                egui::FontId::monospace(11.0),
+                egui::Color32::from_gray(120),
+            );
+            return;
+        }
+        let axis_bottom = rect.bottom() - 16.0;
+        let plot_top = rect.top() + 4.0;
+        let plot_h = (axis_bottom - plot_top).max(1.0);
+        let bin_w = rect.width() / progress.score_density_bins.len().max(1) as f32;
+        for (idx, count) in progress.score_density_bins.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            let x0 = rect.left() + idx as f32 * bin_w + 0.8;
+            let x1 = if idx + 1 == progress.score_density_bins.len() {
+                rect.right() - 0.8
+            } else {
+                rect.left() + (idx + 1) as f32 * bin_w - 0.8
+            };
+            if x1 <= x0 {
+                continue;
+            }
+            let h = (*count as f32 / max_count as f32) * plot_h;
+            let bar = egui::Rect::from_min_max(
+                egui::pos2(x0, axis_bottom - h),
+                egui::pos2(x1, axis_bottom - 0.6),
+            );
+            painter.rect_filled(bar, 0.0, egui::Color32::from_rgb(16, 185, 129));
+        }
+        painter.line_segment(
+            [
+                egui::pos2(rect.left(), axis_bottom),
+                egui::pos2(rect.right(), axis_bottom),
+            ],
+            egui::Stroke::new(1.0, egui::Color32::from_gray(120)),
+        );
+        let threshold_x = rect.left() + rect.width() * 0.30;
+        painter.line_segment(
+            [
+                egui::pos2(threshold_x, plot_top),
+                egui::pos2(threshold_x, axis_bottom),
+            ],
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 38, 38)),
+        );
+        painter.text(
+            egui::pos2(rect.left() + 4.0, rect.bottom() - 13.0),
+            egui::Align2::LEFT_TOP,
+            "0.0",
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_gray(130),
+        );
+        painter.text(
+            egui::pos2(rect.right() - 4.0, rect.bottom() - 13.0),
+            egui::Align2::RIGHT_TOP,
+            "1.0",
+            egui::FontId::monospace(10.0),
+            egui::Color32::from_gray(130),
+        );
+        painter.text(
+            egui::pos2(threshold_x + 2.0, plot_top + 1.0),
+            egui::Align2::LEFT_TOP,
+            "0.30",
+            egui::FontId::monospace(9.0),
+            egui::Color32::from_rgb(220, 38, 38),
+        );
+        ui.small(format!(
+            "Score bins: {} | max bin count: {}",
+            progress.score_density_bins.len(),
+            max_count
+        ));
+    }
+
+    fn render_rna_read_top_hits_preview(
+        &self,
+        ui: &mut egui::Ui,
+        progress: &RnaReadInterpretProgress,
+    ) -> Option<Option<usize>> {
+        if progress.top_hits_preview.is_empty() {
+            return None;
+        }
+        let mut next_selection: Option<Option<usize>> = None;
+        ui.collapsing(
+            format!(
+                "Best-performing reads so far (top {})",
+                progress.top_hits_preview.len()
+            ),
+            |ui| {
+                ui.horizontal(|ui| {
+                    ui.small("Click a row to highlight its supported hashes in green.");
+                    if ui.button("Clear highlight").clicked() {
+                        next_selection = Some(None);
+                    }
+                });
+                egui::ScrollArea::vertical()
+                    .max_height(150.0)
+                    .show(ui, |ui| {
+                        for row in &progress.top_hits_preview {
+                            let selected =
+                                self.rna_seed_highlight_record_index == Some(row.record_index);
+                            let response = ui.selectable_label(selected, format!(
+                                "#{} {} score={:.3} matched/tested={}/{} pass={} len={} seq={}",
+                                row.record_index + 1,
+                                row.header_id,
+                                row.seed_hit_fraction,
+                                row.matched_kmers,
+                                row.tested_kmers,
+                                row.passed_seed_filter,
+                                row.read_length_bp,
+                                row.sequence_preview,
+                            ));
+                            if response.clicked() {
+                                next_selection = Some(Some(row.record_index));
+                            }
+                        }
+                    });
+            },
+        );
+        next_selection
     }
 
     fn isoform_expert_viewport_id(seq_id: &str, panel_id: &str) -> egui::ViewportId {
@@ -8193,7 +11113,7 @@ impl MainAreaDna {
             .isoform_expert_window_panel_id
             .clone()
             .unwrap_or_else(|| view.panel_id.clone());
-        let title = format!("Isoform Expert - {} ({})", panel_id, view.seq_id);
+        let title = Self::isoform_expert_window_title(&panel_id, &view.seq_id);
         let viewport_id = Self::isoform_expert_viewport_id(&view.seq_id, &panel_id);
         let builder = egui::ViewportBuilder::default()
             .with_title(title.clone())
@@ -9711,6 +12631,11 @@ impl MainAreaDna {
             &side.max_gc_fraction,
             &format!("{label}.max_gc_fraction"),
         )?;
+        let non_annealing_5prime_tail = if side.non_annealing_5prime_tail.trim().is_empty() {
+            None
+        } else {
+            Some(side.non_annealing_5prime_tail.trim().to_string())
+        };
         let fixed_5prime = if side.fixed_5prime.trim().is_empty() {
             None
         } else {
@@ -9741,6 +12666,7 @@ impl MainAreaDna {
             min_gc_fraction,
             max_gc_fraction,
             max_anneal_hits,
+            non_annealing_5prime_tail,
             fixed_5prime,
             fixed_3prime,
             required_motifs: Self::parse_ids(&side.required_motifs),
@@ -9843,6 +12769,133 @@ impl MainAreaDna {
         })
     }
 
+    fn sync_primer_backend_controls_from_engine(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            return;
+        };
+        let Ok(guard) = engine.read() else {
+            return;
+        };
+        self.primer_backend = guard.state().parameters.primer_design_backend;
+        let raw = guard.state().parameters.primer3_executable.trim();
+        self.primer3_executable = if raw.is_empty() {
+            "primer3_core".to_string()
+        } else {
+            raw.to_string()
+        };
+    }
+
+    fn apply_primer_backend_settings(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let executable = {
+            let trimmed = self.primer3_executable.trim();
+            if trimmed.is_empty() {
+                "primer3_core".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        let started = Instant::now();
+        let apply_result = {
+            let Ok(mut guard) = engine.write() else {
+                self.op_status =
+                    "Engine lock poisoned while applying primer backend settings".to_string();
+                return;
+            };
+            match guard.apply(Operation::SetParameter {
+                name: "primer_design_backend".to_string(),
+                value: serde_json::json!(self.primer_backend.as_str()),
+            }) {
+                Ok(_) => guard.apply(Operation::SetParameter {
+                    name: "primer3_executable".to_string(),
+                    value: serde_json::json!(executable.clone()),
+                }),
+                Err(err) => Err(err),
+            }
+        };
+        match apply_result {
+            Ok(_) => {
+                self.primer3_executable = executable.clone();
+                let elapsed_ms = started.elapsed().as_millis();
+                self.op_status = format!(
+                    "Applied primer backend settings in {} ms (backend={}, primer3_executable='{}')",
+                    elapsed_ms,
+                    self.primer_backend.as_str(),
+                    executable
+                );
+                self.op_error_popup = None;
+            }
+            Err(err) => {
+                self.op_status =
+                    format!("Could not apply primer backend settings: {}", err.message);
+                self.op_error_popup = Some(err.message);
+            }
+        }
+    }
+
+    fn run_primer3_preflight_probe(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "No engine attached".to_string();
+            return;
+        };
+        let executable_override = self.primer3_executable.trim().to_string();
+        let report = {
+            let Ok(guard) = engine.read() else {
+                self.op_status = "Engine lock poisoned while running Primer3 preflight".to_string();
+                return;
+            };
+            guard.primer3_preflight_report(
+                Some(self.primer_backend),
+                Some(executable_override.as_str()),
+            )
+        };
+        let detail = report
+            .detail
+            .as_deref()
+            .or(report.version.as_deref())
+            .or(report.error.as_deref())
+            .unwrap_or("n/a");
+        self.primer3_preflight_status = format!(
+            "Primer3 preflight: reachable={} version_probe_ok={} backend={} executable='{}' status={} version='{}' detail='{}' probe={} ms",
+            report.reachable,
+            report.version_probe_ok,
+            report.backend,
+            report.executable,
+            report
+                .status_code
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            report.version.as_deref().unwrap_or("-"),
+            detail,
+            report.probe_time_ms
+        );
+        if report.reachable && report.version_probe_ok {
+            self.op_status = format!(
+                "Primer3 preflight OK (backend={}, executable='{}')",
+                report.backend, report.executable
+            );
+            self.op_error_popup = None;
+        } else if report.reachable {
+            self.op_status = format!(
+                "Primer3 preflight warning: version probe returned status {} for '{}'",
+                report
+                    .status_code
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "signal".to_string()),
+                report.executable
+            );
+        } else {
+            self.op_status = format!(
+                "Primer3 preflight failed for '{}': {}",
+                report.executable,
+                report.error.unwrap_or_else(|| "unreachable".to_string())
+            );
+        }
+    }
+
     fn list_primer_design_reports(&mut self) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -9903,11 +12956,15 @@ impl MainAreaDna {
             .first()
             .map(|pair| {
                 format!(
-                    "top amplicon={}..{} len={} score={:.3}",
+                    "top amplicon={}..{} len={} score={:.3} 3p_clamp(F/R)={}/{} dimer(3p,max)={}/{}",
                     pair.amplicon_start_0based,
                     pair.amplicon_end_0based_exclusive,
                     pair.amplicon_length_bp,
-                    pair.score
+                    pair.score,
+                    pair.forward.three_prime_gc_clamp,
+                    pair.reverse.three_prime_gc_clamp,
+                    pair.primer_pair_3prime_complementary_run_bp,
+                    pair.primer_pair_complementary_run_bp
                 )
             })
             .unwrap_or_else(|| "no accepted primer pairs".to_string());
@@ -10119,7 +13176,18 @@ impl MainAreaDna {
                     ui.label("GC max");
                     ui.add(egui::TextEdit::singleline(&mut side.max_gc_fraction).desired_width(64.0));
                     ui.end_row();
-                });
+            });
+            ui.horizontal(|ui| {
+                ui.label("5' tail (non-annealing)");
+                ui.add(
+                    egui::TextEdit::singleline(&mut side.non_annealing_5prime_tail)
+                        .desired_width(180.0)
+                        .hint_text("e.g. GAATTC"),
+                )
+                .on_hover_text(
+                    "Optional 5' primer tail that is added to the oligo but excluded from anneal Tm/GC/hit calculations",
+                );
+            });
             ui.horizontal(|ui| {
                 ui.label("fixed 5'");
                 ui.add(egui::TextEdit::singleline(&mut side.fixed_5prime).desired_width(120.0));
@@ -10143,7 +13211,7 @@ impl MainAreaDna {
                 );
             });
             ui.small(
-                "Motif fields are comma-separated IUPAC strings. Locked positions format: offset:base (e.g. 0:A,3:R).",
+                "Motif fields are comma-separated IUPAC strings. Locked positions format: offset:base (e.g. 0:A,3:R). Length/Tm/GC/hits use the annealing segment; 5' tail contributes to full-oligo sequence and dimer diagnostics.",
             );
         });
     }
@@ -10198,6 +13266,70 @@ impl MainAreaDna {
             "Template: {} (reports are persisted in project metadata)",
             template
         ));
+        ui.group(|ui| {
+            ui.label("Primer backend and Primer3 preflight");
+            ui.horizontal(|ui| {
+                ui.label("backend");
+                egui::ComboBox::from_id_salt("engine_ops_primer_backend")
+                    .selected_text(self.primer_backend.as_str())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.primer_backend,
+                            PrimerDesignBackend::Auto,
+                            "auto",
+                        );
+                        ui.selectable_value(
+                            &mut self.primer_backend,
+                            PrimerDesignBackend::Internal,
+                            "internal",
+                        );
+                        ui.selectable_value(
+                            &mut self.primer_backend,
+                            PrimerDesignBackend::Primer3,
+                            "primer3",
+                        );
+                    });
+                ui.label("primer3 executable");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.primer3_executable)
+                        .desired_width(260.0)
+                        .hint_text("primer3_core"),
+                )
+                .on_hover_text(
+                    "Executable path used by primer3 backend (`primer3_core` when empty)",
+                );
+            });
+            ui.horizontal(|ui| {
+                if ui
+                    .button("Apply Primer Backend")
+                    .on_hover_text("Persist backend + primer3 executable into engine parameters")
+                    .clicked()
+                {
+                    self.apply_primer_backend_settings();
+                }
+                if ui
+                    .button("Probe Primer3")
+                    .on_hover_text(
+                        "Run `primer3 --version` preflight for the configured executable",
+                    )
+                    .clicked()
+                {
+                    self.run_primer3_preflight_probe();
+                }
+                if ui
+                    .button("Reload from Engine")
+                    .on_hover_text(
+                        "Reload backend/executable controls from current engine parameters",
+                    )
+                    .clicked()
+                {
+                    self.sync_primer_backend_controls_from_engine();
+                }
+            });
+            if !self.primer3_preflight_status.trim().is_empty() {
+                ui.monospace(&self.primer3_preflight_status);
+            }
+        });
 
         egui::CollapsingHeader::new("Design primer pairs")
             .default_open(true)
@@ -11441,6 +14573,282 @@ impl MainAreaDna {
             .collect()
     }
 
+    fn normalize_enzyme_match_token(text: &str) -> String {
+        text.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_uppercase())
+            .collect()
+    }
+
+    fn rebase_name_lookup_by_normalized() -> HashMap<String, String> {
+        let mut lookup = HashMap::new();
+        for enzyme in active_restriction_enzymes() {
+            let normalized = Self::normalize_enzyme_match_token(&enzyme.name);
+            if !normalized.is_empty() {
+                lookup.entry(normalized).or_insert(enzyme.name);
+            }
+        }
+        lookup
+    }
+
+    fn canonicalize_rebase_enzyme_name(
+        raw: &str,
+        lookup: &HashMap<String, String>,
+    ) -> Option<String> {
+        let normalized = Self::normalize_enzyme_match_token(raw);
+        lookup.get(&normalized).cloned()
+    }
+
+    fn extract_rebase_enzyme_names_from_text(
+        text: &str,
+        lookup: &HashMap<String, String>,
+    ) -> Vec<String> {
+        let tokens = text
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let mut out = vec![];
+        let mut seen = HashSet::new();
+        let mut push_candidate = |candidate: String| {
+            if let Some(name) = Self::canonicalize_rebase_enzyme_name(&candidate, lookup) {
+                if seen.insert(name.clone()) {
+                    out.push(name);
+                }
+            }
+        };
+        for idx in 0..tokens.len() {
+            push_candidate(tokens[idx].clone());
+            if idx + 1 < tokens.len() {
+                push_candidate(format!("{}{}", tokens[idx], tokens[idx + 1]));
+            }
+            if idx + 2 < tokens.len() {
+                push_candidate(format!(
+                    "{}{}{}",
+                    tokens[idx],
+                    tokens[idx + 1],
+                    tokens[idx + 2]
+                ));
+            }
+        }
+        out
+    }
+
+    fn text_mentions_mcs(text: &str) -> bool {
+        let lower = text.to_ascii_lowercase();
+        lower.contains("multiple cloning site")
+            || lower == "mcs"
+            || lower.contains(" mcs ")
+            || lower.starts_with("mcs ")
+            || lower.ends_with(" mcs")
+            || lower.contains("(mcs)")
+    }
+
+    fn collect_active_cds_ranges_0based(dna: &DNAsequence) -> Vec<(usize, usize)> {
+        let mut ranges = vec![];
+        for feature in dna.features() {
+            if !feature.kind.to_string().eq_ignore_ascii_case("CDS") {
+                continue;
+            }
+            collect_location_ranges_usize(&feature.location, &mut ranges);
+        }
+        ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        ranges.dedup();
+        ranges
+    }
+
+    fn single_cutter_enzymes_for_active_sequence(&self, require_cds_overlap: bool) -> Vec<String> {
+        let Ok(dna) = self.dna.read() else {
+            return vec![];
+        };
+        let seq_len = dna.len();
+        if seq_len == 0 {
+            return vec![];
+        }
+        let cds_ranges = if require_cds_overlap {
+            Self::collect_active_cds_ranges_0based(&dna)
+        } else {
+            vec![]
+        };
+        let mut enzyme_cut_counts: HashMap<String, usize> = HashMap::new();
+        let mut enzyme_first_cut_0based: HashMap<String, usize> = HashMap::new();
+        let mut enzyme_has_cds_cut: HashMap<String, bool> = HashMap::new();
+        for site in dna
+            .restriction_enzyme_sites()
+            .iter()
+            .filter(|site| site.forward_strand)
+        {
+            let name = site.enzyme.name.clone();
+            *enzyme_cut_counts.entry(name.clone()).or_insert(0) += 1;
+
+            let cut_pos_0based = if dna.is_circular() {
+                let len = seq_len as isize;
+                let raw = site.offset.saturating_add(site.enzyme.cut);
+                raw.rem_euclid(len) as usize
+            } else {
+                let raw = site.offset.saturating_add(site.enzyme.cut);
+                if raw < 0 || raw >= seq_len as isize {
+                    continue;
+                }
+                raw as usize
+            };
+            enzyme_first_cut_0based
+                .entry(name.clone())
+                .and_modify(|existing| *existing = (*existing).min(cut_pos_0based))
+                .or_insert(cut_pos_0based);
+
+            if require_cds_overlap
+                && cds_ranges
+                    .iter()
+                    .any(|(start, end)| cut_pos_0based >= *start && cut_pos_0based < *end)
+            {
+                enzyme_has_cds_cut.insert(name, true);
+            }
+        }
+
+        let mut names = enzyme_cut_counts
+            .into_iter()
+            .filter_map(|(name, cut_count)| {
+                if cut_count != 1 {
+                    return None;
+                }
+                if require_cds_overlap && !enzyme_has_cds_cut.get(&name).copied().unwrap_or(false) {
+                    return None;
+                }
+                Some(name)
+            })
+            .collect::<Vec<_>>();
+        names.sort_unstable_by(|left, right| {
+            enzyme_first_cut_0based
+                .get(left)
+                .copied()
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &enzyme_first_cut_0based
+                        .get(right)
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                )
+                .then(left.cmp(right))
+        });
+        names
+    }
+
+    fn collect_mcs_enzyme_candidates_for_active_sequence(&self) -> (Vec<String>, Vec<String>) {
+        let Ok(dna) = self.dna.read() else {
+            return (vec![], vec![]);
+        };
+        let lookup = Self::rebase_name_lookup_by_normalized();
+        let available_sites: HashSet<String> = dna
+            .restriction_enzyme_sites()
+            .iter()
+            .filter(|site| site.forward_strand)
+            .map(|site| site.enzyme.name.clone())
+            .collect();
+        let mut selected = vec![];
+        let mut missing = vec![];
+        let mut seen_selected = HashSet::new();
+        let mut seen_missing = HashSet::new();
+
+        for feature in dna.features() {
+            let mcs_hint = feature
+                .qualifier_values("mcs_expected_sites".into())
+                .next()
+                .is_some()
+                || feature
+                    .qualifier_values("mcs_preset".into())
+                    .next()
+                    .is_some()
+                || Self::feature_tree_first_nonempty_qualifier(
+                    feature,
+                    &["label", "note", "gene", "name", "standard_name"],
+                )
+                .map(|text| Self::text_mentions_mcs(&text))
+                .unwrap_or(false);
+            if !mcs_hint {
+                continue;
+            }
+
+            let mut candidates = vec![];
+            for raw in feature.qualifier_values("mcs_expected_sites".into()) {
+                for token in raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if let Some(name) = Self::canonicalize_rebase_enzyme_name(token, &lookup) {
+                        candidates.push(name);
+                    } else {
+                        candidates
+                            .extend(Self::extract_rebase_enzyme_names_from_text(token, &lookup));
+                    }
+                }
+            }
+            for key in ["note", "label", "gene", "name", "standard_name"] {
+                for raw in feature.qualifier_values(key.into()) {
+                    candidates.extend(Self::extract_rebase_enzyme_names_from_text(raw, &lookup));
+                }
+            }
+
+            for name in candidates {
+                if available_sites.contains(&name) {
+                    if seen_selected.insert(name.clone()) {
+                        selected.push(name);
+                    }
+                } else if seen_missing.insert(name.clone()) {
+                    missing.push(name);
+                }
+            }
+        }
+        (selected, missing)
+    }
+
+    fn set_digest_enzymes_from_list(&mut self, enzymes: Vec<String>, status: String) {
+        if enzymes.is_empty() {
+            self.op_status = status;
+            return;
+        }
+        self.digest_enzymes_text = enzymes.join(",");
+        self.op_status = format!("{status} -> {}", self.digest_enzymes_text);
+    }
+
+    fn set_digest_enzymes_from_mcs(&mut self) {
+        let (selected, missing) = self.collect_mcs_enzyme_candidates_for_active_sequence();
+        if selected.is_empty() {
+            let mut status =
+                "No usable MCS-linked enzymes were found on active sequence.".to_string();
+            if !missing.is_empty() {
+                status.push_str(&format!(
+                    " MCS annotation mentioned unavailable/non-cutting enzymes: {}",
+                    missing.join(",")
+                ));
+            }
+            self.op_status = status;
+            return;
+        }
+        let mut status = format!("Selected {} MCS-linked enzyme(s)", selected.len());
+        if !missing.is_empty() {
+            status.push_str(&format!(" (skipped: {})", missing.join(",")));
+        }
+        self.set_digest_enzymes_from_list(selected, status);
+    }
+
+    fn set_digest_enzymes_single_cutters(&mut self, require_cds_overlap: bool) {
+        let selected = self.single_cutter_enzymes_for_active_sequence(require_cds_overlap);
+        if require_cds_overlap {
+            self.set_digest_enzymes_from_list(
+                selected,
+                "Selected single-cutter enzymes with cleavage in CDS".to_string(),
+            );
+        } else {
+            self.set_digest_enzymes_from_list(
+                selected,
+                "Selected single-cutter enzymes from active REBASE scan".to_string(),
+            );
+        }
+    }
+
     fn normalized_ids(text: &str) -> Vec<String> {
         let mut ids = Self::parse_ids(text)
             .into_iter()
@@ -11528,6 +14936,8 @@ impl MainAreaDna {
             show_engine_ops: self.show_engine_ops,
             show_shell: self.show_shell,
             primary_map_mode: self.primary_map_mode,
+            dotplot_ui: self.dotplot_ui.clone(),
+            rna_reads_ui: self.rna_reads_ui.clone(),
             shell_command_text: self.shell_command_text.clone(),
             digest_enzymes_text: self.digest_enzymes_text.clone(),
             digest_prefix_text: self.digest_prefix_text.clone(),
@@ -11563,6 +14973,9 @@ impl MainAreaDna {
             pcr_mut_alt: self.pcr_mut_alt.clone(),
             primer_design_ui: self.primer_design_ui.clone(),
             qpcr_design_ui: self.qpcr_design_ui.clone(),
+            primer_backend: self.primer_backend,
+            primer3_executable: self.primer3_executable.clone(),
+            primer3_preflight_status: self.primer3_preflight_status.clone(),
             extract_from: self.extract_from.clone(),
             extract_to: self.extract_to.clone(),
             extract_output_id: self.extract_output_id.clone(),
@@ -11714,6 +15127,9 @@ impl MainAreaDna {
         self.show_engine_ops = s.show_engine_ops;
         self.show_shell = s.show_shell;
         self.primary_map_mode = s.primary_map_mode;
+        self.dotplot_ui = s.dotplot_ui;
+        self.rna_reads_ui = s.rna_reads_ui;
+        self.invalidate_dotplot_cache();
         self.shell_command_text = s.shell_command_text;
         self.digest_enzymes_text = s.digest_enzymes_text;
         self.digest_prefix_text = s.digest_prefix_text;
@@ -11749,6 +15165,13 @@ impl MainAreaDna {
         self.pcr_mut_alt = s.pcr_mut_alt;
         self.primer_design_ui = s.primer_design_ui;
         self.qpcr_design_ui = s.qpcr_design_ui;
+        self.primer_backend = s.primer_backend;
+        self.primer3_executable = if s.primer3_executable.trim().is_empty() {
+            "primer3_core".to_string()
+        } else {
+            s.primer3_executable
+        };
+        self.primer3_preflight_status = s.primer3_preflight_status;
         self.extract_from = s.extract_from;
         self.extract_to = s.extract_to;
         self.extract_output_id = s.extract_output_id;
@@ -12861,6 +16284,91 @@ impl MainAreaDna {
         }
     }
 
+    fn apply_anchored_promoter_preset_defaults(&mut self) {
+        self.anchored_mode_feature = true;
+        self.anchored_feature_kind = "CDS".to_string();
+        self.anchored_feature_label.clear();
+        self.anchored_feature_boundary_start = true;
+        self.anchored_feature_occurrence = "0".to_string();
+        self.anchored_direction_upstream = true;
+        self.anchored_target_len = "500".to_string();
+        self.anchored_tolerance = "100".to_string();
+        self.anchored_required_re_sites.clear();
+        self.anchored_required_tf_motifs.clear();
+        self.anchored_forward_primer.clear();
+        self.anchored_reverse_primer.clear();
+        self.anchored_output_prefix = "promoter".to_string();
+        self.anchored_unique = false;
+        self.anchored_max_candidates = "20".to_string();
+    }
+
+    fn normalize_anchor_output_token(raw: &str) -> String {
+        let mut out = String::new();
+        let mut previous_underscore = false;
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+                previous_underscore = false;
+            } else if !previous_underscore {
+                out.push('_');
+                previous_underscore = true;
+            }
+        }
+        out.trim_matches('_').to_string()
+    }
+
+    fn seed_anchored_promoter_from_feature_id(&mut self, feature_id: usize) {
+        let feature = {
+            self.dna
+                .read()
+                .ok()
+                .and_then(|dna| dna.features().get(feature_id).cloned())
+        };
+        let Some(feature) = feature else {
+            self.op_status =
+                format!("Could not seed promoter anchor: feature #{feature_id} not found");
+            return;
+        };
+
+        self.apply_anchored_promoter_preset_defaults();
+        self.anchored_feature_kind = feature.kind.to_string();
+        self.anchored_feature_label = Self::feature_tree_first_nonempty_qualifier(
+            &feature,
+            &["gene", "label", "gene_id", "transcript_id", "name"],
+        )
+        .or_else(|| {
+            let name = RenderDna::feature_name(&feature);
+            let trimmed = name.trim();
+            (!trimmed.is_empty()).then_some(trimmed.to_string())
+        })
+        .unwrap_or_default();
+
+        let is_reverse = feature_is_reverse(&feature);
+        self.anchored_feature_boundary_start = !is_reverse;
+        self.anchored_direction_upstream = !is_reverse;
+        let label_token = Self::normalize_anchor_output_token(&self.anchored_feature_label);
+        if !label_token.is_empty() {
+            self.anchored_output_prefix = format!("promoter_{label_token}");
+        }
+        self.op_status = format!(
+            "Seeded anchored promoter extraction from feature #{} (kind='{}', strand='{}', boundary='{}', direction='{}')",
+            feature_id + 1,
+            self.anchored_feature_kind,
+            if is_reverse { "-" } else { "+" },
+            if self.anchored_feature_boundary_start {
+                "start"
+            } else {
+                "end"
+            },
+            if self.anchored_direction_upstream {
+                "upstream"
+            } else {
+                "downstream"
+            }
+        );
+        self.save_engine_ops_state();
+    }
+
     pub fn render_features(&mut self, ui: &mut egui::Ui) {
         struct FeatureTreeEntry {
             id: usize,
@@ -13191,6 +16699,7 @@ impl MainAreaDna {
         group_keys.sort();
         let mut clicked_feature: Option<(usize, bool)> = None;
         let mut fit_feature: Option<usize> = None;
+        let mut promoter_anchor_seed_feature: Option<usize> = None;
         let can_fit_linear = !self.is_circular();
         let feature_font_size = feature_details_font_size;
         let kind_font_size = feature_font_size + 1.0;
@@ -13276,6 +16785,7 @@ impl MainAreaDna {
                 let mut render_entry =
                     |ui: &mut egui::Ui,
                      entry: &FeatureTreeEntry,
+                     kind_label: &str,
                      grouped_entry: bool,
                      show_range_only_when_grouped: bool| {
                         let selected = selected_feature_ids.contains(&entry.id);
@@ -13341,7 +16851,7 @@ impl MainAreaDna {
                                     .clicked()
                                 {
                                     clicked_feature = Some((entry.id, false));
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                                 let fit_response = ui.add_enabled(
                                     can_fit_linear,
@@ -13357,7 +16867,27 @@ impl MainAreaDna {
                                 if fit_response.clicked() {
                                     clicked_feature = Some((entry.id, false));
                                     fit_feature = Some(entry.id);
-                                    ui.close_menu();
+                                    ui.close();
+                                }
+                                let can_seed_promoter_anchor = kind_label.eq_ignore_ascii_case("mrna")
+                                    || kind_label.eq_ignore_ascii_case("transcript");
+                                let promoter_response = ui.add_enabled(
+                                    can_seed_promoter_anchor,
+                                    egui::Button::new("Use as promoter anchor (Engine Ops)"),
+                                );
+                                let promoter_response = if can_seed_promoter_anchor {
+                                    promoter_response.on_hover_text(
+                                        "Seed anchored promoter extraction from this mRNA/transcript boundary (strand-aware)",
+                                    )
+                                } else {
+                                    promoter_response.on_hover_text(
+                                        "Available for mRNA/transcript features",
+                                    )
+                                };
+                                if promoter_response.clicked() {
+                                    clicked_feature = Some((entry.id, false));
+                                    promoter_anchor_seed_feature = Some(entry.id);
+                                    ui.close();
                                 }
                             });
                         });
@@ -13481,13 +17011,13 @@ impl MainAreaDna {
                             })
                             .show(ui, |ui| {
                                 for entry in secondary_entries {
-                                    render_entry(ui, entry, true, false);
+                                    render_entry(ui, entry, kind, true, false);
                                 }
                             });
                         }
 
                         for entry in secondary_ungrouped {
-                            render_entry(ui, entry, false, false);
+                            render_entry(ui, entry, kind, false, false);
                         }
                     });
                 }
@@ -13540,13 +17070,13 @@ impl MainAreaDna {
                     })
                     .show(ui, |ui| {
                         for entry in subgroup_entries {
-                            render_entry(ui, entry, true, true);
+                            render_entry(ui, entry, kind, true, true);
                         }
                     });
                 }
 
                 for entry in ungrouped_entries {
-                    render_entry(ui, entry, false, false);
+                    render_entry(ui, entry, kind, false, false);
                 }
             });
         }
@@ -13559,6 +17089,9 @@ impl MainAreaDna {
         }
         if let Some(id) = fit_feature {
             self.fit_feature_in_linear_view(id);
+        }
+        if let Some(feature_id) = promoter_anchor_seed_feature {
+            self.seed_anchored_promoter_from_feature_id(feature_id);
         }
     }
 
@@ -13605,8 +17138,10 @@ impl MainAreaDna {
                     if RenderDna::is_tfbs_feature(feature) {
                         expert_target = Some(FeatureExpertTarget::TfbsFeature { feature_id: id });
                     } else if kind_upper == "MRNA" || kind_upper == "EXON" {
-                        expert_target =
-                            Some(FeatureExpertTarget::SplicingFeature { feature_id: id });
+                        expert_target = Some(FeatureExpertTarget::SplicingFeature {
+                            feature_id: id,
+                            scope: SplicingScopePreset::AllOverlappingBothStrands,
+                        });
                     }
                 } else {
                     clear_invalid_selection = true;
@@ -13774,10 +17309,12 @@ impl MainAreaDna {
     }
 
     pub fn render_middle(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
             self.update_dna_map();
+            let side_panel_height = ui.available_height().max(220.0);
 
-            Frame::none().show(ui, |ui| {
+            Frame::NONE.show(ui, |ui| {
+                ui.set_min_height(side_panel_height);
                 let resize_id = format!(
                     "feature_tree_panel_resize_{}",
                     self.seq_id.as_deref().unwrap_or("<no-seq-id>")
@@ -13794,6 +17331,7 @@ impl MainAreaDna {
                     .max_width(max_tree_width.max(FEATURE_TREE_MIN_WIDTH_PX))
                     .resizable(egui::Vec2b::new(true, false))
                     .show(ui, |ui| {
+                        ui.set_min_height(side_panel_height);
                         ui.vertical(|ui| {
                             resized_tree_width =
                                 Self::clamp_feature_tree_panel_width(ui.max_rect().width());
@@ -13810,18 +17348,21 @@ impl MainAreaDna {
                                     ui.small(format!(
                                         "{feature_count} feature(s) available for this sequence."
                                     ));
-                                    if ui
-                                        .button("Load feature tree now")
-                                        .on_hover_text(
-                                            "Enable feature-tree and detail rendering for this window",
-                                        )
-                                        .clicked()
-                                    {
-                                        self.feature_tree_deferred_until_interaction = false;
-                                    }
+                                    ui.small(
+                                        "Auto-loading feature tree/details on the next frame.",
+                                    );
                                 });
+                                if self.maybe_auto_enable_deferred_feature_tree() {
+                                    ui.ctx().request_repaint();
+                                }
                             } else {
-                                let tree_height = (ui.available_height() * 0.55).max(180.0);
+                                const FEATURE_TREE_MIN_HEIGHT_PX: f32 = 180.0;
+                                const FEATURE_DETAILS_MIN_HEIGHT_PX: f32 = 150.0;
+                                let split_gap = ui.spacing().item_spacing.y + 2.0;
+                                let tree_height = (ui.available_height()
+                                    - FEATURE_DETAILS_MIN_HEIGHT_PX
+                                    - split_gap)
+                                    .max(FEATURE_TREE_MIN_HEIGHT_PX);
                                 egui::ScrollArea::both()
                                     .id_salt(format!(
                                         "feature_tree_scroll_{}",
@@ -13839,7 +17380,15 @@ impl MainAreaDna {
                                         });
                                     });
                                 ui.separator();
-                                self.render_description(ui);
+                                let description_height =
+                                    ui.available_height().max(FEATURE_DETAILS_MIN_HEIGHT_PX);
+                                ui.allocate_ui_with_layout(
+                                    Vec2::new(ui.available_width(), description_height),
+                                    egui::Layout::top_down(egui::Align::Min),
+                                    |ui| {
+                                        self.render_description(ui);
+                                    },
+                                );
                             }
                         });
                     });
@@ -13855,46 +17404,65 @@ impl MainAreaDna {
 
             let primary_splicing_mode =
                 !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
+            let primary_dotplot_mode =
+                !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Dotplot);
             if primary_splicing_mode {
                 self.render_primary_splicing_map_ui(ui);
+            } else if primary_dotplot_mode {
+                self.render_primary_dotplot_map_ui(ui);
             } else {
                 let response = if !self.is_circular() {
-                    let slider_column_width = 30.0;
+                    let slider_column_width = if ENABLE_LINEAR_VERTICAL_PAN { 30.0 } else { 0.0 };
                     let available = ui.available_size();
+                    let clip_rect = ui.clip_rect();
+                    let clip_width = clip_rect.width().max(120.0);
+                    let clip_height = clip_rect.height().max(120.0);
+                    let available_width = if available.x.is_finite() && available.x > 0.0 {
+                        available.x
+                    } else {
+                        clip_width
+                    };
+                    let available_height = if available.y.is_finite() && available.y > 0.0 {
+                        available.y
+                    } else {
+                        clip_height
+                    };
                     let map_size = Vec2::new(
-                        (available.x - slider_column_width).max(120.0),
-                        available.y.max(120.0),
+                        (available_width - slider_column_width).clamp(120.0, clip_width),
+                        available_height.clamp(120.0, clip_height),
                     );
                     let response = ui.add_sized(map_size, self.map_dna.to_owned());
-                    ui.add_space(4.0);
-                    ui.vertical(|ui| {
-                        let mut vertical_pan_offset = self.current_linear_vertical_offset_px();
-                        let pan_slider = ui
-                            .add(
-                                egui::Slider::new(&mut vertical_pan_offset, -10_000.0..=10_000.0)
-                                    .vertical()
-                                    .show_value(false),
+                    if ENABLE_LINEAR_VERTICAL_PAN {
+                        ui.add_space(4.0);
+                        ui.vertical(|ui| {
+                            let mut vertical_pan_offset = self.current_linear_vertical_offset_px();
+                            let pan_slider = ui
+                                .add(
+                                    egui::Slider::new(&mut vertical_pan_offset, -10_000.0..=10_000.0)
+                                        .vertical()
+                                        .show_value(false),
+                                )
+                                .on_hover_text(
+                                    "Vertical map pan offset (feature-lane stack up/down in linear view)",
+                                );
+                            if pan_slider.changed() {
+                                self.set_linear_vertical_offset_px(vertical_pan_offset);
+                            }
+                            ui.label(
+                                egui::RichText::new(format!("{:+.1} px", vertical_pan_offset))
+                                    .monospace()
+                                    .size(10.0),
                             )
-                            .on_hover_text(
-                                "Vertical map pan offset (feature-lane stack up/down in linear view)",
-                            );
-                        if pan_slider.changed() {
-                            self.set_linear_vertical_offset_px(vertical_pan_offset);
-                        }
-                        ui.label(
-                            egui::RichText::new(format!("{:+.1} px", vertical_pan_offset))
-                                .monospace()
-                                .size(10.0),
-                        )
-                        .on_hover_text("Current linear-map vertical pan offset");
-                        if ui
-                            .small_button("0")
-                            .on_hover_text("Fit visible linear features vertically")
-                            .clicked()
-                        {
-                            self.fit_linear_features_in_view();
-                        }
-                    });
+                            .on_hover_text("Current linear-map vertical pan offset");
+                            if ui
+                                .small_button("0")
+                                .on_hover_text("Fit visible linear features vertically")
+                                .clicked()
+                            {
+                                self.fit_linear_features_in_view();
+                            }
+                        });
+                    }
                     response
                 } else {
                     ui.add(self.map_dna.to_owned())
@@ -13965,7 +17533,7 @@ impl MainAreaDna {
                                         as isize;
                                     self.pan_linear_viewport(delta_bp);
                                 }
-                                if delta.y.abs() > f32::EPSILON {
+                                if ENABLE_LINEAR_VERTICAL_PAN && delta.y.abs() > f32::EPSILON {
                                     self.pan_linear_vertical_viewport(delta.y);
                                 }
                             }
@@ -14006,7 +17574,9 @@ impl MainAreaDna {
                                         as isize;
                                     self.pan_linear_viewport(delta_bp);
                                 }
-                                if keyboard_pan_delta.y.abs() > f32::EPSILON {
+                                if ENABLE_LINEAR_VERTICAL_PAN
+                                    && keyboard_pan_delta.y.abs() > f32::EPSILON
+                                {
                                     self.pan_linear_vertical_viewport(keyboard_pan_delta.y);
                                 }
                             }
@@ -14042,7 +17612,11 @@ impl MainAreaDna {
                         if option_pan_modifier {
                             self.linear_pan_drag_origin_bp = Some((
                                 self.current_linear_viewport().0,
-                                self.current_linear_vertical_offset_px(),
+                                if ENABLE_LINEAR_VERTICAL_PAN {
+                                    self.current_linear_vertical_offset_px()
+                                } else {
+                                    0.0
+                                },
                             ));
                             self.linear_drag_selection_anchor_bp = None;
                         } else if let Some(pos) = response.interact_pointer_pos() {
@@ -14068,9 +17642,11 @@ impl MainAreaDna {
                                 let new_start = (start_bp as isize + delta_bp).clamp(0, max_start);
                                 self.set_linear_viewport(new_start as usize, span_bp);
                             }
-                            self.set_linear_vertical_offset_px(
-                                start_vertical_offset_px + response.drag_delta().y,
-                            );
+                            if ENABLE_LINEAR_VERTICAL_PAN {
+                                self.set_linear_vertical_offset_px(
+                                    start_vertical_offset_px + response.drag_delta().y,
+                                );
+                            }
                         } else if let (Some(anchor_bp), Some(pos)) = (
                             self.linear_drag_selection_anchor_bp,
                             response.interact_pointer_pos(),
