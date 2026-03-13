@@ -7,6 +7,7 @@ use crate::{
     main_area_dna::MainAreaDna,
     window_backdrop::{
         WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
+        with_window_content_inset,
     },
 };
 use eframe::egui;
@@ -109,57 +110,64 @@ impl WindowDna {
             {
                 request_open_help_from_native_menu();
             }
-            let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
-            egui::TopBottomPanel::top(nav_panel_id).show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .button("Help")
-                        .on_hover_text("Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)")
-                        .clicked()
-                    {
-                        request_open_help_from_native_menu();
-                    }
-                    if ui
-                        .button("Main")
-                        .on_hover_text("Bring the main project window to front")
-                        .clicked()
-                    {
-                        ctx.send_viewport_cmd_to(
-                            egui::ViewportId::ROOT,
-                            egui::ViewportCommand::Visible(true),
-                        );
-                        ctx.send_viewport_cmd_to(
-                            egui::ViewportId::ROOT,
-                            egui::ViewportCommand::Focus,
-                        );
-                    }
-                    if ui
-                        .button("Configuration")
-                        .on_hover_text("Open Configuration window on Graphics settings")
-                        .clicked()
-                    {
-                        request_open_graphics_settings_from_native_menu();
-                    }
-                });
-            });
             let kind = if self.main_area.opened_from_pool_context() {
                 WindowBackdropKind::Pool
             } else {
                 WindowBackdropKind::Sequence
             };
             let settings = current_window_backdrop_settings();
+            let nav_panel_id = egui::Id::new(("window_dna_nav", self.main_area.sequence_id()));
+            egui::TopBottomPanel::top(nav_panel_id)
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| {
+                    paint_window_backdrop(ui, kind, &settings);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button("Help")
+                            .on_hover_text(
+                                "Open GUI help (F1 on Windows/Linux, Cmd+Shift+/ on macOS)",
+                            )
+                            .clicked()
+                        {
+                            request_open_help_from_native_menu();
+                        }
+                        if ui
+                            .button("Main")
+                            .on_hover_text("Bring the main project window to front")
+                            .clicked()
+                        {
+                            ctx.send_viewport_cmd_to(
+                                egui::ViewportId::ROOT,
+                                egui::ViewportCommand::Visible(true),
+                            );
+                            ctx.send_viewport_cmd_to(
+                                egui::ViewportId::ROOT,
+                                egui::ViewportCommand::Focus,
+                            );
+                        }
+                        if ui
+                            .button("Configuration")
+                            .on_hover_text("Open Configuration window on Graphics settings")
+                            .clicked()
+                        {
+                            request_open_graphics_settings_from_native_menu();
+                        }
+                    });
+                });
             if self.pending_dna_load.is_some() {
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
                     .show(ctx, |ui| {
                         paint_window_backdrop(ui, kind, &settings);
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(48.0);
-                            ui.add(egui::Spinner::new());
-                            ui.add_space(6.0);
-                            ui.label(
-                                "Opening sequence window: loading sequence content in background...",
-                            );
+                        with_window_content_inset(ui, |ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(48.0);
+                                ui.add(egui::Spinner::new());
+                                ui.add_space(6.0);
+                                ui.label(
+                                    "Opening sequence window: loading sequence content in background...",
+                                );
+                            });
                         });
                     });
                 ctx.request_repaint();
@@ -168,7 +176,9 @@ impl WindowDna {
                     .frame(egui::Frame::NONE)
                     .show(ctx, |ui| {
                         paint_window_backdrop(ui, kind, &settings);
-                        ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
+                        with_window_content_inset(ui, |ui| {
+                            ui.colored_label(egui::Color32::from_rgb(180, 32, 32), message);
+                        });
                     });
             } else {
                 // MainAreaDna owns the root panel layout for sequence windows.
@@ -188,9 +198,7 @@ impl WindowDna {
         self.main_area.sequence_id().map(|v| v.to_string())
     }
 
-    pub fn collect_open_auxiliary_window_entries(
-        &self,
-    ) -> Vec<(egui::ViewportId, String, String)> {
+    pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         self.main_area.collect_open_auxiliary_window_entries()
     }
 

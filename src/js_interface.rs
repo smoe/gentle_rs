@@ -187,9 +187,7 @@ fn import_pool_impl(
     })
 }
 
-fn list_agent_systems_impl(
-    catalog_path: &str,
-) -> Result<serde_json::Value, JsAnyhow> {
+fn list_agent_systems_impl(catalog_path: &str) -> Result<serde_json::Value, JsAnyhow> {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let command = ShellCommand::AgentsList {
         catalog_path: empty_to_none(catalog_path).map(str::to_string),
@@ -279,11 +277,9 @@ fn import_pool(
 }
 
 #[op2]
-fn write_gb(
-    #[serde] seq: DNAsequence,
-    #[string] path: &str,
-) -> Result<(), JsAnyhow> {
-    seq.write_genbank_file(path).map_err(deno_core::anyhow::Error::from)?;
+fn write_gb(#[serde] seq: DNAsequence, #[string] path: &str) -> Result<(), JsAnyhow> {
+    seq.write_genbank_file(path)
+        .map_err(deno_core::anyhow::Error::from)?;
     Ok(())
 }
 
@@ -295,10 +291,7 @@ fn load_project(#[string] path: &str) -> Result<ProjectState, JsAnyhow> {
 }
 
 #[op2]
-fn save_project(
-    #[serde] state: ProjectState,
-    #[string] path: &str,
-) -> Result<(), JsAnyhow> {
+fn save_project(#[serde] state: ProjectState, #[string] path: &str) -> Result<(), JsAnyhow> {
     state
         .save_to_path(path)
         .map_err(deno_core::anyhow::Error::from)?;
@@ -313,9 +306,7 @@ fn capabilities() -> Result<crate::engine::Capabilities, JsAnyhow> {
 
 #[op2]
 #[serde]
-fn state_summary(
-    #[serde] state: ProjectState,
-) -> Result<EngineStateSummary, JsAnyhow> {
+fn state_summary(#[serde] state: ProjectState) -> Result<EngineStateSummary, JsAnyhow> {
     let engine = GentleEngine::from_state(state);
     Ok(engine.summarize_state())
 }
@@ -364,9 +355,7 @@ fn export_rna_ladders(
 
 #[op2]
 #[serde]
-fn list_reference_genomes(
-    #[string] catalog_path: &str,
-) -> Result<Vec<String>, JsAnyhow> {
+fn list_reference_genomes(#[string] catalog_path: &str) -> Result<Vec<String>, JsAnyhow> {
     GentleEngine::list_reference_genomes(empty_to_none(catalog_path))
         .map_err(|e| deno_core::anyhow::anyhow!(e.to_string()))
         .map_err(Into::into)
@@ -374,9 +363,7 @@ fn list_reference_genomes(
 
 #[op2]
 #[serde]
-fn list_agent_systems(
-    #[string] catalog_path: &str,
-) -> Result<serde_json::Value, JsAnyhow> {
+fn list_agent_systems(#[string] catalog_path: &str) -> Result<serde_json::Value, JsAnyhow> {
     list_agent_systems_impl(catalog_path)
 }
 

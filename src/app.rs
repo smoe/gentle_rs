@@ -58,7 +58,9 @@ use crate::{
     tf_motifs, tool_overrides,
     uniprot::UniprotEntrySummary,
     window::Window,
-    window_backdrop::{self, WindowBackdropKind, WindowBackdropSettings},
+    window_backdrop::{
+        self, WindowBackdropKind, WindowBackdropSettings, with_window_content_inset,
+    },
     workflow_examples::{
         DEFAULT_TUTORIAL_MANIFEST_PATH, DEFAULT_WORKFLOW_EXAMPLE_DIR, ExampleTestMode,
         TutorialTier, WorkflowExample, load_tutorial_manifest, load_workflow_examples,
@@ -1644,12 +1646,18 @@ impl GENtleApp {
         }
     }
 
+    fn clamp_sequence_panel_max_text_length_bp(value: usize) -> usize {
+        if value == 0 { 0 } else { value.min(5_000_000) }
+    }
+
     fn clamp_linear_helical_phase_offset_bp(value: usize) -> usize {
         value % 10
     }
 
     fn apply_graphics_settings_to_display(source: &DisplaySettings, target: &mut DisplaySettings) {
         target.show_sequence_panel = source.show_sequence_panel;
+        target.sequence_panel_max_text_length_bp =
+            Self::clamp_sequence_panel_max_text_length_bp(source.sequence_panel_max_text_length_bp);
         target.auto_hide_sequence_panel_when_linear_bases_visible =
             source.auto_hide_sequence_panel_when_linear_bases_visible;
         target.show_map_panel = source.show_map_panel;
@@ -3173,6 +3181,7 @@ Error: `{err}`"
 
         let display = &state.display;
         display.show_sequence_panel.hash(&mut hasher);
+        display.sequence_panel_max_text_length_bp.hash(&mut hasher);
         display.show_map_panel.hash(&mut hasher);
         display.show_cds_features.hash(&mut hasher);
         display.show_gene_features.hash(&mut hasher);
@@ -16508,6 +16517,8 @@ Error: `{err}`"
         let defaults = DisplaySettings::default();
         self.configuration_graphics.show_sequence_panel = defaults.show_sequence_panel;
         self.configuration_graphics
+            .sequence_panel_max_text_length_bp = defaults.sequence_panel_max_text_length_bp;
+        self.configuration_graphics
             .auto_hide_sequence_panel_when_linear_bases_visible =
             defaults.auto_hide_sequence_panel_when_linear_bases_visible;
         self.configuration_graphics.show_map_panel = defaults.show_map_panel;
@@ -17032,6 +17043,19 @@ Error: `{err}`"
                 .linear_sequence_helical_phase_offset_bp = normalized_helical_phase_offset;
             self.configuration_graphics_dirty = true;
         }
+        let normalized_sequence_panel_text_limit = Self::clamp_sequence_panel_max_text_length_bp(
+            self.configuration_graphics
+                .sequence_panel_max_text_length_bp,
+        );
+        if self
+            .configuration_graphics
+            .sequence_panel_max_text_length_bp
+            != normalized_sequence_panel_text_limit
+        {
+            self.configuration_graphics
+                .sequence_panel_max_text_length_bp = normalized_sequence_panel_text_limit;
+            self.configuration_graphics_dirty = true;
+        }
 
         ui.label("Configure project-level graphics visibility defaults.");
         ui.small(format!(
@@ -17050,6 +17074,27 @@ Error: `{err}`"
                 "Show sequence panel",
             )
             .changed();
+        ui.horizontal(|ui| {
+            ui.label("Sequence panel max text length");
+            if ui
+                .add(
+                    egui::DragValue::new(
+                        &mut self
+                            .configuration_graphics
+                            .sequence_panel_max_text_length_bp,
+                    )
+                    .range(0..=5_000_000)
+                    .speed(1000.0)
+                    .suffix(" bp"),
+                )
+                .on_hover_text(
+                    "Maximum sequence length shown in the text panel. 0 means unlimited.",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+        });
         changed |= ui
             .checkbox(
                 &mut self.configuration_graphics.show_map_panel,
@@ -17521,94 +17566,96 @@ Error: `{err}`"
             WindowBackdropKind::Configuration,
             &self.window_backdrops,
         );
-        self.render_specialist_window_nav(ui);
-        ui.horizontal(|ui| {
-            if ui
-                .selectable_label(
-                    self.configuration_tab == ConfigurationTab::ExternalApplications,
-                    "External Applications",
-                )
-                .clicked()
-            {
-                self.configuration_tab = ConfigurationTab::ExternalApplications;
-            }
-            if ui
-                .selectable_label(
-                    self.configuration_tab == ConfigurationTab::Graphics,
-                    "Graphics",
-                )
-                .clicked()
-            {
-                self.configuration_tab = ConfigurationTab::Graphics;
-            }
-            ui.separator();
-            if has_unapplied_changes {
-                ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
-            }
-            if ui
-                .button("Close")
-                .on_hover_text(if has_unapplied_changes {
-                    "Close configuration dialog (unapplied changes will be discarded)"
-                } else {
-                    "Close configuration dialog"
-                })
-                .clicked()
-            {
-                self.show_configuration_dialog = false;
-            }
-        });
-        ui.separator();
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+        with_window_content_inset(ui, |ui| {
+            self.render_specialist_window_nav(ui);
             ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(
+                        self.configuration_tab == ConfigurationTab::ExternalApplications,
+                        "External Applications",
+                    )
+                    .clicked()
+                {
+                    self.configuration_tab = ConfigurationTab::ExternalApplications;
+                }
+                if ui
+                    .selectable_label(
+                        self.configuration_tab == ConfigurationTab::Graphics,
+                        "Graphics",
+                    )
+                    .clicked()
+                {
+                    self.configuration_tab = ConfigurationTab::Graphics;
+                }
+                ui.separator();
                 if has_unapplied_changes {
                     ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
                 }
                 if ui
-                    .button("Cancel")
+                    .button("Close")
                     .on_hover_text(if has_unapplied_changes {
-                        "Discard unapplied configuration changes and close"
+                        "Close configuration dialog (unapplied changes will be discarded)"
                     } else {
                         "Close configuration dialog"
                     })
                     .clicked()
                 {
-                    self.sync_configuration_from_runtime();
-                    self.configuration_status = if has_unapplied_changes {
-                        "Discarded unapplied configuration changes".to_string()
-                    } else {
-                        "Closed configuration dialog".to_string()
-                    };
                     self.show_configuration_dialog = false;
                 }
-                if ui
-                    .add_enabled(has_unapplied_changes, egui::Button::new("Apply"))
-                    .on_hover_text("Apply all unapplied configuration changes")
-                    .clicked()
-                {
-                    self.apply_pending_configuration_changes();
-                }
             });
-            if !self.configuration_status.trim().is_empty() {
-                ui.separator();
-                ui.monospace(self.configuration_status.clone());
-            }
             ui.separator();
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                        ui,
-                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                    );
-                    match self.configuration_tab {
-                        ConfigurationTab::ExternalApplications => {
-                            self.render_configuration_external_tab(ui);
-                        }
-                        ConfigurationTab::Graphics => {
-                            self.render_configuration_graphics_tab(ui);
-                        }
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                ui.horizontal(|ui| {
+                    if has_unapplied_changes {
+                        ui.colored_label(egui::Color32::from_rgb(185, 95, 25), "Unapplied changes");
+                    }
+                    if ui
+                        .button("Cancel")
+                        .on_hover_text(if has_unapplied_changes {
+                            "Discard unapplied configuration changes and close"
+                        } else {
+                            "Close configuration dialog"
+                        })
+                        .clicked()
+                    {
+                        self.sync_configuration_from_runtime();
+                        self.configuration_status = if has_unapplied_changes {
+                            "Discarded unapplied configuration changes".to_string()
+                        } else {
+                            "Closed configuration dialog".to_string()
+                        };
+                        self.show_configuration_dialog = false;
+                    }
+                    if ui
+                        .add_enabled(has_unapplied_changes, egui::Button::new("Apply"))
+                        .on_hover_text("Apply all unapplied configuration changes")
+                        .clicked()
+                    {
+                        self.apply_pending_configuration_changes();
                     }
                 });
+                if !self.configuration_status.trim().is_empty() {
+                    ui.separator();
+                    ui.monospace(self.configuration_status.clone());
+                }
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                            ui,
+                            scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                        );
+                        match self.configuration_tab {
+                            ConfigurationTab::ExternalApplications => {
+                                self.render_configuration_external_tab(ui);
+                            }
+                            ConfigurationTab::Graphics => {
+                                self.render_configuration_graphics_tab(ui);
+                            }
+                        }
+                    });
+            });
         });
     }
 
@@ -17644,8 +17691,8 @@ Error: `{err}`"
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
-                self.render_configuration_contents(ui);
-            });
+                    self.render_configuration_contents(ui);
+                });
             self.note_slow_open_phase(
                 viewport_id,
                 "Configuration first-frame render",
@@ -18200,8 +18247,8 @@ Error: `{err}`"
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
-                self.render_help_contents(ui);
-            });
+                    self.render_help_contents(ui);
+                });
             self.note_slow_open_phase(
                 viewport_id,
                 "Help first-frame render",
@@ -18221,186 +18268,189 @@ Error: `{err}`"
             WindowBackdropKind::Help,
             &self.window_backdrops,
         );
-        let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
-        if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
-            self.help_focus_search_box = true;
-        }
+        with_window_content_inset(ui, |ui| {
+            let find_shortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::F);
+            if ui.ctx().input_mut(|i| i.consume_shortcut(&find_shortcut)) {
+                self.help_focus_search_box = true;
+            }
 
-        let mut active_doc_changed = false;
-        ui.horizontal(|ui| {
-            if ui
-                .selectable_label(self.help_doc == HelpDoc::Gui, "GUI Manual")
-                .clicked()
-            {
-                self.help_doc = HelpDoc::Gui;
-                active_doc_changed = true;
-            }
-            if ui
-                .selectable_label(self.help_doc == HelpDoc::Cli, "CLI Manual")
-                .clicked()
-            {
-                self.help_doc = HelpDoc::Cli;
-                active_doc_changed = true;
-            }
-            if ui
-                .selectable_label(self.help_doc == HelpDoc::AgentInterface, "Agent Interface")
-                .clicked()
-            {
-                self.help_doc = HelpDoc::AgentInterface;
-                active_doc_changed = true;
-            }
-            if ui
-                .selectable_label(
-                    self.help_doc == HelpDoc::ReviewerPreview,
-                    "Reviewer Quickstart",
-                )
-                .clicked()
-            {
-                self.help_doc = HelpDoc::ReviewerPreview;
-                active_doc_changed = true;
-            }
-            if ui
-                .selectable_label(self.help_doc == HelpDoc::Shell, "Shell Commands")
-                .on_hover_text("Generated from docs/glossary.json")
-                .clicked()
-            {
-                self.help_doc = HelpDoc::Shell;
-                active_doc_changed = true;
-            }
-            if self.help_doc == HelpDoc::Shell {
-                ui.separator();
-                ui.label("Interface:");
-                let options = [
-                    ShellHelpInterface::All,
-                    ShellHelpInterface::GuiShell,
-                    ShellHelpInterface::CliShell,
-                    ShellHelpInterface::CliDirect,
-                    ShellHelpInterface::Js,
-                    ShellHelpInterface::Lua,
-                ];
-                let mut shell_filter_changed = false;
-                for option in options {
-                    if ui
-                        .selectable_label(self.help_shell_interface == option, option.label())
-                        .clicked()
-                    {
-                        self.help_shell_interface = option;
-                        shell_filter_changed = true;
+            let mut active_doc_changed = false;
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(self.help_doc == HelpDoc::Gui, "GUI Manual")
+                    .clicked()
+                {
+                    self.help_doc = HelpDoc::Gui;
+                    active_doc_changed = true;
+                }
+                if ui
+                    .selectable_label(self.help_doc == HelpDoc::Cli, "CLI Manual")
+                    .clicked()
+                {
+                    self.help_doc = HelpDoc::Cli;
+                    active_doc_changed = true;
+                }
+                if ui
+                    .selectable_label(self.help_doc == HelpDoc::AgentInterface, "Agent Interface")
+                    .clicked()
+                {
+                    self.help_doc = HelpDoc::AgentInterface;
+                    active_doc_changed = true;
+                }
+                if ui
+                    .selectable_label(
+                        self.help_doc == HelpDoc::ReviewerPreview,
+                        "Reviewer Quickstart",
+                    )
+                    .clicked()
+                {
+                    self.help_doc = HelpDoc::ReviewerPreview;
+                    active_doc_changed = true;
+                }
+                if ui
+                    .selectable_label(self.help_doc == HelpDoc::Shell, "Shell Commands")
+                    .on_hover_text("Generated from docs/glossary.json")
+                    .clicked()
+                {
+                    self.help_doc = HelpDoc::Shell;
+                    active_doc_changed = true;
+                }
+                if self.help_doc == HelpDoc::Shell {
+                    ui.separator();
+                    ui.label("Interface:");
+                    let options = [
+                        ShellHelpInterface::All,
+                        ShellHelpInterface::GuiShell,
+                        ShellHelpInterface::CliShell,
+                        ShellHelpInterface::CliDirect,
+                        ShellHelpInterface::Js,
+                        ShellHelpInterface::Lua,
+                    ];
+                    let mut shell_filter_changed = false;
+                    for option in options {
+                        if ui
+                            .selectable_label(self.help_shell_interface == option, option.label())
+                            .clicked()
+                        {
+                            self.help_shell_interface = option;
+                            shell_filter_changed = true;
+                        }
+                    }
+                    if shell_filter_changed {
+                        self.help_shell_markdown =
+                            Self::generate_shell_help_markdown_for(self.help_shell_interface);
+                        self.help_markdown_cache = CommonMarkCache::default();
+                        active_doc_changed = true;
                     }
                 }
-                if shell_filter_changed {
-                    self.help_shell_markdown =
-                        Self::generate_shell_help_markdown_for(self.help_shell_interface);
+                ui.separator();
+                if ui
+                    .button("Reload")
+                    .on_hover_text("Reload help markdown files from disk")
+                    .clicked()
+                {
+                    self.refresh_help_docs();
                     self.help_markdown_cache = CommonMarkCache::default();
                     active_doc_changed = true;
                 }
-            }
-            ui.separator();
-            if ui
-                .button("Reload")
-                .on_hover_text("Reload help markdown files from disk")
-                .clicked()
-            {
-                self.refresh_help_docs();
-                self.help_markdown_cache = CommonMarkCache::default();
-                active_doc_changed = true;
-            }
-            if ui
-                .button("Close")
-                .on_hover_text("Close help window")
-                .clicked()
-            {
-                self.show_help_dialog = false;
-            }
-        });
+                if ui
+                    .button("Close")
+                    .on_hover_text("Close help window")
+                    .clicked()
+                {
+                    self.show_help_dialog = false;
+                }
+            });
 
-        ui.horizontal(|ui| {
-            ui.label("Find:");
-            let search_id = ui.make_persistent_id("gentle_help_search_input");
-            let search_response = ui.add(
-                egui::TextEdit::singleline(&mut self.help_search_query)
-                    .id(search_id)
-                    .hint_text("Search help text (Cmd/Ctrl+F)")
-                    .desired_width(260.0),
-            );
-            if self.help_focus_search_box {
-                search_response.request_focus();
-                self.help_focus_search_box = false;
-            }
-            if search_response.changed() {
-                self.help_search_selected = 0;
+            ui.horizontal(|ui| {
+                ui.label("Find:");
+                let search_id = ui.make_persistent_id("gentle_help_search_input");
+                let search_response = ui.add(
+                    egui::TextEdit::singleline(&mut self.help_search_query)
+                        .id(search_id)
+                        .hint_text("Search help text (Cmd/Ctrl+F)")
+                        .desired_width(260.0),
+                );
+                if self.help_focus_search_box {
+                    search_response.request_focus();
+                    self.help_focus_search_box = false;
+                }
+                if search_response.changed() {
+                    self.help_search_selected = 0;
+                    self.refresh_help_search_matches();
+                }
+                if search_response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                    self.select_next_help_match();
+                }
+
+                let has_matches = !self.help_search_matches.is_empty();
+                if ui
+                    .add_enabled(has_matches, egui::Button::new("Prev"))
+                    .on_hover_text("Jump to previous help search match")
+                    .clicked()
+                {
+                    self.select_prev_help_match();
+                }
+                if ui
+                    .add_enabled(has_matches, egui::Button::new("Next"))
+                    .on_hover_text("Jump to next help search match")
+                    .clicked()
+                {
+                    self.select_next_help_match();
+                }
+                if ui
+                    .button("Clear")
+                    .on_hover_text("Clear search query and match list")
+                    .clicked()
+                {
+                    self.help_search_query.clear();
+                    self.help_search_selected = 0;
+                    self.help_search_matches.clear();
+                }
+
+                if self.help_search_query.trim().is_empty() {
+                    ui.small("No active search");
+                } else if self.help_search_matches.is_empty() {
+                    ui.small("No matches");
+                } else {
+                    ui.small(format!(
+                        "Match {}/{}",
+                        self.help_search_selected + 1,
+                        self.help_search_matches.len()
+                    ));
+                }
+            });
+
+            if active_doc_changed {
                 self.refresh_help_search_matches();
             }
-            if search_response.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                self.select_next_help_match();
+            if let Some(current) = self.help_search_matches.get(self.help_search_selected) {
+                ui.small(format!("Line {}: {}", current.line_number, current.snippet));
             }
 
-            let has_matches = !self.help_search_matches.is_empty();
-            if ui
-                .add_enabled(has_matches, egui::Button::new("Prev"))
-                .on_hover_text("Jump to previous help search match")
-                .clicked()
-            {
-                self.select_prev_help_match();
-            }
-            if ui
-                .add_enabled(has_matches, egui::Button::new("Next"))
-                .on_hover_text("Jump to next help search match")
-                .clicked()
-            {
-                self.select_next_help_match();
-            }
-            if ui
-                .button("Clear")
-                .on_hover_text("Clear search query and match list")
-                .clicked()
-            {
-                self.help_search_query.clear();
-                self.help_search_selected = 0;
-                self.help_search_matches.clear();
-            }
-
-            if self.help_search_query.trim().is_empty() {
-                ui.small("No active search");
-            } else if self.help_search_matches.is_empty() {
-                ui.small("No matches");
-            } else {
-                ui.small(format!(
-                    "Match {}/{}",
-                    self.help_search_selected + 1,
-                    self.help_search_matches.len()
-                ));
-            }
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    let max_image_width =
+                        (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
+                    let markdown = match self.help_doc {
+                        HelpDoc::Gui => self.help_gui_markdown.as_str(),
+                        HelpDoc::Cli => self.help_cli_markdown.as_str(),
+                        HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
+                        HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
+                        HelpDoc::Shell => self.help_shell_markdown.as_str(),
+                    };
+                    let _ = max_image_width;
+                    // Temporary compatibility fallback: render help markdown as wrapped text
+                    // when egui_commonmark and eframe egui versions diverge.
+                    ui.add(egui::Label::new(markdown).wrap());
+                });
         });
-
-        if active_doc_changed {
-            self.refresh_help_search_matches();
-        }
-        if let Some(current) = self.help_search_matches.get(self.help_search_selected) {
-            ui.small(format!("Line {}: {}", current.line_number, current.snippet));
-        }
-
-        ui.separator();
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                    ui,
-                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                );
-                let max_image_width = (ui.available_width() * 0.75).round().clamp(220.0, 1600.0);
-                let markdown = match self.help_doc {
-                    HelpDoc::Gui => self.help_gui_markdown.as_str(),
-                    HelpDoc::Cli => self.help_cli_markdown.as_str(),
-                    HelpDoc::AgentInterface => self.help_agent_interface_markdown.as_str(),
-                    HelpDoc::ReviewerPreview => self.help_reviewer_preview_markdown.as_str(),
-                    HelpDoc::Shell => self.help_shell_markdown.as_str(),
-                };
-                let _ = max_image_width;
-                // Temporary compatibility fallback: render help markdown as wrapped text
-                // when egui_commonmark and eframe egui versions diverge.
-                ui.add(egui::Label::new(markdown).wrap());
-            });
     }
 
     fn summarize_operation(op: &Operation) -> String {
@@ -19090,18 +19140,20 @@ impl eframe::App for GENtleApp {
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE)
                 .show(ctx, |ui| {
-                window_backdrop::paint_window_backdrop(
-                    ui,
-                    WindowBackdropKind::Main,
-                    &self.window_backdrops,
-                );
-                self.render_main_lineage(ui);
-                if project_dirty {
-                    ui.label("Status: unsaved changes");
-                } else {
-                    ui.label("Status: saved");
-                }
-            });
+                    window_backdrop::paint_window_backdrop(
+                        ui,
+                        WindowBackdropKind::Main,
+                        &self.window_backdrops,
+                    );
+                    with_window_content_inset(ui, |ui| {
+                        self.render_main_lineage(ui);
+                        if project_dirty {
+                            ui.label("Status: unsaved changes");
+                        } else {
+                            ui.label("Status: saved");
+                        }
+                    });
+                });
             self.render_reference_genome_prepare_dialog(ctx);
             self.render_reference_genome_retrieve_dialog(ctx);
             self.render_uniprot_dialog(ctx);
@@ -19614,6 +19666,7 @@ mod tests {
         let mut target = DisplaySettings::default();
 
         source.feature_details_font_size = 250.0;
+        source.sequence_panel_max_text_length_bp = 10_000_000;
         source.linear_external_feature_label_font_size = -50.0;
         source.linear_external_feature_label_background_opacity = 2.0;
         source.reverse_strand_visual_opacity = 10.0;
@@ -19622,12 +19675,14 @@ mod tests {
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
         assert_eq!(target.feature_details_font_size, 24.0);
+        assert_eq!(target.sequence_panel_max_text_length_bp, 5_000_000);
         assert_eq!(target.linear_external_feature_label_font_size, 8.0);
         assert_eq!(target.linear_external_feature_label_background_opacity, 1.0);
         assert_eq!(target.reverse_strand_visual_opacity, 1.0);
         assert_eq!(target.linear_sequence_helical_phase_offset_bp, 7);
 
         source.feature_details_font_size = f32::NAN;
+        source.sequence_panel_max_text_length_bp = 0;
         source.linear_external_feature_label_font_size = f32::NAN;
         source.linear_external_feature_label_background_opacity = f32::NAN;
         source.reverse_strand_visual_opacity = f32::NAN;
@@ -19635,6 +19690,7 @@ mod tests {
         GENtleApp::apply_graphics_settings_to_display(&source, &mut target);
 
         assert_eq!(target.feature_details_font_size, 9.0);
+        assert_eq!(target.sequence_panel_max_text_length_bp, 0);
         assert_eq!(target.linear_external_feature_label_font_size, 11.0);
         assert_eq!(target.linear_external_feature_label_background_opacity, 0.9);
         assert_eq!(

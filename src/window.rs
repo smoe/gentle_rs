@@ -42,9 +42,7 @@ impl Window {
         }
     }
 
-    pub fn collect_open_auxiliary_window_entries(
-        &self,
-    ) -> Vec<(egui::ViewportId, String, String)> {
+    pub fn collect_open_auxiliary_window_entries(&self) -> Vec<(egui::ViewportId, String, String)> {
         match self {
             Self::Dna(window) => window.collect_open_auxiliary_window_entries(),
         }

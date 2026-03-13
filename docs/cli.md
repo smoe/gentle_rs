@@ -179,9 +179,12 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-report`
   - `rna-reads export-hits-fasta`
   - `rna-reads export-sample-sheet`
+  - `rna-reads export-paths-tsv`
+  - `rna-reads export-abundance-tsv`
   backed by `InterpretRnaReads`, `ListRnaReadReports`, `ShowRnaReadReport`,
-  `ExportRnaReadReport`, `ExportRnaReadHitsFasta`, and
-  `ExportRnaReadSampleSheet`.
+  `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
+  `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`, and
+  `ExportRnaReadExonAbundanceTsv`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Progress output includes periodic `progress rna-reads ...` lines during
   `apply_with_progress` runs.
@@ -910,12 +913,63 @@ Shared shell command:
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
-    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
     - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
+    - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+    - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+    - `rna-reads export-hits-fasta` headers include seed metrics and exon-path
+      annotations:
+      - `exon_path_tx=<transcript_id|none>`
+      - `exon_path=<ordinal_path|none>` where `:` marks hash-confirmed adjacent
+        exon transitions and `-` marks unconfirmed adjacency
+      - `exon_transitions=<confirmed>/<total>`
+      - `rc_applied=<true|false>` indicating automatic cDNA poly-T
+        reverse-complement normalization was applied
+    - cDNA/direct-RNA seed-normalization semantics:
+      - default (`--cdna-poly-t-flip`): reads with a T-rich 5' head are
+        reverse-complement normalized before hashing/scoring
+        - head detection tolerates small interruptions/mismatches in the
+          poly-T stretch near the 5' end
+      - direct RNA (`--no-cdna-poly-t-flip`): reads are scored as provided
+      - `--poly-t-prefix-min-bp` controls the minimum T support threshold used
+        by the 5' head detector for automatic cDNA flip (default `18`)
+    - phase-1 seed-span policy:
+      - all reads are hashed across their full span (no 3-window sampling)
+      - `--short-max-bp`, `--long-window-bp`, and `--long-window-count` are
+        compatibility options and currently have no effect
+    - phase-1 seed-pass gate policy:
+      - `pass = raw_hit_fraction >= min_seed_hit_fraction AND weighted_hit_fraction >= min_weighted_seed_hit_fraction AND unique_matched_kmers >= min(min_unique_matched_kmers, tested_kmers) AND chain_consistency_fraction >= min_chain_consistency_fraction AND median_transcript_gap <= max_median_transcript_gap AND confirmed_transitions >= min_confirmed_transitions AND confirmed_transition_fraction >= min_transition_support_fraction`
+      - `chain_consistency_fraction` is the fraction of matched seed observations
+        explained by one coherent transcript-offset chain
+      - `weighted_hit_fraction` is occurrence-normalized inside the scoped seed
+        index: `sum(1/occurrence_count(seed_bits))/tested_kmers`
+      - defaults:
+        - `--min-seed-hit-fraction 0.30`
+        - `--min-weighted-seed-hit-fraction 0.05`
+        - `--min-unique-matched-kmers 12`
+        - `--min-chain-consistency-fraction 0.40`
+        - `--max-median-transcript-gap 4.0`
+        - `--min-confirmed-transitions 1`
+        - `--min-transition-support-fraction 0.05`
+    - RNA-read scope semantics:
+      - `all_overlapping_both_strands`: index all overlapping transcripts on
+        both strands
+      - `target_group_any_strand`: index only target-group transcripts, both
+        strands allowed
+      - `all_overlapping_target_strand`: index all overlapping transcripts on
+        target strand only
+      - `target_group_target_strand`: index only target-group transcripts on
+        target strand
+      - strand-scoring note:
+        both-strand modes score against the union of admitted `+/-` templates;
+        target-strand modes exclude opposite-strand templates from scoring.
+      - seed-index note:
+        indexed seeds include exon-body and exon-exon transition k-mers for
+        admitted transcripts.
     - Primer request payload notes (`primers design` / `primers design-qpcr`):
       - `forward`/`reverse`/`probe` side constraints support optional
         sequence filters:
@@ -1659,6 +1713,12 @@ Set feature-details font size used in the feature tree/details panel (valid rang
 
 ```json
 {"SetParameter":{"name":"feature_details_font_size","value":10.5}}
+```
+
+Set sequence text-panel maximum length (`200000` default, `0` means unlimited):
+
+```json
+{"SetParameter":{"name":"sequence_panel_max_text_length_bp","value":200000}}
 ```
 
 Set regulatory-overlay max linear view span threshold (`50000` recommended for anchored genome maps):

@@ -16,8 +16,7 @@ use crate::{
     render_dna::RestrictionEnzymePosition,
 };
 use eframe::egui::{
-    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind,
-    Vec2,
+    self, Align2, Color32, FontFamily, FontId, PointerState, Pos2, Rect, Stroke, StrokeKind, Vec2,
 };
 use gb_io::seq::Feature;
 use std::collections::{BTreeSet, HashMap};
@@ -1015,16 +1014,17 @@ impl RenderDnaLinear {
         };
         let visible_top = self.area.top() + BASELINE_VISIBILITY_MARGIN;
         let visible_bottom = self.area.bottom() - BASELINE_VISIBILITY_MARGIN;
-        let effective_vertical_offset_px =
-            if visible_top.is_finite() && visible_bottom.is_finite() && visible_top <= visible_bottom
-            {
-                vertical_offset_px.clamp(
-                    visible_top - baseline_without_offset,
-                    visible_bottom - baseline_without_offset,
-                )
-            } else {
-                vertical_offset_px
-            };
+        let effective_vertical_offset_px = if visible_top.is_finite()
+            && visible_bottom.is_finite()
+            && visible_top <= visible_bottom
+        {
+            vertical_offset_px.clamp(
+                visible_top - baseline_without_offset,
+                visible_bottom - baseline_without_offset,
+            )
+        } else {
+            vertical_offset_px
+        };
         self.baseline_y = baseline_without_offset + effective_vertical_offset_px;
 
         let top_scale = if top_natural_extent > 0.0 {

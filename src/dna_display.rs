@@ -175,6 +175,7 @@ pub struct DnaDisplay {
     show_restriction_enzymes: bool,
     show_reverse_complement: bool,
     auto_hide_sequence_panel_when_linear_bases_visible: bool,
+    sequence_panel_max_text_length_bp: usize,
     show_open_reading_frames: bool,
     suppress_open_reading_frames_for_genome_anchor: bool,
     show_features: bool,
@@ -233,6 +234,10 @@ impl DnaDisplay {
 
     fn clamp_linear_sequence_base_text_max_view_span_bp(value: usize) -> usize {
         value.min(5_000_000)
+    }
+
+    fn clamp_sequence_panel_max_text_length_bp(value: usize) -> usize {
+        if value == 0 { 0 } else { value.min(5_000_000) }
     }
 
     fn clamp_gc_content_bin_size_bp(value: usize) -> usize {
@@ -474,6 +479,18 @@ impl DnaDisplay {
     pub fn set_auto_hide_sequence_panel_when_linear_bases_visible(&mut self, value: bool) {
         if self.auto_hide_sequence_panel_when_linear_bases_visible != value {
             self.auto_hide_sequence_panel_when_linear_bases_visible = value;
+            self.mark_layout_dirty();
+        }
+    }
+
+    pub fn sequence_panel_max_text_length_bp(&self) -> usize {
+        Self::clamp_sequence_panel_max_text_length_bp(self.sequence_panel_max_text_length_bp)
+    }
+
+    pub fn set_sequence_panel_max_text_length_bp(&mut self, value: usize) {
+        let value = Self::clamp_sequence_panel_max_text_length_bp(value);
+        if self.sequence_panel_max_text_length_bp != value {
+            self.sequence_panel_max_text_length_bp = value;
             self.mark_layout_dirty();
         }
     }
@@ -812,6 +829,7 @@ impl Default for DnaDisplay {
             show_restriction_enzymes: true,
             show_reverse_complement: true,
             auto_hide_sequence_panel_when_linear_bases_visible: false,
+            sequence_panel_max_text_length_bp: 200_000,
             show_open_reading_frames: false,
             suppress_open_reading_frames_for_genome_anchor: false,
             show_features: true,

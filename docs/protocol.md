@@ -120,6 +120,8 @@ Current draft operations:
 - `ExportRnaReadReport { report_id, path }`
 - `ExportRnaReadHitsFasta { report_id, path, selection }`
 - `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
+- `ExportRnaReadExonPathsTsv { report_id, path, selection }`
+- `ExportRnaReadExonAbundanceTsv { report_id, path, selection }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
 - `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
@@ -1314,10 +1316,28 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:
     - `kmer_len=9`
-    - `short_full_hash_max_bp=420`
-    - `long_window_bp=140`
-    - `long_window_count=3`
     - `min_seed_hit_fraction=0.30` (bootstrap default; future SNR calibration track can override policy)
+    - `min_weighted_seed_hit_fraction=0.05`
+    - `min_unique_matched_kmers=12`
+    - `min_chain_consistency_fraction=0.40`
+    - `max_median_transcript_gap=4.0`
+    - `min_confirmed_exon_transitions=1`
+    - `min_transition_support_fraction=0.05`
+    - weighted-hit definition:
+      - `weighted_hit_fraction = sum(1 / occurrence_count(seed_bits)) / tested_kmers`
+      - `occurrence_count` is measured inside the active scoped seed index
+    - seed pass gate:
+      - `raw_hit_fraction >= min_seed_hit_fraction`
+      - `AND weighted_hit_fraction >= min_weighted_seed_hit_fraction`
+      - `AND unique_matched_kmers >= min(min_unique_matched_kmers, tested_kmers)`
+      - `AND chain_consistency_fraction >= min_chain_consistency_fraction`
+      - `AND median_transcript_gap <= max_median_transcript_gap`
+      - `AND confirmed_transitions >= min_confirmed_exon_transitions`
+      - `AND confirmed_transition_fraction >= min_transition_support_fraction`
+  - phase-1 seed-span behavior:
+    - full-read hashing is always used for every read
+    - `short_full_hash_max_bp`, `long_window_bp`, and `long_window_count`
+      remain compatibility fields and currently have no runtime effect
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -1331,12 +1351,38 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - output: TSV with run/read metrics and JSON-serialized exon/junction
     frequency columns for cohort-level downstream analysis.
 - Shared-shell command family:
-  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
   - `rna-reads export-hits-fasta REPORT_ID OUTPUT.fa [--selection all|seed_passed|aligned]`
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
+  - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+  - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+- `rna-reads export-hits-fasta` header extensions:
+  - `exon_path_tx=<transcript_id|none>`
+  - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent
+    exon transitions and `-` for unconfirmed adjacency
+  - `exon_transitions=<confirmed>/<total>`
+  - `rc_applied=<true|false>` (automatic cDNA poly-T reverse-complement
+    normalization marker)
+- cDNA/direct-RNA normalization controls in `seed_filter`:
+  - `cdna_poly_t_flip_enabled` (default `true`)
+  - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the
+    tolerant 5' poly-T-head detector (minor interruptions in the head are
+    accepted)
+- Scope/strand semantics for `InterpretRnaReads`:
+  - `all_overlapping_both_strands`: all overlapping transcripts on both strands
+  - `target_group_any_strand`: target-group transcripts only, both strands
+  - `all_overlapping_target_strand`: all overlapping transcripts on target
+    strand only
+  - `target_group_target_strand`: target-group transcripts on target strand only
+  - scoring note:
+    both-strand modes score against the union of admitted strand-specific
+    templates; target-strand modes exclude opposite-strand templates.
+  - seed-index note:
+    indexed seeds include annotated exon-body and exon-exon transition k-mers
+    for admitted transcripts.
 
 Async BLAST shell contract (agent/MCP-ready baseline):
 

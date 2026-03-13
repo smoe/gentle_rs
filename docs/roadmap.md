@@ -721,8 +721,68 @@ Status:
   - Live top-read preview is now available during streaming; selected rows
     highlight their supported seed positions in green with recompute-time
     telemetry for in-window hash-speed sanity checks.
-  - RNA-read reports now persist exon-support and exon-exon junction-support
-    frequency summaries for aligned reads.
+  - Streaming status now shows ETA estimated from gzip/plain input bytes
+    consumed and elapsed runtime; ETA refresh is synchronized with read-count
+    update cadence.
+  - Seed-hit ranking now includes inverse-occurrence weighting to dampen
+    low-complexity repetitive-seed dominance in top-read previews.
+  - Phase-1 seed-pass logic now uses a composite gate:
+    `raw >= min_hit AND weighted >= min_weighted AND unique >= min(min_unique, tested_kmers)`,
+    with GUI/shell controls for all thresholds.
+  - Added transcript-chain spacing guard to reduce dispersed false positives:
+    reads must also satisfy `median transcript seed-gap <= max_median_transcript_gap`
+    (default `4.0`), with exported per-read gap diagnostics.
+  - Added transition-aware specificity guard:
+    reads must also satisfy `confirmed_transitions >= min_confirmed_transitions`
+    and `confirmed_transition_fraction >= min_transition_support_fraction`.
+  - Added isoform-support ranking panel during runs:
+    one row per known transcript (label/id/strand) with assigned reads,
+    seed-pass counts, transition coverage, and auto-picked best isoform.
+  - Added strand-audit diagnostics to the joint-run isoform/read display:
+    isoform rows now expose chain-same/opposite-competition/ambiguity counts,
+    and top-read rows expose selected strand plus opposite-strand competition
+    and ambiguity flags.
+  - Deterministic TP73-based filter tests now cover expected positive behavior
+    (TP73-derived reads with 30% deletions still pass) and negative behavior
+    (same-length deterministic random reads fail).
+  - Histogram guide overlays are now user-toggleable (`Exons`, `Introns`) for
+    clearer exon-context interpretation during filtering runs.
+  - Histogram coordinate mode now supports genomic axis and exonic-only compact
+    axis (merged exons adjacent, introns removed from coordinate span).
+  - Empty RNA report IDs now default deterministically from input file names
+    (`cdna_<filename_stem>`).
+  - Inline per-read alignment is now disabled for phase-1 Nanopore runs so
+    streaming progress stays responsive; alignment is deferred to phase 2.
+  - Phase-1 seed filtering now hashes full read span for every read (replacing
+    prior sampled-window behavior) to improve filtering sensitivity.
+  - Runtime panel now reports detailed compute breakdown
+    (`seed`, `align`, `io`, `parse`, `norm`, `infer`, `emit`, `other`) and
+    throughput metrics (`reads/s`, `bp/s`, mean/median/p95 read length) to
+    make overhead diagnosis explicit.
+  - Runtime/summary status now reports seed-pass percentages (not only raw
+    counts) for faster triage on large batches.
+  - Splicing Expert now exposes explicit cDNA/direct-RNA interpretation mode
+    control (`Input is cDNA` checkbox) with configurable poly-T prefix minimum
+    for automatic reverse-complement normalization.
+  - cDNA normalization now uses tolerant 5' T-rich head detection (minor
+    interruptions in poly-T tails are accepted) to better normalize real
+    Nanopore cDNA tails before seed scoring.
+  - Added coherent-chain specificity guard:
+    reads must satisfy `chain_consistency_fraction >= min_chain_consistency_fraction`
+    (default `0.40`) so dispersed local-seed matches are less likely to pass.
+  - RNA-read hit exports now include reverse-complement provenance markers
+    (`rc_applied`) in FASTA headers and TSV path exports.
+  - New RNA-read TSV exports are available for downstream analysis:
+    - per-read exon-path table (`rna-reads export-paths-tsv` / GUI export)
+    - exon/transition abundance table (`rna-reads export-abundance-tsv` / GUI export)
+  - Splicing Expert now shows seed-confirmed exon-exon transition support
+    tables with per-transition read counts/percentages and indexed
+    junction-crossing seed-bit diagnostics.
+  - RNA-read reports persist exon-support and exon-exon junction-support
+    frequency schema fields; phase-1 seed-only runs currently populate these as
+    zero-support placeholders until deferred alignment is executed.
+  - `rna-reads export-hits-fasta` now includes exon-path annotations in FASTA
+    headers (`:` confirmed adjacent transition by seeds, `-` unconfirmed).
   - `rna-reads export-sample-sheet` / GUI sample-sheet export produce TSV
     cohort summaries with per-report frequency JSON columns for downstream
     annotation workflows.
@@ -742,6 +802,9 @@ Track boundaries:
    - treat the current `30%` seed-hit threshold as bootstrap default only
    - empirically estimate background/noise seed-hit distributions for
      full-transcriptome input
+   - add online common-seed suppression (`IDF`-like penalty/backprop on
+     frequently observed seed bits across reads) as an optional scoring term
+     to reduce broad-domain/repetitive false positives
    - evolve toward SNR-normalized acceptance thresholds with report-level
      diagnostics and deterministic cross-adapter parity.
 6. Add SRA/FASTA ingestion + storage strategy subtrack:
@@ -763,8 +826,35 @@ Track boundaries:
 7. Extend sample-sheet cohorts with user metadata:
    - add optional sample annotation fields (condition/timepoint/replicate,
      extraction notes) in shared engine-owned sample-sheet contracts
-   - keep CLI/GUI/agent parity for writing/merging these annotations with RNA
-     evidence metrics.
+  - keep CLI/GUI/agent parity for writing/merging these annotations with RNA
+    evidence metrics.
+8. Defer seed-capture workflow abstraction (planned, not implemented):
+   - model the seed-hash filtering stage as a reusable biotech-style
+     "seed-capture/enrichment" operation suitable for standard workflows
+     (instead of only a splicing-window action)
+   - keep this track documented first, then implement through shared engine
+     operation contracts so GUI/CLI/agents remain parity-safe.
+   - detailed note is maintained in
+     `docs/rna_seq_nanopore_cloning_regions_plan.md` (phase-2 follow-up).
+9. Define phase-2 mapping strategy as seed-cascade (no DP requirement):
+   - shortlist hits from phase-1 seed filtering, then run deterministic
+     seed-space mapping in ordered tiers: exon-only -> exon-exon junctions ->
+     intronic fallback
+   - preserve unmatched-seed residuals in report payloads as candidate
+     sequencing-error/trans-splicing indicators for downstream clustering.
+10. Add dual-strand joint-run isoform assignment hardening (planned):
+   - keep one run over both strands for `all-overlap / both-strands` scope,
+     but add explicit strand-partitioned score diagnostics in the isoform table
+     to make cross-strand contributions auditable.
+   - add deterministic tie-break policy when `+/-` isoforms compete for the
+     same read-chain evidence (strand-consistent chain preferred, then score).
+   - expose optional strict mode requiring seed-chain transcript assignment and
+     exon-transition confirmation to come from the same strand partition.
+   - extend report/export schema with per-read strand-decision diagnostics and
+     mixed-strand ambiguity counters so GUI/CLI/shell/agent surfaces stay
+     parity-equivalent.
+   - detailed execution notes: `docs/rna_seq_nanopore_cloning_regions_plan.md`
+     (Phase 2b).
 
 ### Isoform-architecture panel track (baseline implemented; follow-ups)
 

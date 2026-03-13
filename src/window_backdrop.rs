@@ -33,6 +33,7 @@ const BACKDROP_BASE_FILL_RGB: [u8; 3] = [247, 243, 232];
 const BACKDROP_BASE_ACCENT_BLEND: f32 = 0.10;
 const BACKDROP_CONTENT_VEIL_RGB: [u8; 3] = [251, 249, 242];
 const BACKDROP_OVERDRAW_PX: f32 = 2.0;
+pub const WINDOW_CONTENT_INSET_PX: f32 = 8.0;
 
 fn default_main_image_path() -> String {
     DEFAULT_MAIN_IMAGE_PATH.to_string()
@@ -285,7 +286,7 @@ fn alpha_to_u8(opacity: f32) -> u8 {
 fn kind_image_opacity_scale(kind: WindowBackdropKind) -> f32 {
     match kind {
         WindowBackdropKind::Main => 0.86,
-        WindowBackdropKind::Sequence => 0.40,
+        WindowBackdropKind::Sequence => 0.56,
         WindowBackdropKind::Splicing => 0.28,
         WindowBackdropKind::Pool => 0.35,
         WindowBackdropKind::Configuration => 0.48,
@@ -296,7 +297,7 @@ fn kind_image_opacity_scale(kind: WindowBackdropKind) -> f32 {
 fn kind_tint_opacity_scale(kind: WindowBackdropKind) -> f32 {
     match kind {
         WindowBackdropKind::Main => 0.64,
-        WindowBackdropKind::Sequence => 0.40,
+        WindowBackdropKind::Sequence => 0.48,
         WindowBackdropKind::Splicing => 0.34,
         WindowBackdropKind::Pool => 0.38,
         WindowBackdropKind::Configuration => 0.50,
@@ -307,7 +308,7 @@ fn kind_tint_opacity_scale(kind: WindowBackdropKind) -> f32 {
 fn kind_content_veil_opacity(kind: WindowBackdropKind) -> f32 {
     match kind {
         WindowBackdropKind::Main => 0.24,
-        WindowBackdropKind::Sequence => 0.48,
+        WindowBackdropKind::Sequence => 0.40,
         WindowBackdropKind::Splicing => 0.58,
         WindowBackdropKind::Pool => 0.50,
         WindowBackdropKind::Configuration => 0.40,
@@ -552,8 +553,8 @@ pub fn paint_window_backdrop(
         + (BACKDROP_WARM_ACCENT_RGB[2] as f32 * blend))
         .round()
         .clamp(0.0, 255.0) as u8;
-    let accent = Color32::from_rgb(mixed_r, mixed_g, mixed_b)
-        .gamma_multiply(BACKDROP_TINT_BRIGHTEN_GAMMA);
+    let accent =
+        Color32::from_rgb(mixed_r, mixed_g, mixed_b).gamma_multiply(BACKDROP_TINT_BRIGHTEN_GAMMA);
     let tint_alpha = alpha_to_u8(
         settings.tint_opacity * BACKDROP_TINT_OPACITY_SCALE * kind_tint_opacity_scale(kind),
     );
@@ -644,11 +645,29 @@ pub fn paint_window_backdrop(
     }
 }
 
+pub fn with_window_content_inset<R>(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
+    let outer_rect = ui.max_rect();
+    let inset_limit = (outer_rect.width().min(outer_rect.height()) * 0.25).max(0.0);
+    let inset = WINDOW_CONTENT_INSET_PX.min(inset_limit);
+    let inner_rect = outer_rect.shrink2(Vec2::splat(inset));
+    let target_rect = if inner_rect.width() >= 1.0 && inner_rect.height() >= 1.0 {
+        inner_rect
+    } else {
+        outer_rect
+    };
+    let builder = egui::UiBuilder::new()
+        .max_rect(target_rect)
+        .layout(*ui.layout());
+    let mut child = ui.new_child(builder);
+    add_contents(&mut child)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         DEFAULT_SEQUENCE_IMAGE_PATH, DEFAULT_SPLICING_IMAGE_PATH, WindowBackdropKind,
         WindowBackdropSettings, cover_uv_rect, default_tint_rgb_for_kind,
+        kind_content_veil_opacity, kind_image_opacity_scale, kind_tint_opacity_scale,
         resolve_runtime_asset_uri,
     };
     use eframe::egui::Vec2;
@@ -771,5 +790,12 @@ mod tests {
         settings.apply_runtime_defaults_if_legacy();
         assert_eq!(settings.tint_opacity, 0.0);
         assert_eq!(settings.image_opacity, 0.0);
+    }
+
+    #[test]
+    fn sequence_backdrop_uses_stronger_image_and_tint_scales() {
+        assert!(kind_image_opacity_scale(WindowBackdropKind::Sequence) >= 0.50);
+        assert!(kind_tint_opacity_scale(WindowBackdropKind::Sequence) >= 0.45);
+        assert!(kind_content_veil_opacity(WindowBackdropKind::Sequence) <= 0.42);
     }
 }

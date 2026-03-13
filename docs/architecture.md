@@ -1188,9 +1188,23 @@ Architecture constraints for this track:
   only invoke/display shared contracts.
 - Initial RNA-seq path is Nanopore cDNA evidence ingestion with deterministic
   filtering and partial ROI mapping overlays.
+- Read-orientation handling must stay explicit and deterministic:
+  cDNA-oriented poly-T prefix reverse-complement normalization is configurable,
+  and direct-RNA mode must remain available without implicit strand mixing.
+- For `all-overlap / both-strands` scope, RNA-read interpretation should remain
+  a single combined run, but assignment decisions must include
+  strand-partitioned diagnostics and deterministic tie-breaks so cross-strand
+  seed reuse is always auditable.
+- Deferred mapping pass for this track should remain seed-hash based (exon-only
+  then exon-exon junction then intronic fallback) instead of mandatory
+  dynamic-programming alignment, so behavior stays deterministic and scalable on
+  large long-read batches.
 - Batch-oriented outputs must remain engine-owned: sample-sheet export contracts
   (TSV + machine-readable frequency columns) are shared across GUI/CLI/agents
   and derived from persisted RNA-read reports.
+- Per-read exon-path and exon/transition abundance TSV exports should remain
+  first-class engine contracts (not GUI-only derivations) so downstream cohort
+  analysis is adapter-equivalent.
 - Fixed seed-hit thresholds are bootstrap defaults for phase-1 only; the
   architecture must support a transcriptome-scale signal-to-noise model that can
   derive dynamic acceptance thresholds from empirical background distributions.
@@ -1209,6 +1223,11 @@ Ownership/defer boundary:
 
 - Transposon-specific interpretation and modeling decisions are intentionally
   deferred pending Anze Karlek's direction.
+- Seed-capture workflow abstraction (biotech analogy for seed-hash filtering) is
+  intentionally deferred for a follow-up track; when implemented, it should be
+  a reusable engine operation usable in generic workflows, not only a splicing
+  expert window action (tracked in
+  `docs/rna_seq_nanopore_cloning_regions_plan.md`).
 
 ### Dotplot + promoter-flexibility contract (implemented baseline; follow-ups)
 

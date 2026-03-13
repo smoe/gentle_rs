@@ -1056,6 +1056,16 @@ pub enum ShellCommand {
         report_ids: Vec<String>,
         append: bool,
     },
+    RnaReadsExportExonPathsTsv {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+    },
+    RnaReadsExportExonAbundanceTsv {
+        report_id: String,
+        path: String,
+        selection: RnaReadHitSelection,
+    },
     SetParameter {
         name: String,
         value_json: String,
@@ -5144,7 +5154,7 @@ impl ShellCommand {
                 align_config,
                 report_id,
             } => format!(
-                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}')",
+                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}')",
                 input_path,
                 seq_id,
                 seed_feature_id,
@@ -5156,6 +5166,14 @@ impl ShellCommand {
                 seed_filter.long_window_bp,
                 seed_filter.long_window_count,
                 seed_filter.min_seed_hit_fraction,
+                seed_filter.min_weighted_seed_hit_fraction,
+                seed_filter.min_unique_matched_kmers,
+                seed_filter.min_chain_consistency_fraction,
+                seed_filter.max_median_transcript_gap,
+                seed_filter.min_confirmed_exon_transitions,
+                seed_filter.min_transition_support_fraction,
+                seed_filter.cdna_poly_t_flip_enabled,
+                seed_filter.poly_t_prefix_min_bp,
                 align_config.band_width_bp,
                 align_config.min_identity_fraction,
                 align_config.max_secondary_mappings,
@@ -5203,6 +5221,26 @@ impl ShellCommand {
                     report_ids.join(",")
                 },
                 append
+            ),
+            Self::RnaReadsExportExonPathsTsv {
+                report_id,
+                path,
+                selection,
+            } => format!(
+                "export RNA-read exon paths from '{}' to '{}' (selection={})",
+                report_id,
+                path,
+                selection.as_str()
+            ),
+            Self::RnaReadsExportExonAbundanceTsv {
+                report_id,
+                path,
+                selection,
+            } => format!(
+                "export RNA-read exon abundance from '{}' to '{}' (selection={})",
+                report_id,
+                path,
+                selection.as_str()
             ),
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "genome_anchor_prepared_fallback_policy"
@@ -5254,6 +5292,12 @@ impl ShellCommand {
                 | "linear_reverse_strand_letter_opacity"
                 | "reverse_strand_letter_opacity" => format!(
                     "set reverse-strand letter opacity to {} (0.2..1.0)",
+                    value_json
+                ),
+                "sequence_panel_max_text_length_bp"
+                | "sequence_text_panel_max_length_bp"
+                | "sequence_panel_max_length_bp" => format!(
+                    "set sequence text-panel max length to {} bp (0=unlimited)",
                     value_json
                 ),
                 "linear_sequence_base_text_max_view_span_bp"
@@ -9312,7 +9356,7 @@ fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet"
+            "rna-reads requires a subcommand: interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv"
                 .to_string(),
         );
     }
@@ -9320,7 +9364,7 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "interpret" => {
             if tokens.len() < 5 {
                 return Err(
-                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
                         .to_string(),
                 );
             }
@@ -9437,6 +9481,111 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                                     "Invalid --min-seed-hit-fraction value '{raw}' for rna-reads interpret: {e}"
                                 )
                             })?;
+                    }
+                    "--min-weighted-seed-hit-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-weighted-seed-hit-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_weighted_seed_hit_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-weighted-seed-hit-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-unique-matched-kmers" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-unique-matched-kmers",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_unique_matched_kmers =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-unique-matched-kmers value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--max-median-transcript-gap" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--max-median-transcript-gap",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.max_median_transcript_gap =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --max-median-transcript-gap value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-chain-consistency-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-chain-consistency-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_chain_consistency_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-chain-consistency-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-confirmed-transitions" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-confirmed-transitions",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_confirmed_exon_transitions =
+                            raw.parse::<usize>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-confirmed-transitions value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--min-transition-support-fraction" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--min-transition-support-fraction",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.min_transition_support_fraction =
+                            raw.parse::<f64>().map_err(|e| {
+                                format!(
+                                    "Invalid --min-transition-support-fraction value '{raw}' for rna-reads interpret: {e}"
+                                )
+                            })?;
+                    }
+                    "--cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-cdna-poly-t-flip" => {
+                        seed_filter.cdna_poly_t_flip_enabled = false;
+                        idx += 1;
+                    }
+                    "--poly-t-prefix-min-bp" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--poly-t-prefix-min-bp",
+                            "rna-reads interpret",
+                        )?;
+                        seed_filter.poly_t_prefix_min_bp = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --poly-t-prefix-min-bp value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
                     }
                     "--align-band-bp" => {
                         let raw = parse_option_path(
@@ -9580,8 +9729,12 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--seq-id" => {
-                        let raw =
-                            parse_option_path(tokens, &mut idx, "--seq-id", "rna-reads export-sample-sheet")?;
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--seq-id",
+                            "rna-reads export-sample-sheet",
+                        )?;
                         seq_id = Some(raw);
                     }
                     "--report-id" => {
@@ -9611,8 +9764,78 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 append,
             })
         }
+        "export-paths-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-paths-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::All;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-paths-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-paths-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportExonPathsTsv {
+                report_id,
+                path,
+                selection,
+            })
+        }
+        "export-abundance-tsv" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-abundance-tsv requires REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut selection = RnaReadHitSelection::All;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--selection" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--selection",
+                            "rna-reads export-abundance-tsv",
+                        )?;
+                        selection = parse_rna_read_hit_selection(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-abundance-tsv"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportExonAbundanceTsv {
+                report_id,
+                path,
+                selection,
+            })
+        }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv)"
         )),
     }
 }
@@ -15533,6 +15756,46 @@ pub fn execute_shell_command_with_options(
                     "append": export.appended,
                     "seq_id": seq_id,
                     "report_ids": report_ids,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportExonPathsTsv {
+            report_id,
+            path,
+            selection,
+        } => {
+            let export = engine
+                .export_rna_read_exon_paths_tsv(report_id, path, *selection)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "row_count": export.row_count,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportExonAbundanceTsv {
+            report_id,
+            path,
+            selection,
+        } => {
+            let export = engine
+                .export_rna_read_exon_abundance_tsv(report_id, path, *selection)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "selection": export.selection.as_str(),
+                    "selected_read_count": export.selected_read_count,
+                    "exon_row_count": export.exon_row_count,
+                    "transition_row_count": export.transition_row_count,
                 }),
             }
         }
@@ -22396,7 +22659,7 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     #[test]
     fn parse_rna_reads_commands() {
         let interpret = parse_shell_line(
-            "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --short-max-bp 420 --long-window-bp 140 --long-window-count 3 --min-seed-hit-fraction 0.30 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
+            "rna-reads interpret seq_a 7 reads.fa --report-id tp73_reads --scope target_group_any_strand --kmer-len 9 --short-max-bp 420 --long-window-bp 140 --long-window-count 3 --min-seed-hit-fraction 0.30 --min-weighted-seed-hit-fraction 0.05 --min-unique-matched-kmers 12 --min-chain-consistency-fraction 0.55 --max-median-transcript-gap 4.0 --min-confirmed-transitions 1 --min-transition-support-fraction 0.20 --no-cdna-poly-t-flip --poly-t-prefix-min-bp 20 --align-band-bp 24 --align-min-identity 0.60 --max-secondary-mappings 2",
         )
         .expect("parse rna-reads interpret");
         match interpret {
@@ -22419,6 +22682,14 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 assert_eq!(seed_filter.long_window_bp, 140);
                 assert_eq!(seed_filter.long_window_count, 3);
                 assert!((seed_filter.min_seed_hit_fraction - 0.30).abs() < f64::EPSILON);
+                assert!((seed_filter.min_weighted_seed_hit_fraction - 0.05).abs() < f64::EPSILON);
+                assert_eq!(seed_filter.min_unique_matched_kmers, 12);
+                assert!((seed_filter.min_chain_consistency_fraction - 0.55).abs() < f64::EPSILON);
+                assert!((seed_filter.max_median_transcript_gap - 4.0).abs() < f64::EPSILON);
+                assert_eq!(seed_filter.min_confirmed_exon_transitions, 1);
+                assert!((seed_filter.min_transition_support_fraction - 0.20).abs() < f64::EPSILON);
+                assert!(!seed_filter.cdna_poly_t_flip_enabled);
+                assert_eq!(seed_filter.poly_t_prefix_min_bp, 20);
                 assert_eq!(align_config.band_width_bp, 24);
                 assert!((align_config.min_identity_fraction - 0.60).abs() < f64::EPSILON);
                 assert_eq!(align_config.max_secondary_mappings, 2);
@@ -22467,6 +22738,30 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                     && seq_id.as_deref() == Some("seq_a")
                     && report_ids == vec!["tp73_reads".to_string()]
                     && append
+        ));
+
+        let export_paths = parse_shell_line(
+            "rna-reads export-paths-tsv tp73_reads paths.tsv --selection seed_passed",
+        )
+        .expect("parse rna-reads export-paths-tsv");
+        assert!(matches!(
+            export_paths,
+            ShellCommand::RnaReadsExportExonPathsTsv { report_id, path, selection }
+                if report_id == "tp73_reads"
+                    && path == "paths.tsv"
+                    && selection == RnaReadHitSelection::SeedPassed
+        ));
+
+        let export_abundance = parse_shell_line(
+            "rna-reads export-abundance-tsv tp73_reads abundance.tsv --selection aligned",
+        )
+        .expect("parse rna-reads export-abundance-tsv");
+        assert!(matches!(
+            export_abundance,
+            ShellCommand::RnaReadsExportExonAbundanceTsv { report_id, path, selection }
+                if report_id == "tp73_reads"
+                    && path == "abundance.tsv"
+                    && selection == RnaReadHitSelection::Aligned
         ));
     }
 
@@ -22648,6 +22943,38 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         let sheet_text = fs::read_to_string(exported_sheet).expect("read sample sheet");
         assert!(sheet_text.contains("sample_id"));
         assert!(sheet_text.contains("exon_support_frequencies_json"));
+
+        let exported_paths = fasta_dir.path().join("paths.tsv");
+        let export_paths_result = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsExportExonPathsTsv {
+                report_id: "rna_reads_test".to_string(),
+                path: exported_paths.display().to_string(),
+                selection: RnaReadHitSelection::All,
+            },
+        )
+        .expect("export rna-read exon paths");
+        assert_eq!(export_paths_result.output["row_count"].as_u64(), Some(1));
+        let paths_text = fs::read_to_string(exported_paths).expect("read path sheet");
+        assert!(paths_text.contains("exon_path"));
+        assert!(paths_text.contains("reverse_complement_applied"));
+
+        let exported_abundance = fasta_dir.path().join("abundance.tsv");
+        let export_abundance_result = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsExportExonAbundanceTsv {
+                report_id: "rna_reads_test".to_string(),
+                path: exported_abundance.display().to_string(),
+                selection: RnaReadHitSelection::All,
+            },
+        )
+        .expect("export rna-read abundance");
+        assert_eq!(
+            export_abundance_result.output["selected_read_count"].as_u64(),
+            Some(1)
+        );
+        let abundance_text = fs::read_to_string(exported_abundance).expect("read abundance sheet");
+        assert!(abundance_text.contains("row_kind"));
     }
 
     #[test]

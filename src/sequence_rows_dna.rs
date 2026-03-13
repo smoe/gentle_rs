@@ -7,8 +7,6 @@ use crate::{
 use eframe::egui::{Align2, Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use std::sync::{Arc, RwLock};
 
-const MAX_SEQUENCE_PANEL_BP: usize = 100_000;
-
 #[derive(Clone, Debug)]
 pub struct RowDna {
     dna: Arc<RwLock<DNAsequence>>,
@@ -69,20 +67,16 @@ impl RowDna {
         if seq_len == 0 {
             return (0, 0);
         }
-        if dna.is_circular() {
-            return (0, seq_len.min(MAX_SEQUENCE_PANEL_BP));
+        let sequence_panel_limit_bp = self
+            .display
+            .read()
+            .map(|display| display.sequence_panel_max_text_length_bp())
+            .unwrap_or(200_000);
+        if sequence_panel_limit_bp == 0 {
+            (0, seq_len)
+        } else {
+            (0, seq_len.min(sequence_panel_limit_bp))
         }
-        let Ok(display) = self.display.read() else {
-            return (0, 0);
-        };
-        let mut span = display.linear_view_span_bp();
-        if span == 0 || span > seq_len {
-            span = seq_len;
-        }
-        span = span.min(MAX_SEQUENCE_PANEL_BP);
-        let max_start = seq_len.saturating_sub(span);
-        let start = display.linear_view_start_bp().min(max_start);
-        (start, span)
     }
 
     pub fn layout(&mut self, block_offset: f32, block_height: f32, area: &Rect) {
@@ -250,5 +244,53 @@ mod tests {
                 panic!("Expected Dna row");
             }
         }
+    }
+
+    #[test]
+    fn linear_sequence_text_window_is_not_limited_to_linear_map_viewport() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        {
+            let mut display = dna_display.write().expect("display lock");
+            display.set_linear_viewport(420, 120);
+        }
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let row = RowDna::new(dna, dna_display);
+        let (start, span) = row.window();
+        assert_eq!(start, 0);
+        assert_eq!(span, 5_000);
+    }
+
+    #[test]
+    fn sequence_text_window_respects_configured_panel_limit() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        {
+            let mut display = dna_display.write().expect("display lock");
+            display.set_sequence_panel_max_text_length_bp(2_000);
+        }
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let row = RowDna::new(dna, dna_display);
+        let (start, span) = row.window();
+        assert_eq!(start, 0);
+        assert_eq!(span, 2_000);
+    }
+
+    #[test]
+    fn sequence_text_window_limit_zero_means_unlimited() {
+        let dna_display = Arc::new(RwLock::new(DnaDisplay::default()));
+        {
+            let mut display = dna_display.write().expect("display lock");
+            display.set_sequence_panel_max_text_length_bp(0);
+        }
+        let dna = Arc::new(RwLock::new(
+            DNAsequence::from_sequence(&"A".repeat(5_000)).expect("sequence"),
+        ));
+        let row = RowDna::new(dna, dna_display);
+        let (start, span) = row.window();
+        assert_eq!(start, 0);
+        assert_eq!(span, 5_000);
     }
 }

@@ -47,6 +47,8 @@ Tabs:
   - Validate executable availability/version from within the UI.
 - `Graphics`
   - Configure project-level display visibility defaults (panels, feature layers, overlays).
+  - Configure sequence text-panel max length (`Sequence panel max text length`, default `200000 bp`, `0=unlimited`).
+    - If a sequence exceeds this limit, the text panel is suppressed and a hint is shown.
   - Configure feature-details font size (`Feature detail font size`, default `9 px`, live-applied).
   - Configure GC-content bin size (`GC bin size`, default `100 bp`) used by
     map overlays and SVG export.
@@ -59,6 +61,10 @@ Tabs:
     - tint/image opacity controls
     - backdrop compositing keeps a warm/yellow visual tone by default even
       under newer `egui` color-management behavior
+    - backdrop images are enabled for sequence/pool windows by default
+    - content controls in dialog-style windows (main/help/configuration) render
+      with a small inset margin (`8 px`) while the backdrop image still spans
+      the full window/panel area
   - Applies to sequence windows through the shared engine display state.
   - `Apply + Refresh Open Windows` forces immediate refresh of all currently open sequence windows.
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
@@ -235,12 +241,56 @@ Feature tree grouping:
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
   - input FASTA path can be selected via file picker (`Browse...`) in addition
     to manual path entry
+  - if `Report ID` is left empty, a default ID is derived from the input file
+    name (`cdna_<filename_stem>`)
+  - `Input is cDNA (normalize T-rich 5' head)` checkbox controls read
+    normalization mode:
+    - enabled (default): reads with a T-rich 5' head are reverse-complemented
+      before seed scoring (cDNA-oriented mode); minor interruptions in the
+      head are tolerated
+    - disabled: direct-RNA mode (reads are scored as provided)
+  - advanced settings include `poly-T head min T-bp` (`poly_t_prefix_min_bp`):
+    minimum T support required in the 5' detection window for the cDNA
+    auto-flip gate
   - default splicing scope is broad (`all overlapping / both strands`) with
     optional narrowing presets
-  - advanced seed/alignment constants are editable (`k=9`, `420`, `140x3`,
-    `min-hit=0.30` defaults)
+  - scope presets are explicit:
+    - `all-overlap / both-strands`: all overlapping transcripts, `+` and `-`
+    - `target-group / any-strand`: target group only, but both strands allowed
+    - `all-overlap / target-strand`: all overlapping transcripts on target strand
+    - `target-group / target-strand`: target group on target strand only
+  - strand-scoring semantics:
+    - both-strand modes score against the union of admitted strand-specific
+      templates (shared k-mers can contribute in this combined mode)
+    - target-strand modes exclude opposite-strand templates from the score
+  - seed-index semantics:
+    - indexed seeds include annotated exon-body k-mers and exon-exon junction
+      transition k-mers for admitted transcripts
+  - phase-1 seed filtering hashes the full read span for every sequence
+  - advanced seed constants expose a composite seed gate:
+    - `min hit` (raw hit fraction, default `0.30`)
+    - `min weighted` (occurrence-weighted unique-k-mer fraction, default `0.05`)
+    - `min unique` (minimum number of unique matched seed hashes, default `12`)
+    - `min chain` (minimum coherent-chain support fraction for matched hashes,
+      default `0.40`)
+    - `max median gap` (maximum median distance between matched hash starts in
+      the inferred transcript chain, default `4.0`)
+    - `min transitions` (minimum confirmed exon-exon transitions in inferred
+      isoform path, default `1`)
+    - `min transition frac` (minimum confirmed/expected transition fraction in
+      inferred isoform path, default `0.05`)
+    - pass rule:
+      `raw >= min hit AND weighted >= min weighted AND unique >= min(min unique, tested kmers) AND chain >= min chain AND median transcript gap <= max median gap AND confirmed transitions >= min transitions AND confirmed transition fraction >= min transition frac`
+  - legacy short/long window fields are kept for compatibility and currently
+    ignored (full-read hashing is always used in phase-1)
+  - alignment fields are kept as phase-2 placeholders and are ignored during
+    phase-1 Nanopore filtering
   - run executes asynchronously (non-blocking UI) with live read-progress
     indicators
+  - live status now shows seed-pass as count and percentage of reads processed
+  - streaming progress includes `ETA:` (uppercase) estimate derived from
+    compressed/plain input bytes consumed vs elapsed runtime; ETA refresh is
+    synchronized with read-count progress updates
   - running seed-confirmation histogram is updated every 1000 reads and shown as
     genomic-position bars (`+` strand upward, `-` strand downward)
   - bar heights use a square-root scale so low-frequency bins remain visible
@@ -250,9 +300,40 @@ Feature tree grouping:
     transcript)
   - exon spans are overlaid in the same histogram (green top guide segments)
     for direct seed-location vs exon-context inspection
+  - coordinate mode toggle supports genomic coordinates or exonic-only compact
+    coordinates (merged exons adjacent without intronic gaps)
+  - `Seed-confirmed exon-exon transitions` table reports per-transition support
+    counts and percentages across processed reads, plus junction-crossing
+    indexed-seed diagnostics
+  - `Isoform support ranking` table shows one row per known transcript in scope
+    with assigned-read counts, seed-pass counts, transition coverage, gap
+    statistics, best score, and strand-audit counters (`chain=same`,
+    `opposite-strand competition`, `ambiguous ties`); the best-supported
+    isoform is auto-picked during the same joint run
   - `Best-performing reads so far` is shown live during execution; selecting a
     row recomputes that read's seed hashes in-window and highlights supported
     positions in green with a displayed recompute time
+  - top-read rows include strand assignment diagnostics for the joint
+    two-strand run (`strand`, `opp`, `ambig`)
+  - top-read rows support FASTA copy paths:
+    - checkbox-select one/many rows, then `Copy selected FASTA`
+    - `Copy highlighted FASTA` for the active highlighted row
+    - `Ctrl/Cmd+C` copies selected rows (or highlighted row fallback)
+    - row context menu (`right-click`) includes `Copy FASTA` actions
+  - export actions include:
+    - `Export Retained Top Reads (FASTA)...`
+    - `Export Exon Paths (TSV)...` (per-read path/mapping summary rows)
+    - `Export Exon Abundance (TSV)...` (exon/transition abundance rows)
+    - `Export RNA sample sheet ...` (multi-report cohort summary)
+  - top-read ranking now includes weighted seed score (inverse seed-occurrence
+    weighting) to reduce dominance from repetitive low-complexity seeds
+  - throughput diagnostics are shown during run:
+    reads/s, bp/s, cumulative bases processed, and mean/median/p95 read length
+  - compute breakdown is shown during run
+    (`seed`, `align`, `io`, `parse`, `norm`, `infer`, `emit`, `other`) for
+    bottleneck inspection (`align` stays near zero in phase-1 seed-only mode)
+  - best-read rows now show full sequences in a horizontally scrollable pane
+    (no forced line wrapping)
   - a `Seed hash preview` panel lists representative seed rows in-window and
     full detail remains exportable via `Export Seed Hash Catalog (TSV)...`
   - `Export RNA sample sheet ...` writes a TSV summary for current-sequence

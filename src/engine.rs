@@ -55,6 +55,7 @@ use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
+    cell::Cell,
     cmp::Ordering,
     collections::hash_map::DefaultHasher,
     collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
@@ -135,11 +136,14 @@ pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
 const RNA_READ_REPORTS_SCHEMA: &str = "gentle.rna_read_reports.v1";
 const RNA_READ_REPORT_SCHEMA: &str = "gentle.rna_read_report.v1";
 const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
-const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 100;
+const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
+const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
+const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1000;
 const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
 const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;
 const RNA_READ_RETAINED_HITS_MAX: usize = 5_000;
 const RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX: usize = 20;
+const RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT: usize = 64;
 const MAX_DOTPLOT_POINTS: usize = 250_000;
 const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 5_000_000;
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
@@ -203,6 +207,8 @@ pub enum LinearSequenceLetterLayoutMode {
 /// in engine state so behavior is adapter-equivalent.
 pub struct DisplaySettings {
     pub show_sequence_panel: bool,
+    #[serde(default = "DisplaySettings::default_sequence_panel_max_text_length_bp")]
+    pub sequence_panel_max_text_length_bp: usize,
     pub auto_hide_sequence_panel_when_linear_bases_visible: bool,
     pub show_map_panel: bool,
     pub show_features: bool,
@@ -262,6 +268,10 @@ pub struct DisplaySettings {
 }
 
 impl DisplaySettings {
+    pub const fn default_sequence_panel_max_text_length_bp() -> usize {
+        200_000
+    }
+
     pub const fn default_gc_content_bin_size_bp() -> usize {
         100
     }
@@ -283,6 +293,7 @@ impl Default for DisplaySettings {
     fn default() -> Self {
         Self {
             show_sequence_panel: true,
+            sequence_panel_max_text_length_bp: Self::default_sequence_panel_max_text_length_bp(),
             auto_hide_sequence_panel_when_linear_bases_visible: false,
             show_map_panel: true,
             show_features: true,
@@ -2619,6 +2630,22 @@ pub struct RnaReadSeedFilterConfig {
     pub long_window_bp: usize,
     pub long_window_count: usize,
     pub min_seed_hit_fraction: f64,
+    #[serde(default = "default_min_weighted_seed_hit_fraction")]
+    pub min_weighted_seed_hit_fraction: f64,
+    #[serde(default = "default_min_unique_matched_kmers")]
+    pub min_unique_matched_kmers: usize,
+    #[serde(default = "default_max_median_transcript_gap")]
+    pub max_median_transcript_gap: f64,
+    #[serde(default = "default_min_chain_consistency_fraction")]
+    pub min_chain_consistency_fraction: f64,
+    #[serde(default = "default_min_confirmed_exon_transitions")]
+    pub min_confirmed_exon_transitions: usize,
+    #[serde(default = "default_min_transition_support_fraction")]
+    pub min_transition_support_fraction: f64,
+    #[serde(default = "default_true")]
+    pub cdna_poly_t_flip_enabled: bool,
+    #[serde(default = "default_poly_t_prefix_min_bp")]
+    pub poly_t_prefix_min_bp: usize,
 }
 
 impl Default for RnaReadSeedFilterConfig {
@@ -2629,8 +2656,48 @@ impl Default for RnaReadSeedFilterConfig {
             long_window_bp: 140,
             long_window_count: 3,
             min_seed_hit_fraction: 0.30,
+            min_weighted_seed_hit_fraction: 0.05,
+            min_unique_matched_kmers: 12,
+            max_median_transcript_gap: 4.0,
+            min_chain_consistency_fraction: 0.40,
+            min_confirmed_exon_transitions: 1,
+            min_transition_support_fraction: 0.05,
+            cdna_poly_t_flip_enabled: true,
+            poly_t_prefix_min_bp: 18,
         }
     }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_poly_t_prefix_min_bp() -> usize {
+    18
+}
+
+fn default_min_weighted_seed_hit_fraction() -> f64 {
+    0.05
+}
+
+fn default_min_unique_matched_kmers() -> usize {
+    12
+}
+
+fn default_max_median_transcript_gap() -> f64 {
+    4.0
+}
+
+fn default_min_chain_consistency_fraction() -> f64 {
+    0.40
+}
+
+fn default_min_confirmed_exon_transitions() -> usize {
+    1
+}
+
+fn default_min_transition_support_fraction() -> f64 {
+    0.05
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2671,6 +2738,24 @@ pub struct RnaReadMappingHit {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadStrandAssignmentDiagnostics {
+    pub selected_strand: String,
+    pub selected_reason: String,
+    pub selected_transition_hits: usize,
+    pub selected_exon_hits: usize,
+    pub plus_best_transcript_id: String,
+    pub plus_best_transition_hits: usize,
+    pub plus_best_exon_hits: usize,
+    pub minus_best_transcript_id: String,
+    pub minus_best_transition_hits: usize,
+    pub minus_best_exon_hits: usize,
+    pub competing_opposite_strand: bool,
+    pub ambiguous_near_tie: bool,
+    pub chain_preferred_strand: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadInterpretationHit {
     pub record_index: usize,
     pub source_byte_offset: usize,
@@ -2680,6 +2765,32 @@ pub struct RnaReadInterpretationHit {
     pub tested_kmers: usize,
     pub matched_kmers: usize,
     pub seed_hit_fraction: f64,
+    #[serde(default)]
+    pub weighted_seed_hit_fraction: f64,
+    #[serde(default)]
+    pub weighted_matched_kmers: f64,
+    #[serde(default)]
+    pub seed_chain_transcript_id: String,
+    #[serde(default)]
+    pub seed_chain_support_kmers: usize,
+    #[serde(default)]
+    pub seed_chain_support_fraction: f64,
+    #[serde(default)]
+    pub seed_median_transcript_gap: f64,
+    #[serde(default)]
+    pub seed_transcript_gap_count: usize,
+    #[serde(default)]
+    pub exon_path_transcript_id: String,
+    #[serde(default)]
+    pub exon_path: String,
+    #[serde(default)]
+    pub exon_transitions_confirmed: usize,
+    #[serde(default)]
+    pub exon_transitions_total: usize,
+    #[serde(default)]
+    pub reverse_complement_applied: bool,
+    #[serde(default)]
+    pub strand_diagnostics: RnaReadStrandAssignmentDiagnostics,
     pub perfect_seed_match: bool,
     pub passed_seed_filter: bool,
     pub best_mapping: Option<RnaReadMappingHit>,
@@ -2706,11 +2817,70 @@ pub struct RnaReadJunctionSupportFrequency {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadTransitionSupportRow {
+    pub from_exon_ordinal: usize,
+    pub to_exon_ordinal: usize,
+    pub from_start_1based: usize,
+    pub from_end_1based: usize,
+    pub to_start_1based: usize,
+    pub to_end_1based: usize,
+    pub support_read_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadIsoformSupportRow {
+    pub transcript_feature_id: usize,
+    pub transcript_id: String,
+    pub transcript_label: String,
+    pub strand: String,
+    pub exon_count: usize,
+    pub expected_transition_count: usize,
+    pub reads_assigned: usize,
+    pub reads_seed_passed: usize,
+    pub transition_rows_supported: usize,
+    pub transition_rows_supported_fraction: f64,
+    pub mean_seed_median_gap: f64,
+    pub mean_confirmed_transition_fraction: f64,
+    pub best_seed_hit_fraction: f64,
+    pub best_weighted_seed_hit_fraction: f64,
+    #[serde(default)]
+    pub reads_chain_same_strand: usize,
+    #[serde(default)]
+    pub reads_with_opposite_strand_competition: usize,
+    #[serde(default)]
+    pub reads_ambiguous_strand_ties: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaReadSampleSheetExport {
     pub schema: String,
     pub path: String,
     pub report_count: usize,
     pub appended: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadExonPathsExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub row_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadExonAbundanceExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub selection: RnaReadHitSelection,
+    pub selected_read_count: usize,
+    pub exon_row_count: usize,
+    pub transition_row_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2751,6 +2921,10 @@ pub struct RnaReadInterpretationReport {
     pub exon_support_frequencies: Vec<RnaReadExonSupportFrequency>,
     #[serde(default)]
     pub junction_support_frequencies: Vec<RnaReadJunctionSupportFrequency>,
+    #[serde(default)]
+    pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
+    #[serde(default)]
+    pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2789,6 +2963,8 @@ struct FastaVisitProgress {
     records_processed: usize,
     input_bytes_processed: u64,
     input_bytes_total: u64,
+    io_read_ms: f64,
+    record_parse_ms: f64,
 }
 
 #[derive(Debug)]
@@ -2814,6 +2990,9 @@ impl<R: Read> Read for CountingReader<R> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct RnaReadRetentionRank {
+    passed_seed_filter: bool,
+    weighted_support_milli: u64,
+    weighted_seed_hit_ppm: u32,
     seed_hit_ppm: u32,
     matched_kmers: usize,
     tested_kmers: usize,
@@ -2823,8 +3002,14 @@ struct RnaReadRetentionRank {
 
 impl Ord for RnaReadRetentionRank {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.seed_hit_ppm
-            .cmp(&other.seed_hit_ppm)
+        self.passed_seed_filter
+            .cmp(&other.passed_seed_filter)
+            .then(
+                self.weighted_support_milli
+                    .cmp(&other.weighted_support_milli),
+            )
+            .then(self.weighted_seed_hit_ppm.cmp(&other.weighted_seed_hit_ppm))
+            .then(self.seed_hit_ppm.cmp(&other.seed_hit_ppm))
             .then(self.matched_kmers.cmp(&other.matched_kmers))
             .then(self.tested_kmers.cmp(&other.tested_kmers))
             .then(self.read_length_bp.cmp(&other.read_length_bp))
@@ -2902,11 +3087,80 @@ struct SplicingTranscriptTemplate {
     kmer_positions: HashMap<u32, Vec<usize>>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct TranscriptExonPathModel {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    transcript_label: String,
+    strand: String,
+    exon_ordinals: Vec<usize>,
+    transitions: Vec<(usize, usize)>,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct SeedHistogramWeight {
     bin_index: usize,
     strand_minus: bool,
-    weight: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SeedTemplatePosition {
+    template_idx: usize,
+    template_pos: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SeedMatchObservation {
+    read_start: usize,
+    bits: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SeedChainSpacingMetrics {
+    transcript_id: String,
+    support_kmers: usize,
+    support_fraction: f64,
+    median_transcript_gap: f64,
+    transcript_gap_count: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ReadExonPathInference {
+    path: String,
+    confirmed_transitions: usize,
+    total_transitions: usize,
+    transcript_id: String,
+    strand: String,
+    strand_diagnostics: RnaReadStrandAssignmentDiagnostics,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TranscriptSupportScore<'a> {
+    model: &'a TranscriptExonPathModel,
+    exon_hits: usize,
+    transition_hits: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct IsoformSupportAccumulator {
+    transcript_feature_id: usize,
+    transcript_id: String,
+    transcript_label: String,
+    strand: String,
+    exon_count: usize,
+    expected_transition_count: usize,
+    reads_assigned: usize,
+    reads_seed_passed: usize,
+    transition_rows_supported: HashSet<(usize, usize)>,
+    seed_gap_sum: f64,
+    seed_gap_count: usize,
+    confirmed_transition_fraction_sum: f64,
+    confirmed_transition_fraction_count: usize,
+    best_seed_hit_fraction: f64,
+    best_weighted_seed_hit_fraction: f64,
+    reads_chain_same_strand: usize,
+    reads_with_opposite_strand_competition: usize,
+    reads_ambiguous_strand_ties: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3353,6 +3607,18 @@ pub enum Operation {
         report_ids: Vec<String>,
         #[serde(default)]
         append: bool,
+    },
+    ExportRnaReadExonPathsTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
+    },
+    ExportRnaReadExonAbundanceTsv {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        selection: RnaReadHitSelection,
     },
     ExtractRegion {
         input: SeqId,
@@ -4219,9 +4485,30 @@ pub struct RnaReadTopHitPreview {
     pub record_index: usize,
     pub header_id: String,
     pub seed_hit_fraction: f64,
+    pub weighted_seed_hit_fraction: f64,
+    #[serde(default)]
+    pub weighted_matched_kmers: f64,
+    #[serde(default)]
+    pub seed_chain_transcript_id: String,
+    #[serde(default)]
+    pub seed_chain_support_kmers: usize,
+    #[serde(default)]
+    pub seed_chain_support_fraction: f64,
+    #[serde(default)]
+    pub seed_median_transcript_gap: f64,
+    #[serde(default)]
+    pub seed_transcript_gap_count: usize,
     pub matched_kmers: usize,
     pub tested_kmers: usize,
     pub passed_seed_filter: bool,
+    #[serde(default)]
+    pub reverse_complement_applied: bool,
+    #[serde(default)]
+    pub selected_strand: String,
+    #[serde(default)]
+    pub competing_opposite_strand: bool,
+    #[serde(default)]
+    pub ambiguous_strand_tie: bool,
     pub read_length_bp: usize,
     pub sequence: String,
     pub sequence_preview: String,
@@ -4234,6 +4521,14 @@ pub struct RnaReadInterpretProgress {
     pub reads_processed: usize,
     pub reads_total: usize,
     #[serde(default)]
+    pub read_bases_processed: u64,
+    #[serde(default)]
+    pub mean_read_length_bp: f64,
+    #[serde(default)]
+    pub median_read_length_bp: usize,
+    #[serde(default)]
+    pub p95_read_length_bp: usize,
+    #[serde(default)]
     pub input_bytes_processed: u64,
     #[serde(default)]
     pub input_bytes_total: u64,
@@ -4241,12 +4536,36 @@ pub struct RnaReadInterpretProgress {
     pub aligned: usize,
     pub tested_kmers: usize,
     pub matched_kmers: usize,
+    #[serde(default)]
+    pub seed_compute_ms: f64,
+    #[serde(default)]
+    pub align_compute_ms: f64,
+    #[serde(default)]
+    pub io_read_ms: f64,
+    #[serde(default)]
+    pub fasta_parse_ms: f64,
+    #[serde(default)]
+    pub normalize_compute_ms: f64,
+    #[serde(default)]
+    pub inference_compute_ms: f64,
+    #[serde(default)]
+    pub progress_emit_ms: f64,
     pub update_every_reads: usize,
     pub done: bool,
     pub bins: Vec<RnaReadSeedHistogramBin>,
     pub score_density_bins: Vec<u64>,
     #[serde(default)]
     pub top_hits_preview: Vec<RnaReadTopHitPreview>,
+    #[serde(default)]
+    pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
+    #[serde(default)]
+    pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
+    #[serde(default)]
+    pub reads_with_transition_support: usize,
+    #[serde(default)]
+    pub transition_confirmations: usize,
+    #[serde(default)]
+    pub junction_crossing_seed_bits_indexed: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4702,6 +5021,8 @@ impl GentleEngine {
                 "ExportRnaReadReport".to_string(),
                 "ExportRnaReadHitsFasta".to_string(),
                 "ExportRnaReadSampleSheet".to_string(),
+                "ExportRnaReadExonPathsTsv".to_string(),
+                "ExportRnaReadExonAbundanceTsv".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -8472,6 +8793,8 @@ impl GentleEngine {
                 | Operation::ExportRnaReadReport { .. }
                 | Operation::ExportRnaReadHitsFasta { .. }
                 | Operation::ExportRnaReadSampleSheet { .. }
+                | Operation::ExportRnaReadExonPathsTsv { .. }
+                | Operation::ExportRnaReadExonAbundanceTsv { .. }
         )
     }
 
@@ -10065,13 +10388,40 @@ impl GentleEngine {
             } else {
                 "best=none".to_string()
             };
+            let seed_gap_median = if hit.seed_transcript_gap_count == 0 {
+                "na".to_string()
+            } else {
+                format!("{:.2}", hit.seed_median_transcript_gap)
+            };
             let header = format!(
-                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} perfect={} {}",
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} perfect={} rc_applied={} exon_path_tx={} exon_path={} exon_transitions={}/{} {}",
                 hit.header_id,
                 hit.record_index,
                 hit.source_byte_offset,
                 hit.seed_hit_fraction,
+                seed_gap_median,
+                hit.seed_transcript_gap_count,
+                hit.seed_chain_support_kmers,
+                hit.seed_chain_support_fraction,
+                if hit.seed_chain_transcript_id.is_empty() {
+                    "none"
+                } else {
+                    hit.seed_chain_transcript_id.as_str()
+                },
                 hit.perfect_seed_match,
+                hit.reverse_complement_applied,
+                if hit.exon_path_transcript_id.is_empty() {
+                    "none"
+                } else {
+                    hit.exon_path_transcript_id.as_str()
+                },
+                if hit.exon_path.is_empty() {
+                    "none"
+                } else {
+                    hit.exon_path.as_str()
+                },
+                hit.exon_transitions_confirmed,
+                hit.exon_transitions_total,
                 mapping_header
             );
             writeln!(writer, ">{header}").map_err(|e| EngineError {
@@ -10089,6 +10439,288 @@ impl GentleEngine {
             message: format!("Could not flush FASTA output '{}': {e}", path),
         })?;
         Ok(written)
+    }
+
+    fn include_rna_read_hit_by_selection(
+        hit: &RnaReadInterpretationHit,
+        selection: RnaReadHitSelection,
+    ) -> bool {
+        match selection {
+            RnaReadHitSelection::All => true,
+            RnaReadHitSelection::SeedPassed => hit.passed_seed_filter,
+            RnaReadHitSelection::Aligned => hit.best_mapping.is_some(),
+        }
+    }
+
+    fn parse_exon_path(path: &str) -> (Vec<usize>, Vec<char>) {
+        if path.trim().is_empty() {
+            return (vec![], vec![]);
+        }
+        let mut ordinals = Vec::<usize>::new();
+        let mut transitions = Vec::<char>::new();
+        let mut current = String::new();
+        for ch in path.chars() {
+            if ch.is_ascii_digit() {
+                current.push(ch);
+                continue;
+            }
+            if (ch == ':' || ch == '-') && !current.is_empty() {
+                if let Ok(value) = current.parse::<usize>() {
+                    ordinals.push(value);
+                    transitions.push(ch);
+                }
+                current.clear();
+            }
+        }
+        if !current.is_empty() {
+            if let Ok(value) = current.parse::<usize>() {
+                ordinals.push(value);
+            }
+        }
+        while transitions.len() > ordinals.len().saturating_sub(1) {
+            let _ = transitions.pop();
+        }
+        (ordinals, transitions)
+    }
+
+    pub fn export_rna_read_exon_paths_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+    ) -> Result<RnaReadExonPathsExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read exon-path export requires non-empty path".to_string(),
+            });
+        }
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not create RNA-read exon-path export '{}': {e}", path),
+        })?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read exon-path export header to '{}': {e}",
+                path
+            ),
+        })?;
+        let mut row_count = 0usize;
+        for hit in &report.hits {
+            if !Self::include_rna_read_hit_by_selection(hit, selection) {
+                continue;
+            }
+            let (
+                best_transcript_id,
+                best_strand,
+                best_target_start_1based,
+                best_target_end_1based,
+                best_identity_fraction,
+                best_query_coverage_fraction,
+            ) = if let Some(best) = &hit.best_mapping {
+                (
+                    best.transcript_id.as_str(),
+                    best.strand.as_str(),
+                    best.target_start_1based.to_string(),
+                    best.target_end_1based.to_string(),
+                    format!("{:.6}", best.identity_fraction),
+                    format!("{:.6}", best.query_coverage_fraction),
+                )
+            } else {
+                (
+                    "none",
+                    "none",
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                )
+            };
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
+                hit.record_index,
+                Self::sanitize_tsv_cell(&hit.header_id),
+                hit.source_byte_offset,
+                hit.read_length_bp,
+                hit.seed_hit_fraction,
+                hit.weighted_seed_hit_fraction,
+                hit.weighted_matched_kmers,
+                Self::sanitize_tsv_cell(&hit.seed_chain_transcript_id),
+                hit.seed_chain_support_kmers,
+                hit.seed_chain_support_fraction,
+                hit.seed_median_transcript_gap,
+                hit.seed_transcript_gap_count,
+                hit.matched_kmers,
+                hit.tested_kmers,
+                hit.passed_seed_filter,
+                hit.reverse_complement_applied,
+                Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
+                Self::sanitize_tsv_cell(&hit.exon_path),
+                hit.exon_transitions_confirmed,
+                hit.exon_transitions_total,
+                Self::sanitize_tsv_cell(best_transcript_id),
+                Self::sanitize_tsv_cell(best_strand),
+                best_target_start_1based,
+                best_target_end_1based,
+                best_identity_fraction,
+                best_query_coverage_fraction,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write RNA-read exon-path row to '{}': {e}", path),
+            })?;
+            row_count = row_count.saturating_add(1);
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not flush RNA-read exon-path export '{}': {e}", path),
+        })?;
+        Ok(RnaReadExonPathsExport {
+            schema: RNA_READ_EXON_PATHS_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            selection,
+            row_count,
+        })
+    }
+
+    pub fn export_rna_read_exon_abundance_tsv(
+        &self,
+        report_id: &str,
+        path: &str,
+        selection: RnaReadHitSelection,
+    ) -> Result<RnaReadExonAbundanceExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read exon-abundance export requires non-empty path".to_string(),
+            });
+        }
+        let file = File::create(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not create RNA-read exon-abundance export '{}': {e}",
+                path
+            ),
+        })?;
+        let mut writer = BufWriter::new(file);
+        writeln!(
+            writer,
+            "report_id\tseq_id\tselection\trow_kind\texon_ordinal\tfrom_exon_ordinal\tto_exon_ordinal\tsupport_read_count\tsupport_fraction\tconfirmed_read_count\tconfirmed_fraction\tunconfirmed_read_count\tunconfirmed_fraction"
+        )
+        .map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not write RNA-read exon-abundance header to '{}': {e}",
+                path
+            ),
+        })?;
+        let mut exon_counts = BTreeMap::<usize, usize>::new();
+        let mut transition_counts = BTreeMap::<(usize, usize), (usize, usize)>::new();
+        let mut selected_read_count = 0usize;
+        for hit in &report.hits {
+            if !Self::include_rna_read_hit_by_selection(hit, selection) {
+                continue;
+            }
+            selected_read_count = selected_read_count.saturating_add(1);
+            let (ordinals, transitions) = Self::parse_exon_path(&hit.exon_path);
+            if ordinals.is_empty() {
+                continue;
+            }
+            let mut touched = BTreeSet::<usize>::new();
+            for exon_ordinal in ordinals.iter().copied() {
+                touched.insert(exon_ordinal);
+            }
+            for exon_ordinal in touched {
+                *exon_counts.entry(exon_ordinal).or_insert(0) += 1;
+            }
+            for (idx, transition) in transitions.iter().enumerate() {
+                if idx + 1 >= ordinals.len() {
+                    break;
+                }
+                let pair = (ordinals[idx], ordinals[idx + 1]);
+                let entry = transition_counts.entry(pair).or_insert((0, 0));
+                entry.1 = entry.1.saturating_add(1);
+                if *transition == ':' {
+                    entry.0 = entry.0.saturating_add(1);
+                }
+            }
+        }
+        let denominator = selected_read_count.max(1) as f64;
+        for (exon_ordinal, count) in &exon_counts {
+            let support_fraction = *count as f64 / denominator;
+            writeln!(
+                writer,
+                "{}\t{}\t{}\texon\t{}\t\t\t{}\t{:.6}\t\t\t\t",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
+                selection.as_str(),
+                exon_ordinal,
+                count,
+                support_fraction,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!("Could not write exon-abundance row to '{}': {e}", path),
+            })?;
+        }
+        for ((from_exon, to_exon), (confirmed, total)) in &transition_counts {
+            let support_fraction = *total as f64 / denominator;
+            let confirmed_fraction = *confirmed as f64 / denominator;
+            let unconfirmed = total.saturating_sub(*confirmed);
+            let unconfirmed_fraction = unconfirmed as f64 / denominator;
+            writeln!(
+                writer,
+                "{}\t{}\t{}\ttransition\t\t{}\t{}\t{}\t{:.6}\t{}\t{:.6}\t{}\t{:.6}",
+                Self::sanitize_tsv_cell(&report.report_id),
+                Self::sanitize_tsv_cell(&report.seq_id),
+                selection.as_str(),
+                from_exon,
+                to_exon,
+                total,
+                support_fraction,
+                confirmed,
+                confirmed_fraction,
+                unconfirmed,
+                unconfirmed_fraction,
+            )
+            .map_err(|e| EngineError {
+                code: ErrorCode::Io,
+                message: format!(
+                    "Could not write transition-abundance row to '{}': {e}",
+                    path
+                ),
+            })?;
+        }
+        writer.flush().map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!(
+                "Could not flush RNA-read exon-abundance export '{}': {e}",
+                path
+            ),
+        })?;
+        Ok(RnaReadExonAbundanceExport {
+            schema: RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            selection,
+            selected_read_count,
+            exon_row_count: exon_counts.len(),
+            transition_row_count: transition_counts.len(),
+        })
     }
 
     fn sanitize_tsv_cell(raw: &str) -> String {
@@ -10200,15 +10832,16 @@ impl GentleEngine {
             } else {
                 report.read_count_aligned as f64 / report.read_count_total as f64
             };
-            let exon_json = serde_json::to_string(&report.exon_support_frequencies).map_err(|e| {
-                EngineError {
-                    code: ErrorCode::Internal,
-                    message: format!(
-                        "Could not serialize exon support frequencies for report '{}': {e}",
-                        report.report_id
-                    ),
-                }
-            })?;
+            let exon_json =
+                serde_json::to_string(&report.exon_support_frequencies).map_err(|e| {
+                    EngineError {
+                        code: ErrorCode::Internal,
+                        message: format!(
+                            "Could not serialize exon support frequencies for report '{}': {e}",
+                            report.report_id
+                        ),
+                    }
+                })?;
             let junction_json = serde_json::to_string(&report.junction_support_frequencies)
                 .map_err(|e| EngineError {
                     code: ErrorCode::Internal,
@@ -10240,7 +10873,10 @@ impl GentleEngine {
             )
             .map_err(|e| EngineError {
                 code: ErrorCode::Io,
-                message: format!("Could not write RNA-read sample sheet row to '{}': {e}", path),
+                message: format!(
+                    "Could not write RNA-read sample sheet row to '{}': {e}",
+                    path
+                ),
             })?;
         }
         writer.flush().map_err(|e| EngineError {
@@ -10307,7 +10943,8 @@ impl GentleEngine {
         seed_filter: &RnaReadSeedFilterConfig,
         path: &str,
     ) -> Result<(usize, usize), EngineError> {
-        let rows = self.collect_rna_seed_hash_catalog(seq_id, seed_feature_id, scope, seed_filter)?;
+        let rows =
+            self.collect_rna_seed_hash_catalog(seq_id, seed_feature_id, scope, seed_filter)?;
 
         let path = path.trim();
         if path.is_empty() {
@@ -10402,7 +11039,10 @@ impl GentleEngine {
                 .cmp(&right.genomic_pos_1based)
                 .then_with(|| left.strand.cmp(&right.strand))
                 .then_with(|| left.transcript_feature_id.cmp(&right.transcript_feature_id))
-                .then_with(|| left.template_offset_0based.cmp(&right.template_offset_0based))
+                .then_with(|| {
+                    left.template_offset_0based
+                        .cmp(&right.template_offset_0based)
+                })
                 .then_with(|| left.seed_bits.cmp(&right.seed_bits))
         });
         rows
@@ -10410,7 +11050,10 @@ impl GentleEngine {
 
     fn visit_fasta_records_with_offsets(
         path: &str,
-        on_record: &mut dyn FnMut(ParsedFastaReadRecord, FastaVisitProgress) -> Result<(), EngineError>,
+        on_record: &mut dyn FnMut(
+            ParsedFastaReadRecord,
+            FastaVisitProgress,
+        ) -> Result<(), EngineError>,
     ) -> Result<FastaVisitProgress, EngineError> {
         let file = File::open(path).map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -10432,6 +11075,8 @@ impl GentleEngine {
         let mut current_sequence = String::new();
         let mut offset = 0usize;
         let mut line = String::new();
+        let io_read_ms = Cell::new(0.0f64);
+        let record_parse_ms = Cell::new(0.0f64);
         let mut flush_record = |header: Option<String>,
                                 header_offset: usize,
                                 sequence: &mut String|
@@ -10439,6 +11084,7 @@ impl GentleEngine {
             let Some(header_text) = header else {
                 return Ok(());
             };
+            let parse_started = Instant::now();
             let normalized = sequence
                 .chars()
                 .filter(|ch| !ch.is_whitespace())
@@ -10467,32 +11113,45 @@ impl GentleEngine {
             } else {
                 source_bytes_read.load(AtomicOrdering::Relaxed)
             };
-            on_record(ParsedFastaReadRecord {
-                record_index,
-                source_byte_offset: header_offset,
-                header_id,
-                sequence: normalized.as_bytes().to_vec(),
-            }, FastaVisitProgress {
-                records_processed: processed,
-                input_bytes_processed,
-                input_bytes_total,
-            })?;
+            record_parse_ms
+                .set(record_parse_ms.get() + parse_started.elapsed().as_secs_f64() * 1000.0);
+            on_record(
+                ParsedFastaReadRecord {
+                    record_index,
+                    source_byte_offset: header_offset,
+                    header_id,
+                    sequence: normalized.as_bytes().to_vec(),
+                },
+                FastaVisitProgress {
+                    records_processed: processed,
+                    input_bytes_processed,
+                    input_bytes_total,
+                    io_read_ms: io_read_ms.get(),
+                    record_parse_ms: record_parse_ms.get(),
+                },
+            )?;
             Ok(())
         };
 
         loop {
             line.clear();
+            let read_started = Instant::now();
             let bytes = reader.read_line(&mut line).map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not read FASTA input '{}': {e}", path),
             })?;
+            io_read_ms.set(io_read_ms.get() + read_started.elapsed().as_secs_f64() * 1000.0);
             if bytes == 0 {
                 break;
             }
             let line_start_offset = offset;
             offset = offset.saturating_add(bytes);
             if line.starts_with('>') {
-                flush_record(current_header.take(), current_header_offset, &mut current_sequence)?;
+                flush_record(
+                    current_header.take(),
+                    current_header_offset,
+                    &mut current_sequence,
+                )?;
                 current_header = Some(line[1..].trim().to_string());
                 current_header_offset = line_start_offset;
                 continue;
@@ -10502,7 +11161,11 @@ impl GentleEngine {
             }
             current_sequence.push_str(line.trim());
         }
-        flush_record(current_header.take(), current_header_offset, &mut current_sequence)?;
+        flush_record(
+            current_header.take(),
+            current_header_offset,
+            &mut current_sequence,
+        )?;
         if processed == 0 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -10518,6 +11181,8 @@ impl GentleEngine {
             records_processed: processed,
             input_bytes_processed,
             input_bytes_total,
+            io_read_ms: io_read_ms.get(),
+            record_parse_ms: record_parse_ms.get(),
         })
     }
 
@@ -10577,6 +11242,113 @@ impl GentleEngine {
         }
     }
 
+    fn reverse_complement_sequence(sequence: &[u8]) -> Vec<u8> {
+        sequence
+            .iter()
+            .rev()
+            .map(|base| Self::complement_nucleotide_base(*base))
+            .collect::<Vec<_>>()
+    }
+
+    // Nanopore cDNA tails are often T-rich but can contain a few interruptions
+    // (e.g. one or two mismatching bases) near the read head.
+    fn has_poly_t_prefix(sequence: &[u8], min_prefix_bp: usize) -> bool {
+        const POLY_T_HEAD_MAX_SCAN_BP: usize = 96;
+        const POLY_T_HEAD_WINDOW_PADDING_BP: usize = 8;
+        const POLY_T_HEAD_MAX_WINDOW_START_BP: usize = 24;
+        const POLY_T_HEAD_MIN_WINDOW_FRACTION: f64 = 0.60;
+        const POLY_T_HEAD_MIN_CONTIGUOUS_RUN_BP: usize = 8;
+
+        let required = min_prefix_bp.max(1);
+        if sequence.len() < required {
+            return false;
+        }
+
+        let scan_len = sequence
+            .len()
+            .min((required.saturating_add(POLY_T_HEAD_WINDOW_PADDING_BP)).max(32))
+            .min(POLY_T_HEAD_MAX_SCAN_BP);
+        if scan_len < required {
+            return false;
+        }
+
+        let mut head = Vec::<u8>::with_capacity(scan_len);
+        for base in sequence.iter().take(scan_len) {
+            head.push(Self::normalize_nucleotide_base(*base));
+        }
+
+        let mut leading_t = 0usize;
+        for base in &head {
+            if *base == b'T' {
+                leading_t = leading_t.saturating_add(1);
+            } else {
+                break;
+            }
+        }
+        if leading_t >= required {
+            return true;
+        }
+
+        let mut longest_t_run = 0usize;
+        let mut current_t_run = 0usize;
+        for base in &head {
+            if *base == b'T' {
+                current_t_run = current_t_run.saturating_add(1);
+                longest_t_run = longest_t_run.max(current_t_run);
+            } else {
+                current_t_run = 0;
+            }
+        }
+        if longest_t_run < POLY_T_HEAD_MIN_CONTIGUOUS_RUN_BP {
+            return false;
+        }
+
+        let window_len = required
+            .saturating_add(POLY_T_HEAD_WINDOW_PADDING_BP)
+            .max(required)
+            .min(scan_len);
+        if window_len == 0 {
+            return false;
+        }
+        let max_start = scan_len
+            .saturating_sub(window_len)
+            .min(POLY_T_HEAD_MAX_WINDOW_START_BP);
+        for start in 0..=max_start {
+            let end = start.saturating_add(window_len);
+            let t_count = head[start..end]
+                .iter()
+                .filter(|base| **base == b'T')
+                .count();
+            if t_count < required {
+                continue;
+            }
+            let fraction = t_count as f64 / window_len as f64;
+            if fraction >= POLY_T_HEAD_MIN_WINDOW_FRACTION {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn normalize_rna_read_sequence_for_scoring(
+        sequence: &[u8],
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> (Vec<u8>, bool) {
+        if seed_filter.cdna_poly_t_flip_enabled
+            && Self::has_poly_t_prefix(sequence, seed_filter.poly_t_prefix_min_bp)
+        {
+            (Self::reverse_complement_sequence(sequence), true)
+        } else {
+            (
+                sequence
+                    .iter()
+                    .map(|base| Self::normalize_nucleotide_base(*base))
+                    .collect::<Vec<_>>(),
+                false,
+            )
+        }
+    }
+
     fn base_to_2bit(base: u8) -> Option<u32> {
         match Self::normalize_nucleotide_base(base) {
             b'A' => Some(0),
@@ -10598,33 +11370,12 @@ impl GentleEngine {
 
     fn sampled_read_windows(
         read_len: usize,
-        seed_filter: &RnaReadSeedFilterConfig,
+        _seed_filter: &RnaReadSeedFilterConfig,
     ) -> Vec<(usize, usize)> {
         if read_len == 0 {
             return vec![];
         }
-        if read_len < seed_filter.short_full_hash_max_bp {
-            return vec![(0, read_len)];
-        }
-        let window_len = seed_filter.long_window_bp.max(1).min(read_len);
-        let count = seed_filter.long_window_count.max(1);
-        if count == 1 || read_len == window_len {
-            return vec![(
-                (read_len - window_len) / 2,
-                (read_len - window_len) / 2 + window_len,
-            )];
-        }
-        let mut starts = Vec::<usize>::with_capacity(count);
-        for idx in 0..count {
-            let start = idx.saturating_mul(read_len - window_len) / (count - 1);
-            starts.push(start);
-        }
-        starts.sort_unstable();
-        starts.dedup();
-        starts
-            .into_iter()
-            .map(|start| (start, start + window_len))
-            .collect()
+        vec![(0, read_len)]
     }
 
     fn build_rna_read_seed_histogram_bins(seq_len_bp: usize) -> Vec<RnaReadSeedHistogramBin> {
@@ -10680,17 +11431,16 @@ impl GentleEngine {
         expanded_positions
             .into_iter()
             .map(|(bits, by_pos)| {
-                let mut by_bin: HashMap<(usize, bool), u32> = HashMap::new();
+                let mut by_bin = HashSet::<(usize, bool)>::new();
                 for (pos_0based, strand_minus) in by_pos {
                     let bin_index = (pos_0based / bin_size_bp).min(bins.len().saturating_sub(1));
-                    *by_bin.entry((bin_index, strand_minus)).or_insert(0) += 1;
+                    by_bin.insert((bin_index, strand_minus));
                 }
                 let mut weights = by_bin
                     .into_iter()
-                    .map(|((bin_index, strand_minus), weight)| SeedHistogramWeight {
+                    .map(|(bin_index, strand_minus)| SeedHistogramWeight {
                         bin_index,
                         strand_minus,
-                        weight,
                     })
                     .collect::<Vec<_>>();
                 weights.sort_by(|left, right| {
@@ -10703,19 +11453,56 @@ impl GentleEngine {
             .collect()
     }
 
+    fn build_seed_template_position_index(
+        templates: &[SplicingTranscriptTemplate],
+    ) -> HashMap<u32, Vec<SeedTemplatePosition>> {
+        let mut index = HashMap::<u32, HashSet<(usize, usize)>>::new();
+        for (template_idx, template) in templates.iter().enumerate() {
+            for (bits, starts) in &template.kmer_positions {
+                let entry = index.entry(*bits).or_default();
+                for start in starts {
+                    entry.insert((template_idx, *start));
+                }
+            }
+        }
+        index
+            .into_iter()
+            .map(|(bits, rows)| {
+                let mut positions = rows
+                    .into_iter()
+                    .map(|(template_idx, template_pos)| SeedTemplatePosition {
+                        template_idx,
+                        template_pos,
+                    })
+                    .collect::<Vec<_>>();
+                positions.sort_by(|left, right| {
+                    left.template_idx
+                        .cmp(&right.template_idx)
+                        .then(left.template_pos.cmp(&right.template_pos))
+                });
+                (bits, positions)
+            })
+            .collect()
+    }
+
     fn count_seed_hits_in_window_with_histogram(
         sequence: &[u8],
+        read_start_offset: usize,
         kmer_len: usize,
         seed_index: &HashSet<u32>,
         histogram_index: &HashMap<u32, Vec<SeedHistogramWeight>>,
         bins: &mut [RnaReadSeedHistogramBin],
-    ) -> (usize, usize) {
+        _seed_occurrence_counts: &HashMap<u32, usize>,
+    ) -> (usize, usize, HashSet<u32>, Vec<SeedMatchObservation>) {
         if kmer_len == 0 || sequence.len() < kmer_len {
-            return (0, 0);
+            return (0, 0, HashSet::new(), vec![]);
         }
         let mut tested = 0usize;
         let mut matched = 0usize;
-        let mut matched_kmer_counts: HashMap<u32, u32> = HashMap::new();
+        let mut matched_seed_bits = HashSet::<u32>::new();
+        let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
+        let mut plus_bins_touched = HashSet::<usize>::new();
+        let mut minus_bins_touched = HashSet::<usize>::new();
         for start in 0..=sequence.len() - kmer_len {
             let window = &sequence[start..start + kmer_len];
             let Some(bits) = Self::encode_kmer_bits(window) else {
@@ -10724,26 +11511,40 @@ impl GentleEngine {
             tested += 1;
             if seed_index.contains(&bits) {
                 matched += 1;
-                let entry = matched_kmer_counts.entry(bits).or_insert(0);
-                *entry = entry.saturating_add(1);
+                matched_seed_bits.insert(bits);
+                matched_seed_observations.push(SeedMatchObservation {
+                    read_start: read_start_offset.saturating_add(start),
+                    bits,
+                });
             }
         }
-        for (bits, matched_count) in matched_kmer_counts {
+        for bits in &matched_seed_bits {
             if let Some(weights) = histogram_index.get(&bits) {
                 for weight in weights {
-                    let Some(bin) = bins.get_mut(weight.bin_index) else {
-                        continue;
-                    };
-                    let delta = (weight.weight as u64).saturating_mul(matched_count as u64);
                     if weight.strand_minus {
-                        bin.confirmed_minus = bin.confirmed_minus.saturating_add(delta);
+                        minus_bins_touched.insert(weight.bin_index);
                     } else {
-                        bin.confirmed_plus = bin.confirmed_plus.saturating_add(delta);
+                        plus_bins_touched.insert(weight.bin_index);
                     }
                 }
             }
         }
-        (tested, matched)
+        for bin_index in plus_bins_touched {
+            if let Some(bin) = bins.get_mut(bin_index) {
+                bin.confirmed_plus = bin.confirmed_plus.saturating_add(1);
+            }
+        }
+        for bin_index in minus_bins_touched {
+            if let Some(bin) = bins.get_mut(bin_index) {
+                bin.confirmed_minus = bin.confirmed_minus.saturating_add(1);
+            }
+        }
+        (
+            tested,
+            matched,
+            matched_seed_bits,
+            matched_seed_observations,
+        )
     }
 
     fn seed_hit_metrics(
@@ -10761,6 +11562,23 @@ impl GentleEngine {
         (seed_hit_fraction, perfect_seed_match, passed_seed_filter)
     }
 
+    fn weighted_seed_support_from_occurrences(
+        matched_seed_bits: &HashSet<u32>,
+        seed_occurrence_counts: &HashMap<u32, usize>,
+    ) -> f64 {
+        matched_seed_bits
+            .iter()
+            .map(|bits| {
+                let occurrence_count = seed_occurrence_counts
+                    .get(bits)
+                    .copied()
+                    .unwrap_or(1)
+                    .max(1);
+                1.0 / occurrence_count as f64
+            })
+            .sum::<f64>()
+    }
+
     fn score_density_bin_index(seed_hit_fraction: f64) -> usize {
         if RNA_READ_SCORE_DENSITY_BIN_COUNT <= 1 {
             return 0;
@@ -10770,9 +11588,172 @@ impl GentleEngine {
         scaled.min(RNA_READ_SCORE_DENSITY_BIN_COUNT - 1)
     }
 
+    fn update_read_length_counts(length_counts: &mut Vec<u64>, read_length_bp: usize) {
+        if length_counts.len() <= read_length_bp {
+            length_counts.resize(read_length_bp.saturating_add(1), 0);
+        }
+        if let Some(bucket) = length_counts.get_mut(read_length_bp) {
+            *bucket = bucket.saturating_add(1);
+        }
+    }
+
+    fn quantile_read_length_from_counts(
+        length_counts: &[u64],
+        total_reads: usize,
+        quantile: f64,
+    ) -> usize {
+        if total_reads == 0 || length_counts.is_empty() {
+            return 0;
+        }
+        let q = quantile.clamp(0.0, 1.0);
+        let rank = ((total_reads as f64 * q).ceil() as usize).clamp(1, total_reads);
+        let mut cumulative = 0usize;
+        for (len_bp, count) in length_counts.iter().enumerate() {
+            cumulative = cumulative.saturating_add((*count).min(usize::MAX as u64) as usize);
+            if cumulative >= rank {
+                return len_bp;
+            }
+        }
+        length_counts.len().saturating_sub(1)
+    }
+
+    fn summarize_read_lengths(
+        length_counts: &[u64],
+        total_reads: usize,
+        total_bases: u64,
+    ) -> (f64, usize, usize) {
+        if total_reads == 0 {
+            return (0.0, 0, 0);
+        }
+        let mean = total_bases as f64 / total_reads as f64;
+        let median = Self::quantile_read_length_from_counts(length_counts, total_reads, 0.50);
+        let p95 = Self::quantile_read_length_from_counts(length_counts, total_reads, 0.95);
+        (mean, median, p95)
+    }
+
+    fn seed_filter_passes(
+        seed_hit_fraction: f64,
+        weighted_seed_hit_fraction: f64,
+        tested_kmers: usize,
+        unique_matched_kmers: usize,
+        chain_consistency_fraction: f64,
+        median_transcript_gap: f64,
+        transcript_gap_count: usize,
+        confirmed_transitions: usize,
+        total_transitions: usize,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> bool {
+        let raw_pass = seed_hit_fraction + f64::EPSILON >= seed_filter.min_seed_hit_fraction;
+        let weighted_pass =
+            weighted_seed_hit_fraction + f64::EPSILON >= seed_filter.min_weighted_seed_hit_fraction;
+        let unique_required = seed_filter
+            .min_unique_matched_kmers
+            .min(tested_kmers.max(1));
+        let unique_pass = unique_matched_kmers >= unique_required;
+        let chain_pass =
+            chain_consistency_fraction + f64::EPSILON >= seed_filter.min_chain_consistency_fraction;
+        let gap_pass = if transcript_gap_count == 0 {
+            tested_kmers <= 1
+        } else {
+            median_transcript_gap <= seed_filter.max_median_transcript_gap + f64::EPSILON
+        };
+        let transition_pass =
+            Self::transition_gate_passes(confirmed_transitions, total_transitions, seed_filter);
+        raw_pass && weighted_pass && unique_pass && chain_pass && gap_pass && transition_pass
+    }
+
+    fn compute_seed_chain_spacing_metrics(
+        matched_seed_observations: &[SeedMatchObservation],
+        seed_template_positions: &HashMap<u32, Vec<SeedTemplatePosition>>,
+        templates: &[SplicingTranscriptTemplate],
+    ) -> SeedChainSpacingMetrics {
+        let mut key_counts = HashMap::<(usize, isize), usize>::new();
+        for observation in matched_seed_observations {
+            let Some(positions) = seed_template_positions.get(&observation.bits) else {
+                continue;
+            };
+            for pos in positions
+                .iter()
+                .take(RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT)
+            {
+                let delta = pos.template_pos as isize - observation.read_start as isize;
+                *key_counts.entry((pos.template_idx, delta)).or_insert(0) += 1;
+            }
+        }
+        let Some(((best_template_idx, best_delta), best_support)) =
+            key_counts.into_iter().max_by(|left, right| {
+                left.1
+                    .cmp(&right.1)
+                    .then_with(|| right.0.0.cmp(&left.0.0))
+                    .then_with(|| right.0.1.cmp(&left.0.1))
+            })
+        else {
+            return SeedChainSpacingMetrics {
+                median_transcript_gap: -1.0,
+                ..SeedChainSpacingMetrics::default()
+            };
+        };
+        let support_fraction = if matched_seed_observations.is_empty() {
+            0.0
+        } else {
+            best_support as f64 / matched_seed_observations.len() as f64
+        };
+        let mut transcript_positions = Vec::<usize>::new();
+        for observation in matched_seed_observations {
+            let Some(positions) = seed_template_positions.get(&observation.bits) else {
+                continue;
+            };
+            if let Some(pos) = positions
+                .iter()
+                .take(RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT)
+                .find(|pos| {
+                    pos.template_idx == best_template_idx
+                        && (pos.template_pos as isize - observation.read_start as isize)
+                            == best_delta
+                })
+            {
+                transcript_positions.push(pos.template_pos);
+            }
+        }
+        transcript_positions.sort_unstable();
+        transcript_positions.dedup();
+        let mut gaps = transcript_positions
+            .windows(2)
+            .map(|pair| pair[1].saturating_sub(pair[0]))
+            .collect::<Vec<_>>();
+        let transcript_gap_count = gaps.len();
+        let median_transcript_gap = if gaps.is_empty() {
+            -1.0
+        } else {
+            gaps.sort_unstable();
+            let mid = gaps.len() / 2;
+            if gaps.len() % 2 == 0 {
+                (gaps[mid - 1] as f64 + gaps[mid] as f64) * 0.5
+            } else {
+                gaps[mid] as f64
+            }
+        };
+        SeedChainSpacingMetrics {
+            transcript_id: templates
+                .get(best_template_idx)
+                .map(|template| template.transcript_id.clone())
+                .unwrap_or_default(),
+            support_kmers: best_support,
+            support_fraction,
+            median_transcript_gap,
+            transcript_gap_count,
+        }
+    }
+
     fn rna_read_retention_rank(hit: &RnaReadInterpretationHit) -> RnaReadRetentionRank {
+        let weighted_support_milli = (hit.weighted_matched_kmers.max(0.0) * 1000.0).round() as u64;
+        let weighted_seed_hit_ppm =
+            (hit.weighted_seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
         let seed_hit_ppm = (hit.seed_hit_fraction.clamp(0.0, 1.0) * 1_000_000.0).round() as u32;
         RnaReadRetentionRank {
+            passed_seed_filter: hit.passed_seed_filter,
+            weighted_support_milli,
+            weighted_seed_hit_ppm,
             seed_hit_ppm,
             matched_kmers: hit.matched_kmers,
             tested_kmers: hit.tested_kmers,
@@ -10806,9 +11787,20 @@ impl GentleEngine {
             record_index: hit.record_index,
             header_id: hit.header_id.clone(),
             seed_hit_fraction: hit.seed_hit_fraction,
+            weighted_seed_hit_fraction: hit.weighted_seed_hit_fraction,
+            weighted_matched_kmers: hit.weighted_matched_kmers,
+            seed_chain_transcript_id: hit.seed_chain_transcript_id.clone(),
+            seed_chain_support_kmers: hit.seed_chain_support_kmers,
+            seed_chain_support_fraction: hit.seed_chain_support_fraction,
+            seed_median_transcript_gap: hit.seed_median_transcript_gap,
+            seed_transcript_gap_count: hit.seed_transcript_gap_count,
             matched_kmers: hit.matched_kmers,
             tested_kmers: hit.tested_kmers,
             passed_seed_filter: hit.passed_seed_filter,
+            reverse_complement_applied: hit.reverse_complement_applied,
+            selected_strand: hit.strand_diagnostics.selected_strand.clone(),
+            competing_opposite_strand: hit.strand_diagnostics.competing_opposite_strand,
+            ambiguous_strand_tie: hit.strand_diagnostics.ambiguous_near_tie,
             read_length_bp: hit.read_length_bp,
             sequence: hit.sequence.clone(),
             sequence_preview,
@@ -10969,6 +11961,516 @@ impl GentleEngine {
             sequence,
             genomic_positions_1based,
             kmer_positions,
+        }
+    }
+
+    fn build_exon_position_ordinal_map(
+        splicing: &SplicingExpertView,
+    ) -> HashMap<usize, (usize, usize, usize)> {
+        let mut map = HashMap::<usize, (usize, usize, usize)>::new();
+        for (idx, exon) in splicing.unique_exons.iter().enumerate() {
+            let ordinal = idx + 1;
+            for pos in exon.start_1based..=exon.end_1based {
+                map.insert(pos, (ordinal, exon.start_1based, exon.end_1based));
+            }
+        }
+        map
+    }
+
+    fn build_seed_support_indexes(
+        splicing: &SplicingExpertView,
+        templates: &[SplicingTranscriptTemplate],
+        kmer_len: usize,
+    ) -> (
+        HashMap<u32, Vec<usize>>,
+        HashMap<u32, Vec<(usize, usize)>>,
+        Vec<TranscriptExonPathModel>,
+        Vec<RnaReadTransitionSupportRow>,
+    ) {
+        if kmer_len == 0 {
+            return (HashMap::new(), HashMap::new(), vec![], vec![]);
+        }
+        let exon_position_ordinal = Self::build_exon_position_ordinal_map(splicing);
+        let mut seed_to_exons = HashMap::<u32, HashSet<usize>>::new();
+        let mut seed_to_transitions = HashMap::<u32, HashSet<(usize, usize)>>::new();
+        let mut transcript_models = Vec::<TranscriptExonPathModel>::new();
+        let mut transition_catalog = BTreeSet::<(usize, usize)>::new();
+
+        for template in templates {
+            let mut transcript_exons = Vec::<usize>::new();
+            for pos in &template.genomic_positions_1based {
+                let Some((ordinal, _, _)) = exon_position_ordinal.get(pos).copied() else {
+                    continue;
+                };
+                if transcript_exons.last().copied() != Some(ordinal) {
+                    transcript_exons.push(ordinal);
+                }
+            }
+            if transcript_exons.is_empty() {
+                continue;
+            }
+            let transcript_transitions = transcript_exons
+                .windows(2)
+                .map(|pair| (pair[0], pair[1]))
+                .collect::<Vec<_>>();
+            for transition in &transcript_transitions {
+                transition_catalog.insert(*transition);
+            }
+            transcript_models.push(TranscriptExonPathModel {
+                transcript_feature_id: template.transcript_feature_id,
+                transcript_id: template.transcript_id.clone(),
+                transcript_label: template.transcript_label.clone(),
+                strand: template.strand.clone(),
+                exon_ordinals: transcript_exons.clone(),
+                transitions: transcript_transitions.clone(),
+            });
+
+            if template.sequence.len() < kmer_len {
+                continue;
+            }
+            for start in 0..=template.sequence.len() - kmer_len {
+                let window = &template.sequence[start..start + kmer_len];
+                let Some(bits) = Self::encode_kmer_bits(window) else {
+                    continue;
+                };
+                let mut touched_exons = Vec::<usize>::new();
+                for offset in start..start + kmer_len {
+                    let Some(pos_1based) = template.genomic_positions_1based.get(offset).copied()
+                    else {
+                        continue;
+                    };
+                    let Some((ordinal, _, _)) = exon_position_ordinal.get(&pos_1based).copied()
+                    else {
+                        continue;
+                    };
+                    if touched_exons.last().copied() != Some(ordinal) {
+                        touched_exons.push(ordinal);
+                    }
+                }
+                if touched_exons.is_empty() {
+                    continue;
+                }
+                seed_to_exons
+                    .entry(bits)
+                    .or_default()
+                    .extend(touched_exons.iter().copied());
+                if touched_exons.len() >= 2 {
+                    let row = seed_to_transitions.entry(bits).or_default();
+                    for pair in touched_exons.windows(2) {
+                        row.insert((pair[0], pair[1]));
+                    }
+                }
+            }
+        }
+
+        let mut seed_to_exons_vec = seed_to_exons
+            .into_iter()
+            .map(|(bits, ordinals)| {
+                let mut rows = ordinals.into_iter().collect::<Vec<_>>();
+                rows.sort_unstable();
+                (bits, rows)
+            })
+            .collect::<HashMap<_, _>>();
+        for rows in seed_to_exons_vec.values_mut() {
+            rows.dedup();
+        }
+
+        let mut seed_to_transitions_vec = seed_to_transitions
+            .into_iter()
+            .map(|(bits, transitions)| {
+                let mut rows = transitions.into_iter().collect::<Vec<_>>();
+                rows.sort_unstable_by(|left, right| {
+                    left.0.cmp(&right.0).then(left.1.cmp(&right.1))
+                });
+                (bits, rows)
+            })
+            .collect::<HashMap<_, _>>();
+        for rows in seed_to_transitions_vec.values_mut() {
+            rows.dedup();
+        }
+
+        transcript_models.sort_by(|left, right| {
+            left.transcript_feature_id
+                .cmp(&right.transcript_feature_id)
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+
+        let transition_support_rows = transition_catalog
+            .into_iter()
+            .map(|(from_ord, to_ord)| {
+                let from_exon = splicing.unique_exons.get(from_ord.saturating_sub(1));
+                let to_exon = splicing.unique_exons.get(to_ord.saturating_sub(1));
+                RnaReadTransitionSupportRow {
+                    from_exon_ordinal: from_ord,
+                    to_exon_ordinal: to_ord,
+                    from_start_1based: from_exon.map(|row| row.start_1based).unwrap_or(0),
+                    from_end_1based: from_exon.map(|row| row.end_1based).unwrap_or(0),
+                    to_start_1based: to_exon.map(|row| row.start_1based).unwrap_or(0),
+                    to_end_1based: to_exon.map(|row| row.end_1based).unwrap_or(0),
+                    support_read_count: 0,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        (
+            seed_to_exons_vec,
+            seed_to_transitions_vec,
+            transcript_models,
+            transition_support_rows,
+        )
+    }
+
+    fn build_isoform_support_accumulators(
+        transcript_models: &[TranscriptExonPathModel],
+    ) -> BTreeMap<String, IsoformSupportAccumulator> {
+        let mut out = BTreeMap::<String, IsoformSupportAccumulator>::new();
+        for model in transcript_models {
+            out.insert(
+                model.transcript_id.clone(),
+                IsoformSupportAccumulator {
+                    transcript_feature_id: model.transcript_feature_id,
+                    transcript_id: model.transcript_id.clone(),
+                    transcript_label: model.transcript_label.clone(),
+                    strand: model.strand.clone(),
+                    exon_count: model.exon_ordinals.len(),
+                    expected_transition_count: model.transitions.len(),
+                    ..IsoformSupportAccumulator::default()
+                },
+            );
+        }
+        out
+    }
+
+    fn update_isoform_support_accumulator(
+        accumulators: &mut BTreeMap<String, IsoformSupportAccumulator>,
+        assigned_transcript_id: &str,
+        assigned_strand: &str,
+        passed_seed_filter: bool,
+        seed_median_gap: f64,
+        transition_confirmed: usize,
+        transition_total: usize,
+        seed_hit_fraction: f64,
+        weighted_seed_hit_fraction: f64,
+        chain_preferred_strand: &str,
+        competing_opposite_strand: bool,
+        ambiguous_strand_tie: bool,
+        read_supported_transitions: &HashSet<(usize, usize)>,
+        transcript_models_by_id: &HashMap<String, TranscriptExonPathModel>,
+    ) {
+        let Some(row) = accumulators.get_mut(assigned_transcript_id) else {
+            return;
+        };
+        row.reads_assigned = row.reads_assigned.saturating_add(1);
+        if passed_seed_filter {
+            row.reads_seed_passed = row.reads_seed_passed.saturating_add(1);
+        }
+        if seed_median_gap.is_finite() && seed_median_gap >= 0.0 {
+            row.seed_gap_sum += seed_median_gap;
+            row.seed_gap_count = row.seed_gap_count.saturating_add(1);
+        }
+        if transition_total > 0 {
+            row.confirmed_transition_fraction_sum +=
+                transition_confirmed as f64 / transition_total as f64;
+            row.confirmed_transition_fraction_count =
+                row.confirmed_transition_fraction_count.saturating_add(1);
+        }
+        row.best_seed_hit_fraction = row.best_seed_hit_fraction.max(seed_hit_fraction);
+        row.best_weighted_seed_hit_fraction = row
+            .best_weighted_seed_hit_fraction
+            .max(weighted_seed_hit_fraction);
+        if !chain_preferred_strand.is_empty() && chain_preferred_strand == assigned_strand {
+            row.reads_chain_same_strand = row.reads_chain_same_strand.saturating_add(1);
+        }
+        if competing_opposite_strand {
+            row.reads_with_opposite_strand_competition =
+                row.reads_with_opposite_strand_competition.saturating_add(1);
+        }
+        if ambiguous_strand_tie {
+            row.reads_ambiguous_strand_ties = row.reads_ambiguous_strand_ties.saturating_add(1);
+        }
+        if let Some(model) = transcript_models_by_id.get(assigned_transcript_id) {
+            for transition in &model.transitions {
+                if read_supported_transitions.contains(transition) {
+                    row.transition_rows_supported.insert(*transition);
+                }
+            }
+        }
+    }
+
+    fn collect_isoform_support_rows(
+        accumulators: &BTreeMap<String, IsoformSupportAccumulator>,
+    ) -> Vec<RnaReadIsoformSupportRow> {
+        let mut rows = accumulators
+            .values()
+            .map(|row| {
+                let transition_rows_supported = row.transition_rows_supported.len();
+                let transition_rows_supported_fraction = if row.expected_transition_count == 0 {
+                    0.0
+                } else {
+                    transition_rows_supported as f64 / row.expected_transition_count as f64
+                };
+                let mean_seed_median_gap = if row.seed_gap_count == 0 {
+                    -1.0
+                } else {
+                    row.seed_gap_sum / row.seed_gap_count as f64
+                };
+                let mean_confirmed_transition_fraction =
+                    if row.confirmed_transition_fraction_count == 0 {
+                        0.0
+                    } else {
+                        row.confirmed_transition_fraction_sum
+                            / row.confirmed_transition_fraction_count as f64
+                    };
+                RnaReadIsoformSupportRow {
+                    transcript_feature_id: row.transcript_feature_id,
+                    transcript_id: row.transcript_id.clone(),
+                    transcript_label: row.transcript_label.clone(),
+                    strand: row.strand.clone(),
+                    exon_count: row.exon_count,
+                    expected_transition_count: row.expected_transition_count,
+                    reads_assigned: row.reads_assigned,
+                    reads_seed_passed: row.reads_seed_passed,
+                    transition_rows_supported,
+                    transition_rows_supported_fraction,
+                    mean_seed_median_gap,
+                    mean_confirmed_transition_fraction,
+                    best_seed_hit_fraction: row.best_seed_hit_fraction,
+                    best_weighted_seed_hit_fraction: row.best_weighted_seed_hit_fraction,
+                    reads_chain_same_strand: row.reads_chain_same_strand,
+                    reads_with_opposite_strand_competition: row
+                        .reads_with_opposite_strand_competition,
+                    reads_ambiguous_strand_ties: row.reads_ambiguous_strand_ties,
+                }
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            right
+                .reads_seed_passed
+                .cmp(&left.reads_seed_passed)
+                .then(right.reads_assigned.cmp(&left.reads_assigned))
+                .then_with(|| {
+                    right
+                        .mean_confirmed_transition_fraction
+                        .partial_cmp(&left.mean_confirmed_transition_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| {
+                    right
+                        .best_weighted_seed_hit_fraction
+                        .partial_cmp(&left.best_weighted_seed_hit_fraction)
+                        .unwrap_or(Ordering::Equal)
+                })
+                .then_with(|| left.transcript_id.cmp(&right.transcript_id))
+        });
+        rows
+    }
+
+    fn transition_gate_passes(
+        confirmed_transitions: usize,
+        total_transitions: usize,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> bool {
+        if total_transitions == 0 {
+            return true;
+        }
+        let count_pass = confirmed_transitions >= seed_filter.min_confirmed_exon_transitions;
+        let fraction_pass = (confirmed_transitions as f64 / total_transitions as f64)
+            + f64::EPSILON
+            >= seed_filter.min_transition_support_fraction;
+        count_pass && fraction_pass
+    }
+
+    fn prefer_transcript_score(
+        candidate: TranscriptSupportScore<'_>,
+        current: TranscriptSupportScore<'_>,
+        chain_preferred_strand: Option<&str>,
+    ) -> bool {
+        if candidate.transition_hits != current.transition_hits {
+            return candidate.transition_hits > current.transition_hits;
+        }
+        if candidate.exon_hits != current.exon_hits {
+            return candidate.exon_hits > current.exon_hits;
+        }
+        if candidate.model.strand != current.model.strand {
+            if let Some(preferred) = chain_preferred_strand {
+                let candidate_pref = candidate.model.strand == preferred;
+                let current_pref = current.model.strand == preferred;
+                if candidate_pref != current_pref {
+                    return candidate_pref;
+                }
+            }
+        }
+        candidate.model.transcript_feature_id < current.model.transcript_feature_id
+    }
+
+    fn infer_read_exon_path(
+        transcript_models: &[TranscriptExonPathModel],
+        supported_exons: &HashSet<usize>,
+        supported_transitions: &HashSet<(usize, usize)>,
+        seed_chain_transcript_id: &str,
+    ) -> ReadExonPathInference {
+        let chain_preferred_strand = transcript_models
+            .iter()
+            .find(|model| model.transcript_id == seed_chain_transcript_id)
+            .map(|model| model.strand.as_str());
+        let mut best: Option<TranscriptSupportScore<'_>> = None;
+        let mut best_plus: Option<TranscriptSupportScore<'_>> = None;
+        let mut best_minus: Option<TranscriptSupportScore<'_>> = None;
+        for model in transcript_models {
+            if model.exon_ordinals.is_empty() {
+                continue;
+            }
+            let exon_hits = model
+                .exon_ordinals
+                .iter()
+                .filter(|ordinal| supported_exons.contains(ordinal))
+                .count();
+            let transition_hits = model
+                .transitions
+                .iter()
+                .filter(|pair| supported_transitions.contains(pair))
+                .count();
+            let candidate = TranscriptSupportScore {
+                model,
+                exon_hits,
+                transition_hits,
+            };
+            let should_replace = match best {
+                None => true,
+                Some(current) => {
+                    Self::prefer_transcript_score(candidate, current, chain_preferred_strand)
+                }
+            };
+            if should_replace {
+                best = Some(candidate);
+            }
+
+            if model.strand.trim() == "-" {
+                let should_replace_minus = match best_minus {
+                    None => true,
+                    Some(current) => {
+                        Self::prefer_transcript_score(candidate, current, chain_preferred_strand)
+                    }
+                };
+                if should_replace_minus {
+                    best_minus = Some(candidate);
+                }
+            } else {
+                let should_replace_plus = match best_plus {
+                    None => true,
+                    Some(current) => {
+                        Self::prefer_transcript_score(candidate, current, chain_preferred_strand)
+                    }
+                };
+                if should_replace_plus {
+                    best_plus = Some(candidate);
+                }
+            }
+        }
+        let Some(selected) = best else {
+            return ReadExonPathInference {
+                strand_diagnostics: RnaReadStrandAssignmentDiagnostics {
+                    selected_reason: "no transcript model matched".to_string(),
+                    chain_preferred_strand: chain_preferred_strand.unwrap_or("").to_string(),
+                    ..RnaReadStrandAssignmentDiagnostics::default()
+                },
+                ..ReadExonPathInference::default()
+            };
+        };
+        let model = selected.model;
+        let confirmed_transitions = selected.transition_hits;
+        if model.exon_ordinals.is_empty() {
+            return ReadExonPathInference {
+                strand_diagnostics: RnaReadStrandAssignmentDiagnostics {
+                    selected_reason: "selected transcript had no exons".to_string(),
+                    chain_preferred_strand: chain_preferred_strand.unwrap_or("").to_string(),
+                    ..RnaReadStrandAssignmentDiagnostics::default()
+                },
+                ..ReadExonPathInference::default()
+            };
+        }
+        let mut path = model.exon_ordinals[0].to_string();
+        for pair in model.exon_ordinals.windows(2) {
+            let edge = (pair[0], pair[1]);
+            let sep = if supported_transitions.contains(&edge) {
+                ':'
+            } else {
+                '-'
+            };
+            path.push(sep);
+            path.push_str(pair[1].to_string().as_str());
+        }
+        let plus_best = best_plus;
+        let minus_best = best_minus;
+        let opposite_best = if model.strand.trim() == "-" {
+            plus_best
+        } else {
+            minus_best
+        };
+        let competing_opposite_strand = opposite_best
+            .map(|row| row.transition_hits > 0 || row.exon_hits > 0)
+            .unwrap_or(false);
+        let ambiguous_near_tie = opposite_best
+            .map(|row| {
+                row.transition_hits == selected.transition_hits
+                    && row.exon_hits == selected.exon_hits
+                    && (row.transition_hits > 0 || row.exon_hits > 0)
+            })
+            .unwrap_or(false);
+        let selected_reason = if let Some(opposite) = opposite_best {
+            if selected.transition_hits != opposite.transition_hits {
+                format!(
+                    "selected higher transition support {}>{}",
+                    selected.transition_hits, opposite.transition_hits
+                )
+            } else if selected.exon_hits != opposite.exon_hits {
+                format!(
+                    "selected higher exon support {}>{}",
+                    selected.exon_hits, opposite.exon_hits
+                )
+            } else if let Some(preferred) = chain_preferred_strand {
+                if model.strand == preferred && opposite.model.strand != preferred {
+                    format!("tie resolved by chain-preferred strand '{}'", preferred)
+                } else {
+                    format!(
+                        "tie resolved by transcript feature id {}<={}",
+                        model.transcript_feature_id, opposite.model.transcript_feature_id
+                    )
+                }
+            } else {
+                format!(
+                    "tie resolved by transcript feature id {}<={}",
+                    model.transcript_feature_id, opposite.model.transcript_feature_id
+                )
+            }
+        } else {
+            format!("only strand '{}' has indexed support", model.strand)
+        };
+        ReadExonPathInference {
+            path,
+            confirmed_transitions,
+            total_transitions: model.transitions.len(),
+            transcript_id: model.transcript_id.clone(),
+            strand: model.strand.clone(),
+            strand_diagnostics: RnaReadStrandAssignmentDiagnostics {
+                selected_strand: model.strand.clone(),
+                selected_reason,
+                selected_transition_hits: selected.transition_hits,
+                selected_exon_hits: selected.exon_hits,
+                plus_best_transcript_id: plus_best
+                    .map(|row| row.model.transcript_id.clone())
+                    .unwrap_or_default(),
+                plus_best_transition_hits: plus_best.map(|row| row.transition_hits).unwrap_or(0),
+                plus_best_exon_hits: plus_best.map(|row| row.exon_hits).unwrap_or(0),
+                minus_best_transcript_id: minus_best
+                    .map(|row| row.model.transcript_id.clone())
+                    .unwrap_or_default(),
+                minus_best_transition_hits: minus_best.map(|row| row.transition_hits).unwrap_or(0),
+                minus_best_exon_hits: minus_best.map(|row| row.exon_hits).unwrap_or(0),
+                competing_opposite_strand,
+                ambiguous_near_tie,
+                chain_preferred_strand: chain_preferred_strand.unwrap_or("").to_string(),
+            },
         }
     }
 
@@ -11320,6 +12822,32 @@ impl GentleEngine {
                 message: "min_seed_hit_fraction must be within 0.0..=1.0".to_string(),
             });
         }
+        if !(0.0..=1.0).contains(&seed_filter.min_weighted_seed_hit_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "min_weighted_seed_hit_fraction must be within 0.0..=1.0".to_string(),
+            });
+        }
+        if !seed_filter.max_median_transcript_gap.is_finite()
+            || seed_filter.max_median_transcript_gap < 1.0
+        {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "max_median_transcript_gap must be >= 1.0".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&seed_filter.min_chain_consistency_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "min_chain_consistency_fraction must be within 0.0..=1.0".to_string(),
+            });
+        }
+        if !(0.0..=1.0).contains(&seed_filter.min_transition_support_fraction) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "min_transition_support_fraction must be within 0.0..=1.0".to_string(),
+            });
+        }
 
         let dna = self
             .state
@@ -11357,29 +12885,75 @@ impl GentleEngine {
                     .to_string(),
             });
         }
+        let seed_catalog_rows =
+            Self::collect_rna_seed_hash_catalog_rows(&templates, seed_filter.kmer_len);
+        let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
+        for row in &seed_catalog_rows {
+            *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
+        }
+        let (
+            seed_to_exons,
+            seed_to_transitions,
+            transcript_exon_models,
+            mut transition_support_rows,
+        ) = Self::build_seed_support_indexes(&splicing, &templates, seed_filter.kmer_len);
+        let transcript_models_by_id = transcript_exon_models
+            .iter()
+            .map(|model| (model.transcript_id.clone(), model.clone()))
+            .collect::<HashMap<_, _>>();
+        let mut isoform_support_accumulators =
+            Self::build_isoform_support_accumulators(&transcript_exon_models);
+        let mut isoform_support_rows =
+            Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        let transition_row_index = transition_support_rows
+            .iter()
+            .enumerate()
+            .map(|(idx, row)| ((row.from_exon_ordinal, row.to_exon_ordinal), idx))
+            .collect::<HashMap<_, _>>();
+        let junction_crossing_seed_bits_indexed = seed_to_transitions.len();
         let mut bins = Self::build_rna_read_seed_histogram_bins(dna.len());
-        let histogram_index = Self::build_rna_read_seed_histogram_index(&templates, dna.len(), &bins);
+        let histogram_index =
+            Self::build_rna_read_seed_histogram_index(&templates, dna.len(), &bins);
+        let seed_template_positions = Self::build_seed_template_position_index(&templates);
         let mut score_density_bins = vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT];
         let mut input_bytes_processed = 0u64;
         let mut input_bytes_total = std::fs::metadata(input_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        if !on_progress(OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
-            seq_id: seq_id.to_string(),
-            reads_processed: 0,
-            reads_total: 0,
-            input_bytes_processed,
-            input_bytes_total,
-            seed_passed: 0,
-            aligned: 0,
-            tested_kmers: 0,
-            matched_kmers: 0,
-            update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
-            done: false,
-            bins: bins.clone(),
-            score_density_bins: score_density_bins.clone(),
-            top_hits_preview: vec![],
-        })) {
+        if !on_progress(OperationProgress::RnaReadInterpret(
+            RnaReadInterpretProgress {
+                seq_id: seq_id.to_string(),
+                reads_processed: 0,
+                reads_total: 0,
+                read_bases_processed: 0,
+                mean_read_length_bp: 0.0,
+                median_read_length_bp: 0,
+                p95_read_length_bp: 0,
+                input_bytes_processed,
+                input_bytes_total,
+                seed_passed: 0,
+                aligned: 0,
+                tested_kmers: 0,
+                matched_kmers: 0,
+                seed_compute_ms: 0.0,
+                align_compute_ms: 0.0,
+                io_read_ms: 0.0,
+                fasta_parse_ms: 0.0,
+                normalize_compute_ms: 0.0,
+                inference_compute_ms: 0.0,
+                progress_emit_ms: 0.0,
+                update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                done: false,
+                bins: bins.clone(),
+                score_density_bins: score_density_bins.clone(),
+                top_hits_preview: vec![],
+                transition_support_rows: transition_support_rows.clone(),
+                isoform_support_rows: isoform_support_rows.clone(),
+                reads_with_transition_support: 0,
+                transition_confirmations: 0,
+                junction_crossing_seed_bits_indexed,
+            },
+        )) {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled before FASTA scan started".to_string(),
@@ -11407,146 +12981,329 @@ impl GentleEngine {
         let mut reads_processed = 0usize;
         let mut cumulative_tested_kmers = 0usize;
         let mut cumulative_matched_kmers = 0usize;
+        let mut cumulative_seed_compute_ms = 0.0f64;
+        let mut cumulative_align_compute_ms = 0.0f64;
+        let mut cumulative_io_read_ms = 0.0f64;
+        let mut cumulative_fasta_parse_ms = 0.0f64;
+        let mut cumulative_normalize_compute_ms = 0.0f64;
+        let mut cumulative_inference_compute_ms = 0.0f64;
+        let mut cumulative_progress_emit_ms = 0.0f64;
+        let mut cumulative_read_bases_processed = 0u64;
+        let mut read_length_counts = vec![0u64; 1];
         let mut support_aligned_reads = 0usize;
         let mut support_exon_counts = vec![0usize; splicing.unique_exons.len()];
         let mut support_junction_counts = vec![0usize; splicing.junctions.len()];
-        let final_visit_progress = Self::visit_fasta_records_with_offsets(input_path, &mut |record, visit_progress| {
-            if !should_continue() {
-                return Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "RNA-read interpretation cancelled during FASTA scan".to_string(),
-                });
-            }
-            input_bytes_processed = visit_progress.input_bytes_processed;
-            input_bytes_total = visit_progress.input_bytes_total;
-            let windows = Self::sampled_read_windows(record.sequence.len(), seed_filter);
-            let mut tested_kmers = 0usize;
-            let mut matched_kmers = 0usize;
-            for (start, end) in windows {
+        let mut reads_with_transition_support = 0usize;
+        let mut transition_confirmations = 0usize;
+        let alignment_enabled = !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1)
+            && align_config.max_secondary_mappings > 0;
+        let final_visit_progress =
+            Self::visit_fasta_records_with_offsets(input_path, &mut |record, visit_progress| {
                 if !should_continue() {
                     return Err(EngineError {
                         code: ErrorCode::Internal,
-                        message: "RNA-read interpretation cancelled during seed scanning"
-                            .to_string(),
+                        message: "RNA-read interpretation cancelled during FASTA scan".to_string(),
                     });
                 }
-                let (tested, matched) = Self::count_seed_hits_in_window_with_histogram(
-                    &record.sequence[start..end],
-                    seed_filter.kmer_len,
-                    &seed_index,
-                    &histogram_index,
-                    &mut bins,
-                );
-                tested_kmers = tested_kmers.saturating_add(tested);
-                matched_kmers = matched_kmers.saturating_add(matched);
-            }
-            cumulative_tested_kmers = cumulative_tested_kmers.saturating_add(tested_kmers);
-            cumulative_matched_kmers = cumulative_matched_kmers.saturating_add(matched_kmers);
-            let (seed_hit_fraction, perfect_seed_match, passed_seed_filter) = Self::seed_hit_metrics(
-                tested_kmers,
-                matched_kmers,
-                seed_filter.min_seed_hit_fraction,
-            );
-            let density_idx = Self::score_density_bin_index(seed_hit_fraction);
-            if let Some(bin) = score_density_bins.get_mut(density_idx) {
-                *bin = bin.saturating_add(1);
-            }
-            let (best_mapping, secondary_mappings) = if passed_seed_filter {
-                if !should_continue() {
-                    return Err(EngineError {
-                        code: ErrorCode::Internal,
-                        message: "RNA-read interpretation cancelled before alignment".to_string(),
-                    });
+                input_bytes_processed = visit_progress.input_bytes_processed;
+                input_bytes_total = visit_progress.input_bytes_total;
+                cumulative_io_read_ms = visit_progress.io_read_ms;
+                cumulative_fasta_parse_ms = visit_progress.record_parse_ms;
+                let normalize_started = Instant::now();
+                let (normalized_sequence, reverse_complement_applied) =
+                    Self::normalize_rna_read_sequence_for_scoring(&record.sequence, seed_filter);
+                cumulative_normalize_compute_ms +=
+                    normalize_started.elapsed().as_secs_f64() * 1000.0;
+                cumulative_read_bases_processed = cumulative_read_bases_processed
+                    .saturating_add(normalized_sequence.len() as u64);
+                Self::update_read_length_counts(&mut read_length_counts, normalized_sequence.len());
+                let windows = Self::sampled_read_windows(normalized_sequence.len(), seed_filter);
+                let mut tested_kmers = 0usize;
+                let mut matched_kmers = 0usize;
+                let mut matched_seed_bits = HashSet::<u32>::new();
+                let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
+                let seed_started = Instant::now();
+                for (start, end) in windows {
+                    if !should_continue() {
+                        return Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "RNA-read interpretation cancelled during seed scanning"
+                                .to_string(),
+                        });
+                    }
+                    let (tested, matched, matched_bits, matched_observations) =
+                        Self::count_seed_hits_in_window_with_histogram(
+                            &normalized_sequence[start..end],
+                            start,
+                            seed_filter.kmer_len,
+                            &seed_index,
+                            &histogram_index,
+                            &mut bins,
+                            &seed_occurrence_counts,
+                        );
+                    tested_kmers = tested_kmers.saturating_add(tested);
+                    matched_kmers = matched_kmers.saturating_add(matched);
+                    matched_seed_bits.extend(matched_bits);
+                    matched_seed_observations.extend(matched_observations);
                 }
-                Self::align_read_to_templates(&record.sequence, &templates, align_config)
-            } else {
-                (None, vec![])
-            };
-            if passed_seed_filter {
-                seed_passed += 1;
-            }
-            if let Some(mapping) = &best_mapping {
-                aligned += 1;
-                support_aligned_reads = support_aligned_reads.saturating_add(1);
-                Self::accumulate_support_counts_for_mapping(
-                    mapping,
-                    &splicing,
-                    &mut support_exon_counts,
-                    &mut support_junction_counts,
+                cumulative_seed_compute_ms += seed_started.elapsed().as_secs_f64() * 1000.0;
+                cumulative_tested_kmers = cumulative_tested_kmers.saturating_add(tested_kmers);
+                cumulative_matched_kmers = cumulative_matched_kmers.saturating_add(matched_kmers);
+                let weighted_matched_kmers = Self::weighted_seed_support_from_occurrences(
+                    &matched_seed_bits,
+                    &seed_occurrence_counts,
                 );
-            }
-            let hit = RnaReadInterpretationHit {
-                record_index: record.record_index,
-                source_byte_offset: record.source_byte_offset,
-                header_id: record.header_id,
-                sequence: String::from_utf8_lossy(&record.sequence).to_string(),
-                read_length_bp: record.sequence.len(),
-                tested_kmers,
-                matched_kmers,
-                seed_hit_fraction,
-                perfect_seed_match,
-                passed_seed_filter,
-                best_mapping,
-                secondary_mappings,
-            };
-            Self::retain_top_rna_read_preview_hit(&mut progress_top_hits, &hit);
-            Self::retain_top_rna_read_hit(&mut retained_hits, hit);
-            reads_processed = reads_processed.saturating_add(1);
-            let should_emit = reads_processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0
-                || reads_processed <= 3;
-            if should_emit
-                && !on_progress(OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
-                    seq_id: seq_id.to_string(),
-                    reads_processed,
-                    reads_total: 0,
-                    input_bytes_processed,
-                    input_bytes_total,
-                    seed_passed,
-                    aligned,
-                    tested_kmers: cumulative_tested_kmers,
-                    matched_kmers: cumulative_matched_kmers,
-                    update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
-                    done: false,
-                    bins: bins.clone(),
-                    score_density_bins: score_density_bins.clone(),
-                    top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
-                }))
-            {
-                return Err(EngineError {
-                    code: ErrorCode::Internal,
-                    message: "RNA-read interpretation cancelled during progress reporting"
-                        .to_string(),
-                });
-            }
-            Ok(())
-        })?;
+                let weighted_seed_hit_fraction = if tested_kmers == 0 {
+                    0.0
+                } else {
+                    weighted_matched_kmers / tested_kmers as f64
+                };
+                let inference_started = Instant::now();
+                let mut read_supported_exons = HashSet::<usize>::new();
+                let mut read_supported_transitions = HashSet::<(usize, usize)>::new();
+                for bits in &matched_seed_bits {
+                    if let Some(exons) = seed_to_exons.get(bits) {
+                        read_supported_exons.extend(exons.iter().copied());
+                    }
+                    if let Some(transitions) = seed_to_transitions.get(bits) {
+                        read_supported_transitions.extend(transitions.iter().copied());
+                    }
+                }
+                if !read_supported_transitions.is_empty() {
+                    reads_with_transition_support = reads_with_transition_support.saturating_add(1);
+                    transition_confirmations =
+                        transition_confirmations.saturating_add(read_supported_transitions.len());
+                    for transition in &read_supported_transitions {
+                        let Some(row_idx) = transition_row_index.get(transition).copied() else {
+                            continue;
+                        };
+                        if let Some(row) = transition_support_rows.get_mut(row_idx) {
+                            row.support_read_count = row.support_read_count.saturating_add(1);
+                        }
+                    }
+                }
+                let (seed_hit_fraction, perfect_seed_match, _raw_passed_seed_filter) =
+                    Self::seed_hit_metrics(
+                        tested_kmers,
+                        matched_kmers,
+                        seed_filter.min_seed_hit_fraction,
+                    );
+                let spacing_metrics = Self::compute_seed_chain_spacing_metrics(
+                    &matched_seed_observations,
+                    &seed_template_positions,
+                    &templates,
+                );
+                let path_inference = Self::infer_read_exon_path(
+                    &transcript_exon_models,
+                    &read_supported_exons,
+                    &read_supported_transitions,
+                    &spacing_metrics.transcript_id,
+                );
+                let passed_seed_filter = Self::seed_filter_passes(
+                    seed_hit_fraction,
+                    weighted_seed_hit_fraction,
+                    tested_kmers,
+                    matched_seed_bits.len(),
+                    spacing_metrics.support_fraction,
+                    spacing_metrics.median_transcript_gap,
+                    spacing_metrics.transcript_gap_count,
+                    path_inference.confirmed_transitions,
+                    path_inference.total_transitions,
+                    seed_filter,
+                );
+                if !path_inference.transcript_id.is_empty() {
+                    Self::update_isoform_support_accumulator(
+                        &mut isoform_support_accumulators,
+                        &path_inference.transcript_id,
+                        &path_inference.strand,
+                        passed_seed_filter,
+                        spacing_metrics.median_transcript_gap,
+                        path_inference.confirmed_transitions,
+                        path_inference.total_transitions,
+                        seed_hit_fraction,
+                        weighted_seed_hit_fraction,
+                        &path_inference.strand_diagnostics.chain_preferred_strand,
+                        path_inference.strand_diagnostics.competing_opposite_strand,
+                        path_inference.strand_diagnostics.ambiguous_near_tie,
+                        &read_supported_transitions,
+                        &transcript_models_by_id,
+                    );
+                }
+                cumulative_inference_compute_ms +=
+                    inference_started.elapsed().as_secs_f64() * 1000.0;
+                let density_idx = Self::score_density_bin_index(seed_hit_fraction);
+                if let Some(bin) = score_density_bins.get_mut(density_idx) {
+                    *bin = bin.saturating_add(1);
+                }
+                let align_started = Instant::now();
+                let (best_mapping, secondary_mappings) = if passed_seed_filter && alignment_enabled
+                {
+                    if !should_continue() {
+                        return Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "RNA-read interpretation cancelled before alignment"
+                                .to_string(),
+                        });
+                    }
+                    Self::align_read_to_templates(&normalized_sequence, &templates, align_config)
+                } else {
+                    (None, vec![])
+                };
+                if passed_seed_filter && alignment_enabled {
+                    cumulative_align_compute_ms += align_started.elapsed().as_secs_f64() * 1000.0;
+                }
+                if passed_seed_filter {
+                    seed_passed += 1;
+                }
+                if let Some(mapping) = &best_mapping {
+                    aligned += 1;
+                    support_aligned_reads = support_aligned_reads.saturating_add(1);
+                    Self::accumulate_support_counts_for_mapping(
+                        mapping,
+                        &splicing,
+                        &mut support_exon_counts,
+                        &mut support_junction_counts,
+                    );
+                }
+                let hit = RnaReadInterpretationHit {
+                    record_index: record.record_index,
+                    source_byte_offset: record.source_byte_offset,
+                    header_id: record.header_id,
+                    sequence: String::from_utf8_lossy(&normalized_sequence).to_string(),
+                    read_length_bp: normalized_sequence.len(),
+                    tested_kmers,
+                    matched_kmers,
+                    seed_hit_fraction,
+                    weighted_seed_hit_fraction,
+                    weighted_matched_kmers,
+                    seed_chain_transcript_id: spacing_metrics.transcript_id,
+                    seed_chain_support_kmers: spacing_metrics.support_kmers,
+                    seed_chain_support_fraction: spacing_metrics.support_fraction,
+                    seed_median_transcript_gap: spacing_metrics.median_transcript_gap,
+                    seed_transcript_gap_count: spacing_metrics.transcript_gap_count,
+                    exon_path_transcript_id: path_inference.transcript_id,
+                    exon_path: path_inference.path,
+                    exon_transitions_confirmed: path_inference.confirmed_transitions,
+                    exon_transitions_total: path_inference.total_transitions,
+                    reverse_complement_applied,
+                    strand_diagnostics: path_inference.strand_diagnostics,
+                    perfect_seed_match,
+                    passed_seed_filter,
+                    best_mapping,
+                    secondary_mappings,
+                };
+                Self::retain_top_rna_read_preview_hit(&mut progress_top_hits, &hit);
+                Self::retain_top_rna_read_hit(&mut retained_hits, hit);
+                reads_processed = reads_processed.saturating_add(1);
+                let should_emit = reads_processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0
+                    || reads_processed <= 3;
+                if should_emit {
+                    isoform_support_rows =
+                        Self::collect_isoform_support_rows(&isoform_support_accumulators);
+                    let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
+                        &read_length_counts,
+                        reads_processed,
+                        cumulative_read_bases_processed,
+                    );
+                    let emit_started = Instant::now();
+                    let progress_event =
+                        OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
+                            seq_id: seq_id.to_string(),
+                            reads_processed,
+                            reads_total: 0,
+                            read_bases_processed: cumulative_read_bases_processed,
+                            mean_read_length_bp: mean_len,
+                            median_read_length_bp: median_len,
+                            p95_read_length_bp: p95_len,
+                            input_bytes_processed,
+                            input_bytes_total,
+                            seed_passed,
+                            aligned,
+                            tested_kmers: cumulative_tested_kmers,
+                            matched_kmers: cumulative_matched_kmers,
+                            seed_compute_ms: cumulative_seed_compute_ms,
+                            align_compute_ms: cumulative_align_compute_ms,
+                            io_read_ms: cumulative_io_read_ms,
+                            fasta_parse_ms: cumulative_fasta_parse_ms,
+                            normalize_compute_ms: cumulative_normalize_compute_ms,
+                            inference_compute_ms: cumulative_inference_compute_ms,
+                            progress_emit_ms: cumulative_progress_emit_ms,
+                            update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+                            done: false,
+                            bins: bins.clone(),
+                            score_density_bins: score_density_bins.clone(),
+                            top_hits_preview: Self::collect_rna_read_top_hit_previews(
+                                &progress_top_hits,
+                            ),
+                            transition_support_rows: transition_support_rows.clone(),
+                            isoform_support_rows: isoform_support_rows.clone(),
+                            reads_with_transition_support,
+                            transition_confirmations,
+                            junction_crossing_seed_bits_indexed,
+                        });
+                    if !on_progress(progress_event) {
+                        return Err(EngineError {
+                            code: ErrorCode::Internal,
+                            message: "RNA-read interpretation cancelled during progress reporting"
+                                .to_string(),
+                        });
+                    }
+                    cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
+                }
+                Ok(())
+            })?;
         input_bytes_processed = final_visit_progress.input_bytes_processed;
         input_bytes_total = final_visit_progress.input_bytes_total;
         let reads_total = final_visit_progress.records_processed;
         let mut hits = retained_hits.into_vec();
         hits.sort_by(|left, right| right.rank.cmp(&left.rank));
         let hits = hits.into_iter().map(|row| row.hit).collect::<Vec<_>>();
-        if !on_progress(OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
+        isoform_support_rows = Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
+            &read_length_counts,
+            reads_total,
+            cumulative_read_bases_processed,
+        );
+        let final_emit_started = Instant::now();
+        let final_progress = OperationProgress::RnaReadInterpret(RnaReadInterpretProgress {
             seq_id: seq_id.to_string(),
             reads_processed: reads_total,
             reads_total,
+            read_bases_processed: cumulative_read_bases_processed,
+            mean_read_length_bp: mean_len,
+            median_read_length_bp: median_len,
+            p95_read_length_bp: p95_len,
             input_bytes_processed,
             input_bytes_total,
             seed_passed,
             aligned,
             tested_kmers: cumulative_tested_kmers,
             matched_kmers: cumulative_matched_kmers,
+            seed_compute_ms: cumulative_seed_compute_ms,
+            align_compute_ms: cumulative_align_compute_ms,
+            io_read_ms: cumulative_io_read_ms,
+            fasta_parse_ms: cumulative_fasta_parse_ms,
+            normalize_compute_ms: cumulative_normalize_compute_ms,
+            inference_compute_ms: cumulative_inference_compute_ms,
+            progress_emit_ms: cumulative_progress_emit_ms,
             update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
             done: true,
             bins,
             score_density_bins: score_density_bins.clone(),
             top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
-        })) {
+            transition_support_rows: transition_support_rows.clone(),
+            isoform_support_rows: isoform_support_rows.clone(),
+            reads_with_transition_support,
+            transition_confirmations,
+            junction_crossing_seed_bits_indexed,
+        });
+        if !on_progress(final_progress) {
             return Err(EngineError {
                 code: ErrorCode::Internal,
                 message: "RNA-read interpretation cancelled at completion".to_string(),
             });
         }
+        let _final_emit_ms = final_emit_started.elapsed().as_secs_f64() * 1000.0;
 
         let (exon_support_frequencies, junction_support_frequencies) =
             Self::build_rna_read_support_frequencies_from_counts(
@@ -11556,6 +13313,26 @@ impl GentleEngine {
                 support_aligned_reads,
             );
         let mut warnings = Vec::<String>::new();
+        if !alignment_enabled {
+            warnings.push(
+                "phase-1 profile runs seed filtering only; alignment is deferred to a later pass"
+                    .to_string(),
+            );
+        }
+        warnings.push(
+            "phase-1 seed filtering hashes full read span for every read; short/long window knobs are compatibility fields and currently have no effect"
+                .to_string(),
+        );
+        warnings.push(format!(
+            "seed-pass gate: raw>={:.3} and weighted>={:.3} and unique_matched_kmers>={} and chain_consistency>={:.2} and median_transcript_gap<={:.2} and confirmed_transitions>={} and transition_fraction>={:.2}",
+            seed_filter.min_seed_hit_fraction,
+            seed_filter.min_weighted_seed_hit_fraction,
+            seed_filter.min_unique_matched_kmers,
+            seed_filter.min_chain_consistency_fraction,
+            seed_filter.max_median_transcript_gap,
+            seed_filter.min_confirmed_exon_transitions,
+            seed_filter.min_transition_support_fraction,
+        ));
         if reads_total > hits.len() {
             warnings.push(format!(
                 "retained_top_hits={} out of total_reads={} (scored by seed-hit fraction)",
@@ -11583,6 +13360,8 @@ impl GentleEngine {
             hits,
             exon_support_frequencies,
             junction_support_frequencies,
+            transition_support_rows,
+            isoform_support_rows,
         })
     }
 
@@ -18985,7 +20764,9 @@ impl GentleEngine {
         }
         | Operation::ExportRnaReadReport { path, .. }
         | Operation::ExportRnaReadHitsFasta { path, .. }
-        | Operation::ExportRnaReadSampleSheet { path, .. } = op
+        | Operation::ExportRnaReadSampleSheet { path, .. }
+        | Operation::ExportRnaReadExonPathsTsv { path, .. }
+        | Operation::ExportRnaReadExonAbundanceTsv { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
@@ -19011,7 +20792,9 @@ impl GentleEngine {
             | Operation::ExportGuideProtocolText { path, .. }
             | Operation::ExportRnaReadReport { path, .. }
             | Operation::ExportRnaReadHitsFasta { path, .. }
-            | Operation::ExportRnaReadSampleSheet { path, .. } => {
+            | Operation::ExportRnaReadSampleSheet { path, .. }
+            | Operation::ExportRnaReadExonPathsTsv { path, .. }
+            | Operation::ExportRnaReadExonAbundanceTsv { path, .. } => {
                 push(path);
             }
             _ => {}
@@ -25484,6 +27267,37 @@ impl GentleEngine {
                     export.path, export.report_count, export.appended
                 ));
             }
+            Operation::ExportRnaReadExonPathsTsv {
+                report_id,
+                path,
+                selection,
+            } => {
+                let export = self.export_rna_read_exon_paths_tsv(&report_id, &path, selection)?;
+                result.messages.push(format!(
+                    "Exported RNA-read exon paths '{}' to '{}' (selection={}, rows={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.row_count
+                ));
+            }
+            Operation::ExportRnaReadExonAbundanceTsv {
+                report_id,
+                path,
+                selection,
+            } => {
+                let export =
+                    self.export_rna_read_exon_abundance_tsv(&report_id, &path, selection)?;
+                result.messages.push(format!(
+                    "Exported RNA-read exon abundance '{}' to '{}' (selection={}, selected_reads={}, exon_rows={}, transition_rows={})",
+                    export.report_id,
+                    export.path,
+                    export.selection.as_str(),
+                    export.selected_read_count,
+                    export.exon_row_count,
+                    export.transition_row_count
+                ));
+            }
             Operation::ExtractRegion {
                 input,
                 from,
@@ -26996,6 +28810,26 @@ impl GentleEngine {
                     result.messages.push(format!(
                         "Set parameter 'regulatory_feature_max_view_span_bp' to {}",
                         self.state.display.regulatory_feature_max_view_span_bp
+                    ));
+                }
+                "sequence_panel_max_text_length_bp"
+                | "sequence_text_panel_max_length_bp"
+                | "sequence_panel_max_length_bp" => {
+                    let raw = value.as_u64().ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message: format!("SetParameter {name} requires a non-negative integer"),
+                    })?;
+                    self.state.display.sequence_panel_max_text_length_bp = raw as usize;
+                    let mode = if self.state.display.sequence_panel_max_text_length_bp == 0 {
+                        "unlimited".to_string()
+                    } else {
+                        format!(
+                            "{} bp",
+                            self.state.display.sequence_panel_max_text_length_bp
+                        )
+                    };
+                    result.messages.push(format!(
+                        "Set parameter 'sequence_panel_max_text_length_bp' to {mode}"
                     ));
                 }
                 "linear_sequence_base_text_max_view_span_bp"
@@ -29292,6 +31126,33 @@ exit 2
                 .linear_sequence_base_text_max_view_span_bp,
             500
         );
+    }
+
+    #[test]
+    fn test_set_parameter_sequence_panel_max_text_length_bp() {
+        let mut engine = GentleEngine::new();
+        let res = engine
+            .apply(Operation::SetParameter {
+                name: "sequence_panel_max_text_length_bp".to_string(),
+                value: serde_json::json!(200_000),
+            })
+            .unwrap();
+        assert!(
+            res.messages
+                .iter()
+                .any(|m| m.contains("sequence_panel_max_text_length_bp"))
+        );
+        assert_eq!(
+            engine.state().display.sequence_panel_max_text_length_bp,
+            200_000
+        );
+        engine
+            .apply(Operation::SetParameter {
+                name: "sequence_panel_max_text_length_bp".to_string(),
+                value: serde_json::json!(0),
+            })
+            .unwrap();
+        assert_eq!(engine.state().display.sequence_panel_max_text_length_bp, 0);
     }
 
     #[test]
@@ -36545,15 +38406,11 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     fn test_parse_fasta_records_with_offsets_supports_gzip_input() {
         let td = tempdir().expect("tempdir");
         let fasta_gz = td.path().join("reads.fa.gz");
-        write_gzip(
-            &fasta_gz,
-            ">read_1 comment\nAUGT\n>read_2\nCC\nGG\n",
-        );
+        write_gzip(&fasta_gz, ">read_1 comment\nAUGT\n>read_2\nCC\nGG\n");
 
-        let records = GentleEngine::parse_fasta_records_with_offsets(
-            fasta_gz.to_str().expect("utf-8 path"),
-        )
-        .expect("parse gzip FASTA");
+        let records =
+            GentleEngine::parse_fasta_records_with_offsets(fasta_gz.to_str().expect("utf-8 path"))
+                .expect("parse gzip FASTA");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].header_id, "read_1");
         assert_eq!(records[0].sequence, b"ATGT".to_vec());
@@ -36621,6 +38478,114 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(report.read_count_total, 1);
         assert_eq!(report.hits[0].header_id, "read_1");
         assert!(report.hits[0].passed_seed_filter);
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_poly_t_cdna_flip_sets_rc_flag_and_sequence() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_poly_t.fa");
+        fs::write(&input_path, ">read_1\nTTTACGTACGT\n").expect("write reads");
+
+        let mut cdna_seed_filter = RnaReadSeedFilterConfig::default();
+        cdna_seed_filter.poly_t_prefix_min_bp = 3;
+        cdna_seed_filter.kmer_len = 3;
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: cdna_seed_filter,
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_poly_t_cdna".to_string()),
+            })
+            .expect("interpret cDNA-style reads");
+        let cdna_report = engine
+            .get_rna_read_report("rna_reads_poly_t_cdna")
+            .expect("cdna report");
+        assert_eq!(cdna_report.hits.len(), 1);
+        assert!(cdna_report.hits[0].reverse_complement_applied);
+        assert_eq!(cdna_report.hits[0].sequence, "ACGTACGTAAA");
+
+        let mut direct_seed_filter = RnaReadSeedFilterConfig::default();
+        direct_seed_filter.poly_t_prefix_min_bp = 3;
+        direct_seed_filter.kmer_len = 3;
+        direct_seed_filter.cdna_poly_t_flip_enabled = false;
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: direct_seed_filter,
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_poly_t_direct".to_string()),
+            })
+            .expect("interpret direct-RNA-style reads");
+        let direct_report = engine
+            .get_rna_read_report("rna_reads_poly_t_direct")
+            .expect("direct report");
+        assert_eq!(direct_report.hits.len(), 1);
+        assert!(!direct_report.hits[0].reverse_complement_applied);
+        assert_eq!(direct_report.hits[0].sequence, "TTTACGTACGT");
+    }
+
+    #[test]
+    fn test_poly_t_cdna_flip_accepts_disrupted_t_rich_heads() {
+        let mut seed_filter = RnaReadSeedFilterConfig::default();
+        seed_filter.poly_t_prefix_min_bp = 18;
+        seed_filter.cdna_poly_t_flip_enabled = true;
+
+        let disrupted_examples = [
+            "TTTTTTTTTTTTCTTTTTTTTTTTTTTTTTTTAAGGTGGCAGGCTTTTAATTTCC",
+            "TTTTTTTTTTTTTTTTTATTTTTTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTGTTTTTTTTTTTTTTTTTTTTTTTTTTTTGGGGGATTCTGCCAAAAGGA",
+            "TTTTTTTTTTTTTGTTTTTTTGTTTTTTGAGTGTGAAAAATAAACTATTTTATTTCA",
+            "TTTTTTTTTTTGTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTACCTCATTT",
+            "TTGTCATATACTTATTTCTTTTTTTTTTTTTTTTTTTATTTTTTTTTTTTTTTTTTAAATTGTATTTATAGATATCTGGACTCAGAACT",
+        ];
+        for sequence in disrupted_examples {
+            let (_normalized, rc_applied) = GentleEngine::normalize_rna_read_sequence_for_scoring(
+                sequence.as_bytes(),
+                &seed_filter,
+            );
+            assert!(
+                rc_applied,
+                "expected disrupted T-rich cDNA head to be normalized: {}",
+                sequence
+            );
+        }
+
+        let (negative_normalized, negative_rc_applied) =
+            GentleEngine::normalize_rna_read_sequence_for_scoring(
+                b"ACGTCAGGACTGACCGTACCGATCGATCGATCGAC",
+                &seed_filter,
+            );
+        assert!(
+            !negative_rc_applied,
+            "non poly-T heads must stay in original orientation"
+        );
+        assert_eq!(
+            negative_normalized,
+            b"ACGTCAGGACTGACCGTACCGATCGATCGATCGAC".to_vec()
+        );
     }
 
     #[test]
@@ -36817,29 +38782,658 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn test_rna_read_seed_filter_passes_uses_composite_gate() {
+        let cfg = RnaReadSeedFilterConfig {
+            min_seed_hit_fraction: 0.30,
+            min_weighted_seed_hit_fraction: 0.05,
+            min_unique_matched_kmers: 12,
+            min_chain_consistency_fraction: 0.40,
+            min_confirmed_exon_transitions: 1,
+            min_transition_support_fraction: 0.20,
+            ..RnaReadSeedFilterConfig::default()
+        };
+        assert!(GentleEngine::seed_filter_passes(
+            0.30, 0.05, 40, 12, 0.90, 1.0, 8, 2, 4, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.29, 0.90, 40, 99, 0.95, 1.0, 20, 5, 7, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.30, 0.07, 40, 2, 0.80, 2.0, 12, 2, 4, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.35, 0.01, 40, 13, 0.80, 3.5, 14, 2, 4, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.30, 0.02, 40, 11, 0.80, 1.0, 10, 2, 4, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.30, 0.09, 40, 9, 0.80, 5.0, 30, 2, 4, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.30, 0.09, 40, 19, 0.80, 1.0, 30, 0, 8, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.30, 0.09, 40, 19, 0.80, 1.0, 30, 1, 10, &cfg
+        ));
+        assert!(!GentleEngine::seed_filter_passes(
+            0.90, 0.70, 40, 40, 0.10, 1.0, 39, 4, 4, &cfg
+        ));
+        assert!(GentleEngine::seed_filter_passes(
+            0.95, 0.60, 8, 8, 1.0, 1.0, 7, 1, 1, &cfg
+        ));
+    }
+
+    #[test]
+    fn test_compute_seed_chain_spacing_metrics_reports_median_transcript_gap() {
+        let templates = vec![SplicingTranscriptTemplate {
+            transcript_feature_id: 1,
+            transcript_id: "tx1".to_string(),
+            transcript_label: "tx1".to_string(),
+            strand: "+".to_string(),
+            ..SplicingTranscriptTemplate::default()
+        }];
+        let seed_template_positions = HashMap::from([
+            (
+                11_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 100,
+                }],
+            ),
+            (
+                12_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 101,
+                }],
+            ),
+            (
+                13_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 102,
+                }],
+            ),
+            (
+                14_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 103,
+                }],
+            ),
+        ]);
+        let contiguous_observations = vec![
+            SeedMatchObservation {
+                read_start: 0,
+                bits: 11,
+            },
+            SeedMatchObservation {
+                read_start: 1,
+                bits: 12,
+            },
+            SeedMatchObservation {
+                read_start: 2,
+                bits: 13,
+            },
+            SeedMatchObservation {
+                read_start: 3,
+                bits: 14,
+            },
+        ];
+        let contiguous = GentleEngine::compute_seed_chain_spacing_metrics(
+            &contiguous_observations,
+            &seed_template_positions,
+            &templates,
+        );
+        assert_eq!(contiguous.transcript_id, "tx1");
+        assert_eq!(contiguous.support_kmers, 4);
+        assert_eq!(contiguous.transcript_gap_count, 3);
+        assert!((contiguous.median_transcript_gap - 1.0).abs() < f64::EPSILON);
+
+        let sparse_positions = HashMap::from([
+            (
+                11_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 100,
+                }],
+            ),
+            (
+                12_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 105,
+                }],
+            ),
+            (
+                13_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 110,
+                }],
+            ),
+            (
+                14_u32,
+                vec![SeedTemplatePosition {
+                    template_idx: 0,
+                    template_pos: 115,
+                }],
+            ),
+        ]);
+        let sparse_observations = vec![
+            SeedMatchObservation {
+                read_start: 0,
+                bits: 11,
+            },
+            SeedMatchObservation {
+                read_start: 5,
+                bits: 12,
+            },
+            SeedMatchObservation {
+                read_start: 10,
+                bits: 13,
+            },
+            SeedMatchObservation {
+                read_start: 15,
+                bits: 14,
+            },
+        ];
+        let sparse = GentleEngine::compute_seed_chain_spacing_metrics(
+            &sparse_observations,
+            &sparse_positions,
+            &templates,
+        );
+        assert_eq!(sparse.support_kmers, 4);
+        assert_eq!(sparse.transcript_gap_count, 3);
+        assert!((sparse.median_transcript_gap - 5.0).abs() < f64::EPSILON);
+    }
+
+    fn deterministic_dna_sequence(mut state: u64, len: usize) -> Vec<u8> {
+        let mut out = Vec::<u8>::with_capacity(len);
+        for _ in 0..len {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let base = match ((state >> 62) & 0x3) as u8 {
+                0 => b'A',
+                1 => b'C',
+                2 => b'G',
+                _ => b'T',
+            };
+            out.push(base);
+        }
+        out
+    }
+
+    fn delete_fraction_window(sequence: &[u8], start: usize, fraction: f64) -> Vec<u8> {
+        if sequence.is_empty() {
+            return vec![];
+        }
+        let delete_len = ((sequence.len() as f64) * fraction).round() as usize;
+        let delete_len = delete_len.clamp(1, sequence.len().saturating_sub(1).max(1));
+        let start = start.min(sequence.len().saturating_sub(delete_len));
+        let mut out = Vec::<u8>::with_capacity(sequence.len().saturating_sub(delete_len));
+        out.extend_from_slice(&sequence[..start]);
+        out.extend_from_slice(&sequence[start + delete_len..]);
+        out
+    }
+
+    #[test]
+    fn test_tp73_seed_filter_keeps_30pct_deleted_subsequences_and_rejects_random() {
+        let mut engine = GentleEngine::default();
+        engine
+            .apply(Operation::LoadFile {
+                path: "test_files/tp73.ncbi.gb".to_string(),
+                as_id: Some("tp73".to_string()),
+            })
+            .expect("load tp73 fixture");
+        let mut seed_filter = RnaReadSeedFilterConfig::default();
+        seed_filter.min_confirmed_exon_transitions = 0;
+        seed_filter.min_transition_support_fraction = 0.0;
+        let (feature_id, dna_len) = {
+            let dna = engine
+                .state()
+                .sequences
+                .get("tp73")
+                .expect("tp73 sequence present");
+            let feature_id = dna
+                .features()
+                .iter()
+                .position(GentleEngine::is_mrna_feature)
+                .expect("tp73 mRNA feature");
+            (feature_id, dna.len())
+        };
+        let splicing = engine
+            .build_splicing_expert_view(
+                "tp73",
+                feature_id,
+                SplicingScopePreset::TargetGroupTargetStrand,
+            )
+            .expect("build tp73 splicing view");
+        assert!(
+            !splicing.transcripts.is_empty(),
+            "tp73 fixture should provide transcript templates"
+        );
+        let template = {
+            let dna = engine
+                .state()
+                .sequences
+                .get("tp73")
+                .expect("tp73 sequence present");
+            GentleEngine::make_transcript_template(
+                dna,
+                &splicing.transcripts[0],
+                seed_filter.kmer_len,
+            )
+        };
+        assert!(
+            template.sequence.len() > 120,
+            "expected sufficiently long tp73 transcript template"
+        );
+        let seed_catalog_rows = GentleEngine::collect_rna_seed_hash_catalog_rows(
+            std::slice::from_ref(&template),
+            seed_filter.kmer_len,
+        );
+        let seed_index = seed_catalog_rows
+            .iter()
+            .map(|row| row.seed_bits)
+            .collect::<HashSet<_>>();
+        let mut bins = GentleEngine::build_rna_read_seed_histogram_bins(dna_len);
+        let histogram = GentleEngine::build_rna_read_seed_histogram_index(
+            std::slice::from_ref(&template),
+            dna_len,
+            &bins,
+        );
+        let seed_template_positions =
+            GentleEngine::build_seed_template_position_index(std::slice::from_ref(&template));
+        let seed_occurrence_counts = HashMap::<u32, usize>::new();
+        let mut score_read = |read: &[u8]| -> (bool, f64, f64, usize) {
+            let (tested, matched, matched_bits, matched_observations) =
+                GentleEngine::count_seed_hits_in_window_with_histogram(
+                    read,
+                    0,
+                    seed_filter.kmer_len,
+                    &seed_index,
+                    &histogram,
+                    &mut bins,
+                    &seed_occurrence_counts,
+                );
+            let (fraction, _, _) =
+                GentleEngine::seed_hit_metrics(tested, matched, seed_filter.min_seed_hit_fraction);
+            let weighted = if tested == 0 {
+                0.0
+            } else {
+                GentleEngine::weighted_seed_support_from_occurrences(
+                    &matched_bits,
+                    &seed_occurrence_counts,
+                ) / tested as f64
+            };
+            let spacing = GentleEngine::compute_seed_chain_spacing_metrics(
+                &matched_observations,
+                &seed_template_positions,
+                std::slice::from_ref(&template),
+            );
+            let pass = GentleEngine::seed_filter_passes(
+                fraction,
+                weighted,
+                tested,
+                matched_bits.len(),
+                spacing.support_fraction,
+                spacing.median_transcript_gap,
+                spacing.transcript_gap_count,
+                0,
+                0,
+                &seed_filter,
+            );
+            (pass, fraction, weighted, matched_bits.len())
+        };
+
+        let base_len = template.sequence.len().min(1500);
+        let base_start = (template.sequence.len().saturating_sub(base_len)) / 2;
+        let base_fragment = template.sequence[base_start..base_start + base_len].to_vec();
+        let deletion_starts = [
+            0usize,
+            base_fragment.len() / 4,
+            base_fragment.len() / 2,
+            (base_fragment.len() * 3) / 4,
+        ];
+        for (idx, start) in deletion_starts.iter().copied().enumerate() {
+            let subseq = delete_fraction_window(&base_fragment, start, 0.30);
+            let (pass, fraction, weighted, unique_bits) = score_read(&subseq);
+            assert!(
+                pass,
+                "tp73-derived subsequence #{idx} should pass seed filter: raw={fraction:.3} weighted={weighted:.3} unique={unique_bits}"
+            );
+        }
+
+        let mut low_complexity = vec![b'T'; base_fragment.len()];
+        if base_fragment.len() > 32 {
+            low_complexity[base_fragment.len() / 2] = b'C';
+        }
+        let (pass, fraction, weighted, unique_bits) = score_read(&low_complexity);
+        assert!(
+            !pass,
+            "low-complexity sequence unexpectedly passed: raw={fraction:.3} weighted={weighted:.3} unique={unique_bits}"
+        );
+
+        for idx in 0..12usize {
+            let random =
+                deterministic_dna_sequence(0xDEADBEEF_u64 + idx as u64, base_fragment.len());
+            let (pass, fraction, weighted, unique_bits) = score_read(&random);
+            assert!(
+                !pass,
+                "random sequence #{idx} unexpectedly passed: raw={fraction:.3} weighted={weighted:.3} unique={unique_bits}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_tp73_seed_filter_cross_species_and_tp53_specificity_sets() {
+        let mut engine = GentleEngine::default();
+        engine
+            .apply(Operation::LoadFile {
+                path: "test_files/tp73.ncbi.gb".to_string(),
+                as_id: Some("tp73".to_string()),
+            })
+            .expect("load tp73 fixture");
+        let seed_filter = RnaReadSeedFilterConfig::default();
+        let (feature_id, dna_len) = {
+            let dna = engine
+                .state()
+                .sequences
+                .get("tp73")
+                .expect("tp73 sequence present");
+            let feature_id = dna
+                .features()
+                .iter()
+                .position(GentleEngine::is_mrna_feature)
+                .expect("tp73 mRNA feature");
+            (feature_id, dna.len())
+        };
+        let splicing = engine
+            .build_splicing_expert_view(
+                "tp73",
+                feature_id,
+                SplicingScopePreset::TargetGroupTargetStrand,
+            )
+            .expect("build tp73 splicing view");
+        assert!(
+            !splicing.transcripts.is_empty(),
+            "tp73 fixture should provide transcript templates"
+        );
+        let templates = {
+            let dna = engine
+                .state()
+                .sequences
+                .get("tp73")
+                .expect("tp73 sequence present");
+            splicing
+                .transcripts
+                .iter()
+                .map(|tx| GentleEngine::make_transcript_template(dna, tx, seed_filter.kmer_len))
+                .collect::<Vec<_>>()
+        };
+        let seed_catalog_rows =
+            GentleEngine::collect_rna_seed_hash_catalog_rows(&templates, seed_filter.kmer_len);
+        assert!(
+            !seed_catalog_rows.is_empty(),
+            "tp73 seed catalog should not be empty"
+        );
+        let seed_index = seed_catalog_rows
+            .iter()
+            .map(|row| row.seed_bits)
+            .collect::<HashSet<_>>();
+        let mut seed_occurrence_counts = HashMap::<u32, usize>::new();
+        for row in &seed_catalog_rows {
+            *seed_occurrence_counts.entry(row.seed_bits).or_insert(0) += 1;
+        }
+        let seed_template_positions = GentleEngine::build_seed_template_position_index(&templates);
+        let (seed_to_exons, seed_to_transitions, transcript_models, _transition_rows) =
+            GentleEngine::build_seed_support_indexes(&splicing, &templates, seed_filter.kmer_len);
+        let mut bins = GentleEngine::build_rna_read_seed_histogram_bins(dna_len);
+        let histogram =
+            GentleEngine::build_rna_read_seed_histogram_index(&templates, dna_len, &bins);
+
+        let score_read = |sequence: &[u8],
+                          bins: &mut [RnaReadSeedHistogramBin]|
+         -> (bool, f64, f64, usize, usize, usize, usize) {
+            let (normalized, _) =
+                GentleEngine::normalize_rna_read_sequence_for_scoring(sequence, &seed_filter);
+            let windows = GentleEngine::sampled_read_windows(normalized.len(), &seed_filter);
+            let mut tested_kmers = 0usize;
+            let mut matched_kmers = 0usize;
+            let mut matched_seed_bits = HashSet::<u32>::new();
+            let mut matched_seed_observations = Vec::<SeedMatchObservation>::new();
+            for (start, end) in windows {
+                let (tested, matched, matched_bits, matched_observations) =
+                    GentleEngine::count_seed_hits_in_window_with_histogram(
+                        &normalized[start..end],
+                        start,
+                        seed_filter.kmer_len,
+                        &seed_index,
+                        &histogram,
+                        bins,
+                        &seed_occurrence_counts,
+                    );
+                tested_kmers = tested_kmers.saturating_add(tested);
+                matched_kmers = matched_kmers.saturating_add(matched);
+                matched_seed_bits.extend(matched_bits);
+                matched_seed_observations.extend(matched_observations);
+            }
+            let (fraction, _, _) = GentleEngine::seed_hit_metrics(
+                tested_kmers,
+                matched_kmers,
+                seed_filter.min_seed_hit_fraction,
+            );
+            let weighted = if tested_kmers == 0 {
+                0.0
+            } else {
+                GentleEngine::weighted_seed_support_from_occurrences(
+                    &matched_seed_bits,
+                    &seed_occurrence_counts,
+                ) / tested_kmers as f64
+            };
+            let spacing = GentleEngine::compute_seed_chain_spacing_metrics(
+                &matched_seed_observations,
+                &seed_template_positions,
+                &templates,
+            );
+            let mut supported_exons = HashSet::<usize>::new();
+            let mut supported_transitions = HashSet::<(usize, usize)>::new();
+            for bits in &matched_seed_bits {
+                if let Some(exons) = seed_to_exons.get(bits) {
+                    supported_exons.extend(exons.iter().copied());
+                }
+                if let Some(transitions) = seed_to_transitions.get(bits) {
+                    supported_transitions.extend(transitions.iter().copied());
+                }
+            }
+            let path_inference = GentleEngine::infer_read_exon_path(
+                &transcript_models,
+                &supported_exons,
+                &supported_transitions,
+                &spacing.transcript_id,
+            );
+            let pass = GentleEngine::seed_filter_passes(
+                fraction,
+                weighted,
+                tested_kmers,
+                matched_seed_bits.len(),
+                spacing.support_fraction,
+                spacing.median_transcript_gap,
+                spacing.transcript_gap_count,
+                path_inference.confirmed_transitions,
+                path_inference.total_transitions,
+                &seed_filter,
+            );
+            (
+                pass,
+                fraction,
+                weighted,
+                matched_seed_bits.len(),
+                spacing.transcript_gap_count,
+                path_inference.confirmed_transitions,
+                path_inference.total_transitions,
+            )
+        };
+
+        let evaluate_set = |path: &str,
+                            bins: &mut [RnaReadSeedHistogramBin]|
+         -> (usize, usize, f64, f64, Vec<String>) {
+            let records =
+                GentleEngine::parse_fasta_records_with_offsets(path).expect("parse fasta set");
+            assert!(!records.is_empty(), "fasta set should not be empty: {path}");
+            let mut passed = 0usize;
+            let mut best_raw = 0.0_f64;
+            let mut best_weighted = 0.0_f64;
+            let mut failed = Vec::<String>::new();
+            for record in &records {
+                let (pass, raw, weighted, unique, gap_n, confirmed, total) =
+                    score_read(&record.sequence, bins);
+                if pass {
+                    passed = passed.saturating_add(1);
+                } else {
+                    failed.push(format!(
+                            "{} raw={raw:.3} weighted={weighted:.4} unique={unique} gap_n={gap_n} confirmed={confirmed}/{total}",
+                            record.header_id
+                        ));
+                }
+                best_raw = best_raw.max(raw);
+                best_weighted = best_weighted.max(weighted);
+            }
+            (records.len(), passed, best_raw, best_weighted, failed)
+        };
+
+        let (chimp_total, chimp_passed, chimp_best_raw, _chimp_best_weighted, chimp_failed) =
+            evaluate_set("test_files/ensembl_chimp_tp73_all.fasta", &mut bins);
+        let (human_total, human_passed, human_best_raw, _human_best_weighted, human_failed) =
+            evaluate_set("test_files/ensembl_human_tp73_all.fasta", &mut bins);
+        let (tp53_total, tp53_passed, tp53_best_raw, tp53_best_weighted, tp53_failed) =
+            evaluate_set("test_files/ensembl_human_tp53_all.fasta", &mut bins);
+        let (mouse_total, _mouse_passed, _mouse_best_raw, _mouse_best_weighted, _mouse_failed) =
+            evaluate_set("test_files/ensembl_mouse_trp73_all.fasta", &mut bins);
+        assert!(mouse_total > 0, "mouse trp73 set should contain reads");
+
+        assert_eq!(
+            chimp_passed, chimp_total,
+            "chimp TP73 sequences should all pass seed filter (passed={chimp_passed}/{chimp_total}, best_raw={chimp_best_raw:.3}, failed={chimp_failed:?})"
+        );
+        assert_eq!(
+            human_passed, human_total,
+            "human TP73 sequences should all pass seed filter (passed={human_passed}/{human_total}, best_raw={human_best_raw:.3}, failed={human_failed:?})"
+        );
+        assert_eq!(
+            tp53_passed, 0,
+            "human TP53 sequences should be rejected (passed={tp53_passed}/{tp53_total}, best_raw={tp53_best_raw:.3}, best_weighted={tp53_best_weighted:.4}, failed={tp53_failed:?})"
+        );
+    }
+
+    #[test]
+    fn test_infer_read_exon_path_prefers_chain_strand_on_cross_strand_tie() {
+        let transcript_models = vec![
+            TranscriptExonPathModel {
+                transcript_feature_id: 10,
+                transcript_id: "tx_plus".to_string(),
+                transcript_label: "TX+".to_string(),
+                strand: "+".to_string(),
+                exon_ordinals: vec![1, 2],
+                transitions: vec![(1, 2)],
+            },
+            TranscriptExonPathModel {
+                transcript_feature_id: 5,
+                transcript_id: "tx_minus".to_string(),
+                transcript_label: "TX-".to_string(),
+                strand: "-".to_string(),
+                exon_ordinals: vec![1, 2],
+                transitions: vec![(1, 2)],
+            },
+        ];
+        let supported_exons = [1usize, 2usize].into_iter().collect::<HashSet<_>>();
+        let supported_transitions = [(1usize, 2usize)].into_iter().collect::<HashSet<_>>();
+
+        let inferred = GentleEngine::infer_read_exon_path(
+            &transcript_models,
+            &supported_exons,
+            &supported_transitions,
+            "tx_plus",
+        );
+        assert_eq!(inferred.transcript_id, "tx_plus");
+        assert_eq!(inferred.strand, "+");
+        assert_eq!(inferred.confirmed_transitions, 1);
+        assert_eq!(inferred.total_transitions, 1);
+        assert_eq!(inferred.strand_diagnostics.chain_preferred_strand, "+");
+        assert!(inferred.strand_diagnostics.competing_opposite_strand);
+        assert!(inferred.strand_diagnostics.ambiguous_near_tie);
+        assert_eq!(inferred.strand_diagnostics.selected_strand, "+");
+    }
+
+    #[test]
+    fn test_sampled_read_windows_phase1_hashes_full_read() {
+        let cfg = RnaReadSeedFilterConfig {
+            short_full_hash_max_bp: 420,
+            long_window_bp: 140,
+            long_window_count: 3,
+            ..RnaReadSeedFilterConfig::default()
+        };
+        assert_eq!(
+            GentleEngine::sampled_read_windows(0, &cfg),
+            Vec::<(usize, usize)>::new()
+        );
+        assert_eq!(GentleEngine::sampled_read_windows(37, &cfg), vec![(0, 37)]);
+        assert_eq!(
+            GentleEngine::sampled_read_windows(420, &cfg),
+            vec![(0, 420)]
+        );
+        assert_eq!(
+            GentleEngine::sampled_read_windows(1200, &cfg),
+            vec![(0, 1200)]
+        );
+    }
+
+    #[test]
+    fn test_summarize_read_lengths_reports_mean_median_and_p95() {
+        let mut counts = vec![0u64; 12];
+        for len in [4usize, 4, 5, 8, 8, 10] {
+            GentleEngine::update_read_length_counts(&mut counts, len);
+        }
+        let total_reads = 6usize;
+        let total_bases = (4 + 4 + 5 + 8 + 8 + 10) as u64;
+        let (mean, median, p95) =
+            GentleEngine::summarize_read_lengths(&counts, total_reads, total_bases);
+        assert!((mean - (39.0 / 6.0)).abs() < 1e-12);
+        assert_eq!(median, 5);
+        assert_eq!(p95, 10);
+    }
+
+    #[test]
     fn test_rna_read_sequence_scoring_from_seed_index_is_deterministic() {
         let read = b"ACGTTGCAACGT";
         let kmer_len = 3usize;
         let mut bins = GentleEngine::build_rna_read_seed_histogram_bins(12);
         let histogram_index: HashMap<u32, Vec<SeedHistogramWeight>> = HashMap::new();
+        let seed_occurrence_counts = HashMap::<u32, usize>::new();
 
         let mut all_seed_bits = HashSet::new();
         for start in 0..=read.len() - kmer_len {
-            let bits = GentleEngine::encode_kmer_bits(&read[start..start + kmer_len])
-                .expect("bits");
+            let bits =
+                GentleEngine::encode_kmer_bits(&read[start..start + kmer_len]).expect("bits");
             all_seed_bits.insert(bits);
         }
         assert!(!all_seed_bits.is_empty());
 
-        let (tested_all, matched_all) = GentleEngine::count_seed_hits_in_window_with_histogram(
-            read,
-            kmer_len,
-            &all_seed_bits,
-            &histogram_index,
-            &mut bins,
-        );
+        let (tested_all, matched_all, matched_bits_all, matched_obs_all) =
+            GentleEngine::count_seed_hits_in_window_with_histogram(
+                read,
+                0,
+                kmer_len,
+                &all_seed_bits,
+                &histogram_index,
+                &mut bins,
+                &seed_occurrence_counts,
+            );
         assert!(tested_all > 0);
         assert_eq!(matched_all, tested_all);
+        assert!(!matched_bits_all.is_empty());
+        assert!(!matched_obs_all.is_empty());
         let (fraction_all, perfect_all, passed_all) =
             GentleEngine::seed_hit_metrics(tested_all, matched_all, 0.30);
         assert!((fraction_all - 1.0).abs() < 1e-12);
@@ -36847,15 +39441,20 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(passed_all);
 
         let empty_seed_index = HashSet::new();
-        let (tested_none, matched_none) = GentleEngine::count_seed_hits_in_window_with_histogram(
-            read,
-            kmer_len,
-            &empty_seed_index,
-            &histogram_index,
-            &mut bins,
-        );
+        let (tested_none, matched_none, matched_bits_none, matched_obs_none) =
+            GentleEngine::count_seed_hits_in_window_with_histogram(
+                read,
+                0,
+                kmer_len,
+                &empty_seed_index,
+                &histogram_index,
+                &mut bins,
+                &seed_occurrence_counts,
+            );
         assert_eq!(tested_none, tested_all);
         assert_eq!(matched_none, 0);
+        assert!(matched_bits_none.is_empty());
+        assert!(matched_obs_none.is_empty());
         let (fraction_none, perfect_none, passed_none) =
             GentleEngine::seed_hit_metrics(tested_none, matched_none, 0.30);
         assert_eq!(fraction_none, 0.0);
@@ -36921,9 +39520,16 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             report
                 .exon_support_frequencies
                 .iter()
-                .any(|row| row.support_read_count > 0)
+                .all(|row| row.support_read_count == 0)
         );
         assert!(!report.junction_support_frequencies.is_empty());
+        assert_eq!(report.read_count_aligned, 0);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| { warning.contains("phase-1 profile runs seed filtering only") })
+        );
     }
 
     #[test]
@@ -36993,6 +39599,83 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn test_export_rna_read_exon_paths_and_abundance_tsv() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads.fa");
+        fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_paths".to_string()),
+            })
+            .expect("interpret reads");
+
+        let path_tsv = td.path().join("paths.tsv");
+        let path_export = engine
+            .export_rna_read_exon_paths_tsv(
+                "rna_reads_paths",
+                path_tsv.to_str().expect("path tsv"),
+                RnaReadHitSelection::All,
+            )
+            .expect("export paths");
+        assert_eq!(path_export.row_count, 1);
+        let path_text = fs::read_to_string(path_tsv).expect("read path tsv");
+        assert!(path_text.contains("exon_path"));
+        assert!(path_text.contains("reverse_complement_applied"));
+
+        let abundance_tsv = td.path().join("abundance.tsv");
+        let abundance_export = engine
+            .export_rna_read_exon_abundance_tsv(
+                "rna_reads_paths",
+                abundance_tsv.to_str().expect("abundance tsv"),
+                RnaReadHitSelection::All,
+            )
+            .expect("export abundance");
+        assert_eq!(abundance_export.selected_read_count, 1);
+        let abundance_text = fs::read_to_string(abundance_tsv).expect("read abundance tsv");
+        assert!(abundance_text.contains("row_kind"));
+    }
+
+    #[test]
     fn test_interpret_rna_reads_retains_top_5000_hits_in_memory() {
         let mut state = ProjectState::default();
         state
@@ -37053,7 +39736,13 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(report.read_count_total, 5105);
         assert_eq!(report.hits.len(), 5000);
         assert_eq!(report.read_count_seed_passed, 5105);
-        assert_eq!(report.read_count_aligned, 5105);
+        assert_eq!(report.read_count_aligned, 0);
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| { warning.contains("phase-1 profile runs seed filtering only") })
+        );
         assert!(
             report
                 .warnings
@@ -37162,7 +39851,7 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         );
         let weights = histogram.get(&bits).expect("weights for seed bit");
         assert_eq!(weights.len(), 1);
-        assert_eq!(weights[0].weight, 1);
+        assert!(!weights[0].strand_minus);
     }
 
     #[test]
