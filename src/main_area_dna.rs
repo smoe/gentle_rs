@@ -641,6 +641,8 @@ struct EngineOpsUiState {
     #[serde(default)]
     feature_tree_grouping_mode: FeatureTreeGroupingMode,
     #[serde(default)]
+    feature_tree_grouping_mode_explicit: bool,
+    #[serde(default)]
     feature_tree_filter: String,
     #[serde(default = "default_feature_tree_panel_width")]
     feature_tree_panel_width: f32,
@@ -1980,6 +1982,26 @@ mod tests {
     }
 
     #[test]
+    fn apply_rna_reads_tp73_specificity_preset_sets_expected_seed_gates() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.apply_rna_reads_tp73_specificity_preset();
+        assert_eq!(
+            area.rna_reads_ui.scope,
+            SplicingScopePreset::TargetGroupTargetStrand
+        );
+        assert!(area.rna_reads_ui.cdna_poly_t_flip_enabled);
+        assert_eq!(area.rna_reads_ui.min_seed_hit_fraction, "0.30");
+        assert_eq!(area.rna_reads_ui.min_weighted_seed_hit_fraction, "0.07");
+        assert_eq!(area.rna_reads_ui.min_unique_matched_kmers, "16");
+        assert_eq!(area.rna_reads_ui.min_chain_consistency_fraction, "0.60");
+        assert_eq!(area.rna_reads_ui.max_median_transcript_gap, "3.0");
+        assert_eq!(area.rna_reads_ui.min_confirmed_exon_transitions, "1");
+        assert_eq!(area.rna_reads_ui.min_transition_support_fraction, "0.10");
+        assert!(area.rna_reads_ui.show_advanced);
+    }
+
+    #[test]
     fn primer_backend_controls_default_when_missing_in_serialized_engine_ops_state() {
         let dna = DNAsequence::from_sequence("ACGT").unwrap();
         let area = MainAreaDna::new(dna, None, None);
@@ -1989,6 +2011,52 @@ mod tests {
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.primer_backend, PrimerDesignBackend::Auto);
         assert_eq!(decoded.primer3_executable, "primer3_core");
+    }
+
+    #[test]
+    fn apply_engine_ops_state_migrates_legacy_off_grouping_to_auto() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().insert(
+            "feature_tree_grouping_mode".to_string(),
+            serde_json::json!("off"),
+        );
+        value.as_object_mut().unwrap().insert(
+            "feature_tree_second_level_grouping".to_string(),
+            serde_json::json!(false),
+        );
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("feature_tree_grouping_mode_explicit");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        area.apply_engine_ops_state(decoded);
+        assert_eq!(
+            area.feature_tree_grouping_mode,
+            super::FeatureTreeGroupingMode::Auto
+        );
+    }
+
+    #[test]
+    fn apply_engine_ops_state_preserves_explicit_off_grouping() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let mut area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        value.as_object_mut().unwrap().insert(
+            "feature_tree_grouping_mode".to_string(),
+            serde_json::json!("off"),
+        );
+        value.as_object_mut().unwrap().insert(
+            "feature_tree_grouping_mode_explicit".to_string(),
+            serde_json::json!(true),
+        );
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        area.apply_engine_ops_state(decoded);
+        assert_eq!(
+            area.feature_tree_grouping_mode,
+            super::FeatureTreeGroupingMode::Off
+        );
     }
 
     #[test]
@@ -2815,7 +2883,7 @@ impl MainAreaDna {
             export_pool_id: String::new(),
             export_pool_human_id: String::new(),
             pool_gel_ladders: String::new(),
-            feature_tree_grouping_mode: FeatureTreeGroupingMode::Off,
+            feature_tree_grouping_mode: FeatureTreeGroupingMode::Auto,
             feature_tree_filter: String::new(),
             feature_tree_deferred_until_interaction: false,
             feature_tree_panel_width: FEATURE_TREE_DEFAULT_WIDTH_PX,
@@ -9855,6 +9923,10 @@ impl MainAreaDna {
                                 "Input is cDNA (normalize T-rich 5' head)",
                             )
                             .changed();
+                        if ui.button("Apply TP73 specificity preset").clicked() {
+                            self.apply_rna_reads_tp73_specificity_preset();
+                            persist_ui_state = true;
+                        }
                         ui.small(
                             egui::RichText::new(
                                 "Unchecked = direct RNA mode (no automatic reverse-complement normalization).",
@@ -10455,6 +10527,20 @@ impl MainAreaDna {
             SplicingScopePreset::AllOverlappingTargetStrand => "all-overlap / target-strand",
             SplicingScopePreset::TargetGroupTargetStrand => "target-group / target-strand",
         }
+    }
+
+    fn apply_rna_reads_tp73_specificity_preset(&mut self) {
+        self.rna_reads_ui.scope = SplicingScopePreset::TargetGroupTargetStrand;
+        self.rna_reads_ui.cdna_poly_t_flip_enabled = true;
+        self.rna_reads_ui.min_seed_hit_fraction = "0.30".to_string();
+        self.rna_reads_ui.min_weighted_seed_hit_fraction = "0.07".to_string();
+        self.rna_reads_ui.min_unique_matched_kmers = "16".to_string();
+        self.rna_reads_ui.min_chain_consistency_fraction = "0.60".to_string();
+        self.rna_reads_ui.max_median_transcript_gap = "3.0".to_string();
+        self.rna_reads_ui.min_confirmed_exon_transitions = "1".to_string();
+        self.rna_reads_ui.min_transition_support_fraction = "0.10".to_string();
+        self.rna_reads_ui.show_advanced = true;
+        self.op_status = "Applied TP73 specificity preset for RNA-read seed filtering".to_string();
     }
 
     fn splicing_scope_description(
@@ -16425,6 +16511,7 @@ impl MainAreaDna {
             export_pool_human_id: self.export_pool_human_id.clone(),
             pool_gel_ladders: self.pool_gel_ladders.clone(),
             feature_tree_grouping_mode: self.feature_tree_grouping_mode,
+            feature_tree_grouping_mode_explicit: true,
             feature_tree_filter: self.feature_tree_filter.clone(),
             feature_tree_panel_width: self.feature_tree_panel_width,
             feature_tree_split_fraction: self.feature_tree_split_fraction,
@@ -16594,14 +16681,23 @@ impl MainAreaDna {
         self.export_pool_id = s.export_pool_id;
         self.export_pool_human_id = s.export_pool_human_id;
         self.pool_gel_ladders = s.pool_gel_ladders;
-        self.feature_tree_grouping_mode =
-            if matches!(s.feature_tree_grouping_mode, FeatureTreeGroupingMode::Off)
-                && s.feature_tree_second_level_grouping
-            {
-                FeatureTreeGroupingMode::Auto
-            } else {
-                s.feature_tree_grouping_mode
-            };
+        let loaded_grouping_mode = if s.feature_tree_grouping_mode_explicit {
+            s.feature_tree_grouping_mode
+        } else if matches!(s.feature_tree_grouping_mode, FeatureTreeGroupingMode::Off)
+            && s.feature_tree_second_level_grouping
+        {
+            FeatureTreeGroupingMode::Auto
+        } else {
+            s.feature_tree_grouping_mode
+        };
+        self.feature_tree_grouping_mode = if s.feature_tree_grouping_mode_explicit {
+            loaded_grouping_mode
+        } else if matches!(loaded_grouping_mode, FeatureTreeGroupingMode::Off) {
+            // Legacy persisted state used Off-by-default. Migrate those to Auto.
+            FeatureTreeGroupingMode::Auto
+        } else {
+            loaded_grouping_mode
+        };
         self.feature_tree_filter = s.feature_tree_filter;
         self.feature_tree_panel_width =
             Self::clamp_feature_tree_panel_width(s.feature_tree_panel_width);
@@ -18666,26 +18762,24 @@ impl MainAreaDna {
 
             Frame::NONE.show(ui, |ui| {
                 ui.set_min_height(side_panel_height);
-                let resize_id = format!(
-                    "feature_tree_panel_resize_{}",
-                    self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                const FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX: f32 = 8.0;
+                const MAP_MIN_WIDTH_PX: f32 = 220.0;
+                let total_available_width = ui.available_width().max(
+                    FEATURE_TREE_MIN_WIDTH_PX + FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX + MAP_MIN_WIDTH_PX,
                 );
-                let max_tree_width = FEATURE_TREE_MAX_WIDTH_PX
-                    .min(ui.available_width().max(FEATURE_TREE_MIN_WIDTH_PX));
-                let mut resized_tree_width =
-                    Self::clamp_feature_tree_panel_width(self.feature_tree_panel_width)
-                        .min(max_tree_width);
-                egui::Resize::default()
-                    .id_salt(resize_id)
-                    .default_width(resized_tree_width)
-                    .min_width(FEATURE_TREE_MIN_WIDTH_PX)
-                    .max_width(max_tree_width.max(FEATURE_TREE_MIN_WIDTH_PX))
-                    .resizable(egui::Vec2b::new(true, false))
-                    .show(ui, |ui| {
+                let max_tree_width = (total_available_width
+                    - FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX
+                    - MAP_MIN_WIDTH_PX)
+                    .clamp(FEATURE_TREE_MIN_WIDTH_PX, FEATURE_TREE_MAX_WIDTH_PX);
+                let mut tree_width = Self::clamp_feature_tree_panel_width(self.feature_tree_panel_width)
+                    .min(max_tree_width);
+
+                ui.allocate_ui_with_layout(
+                    Vec2::new(tree_width, side_panel_height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
                         ui.set_min_height(side_panel_height);
                         ui.vertical(|ui| {
-                            resized_tree_width =
-                                Self::clamp_feature_tree_panel_width(ui.max_rect().width());
                             if self.feature_tree_deferred_until_interaction {
                                 let feature_count = self
                                     .dna
@@ -18780,8 +18874,16 @@ impl MainAreaDna {
                                             });
                                     },
                                 );
-                                let (split_rect, split_response) = ui.allocate_exact_size(
+                                let (split_rect, _) = ui.allocate_exact_size(
                                     Vec2::new(ui.available_width(), FEATURE_SPLIT_HANDLE_HEIGHT_PX),
+                                    egui::Sense::hover(),
+                                );
+                                let split_response = ui.interact(
+                                    split_rect,
+                                    ui.make_persistent_id(format!(
+                                        "feature_tree_vertical_split_{}",
+                                        self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                                    )),
                                     egui::Sense::click_and_drag(),
                                 );
                                 let split_color = if split_response.dragged() {
@@ -18791,6 +18893,9 @@ impl MainAreaDna {
                                 } else {
                                     egui::Color32::from_gray(90)
                                 };
+                                if split_response.hovered() || split_response.dragged() {
+                                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeVertical);
+                                }
                                 let split_y = split_rect.center().y;
                                 ui.painter().line_segment(
                                     [
@@ -18826,16 +18931,64 @@ impl MainAreaDna {
                                 );
                             }
                         });
-                    });
-                let clamped_tree_width =
-                    Self::clamp_feature_tree_panel_width(resized_tree_width).min(max_tree_width);
-                if (self.feature_tree_panel_width - clamped_tree_width).abs() > 0.5 {
-                    self.feature_tree_panel_width = clamped_tree_width;
+                    },
+                );
+
+                let (split_rect, _) = ui.allocate_exact_size(
+                    Vec2::new(FEATURE_PANE_SPLIT_HANDLE_WIDTH_PX, side_panel_height),
+                    egui::Sense::hover(),
+                );
+                let split_response = ui.interact(
+                    split_rect,
+                    ui.make_persistent_id(format!(
+                        "feature_tree_horizontal_split_{}",
+                        self.seq_id.as_deref().unwrap_or("<no-seq-id>")
+                    )),
+                    egui::Sense::click_and_drag(),
+                );
+                let split_color = if split_response.dragged() {
+                    egui::Color32::from_rgb(40, 140, 210)
+                } else if split_response.hovered() {
+                    egui::Color32::from_rgb(110, 110, 110)
+                } else {
+                    egui::Color32::from_gray(90)
+                };
+                if split_response.hovered() || split_response.dragged() {
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
+                }
+                let split_x = split_rect.center().x;
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(split_x, split_rect.top()),
+                        egui::pos2(split_x, split_rect.bottom()),
+                    ],
+                    egui::Stroke::new(1.0, split_color),
+                );
+                if split_response.double_clicked() {
+                    let reset_width = Self::clamp_feature_tree_panel_width(
+                        FEATURE_TREE_DEFAULT_WIDTH_PX,
+                    )
+                    .min(max_tree_width);
+                    if (self.feature_tree_panel_width - reset_width).abs() > 0.5 {
+                        self.feature_tree_panel_width = reset_width;
+                        self.save_engine_ops_state();
+                    }
+                }
+                if split_response.dragged() {
+                    let delta_px = ui.ctx().input(|i| i.pointer.delta().x);
+                    if delta_px.abs() > f32::EPSILON {
+                        tree_width =
+                            (tree_width + delta_px).clamp(FEATURE_TREE_MIN_WIDTH_PX, max_tree_width);
+                        if (self.feature_tree_panel_width - tree_width).abs() > 0.5 {
+                            self.feature_tree_panel_width = tree_width;
+                        }
+                        ui.ctx().request_repaint();
+                    }
+                }
+                if split_response.drag_stopped() {
                     self.save_engine_ops_state();
                 }
             });
-
-            ui.separator();
 
             let primary_splicing_mode =
                 !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Splicing);

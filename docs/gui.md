@@ -252,6 +252,8 @@ Feature tree grouping:
   - advanced settings include `poly-T head min T-bp` (`poly_t_prefix_min_bp`):
     minimum T support required in the 5' detection window for the cDNA
     auto-flip gate
+  - `Apply TP73 specificity preset` sets a stricter seed gate and scope
+    (`target-group / target-strand`) for focused pilot filtering runs
   - default splicing scope is broad (`all overlapping / both strands`) with
     optional narrowing presets
   - scope presets are explicit:
