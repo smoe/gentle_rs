@@ -1315,7 +1315,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - implemented profile: `nanopore_cdna_v1`
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:
-    - `kmer_len=9`
+    - `kmer_len=10`
     - `min_seed_hit_fraction=0.30` (bootstrap default; future SNR calibration track can override policy)
     - `min_weighted_seed_hit_fraction=0.05`
     - `min_unique_matched_kmers=12`

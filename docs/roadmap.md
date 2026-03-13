@@ -770,6 +770,10 @@ Status:
   - Added coherent-chain specificity guard:
     reads must satisfy `chain_consistency_fraction >= min_chain_consistency_fraction`
     (default `0.40`) so dispersed local-seed matches are less likely to pass.
+  - RNA-read seed-filter defaults now use `kmer_len=10` (was `9`) to reduce
+    broad false-positive matches in large human transcriptome cDNA screens.
+  - Exon-transition support counters now update only for reads that pass the
+    full seed gate; rejected reads no longer inflate transition support tables.
   - RNA-read hit exports now include reverse-complement provenance markers
     (`rc_applied`) in FASTA headers and TSV path exports.
   - New RNA-read TSV exports are available for downstream analysis:

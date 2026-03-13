@@ -22766,6 +22766,21 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn parse_rna_reads_interpret_defaults_to_engine_kmer_len() {
+        let cmd = parse_shell_line(
+            "rna-reads interpret seq_a 7 reads.fa --scope all_overlapping_both_strands",
+        )
+        .expect("parse rna-reads interpret defaults");
+        match cmd {
+            ShellCommand::RnaReadsInterpret { seed_filter, .. } => {
+                assert_eq!(seed_filter.kmer_len, RnaReadSeedFilterConfig::default().kmer_len);
+                assert_eq!(seed_filter.kmer_len, 10);
+            }
+            other => panic!("expected RnaReadsInterpret, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn execute_dotplot_and_flex_commands_store_payloads() {
         let mut state = ProjectState::default();
         state.sequences.insert(

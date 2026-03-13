@@ -948,6 +948,7 @@ Shared shell command:
       - `weighted_hit_fraction` is occurrence-normalized inside the scoped seed
         index: `sum(1/occurrence_count(seed_bits))/tested_kmers`
       - defaults:
+        - `--kmer-len 10`
         - `--min-seed-hit-fraction 0.30`
         - `--min-weighted-seed-hit-fraction 0.05`
         - `--min-unique-matched-kmers 12`

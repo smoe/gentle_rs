@@ -270,6 +270,7 @@ Feature tree grouping:
       transition k-mers for admitted transcripts
   - phase-1 seed filtering hashes the full read span for every sequence
   - advanced seed constants expose a composite seed gate:
+    - `k-mer length` (default `10`)
     - `min hit` (raw hit fraction, default `0.30`)
     - `min weighted` (occurrence-weighted unique-k-mer fraction, default `0.05`)
     - `min unique` (minimum number of unique matched seed hashes, default `12`)

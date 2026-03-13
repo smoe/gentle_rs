@@ -290,7 +290,7 @@ impl Default for RnaReadInterpretOpsUiState {
             input_format: RnaReadInputFormat::Fasta,
             cdna_poly_t_flip_enabled: true,
             poly_t_prefix_min_bp: "18".to_string(),
-            kmer_len: "9".to_string(),
+            kmer_len: "10".to_string(),
             short_full_hash_max_bp: "420".to_string(),
             long_window_bp: "140".to_string(),
             long_window_count: "3".to_string(),
@@ -1966,7 +1966,7 @@ mod tests {
         let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
         value.as_object_mut().unwrap().remove("rna_reads_ui");
         let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
-        assert_eq!(decoded.rna_reads_ui.kmer_len, "9");
+        assert_eq!(decoded.rna_reads_ui.kmer_len, "10");
         assert_eq!(decoded.rna_reads_ui.short_full_hash_max_bp, "420");
         assert_eq!(decoded.rna_reads_ui.long_window_bp, "140");
         assert_eq!(decoded.rna_reads_ui.min_seed_hit_fraction, "0.30");
@@ -1990,6 +1990,7 @@ mod tests {
             area.rna_reads_ui.scope,
             SplicingScopePreset::TargetGroupTargetStrand
         );
+        assert_eq!(area.rna_reads_ui.kmer_len, "10");
         assert!(area.rna_reads_ui.cdna_poly_t_flip_enabled);
         assert_eq!(area.rna_reads_ui.min_seed_hit_fraction, "0.30");
         assert_eq!(area.rna_reads_ui.min_weighted_seed_hit_fraction, "0.07");
@@ -10532,6 +10533,7 @@ impl MainAreaDna {
     fn apply_rna_reads_tp73_specificity_preset(&mut self) {
         self.rna_reads_ui.scope = SplicingScopePreset::TargetGroupTargetStrand;
         self.rna_reads_ui.cdna_poly_t_flip_enabled = true;
+        self.rna_reads_ui.kmer_len = "10".to_string();
         self.rna_reads_ui.min_seed_hit_fraction = "0.30".to_string();
         self.rna_reads_ui.min_weighted_seed_hit_fraction = "0.07".to_string();
         self.rna_reads_ui.min_unique_matched_kmers = "16".to_string();
