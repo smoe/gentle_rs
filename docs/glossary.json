@@ -1,5 +1,5 @@
 {
-   "command_count": 202,
+   "command_count": 216,
    "commands": [
       {
          "aliases": [
@@ -1293,6 +1293,20 @@
       },
       {
          "aliases": [],
+         "engine_operations": [
+            "ExportRnaReadScoreDensitySvg"
+         ],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "rna-reads export-score-density-svg",
+         "summary": "Export RNA-read seed-hit score-density chart to SVG.",
+         "usage": "rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [],
          "interfaces": [
             "cli-shell",
@@ -1618,6 +1632,150 @@
          "path": "routines compare",
          "summary": "Compare two cloning routines with deterministic difference axes and shared/unique vocabulary tags.",
          "usage": "routines compare ROUTINE_A ROUTINE_B [--catalog PATH]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning profile show",
+         "summary": "Show one planning profile scope or merged effective profile.",
+         "usage": "planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning profile set",
+         "summary": "Set one planning profile scope from JSON.",
+         "usage": "planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning profile clear",
+         "summary": "Clear one planning profile scope.",
+         "usage": "planning profile clear [--scope global|project_override|confirmed_agent_overlay]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning objective show",
+         "summary": "Show current planning objective weights and guardrails.",
+         "usage": "planning objective show"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning objective set",
+         "summary": "Set planning objective from JSON.",
+         "usage": "planning objective set JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning objective clear",
+         "summary": "Clear planning objective and restore engine defaults.",
+         "usage": "planning objective clear"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning suggestions list",
+         "summary": "List planning sync suggestions with optional status filter.",
+         "usage": "planning suggestions list [--status pending|accepted|rejected]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning suggestions accept",
+         "summary": "Accept one pending planning suggestion and apply its patches.",
+         "usage": "planning suggestions accept SUGGESTION_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning suggestions reject",
+         "summary": "Reject one pending planning suggestion.",
+         "usage": "planning suggestions reject SUGGESTION_ID [--reason TEXT]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning sync status",
+         "summary": "Show planning sync status metadata.",
+         "usage": "planning sync status"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning sync pull",
+         "summary": "Register inbound advisory planning patch as pending suggestion.",
+         "usage": "planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": [
+            "cli-shell",
+            "gui-shell",
+            "cli-direct"
+         ],
+         "path": "planning sync push",
+         "summary": "Register outbound advisory planning patch as pending suggestion.",
+         "usage": "planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]"
       },
       {
          "aliases": [],

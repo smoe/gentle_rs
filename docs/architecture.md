@@ -753,6 +753,37 @@ Concrete patch plan: routine-application assistant and alternative-awareness
 - Add deterministic parity tests for explain/compare payloads and assistant
   stage mapping (`routine -> form -> preflight -> execution`).
 
+Meta-planning layer (time/cost/local-fit) and lab-management agent constraints:
+
+- Scope boundary (v1):
+  - planning affects recommendation/ranking only,
+  - execution semantics of cloning operations remain unchanged.
+- Engine-owned planning contracts:
+  - `gentle.planning_profile.v1`
+  - `gentle.planning_objective.v1`
+  - `gentle.planning_estimate.v1`
+  - `gentle.planning_suggestion.v1`
+  - `gentle.planning_sync_status.v1`
+- Effective profile merge order is deterministic:
+  - `global_profile -> confirmed_agent_overlay -> project_override`
+- Routine-ranking payloads include planning estimates:
+  - `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
+    `composite_meta_score`, and machine-readable explanation details.
+- Purchasing simplification (explicit v1 design decision):
+  - missing required local material class adds procurement delay,
+  - default delay is `10` business days (`procurement_business_days_default`),
+  - item-level override supported (`inventory.<class>.procurement_business_days`),
+  - delay is applied once per missing required class (deduplicated),
+  - business-day model currently excludes weekends only (no holiday calendar),
+  - business-day delays map to `estimated_time_hours` using deterministic
+    weekend-aware conversion (`24h * 7/5` per business day).
+- Lab-management agent integration policy:
+  - sync mode supports both pull and push suggestion capture,
+  - all incoming/outgoing agent updates are persisted as `pending` suggestions
+    with source/confidence/snapshot metadata,
+  - updates are advisory; activation requires explicit user accept/reject
+    action (no auto-apply).
+
 Decision-trace capture/export contract (detailed plan):
 
 - Why this exists:
@@ -1182,6 +1213,10 @@ candidate workflows, not whole-transcriptome alignment inside GENtle.
 Detailed implementation plan:
 `docs/rna_seq_nanopore_cloning_regions_plan.md`.
 
+Detailed follow-up plan for multi-gene origin classification and sparse
+annotated seed indexing:
+`docs/rna_read_origin_sparse_index_plan.md`.
+
 Architecture constraints for this track:
 
 - RNA evidence handling must remain engine-owned and deterministic; adapters
@@ -1218,6 +1253,10 @@ Architecture constraints for this track:
   responsive while progress streams are active.
 - SNR/background diagnostics must be persisted in engine-owned report payloads
   so GUI/CLI/shared shell/agent adapters can explain decisions consistently.
+- RNA-read seed evidence should remain reusable outside interpretation-only
+  views; primer-design workflows may consume persisted seed-support maps as
+  deterministic guidance input (candidate-region ranking), but primer scoring
+  contracts must remain engine-owned and adapter-equivalent.
 
 Ownership/defer boundary:
 

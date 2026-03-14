@@ -35,10 +35,14 @@ use crate::{
         GenomeAnchorSide, GenomeAnnotationScope, GenomeTrackSource, GenomeTrackSubscription,
         GentleEngine, GuideCandidate, GuideOligoExportFormat, GuideOligoPlateFormat,
         GuidePracticalFilterConfig, LineageMacroInstance, LineageMacroPortBinding,
-        MacroInstanceStatus, Operation, PRIMER_DESIGN_REPORTS_METADATA_KEY, PrimerDesignBackend,
+        MacroInstanceStatus, Operation, PLANNING_ESTIMATE_SCHEMA, PLANNING_OBJECTIVE_SCHEMA,
+        PLANNING_PROFILE_SCHEMA, PLANNING_SUGGESTION_SCHEMA, PLANNING_SYNC_STATUS_SCHEMA,
+        PRIMER_DESIGN_REPORTS_METADATA_KEY, PlanningEstimate, PlanningObjective, PlanningProfile,
+        PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState, RenderSvgMode,
         RnaReadAlignConfig, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile,
-        RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
+        RnaReadOriginMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor,
+        SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -65,7 +69,7 @@ use objc2_app_kit::NSApplication;
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use objc2_foundation::MainThreadMarker;
 use regex::{Regex, RegexBuilder};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 #[cfg(all(target_os = "macos", feature = "screenshot-capture"))]
 use std::process::Command;
@@ -273,6 +277,11 @@ struct CloningRoutineDefinition {
     template_path: Option<String>,
     input_ports: Vec<CloningRoutinePort>,
     output_ports: Vec<CloningRoutinePort>,
+    base_time_hours: Option<f64>,
+    base_cost: Option<f64>,
+    required_material_classes: Vec<String>,
+    required_machine_classes: Vec<String>,
+    required_capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -564,6 +573,40 @@ pub enum ShellCommand {
         catalog_path: Option<String>,
         left_routine_id: String,
         right_routine_id: String,
+    },
+    PlanningProfileShow {
+        scope: PlanningProfileScope,
+    },
+    PlanningProfileSet {
+        scope: PlanningProfileScope,
+        payload_json: String,
+    },
+    PlanningObjectiveShow,
+    PlanningObjectiveSet {
+        payload_json: String,
+    },
+    PlanningSuggestionsList {
+        status: Option<PlanningSuggestionStatus>,
+    },
+    PlanningSuggestionAccept {
+        suggestion_id: String,
+    },
+    PlanningSuggestionReject {
+        suggestion_id: String,
+        reason: Option<String>,
+    },
+    PlanningSyncStatus,
+    PlanningSyncPull {
+        payload_json: String,
+        source: Option<String>,
+        confidence: Option<f64>,
+        snapshot_id: Option<String>,
+    },
+    PlanningSyncPush {
+        payload_json: String,
+        source: Option<String>,
+        confidence: Option<f64>,
+        snapshot_id: Option<String>,
     },
     AgentsList {
         catalog_path: Option<String>,
@@ -1031,6 +1074,9 @@ pub enum ShellCommand {
         profile: RnaReadInterpretationProfile,
         input_format: RnaReadInputFormat,
         scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: Vec<String>,
+        roi_seed_capture_enabled: bool,
         seed_filter: RnaReadSeedFilterConfig,
         align_config: RnaReadAlignConfig,
         report_id: Option<String>,
@@ -1065,6 +1111,11 @@ pub enum ShellCommand {
         report_id: String,
         path: String,
         selection: RnaReadHitSelection,
+    },
+    RnaReadsExportScoreDensitySvg {
+        report_id: String,
+        path: String,
+        scale: RnaReadScoreDensityScale,
     },
     SetParameter {
         name: String,
@@ -1906,6 +1957,318 @@ fn routine_matches_filter(
         }
     }
     true
+}
+
+fn normalize_planning_class_key(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+        } else if matches!(ch, '_' | '-' | '.' | ':') {
+            out.push('_');
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        "item".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn normalize_planning_class_set(values: &[String]) -> Vec<String> {
+    let mut out = values
+        .iter()
+        .map(|value| normalize_planning_class_key(value))
+        .filter(|value| !value.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    out.sort_by_key(|value| value.to_ascii_lowercase());
+    out
+}
+
+fn routine_requirement_haystack(routine: &CloningRoutineDefinition) -> String {
+    let mut fields = vec![
+        routine.routine_id.as_str(),
+        routine.title.as_str(),
+        routine.family.as_str(),
+        routine.summary.as_deref().unwrap_or_default(),
+        routine.purpose.as_deref().unwrap_or_default(),
+        routine.mechanism.as_deref().unwrap_or_default(),
+    ];
+    for req in &routine.requires {
+        fields.push(req.as_str());
+    }
+    for tag in &routine.vocabulary_tags {
+        fields.push(tag.as_str());
+    }
+    fields.join(" ").to_ascii_lowercase()
+}
+
+fn infer_routine_material_classes(routine: &CloningRoutineDefinition) -> Vec<String> {
+    if !routine.required_material_classes.is_empty() {
+        return normalize_planning_class_set(&routine.required_material_classes);
+    }
+    let mut classes: BTreeSet<String> = BTreeSet::new();
+    let family = routine.family.trim().to_ascii_lowercase();
+    match family.as_str() {
+        "restriction" => {
+            classes.insert("restriction_enzymes".to_string());
+            classes.insert("ligase".to_string());
+        }
+        "gibson" => {
+            classes.insert("gibson_master_mix".to_string());
+        }
+        "infusion" => {
+            classes.insert("infusion_kit".to_string());
+        }
+        "nebuilder_hifi" | "nebuilder" => {
+            classes.insert("nebuilder_hifi_mix".to_string());
+        }
+        "gateway" => {
+            classes.insert("gateway_clonase".to_string());
+        }
+        _ => {}
+    }
+    let text = routine_requirement_haystack(routine);
+    if text.contains("restriction") || text.contains("enzyme") {
+        classes.insert("restriction_enzymes".to_string());
+    }
+    if text.contains("gibson") {
+        classes.insert("gibson_master_mix".to_string());
+    }
+    if text.contains("ligase") || text.contains("ligation") {
+        classes.insert("ligase".to_string());
+    }
+    if text.contains("primer") {
+        classes.insert("primers".to_string());
+    }
+    if text.contains("polymerase") || text.contains("pcr") {
+        classes.insert("pcr_master_mix".to_string());
+    }
+    classes
+        .into_iter()
+        .map(|value| normalize_planning_class_key(&value))
+        .collect::<Vec<_>>()
+}
+
+fn infer_routine_machine_classes(routine: &CloningRoutineDefinition) -> Vec<String> {
+    if !routine.required_machine_classes.is_empty() {
+        return normalize_planning_class_set(&routine.required_machine_classes);
+    }
+    let mut classes: BTreeSet<String> = BTreeSet::new();
+    let family = routine.family.trim().to_ascii_lowercase();
+    if matches!(
+        family.as_str(),
+        "restriction" | "gibson" | "infusion" | "nebuilder_hifi" | "nebuilder" | "gateway"
+    ) {
+        classes.insert("thermocycler".to_string());
+    }
+    let text = routine_requirement_haystack(routine);
+    if text.contains("gel") {
+        classes.insert("gel_imager".to_string());
+    }
+    if text.contains("sequenc") {
+        classes.insert("sequencer".to_string());
+    }
+    classes
+        .into_iter()
+        .map(|value| normalize_planning_class_key(&value))
+        .collect::<Vec<_>>()
+}
+
+fn infer_routine_capabilities(
+    routine: &CloningRoutineDefinition,
+    machine_classes: &[String],
+) -> Vec<String> {
+    let mut caps = normalize_planning_class_set(&routine.required_capabilities);
+    for machine in machine_classes {
+        if !caps.iter().any(|existing| existing == machine) {
+            caps.push(machine.clone());
+        }
+    }
+    caps.sort_by_key(|value| value.to_ascii_lowercase());
+    caps.dedup();
+    caps
+}
+
+fn default_routine_base_time_hours(routine: &CloningRoutineDefinition) -> f64 {
+    if let Some(value) = routine
+        .base_time_hours
+        .filter(|value| value.is_finite() && *value > 0.0)
+    {
+        return value;
+    }
+    match routine.family.trim().to_ascii_lowercase().as_str() {
+        "restriction" => 6.0,
+        "gibson" => 5.0,
+        "infusion" => 4.0,
+        "nebuilder_hifi" | "nebuilder" => 4.0,
+        "gateway" => 8.0,
+        "sequence" => 1.0,
+        _ => 4.0,
+    }
+}
+
+fn default_routine_base_cost(routine: &CloningRoutineDefinition) -> f64 {
+    routine
+        .base_cost
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(0.0)
+}
+
+fn planning_business_days_to_elapsed_hours(days: f64) -> f64 {
+    if !days.is_finite() || days <= 0.0 {
+        return 0.0;
+    }
+    // v1 approximation without a calendar anchor:
+    // treat business days as Monday-Friday, then convert to elapsed hours.
+    days * 24.0 * (7.0 / 5.0)
+}
+
+fn estimate_routine_planning(
+    engine: &GentleEngine,
+    routine: &CloningRoutineDefinition,
+) -> PlanningEstimate {
+    let profile = engine.planning_effective_profile();
+    let objective = engine.planning_objective();
+    let material_classes = infer_routine_material_classes(routine);
+    let machine_classes = infer_routine_machine_classes(routine);
+    let required_capabilities = infer_routine_capabilities(routine, &machine_classes);
+
+    let base_time_hours = default_routine_base_time_hours(routine);
+    let mut estimated_time_hours = base_time_hours;
+    let mut estimated_cost = default_routine_base_cost(routine);
+    let procurement_default_days = if profile.procurement_business_days_default.is_finite()
+        && profile.procurement_business_days_default > 0.0
+    {
+        profile.procurement_business_days_default
+    } else {
+        10.0
+    };
+
+    let mut missing_materials: Vec<String> = vec![];
+    let mut unknown_materials: Vec<String> = vec![];
+    let mut procurement_delay_business_days = 0.0;
+    for class in &material_classes {
+        if let Some(item) = profile.inventory.get(class) {
+            if let Some(unit_cost) = item
+                .unit_cost
+                .filter(|value| value.is_finite() && *value >= 0.0)
+            {
+                estimated_cost += unit_cost;
+            }
+            if !item.available {
+                missing_materials.push(class.clone());
+                procurement_delay_business_days += item
+                    .procurement_business_days
+                    .filter(|value| value.is_finite() && *value > 0.0)
+                    .unwrap_or(procurement_default_days);
+            }
+        } else {
+            unknown_materials.push(class.clone());
+        }
+    }
+
+    let mut missing_machines: Vec<String> = vec![];
+    for class in &machine_classes {
+        if let Some(machine) = profile.machine_availability.get(class) {
+            if !machine.available {
+                missing_machines.push(class.clone());
+            }
+            if machine.queue_business_days.is_finite() && machine.queue_business_days > 0.0 {
+                estimated_time_hours +=
+                    planning_business_days_to_elapsed_hours(machine.queue_business_days);
+            }
+            if let Some(run_cost_per_hour) = machine
+                .run_cost_per_hour
+                .filter(|value| value.is_finite() && *value >= 0.0)
+            {
+                estimated_cost += run_cost_per_hour * base_time_hours;
+            }
+        }
+    }
+    estimated_time_hours += planning_business_days_to_elapsed_hours(procurement_delay_business_days);
+
+    let capability_set = profile
+        .capabilities
+        .iter()
+        .map(|value| normalize_planning_class_key(value))
+        .collect::<HashSet<_>>();
+    let mut missing_capabilities: Vec<String> = vec![];
+    for capability in &required_capabilities {
+        if !capability_set.contains(capability) {
+            missing_capabilities.push(capability.clone());
+        }
+    }
+
+    let mut local_fit_score = 1.0
+        - (missing_materials.len() as f64 * 0.20)
+        - (missing_machines.len() as f64 * 0.25)
+        - (missing_capabilities.len() as f64 * 0.15);
+    if !local_fit_score.is_finite() {
+        local_fit_score = 0.0;
+    }
+    local_fit_score = local_fit_score.clamp(0.0, 1.0);
+
+    let mut guardrail_failures = vec![];
+    if objective.enforce_guardrails {
+        if let Some(max_cost) = objective.max_cost {
+            if estimated_cost > max_cost {
+                guardrail_failures.push(format!(
+                    "max_cost_exceeded ({estimated_cost:.2} > {max_cost:.2})"
+                ));
+            }
+        }
+        if let Some(max_time_hours) = objective.max_time_hours {
+            if estimated_time_hours > max_time_hours {
+                guardrail_failures.push(format!(
+                    "max_time_hours_exceeded ({estimated_time_hours:.1} > {max_time_hours:.1})"
+                ));
+            }
+        }
+        for capability in &objective.required_capabilities {
+            if !capability_set.contains(capability) {
+                guardrail_failures.push(format!("missing_required_capability ({capability})"));
+            }
+        }
+    }
+    let passes_guardrails = guardrail_failures.is_empty();
+    let composite_meta_score = (objective.weight_local_fit * local_fit_score)
+        - (objective.weight_time * estimated_time_hours)
+        - (objective.weight_cost * estimated_cost);
+
+    PlanningEstimate {
+        schema: PLANNING_ESTIMATE_SCHEMA.to_string(),
+        estimated_time_hours,
+        estimated_cost,
+        local_fit_score,
+        composite_meta_score,
+        passes_guardrails,
+        guardrail_failures,
+        explanation: json!({
+            "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+            "profile_schema": PLANNING_PROFILE_SCHEMA,
+            "base_time_hours": base_time_hours,
+            "base_cost": default_routine_base_cost(routine),
+            "procurement_business_days_default": procurement_default_days,
+            "procurement_delay_business_days": procurement_delay_business_days,
+            "required_material_classes": material_classes,
+            "required_machine_classes": machine_classes,
+            "required_capabilities": required_capabilities,
+            "missing_material_classes": missing_materials,
+            "unknown_material_classes": unknown_materials,
+            "missing_machine_classes": missing_machines,
+            "missing_capabilities": missing_capabilities,
+            "weights": {
+                "time": objective.weight_time,
+                "cost": objective.weight_cost,
+                "local_fit": objective.weight_local_fit,
+            },
+            "guardrails_enforced": objective.enforce_guardrails,
+        }),
+    }
 }
 
 fn resolve_workflow_template_bindings_for_preflight(
@@ -3983,6 +4346,71 @@ impl ShellCommand {
                     left_routine_id, right_routine_id, catalog
                 )
             }
+            Self::PlanningProfileShow { scope } => {
+                format!("show planning profile (scope={})", scope.as_str())
+            }
+            Self::PlanningProfileSet {
+                scope,
+                payload_json,
+            } => format!(
+                "set planning profile (scope={}, payload_len={})",
+                scope.as_str(),
+                payload_json.len()
+            ),
+            Self::PlanningObjectiveShow => "show planning objective".to_string(),
+            Self::PlanningObjectiveSet { payload_json } => {
+                format!(
+                    "set planning objective (payload_len={})",
+                    payload_json.len()
+                )
+            }
+            Self::PlanningSuggestionsList { status } => {
+                let status = status.map(|value| value.as_str()).unwrap_or("all");
+                format!("list planning suggestions (status={status})")
+            }
+            Self::PlanningSuggestionAccept { suggestion_id } => {
+                format!("accept planning suggestion '{suggestion_id}'")
+            }
+            Self::PlanningSuggestionReject {
+                suggestion_id,
+                reason,
+            } => {
+                let reason = reason.as_deref().unwrap_or("-");
+                format!("reject planning suggestion '{suggestion_id}' (reason={reason})")
+            }
+            Self::PlanningSyncStatus => "show planning sync status".to_string(),
+            Self::PlanningSyncPull {
+                payload_json,
+                source,
+                confidence,
+                snapshot_id,
+            } => {
+                let source = source.as_deref().unwrap_or("-");
+                let confidence = confidence
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string());
+                let snapshot = snapshot_id.as_deref().unwrap_or("-");
+                format!(
+                    "register planning sync pull suggestion (source={source}, confidence={confidence}, snapshot={snapshot}, payload_len={})",
+                    payload_json.len()
+                )
+            }
+            Self::PlanningSyncPush {
+                payload_json,
+                source,
+                confidence,
+                snapshot_id,
+            } => {
+                let source = source.as_deref().unwrap_or("-");
+                let confidence = confidence
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "-".to_string());
+                let snapshot = snapshot_id.as_deref().unwrap_or("-");
+                format!(
+                    "register planning sync push suggestion (source={source}, confidence={confidence}, snapshot={snapshot}, payload_len={})",
+                    payload_json.len()
+                )
+            }
             Self::AgentsList { catalog_path } => {
                 let catalog = catalog_path
                     .clone()
@@ -5150,17 +5578,23 @@ impl ShellCommand {
                 profile,
                 input_format,
                 scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
                 seed_filter,
                 align_config,
                 report_id,
             } => format!(
-                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}')",
+                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, origin_mode={}, target_genes={}, roi_seed_capture={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}')",
                 input_path,
                 seq_id,
                 seed_feature_id,
                 profile.as_str(),
                 input_format.as_str(),
                 scope.as_str(),
+                origin_mode.as_str(),
+                target_gene_ids.len(),
+                roi_seed_capture_enabled,
                 seed_filter.kmer_len,
                 seed_filter.short_full_hash_max_bp,
                 seed_filter.long_window_bp,
@@ -5241,6 +5675,16 @@ impl ShellCommand {
                 report_id,
                 path,
                 selection.as_str()
+            ),
+            Self::RnaReadsExportScoreDensitySvg {
+                report_id,
+                path,
+                scale,
+            } => format!(
+                "export RNA-read score-density SVG from '{}' to '{}' (scale={})",
+                report_id,
+                path,
+                scale.as_str()
             ),
             Self::SetParameter { name, value_json } => match name.as_str() {
                 "genome_anchor_prepared_fallback_policy"
@@ -6244,6 +6688,37 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
     } else {
         Ok(raw.to_string())
     }
+}
+
+fn parse_optional_json_payload<T>(raw: &str, context: &str) -> Result<Option<T>, String>
+where
+    T: DeserializeOwned,
+{
+    let loaded = parse_json_payload(raw)?;
+    let trimmed = loaded.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
+        return Ok(None);
+    }
+    serde_json::from_str::<T>(trimmed)
+        .map(Some)
+        .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
+}
+
+fn parse_required_json_payload<T>(raw: &str, context: &str) -> Result<T, String>
+where
+    T: DeserializeOwned,
+{
+    let loaded = parse_json_payload(raw)?;
+    serde_json::from_str::<T>(loaded.trim())
+        .map_err(|e| format!("Invalid {context} JSON payload: {e}"))
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct PlanningSyncSuggestionPayload {
+    profile_patch: Option<PlanningProfile>,
+    objective_patch: Option<PlanningObjective>,
+    message: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -9112,6 +9587,20 @@ fn parse_splicing_scope_preset(raw: &str) -> Result<SplicingScopePreset, String>
     }
 }
 
+fn parse_rna_read_origin_mode(raw: &str) -> Result<RnaReadOriginMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "single_gene" | "single-gene" | "single" | "legacy" => {
+            Ok(RnaReadOriginMode::SingleGene)
+        }
+        "multi_gene_sparse" | "multi-gene-sparse" | "multi_sparse" | "multi" => {
+            Ok(RnaReadOriginMode::MultiGeneSparse)
+        }
+        other => Err(format!(
+            "Unsupported origin mode '{other}', expected single_gene|multi_gene_sparse"
+        )),
+    }
+}
+
 fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelection, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "all" => Ok(RnaReadHitSelection::All),
@@ -9119,6 +9608,16 @@ fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelection, String
         "aligned" => Ok(RnaReadHitSelection::Aligned),
         other => Err(format!(
             "Unsupported hit selection '{other}', expected all|seed_passed|aligned"
+        )),
+    }
+}
+
+fn parse_rna_read_score_density_scale(raw: &str) -> Result<RnaReadScoreDensityScale, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "linear" | "lin" => Ok(RnaReadScoreDensityScale::Linear),
+        "log" | "log1p" => Ok(RnaReadScoreDensityScale::Log),
+        other => Err(format!(
+            "Unsupported score-density scale '{other}', expected linear|log"
         )),
     }
 }
@@ -9356,7 +9855,7 @@ fn parse_flex_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "rna-reads requires a subcommand: interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv"
+            "rna-reads requires a subcommand: interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg"
                 .to_string(),
         );
     }
@@ -9364,7 +9863,7 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "interpret" => {
             if tokens.len() < 5 {
                 return Err(
-                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
                         .to_string(),
                 );
             }
@@ -9385,6 +9884,9 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut profile = RnaReadInterpretationProfile::NanoporeCdnaV1;
             let mut input_format = RnaReadInputFormat::Fasta;
             let mut scope = SplicingScopePreset::AllOverlappingBothStrands;
+            let mut origin_mode = RnaReadOriginMode::SingleGene;
+            let mut target_gene_ids: Vec<String> = vec![];
+            let mut roi_seed_capture_enabled = false;
             let mut seed_filter = RnaReadSeedFilterConfig::default();
             let mut align_config = RnaReadAlignConfig::default();
             let mut report_id: Option<String> = None;
@@ -9417,6 +9919,38 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         let raw =
                             parse_option_path(tokens, &mut idx, "--scope", "rna-reads interpret")?;
                         scope = parse_splicing_scope_preset(&raw)?;
+                    }
+                    "--origin-mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--origin-mode",
+                            "rna-reads interpret",
+                        )?;
+                        origin_mode = parse_rna_read_origin_mode(&raw)?;
+                    }
+                    "--target-gene" | "--target-gene-id" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--target-gene",
+                            "rna-reads interpret",
+                        )?;
+                        let gene_id = raw.trim();
+                        if gene_id.is_empty() {
+                            return Err(
+                                "--target-gene requires a non-empty gene identifier".to_string()
+                            );
+                        }
+                        target_gene_ids.push(gene_id.to_string());
+                    }
+                    "--roi-seed-capture" => {
+                        roi_seed_capture_enabled = true;
+                        idx += 1;
+                    }
+                    "--no-roi-seed-capture" => {
+                        roi_seed_capture_enabled = false;
+                        idx += 1;
                     }
                     "--kmer-len" => {
                         let raw = parse_option_path(
@@ -9639,6 +10173,9 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 profile,
                 input_format,
                 scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
                 seed_filter,
                 align_config,
                 report_id,
@@ -9834,8 +10371,43 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 selection,
             })
         }
+        "export-score-density-svg" => {
+            if tokens.len() < 4 {
+                return Err(
+                    "rna-reads export-score-density-svg requires REPORT_ID OUTPUT.svg [--scale linear|log]"
+                        .to_string(),
+                );
+            }
+            let report_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut scale = RnaReadScoreDensityScale::Log;
+            let mut idx = 4usize;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--scale" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--scale",
+                            "rna-reads export-score-density-svg",
+                        )?;
+                        scale = parse_rna_read_score_density_scale(&raw)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for rna-reads export-score-density-svg"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::RnaReadsExportScoreDensitySvg {
+                report_id,
+                path,
+                scale,
+            })
+        }
         other => Err(format!(
-            "Unknown rna-reads subcommand '{other}' (expected interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv)"
+            "Unknown rna-reads subcommand '{other}' (expected interpret, list-reports, show-report, export-report, export-hits-fasta, export-sample-sheet, export-paths-tsv, export-abundance-tsv, export-score-density-svg)"
         )),
     }
 }
@@ -10228,6 +10800,347 @@ fn parse_routines_command(tokens: &[String]) -> Result<ShellCommand, String> {
         }
         other => Err(format!(
             "Unknown routines subcommand '{other}' (expected list, explain, compare)"
+        )),
+    }
+}
+
+fn parse_planning_profile_scope(raw: &str) -> Result<PlanningProfileScope, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "global" => Ok(PlanningProfileScope::Global),
+        "project" | "project_override" | "project-override" => {
+            Ok(PlanningProfileScope::ProjectOverride)
+        }
+        "agent" | "agent_overlay" | "confirmed_agent_overlay" | "confirmed-agent-overlay" => {
+            Ok(PlanningProfileScope::ConfirmedAgentOverlay)
+        }
+        "effective" => Ok(PlanningProfileScope::Effective),
+        other => Err(format!(
+            "Unsupported planning profile scope '{other}' (expected global|project_override|confirmed_agent_overlay|effective)"
+        )),
+    }
+}
+
+fn parse_planning_suggestion_status(raw: &str) -> Result<PlanningSuggestionStatus, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "pending" => Ok(PlanningSuggestionStatus::Pending),
+        "accepted" => Ok(PlanningSuggestionStatus::Accepted),
+        "rejected" => Ok(PlanningSuggestionStatus::Rejected),
+        other => Err(format!(
+            "Unsupported planning suggestion status '{other}' (expected pending|accepted|rejected)"
+        )),
+    }
+}
+
+fn parse_planning_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    if tokens.len() < 2 {
+        return Err(
+            "planning requires a subcommand: profile, objective, suggestions, sync".to_string(),
+        );
+    }
+    match tokens[1].as_str() {
+        "profile" => {
+            if tokens.len() < 3 {
+                return Err("planning profile requires a subcommand: show, set, clear".to_string());
+            }
+            match tokens[2].as_str() {
+                "show" => {
+                    let mut scope = PlanningProfileScope::Effective;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--scope",
+                                    "planning profile show",
+                                )?;
+                                scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning profile show"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::PlanningProfileShow { scope })
+                }
+                "set" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "planning profile set requires JSON_OR_@FILE [--scope SCOPE]"
+                                .to_string(),
+                        );
+                    }
+                    let mut scope = PlanningProfileScope::ProjectOverride;
+                    let payload_json = tokens[3].clone();
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--scope",
+                                    "planning profile set",
+                                )?;
+                                scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning profile set"
+                                ));
+                            }
+                        }
+                    }
+                    if scope == PlanningProfileScope::Effective {
+                        return Err(
+                            "planning profile set does not support --scope effective".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::PlanningProfileSet {
+                        scope,
+                        payload_json,
+                    })
+                }
+                "clear" => {
+                    let mut scope = PlanningProfileScope::ProjectOverride;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--scope" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--scope",
+                                    "planning profile clear",
+                                )?;
+                                scope = parse_planning_profile_scope(&raw)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning profile clear"
+                                ));
+                            }
+                        }
+                    }
+                    if scope == PlanningProfileScope::Effective {
+                        return Err(
+                            "planning profile clear does not support --scope effective".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::PlanningProfileSet {
+                        scope,
+                        payload_json: "null".to_string(),
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning profile subcommand '{other}' (expected show, set, clear)"
+                )),
+            }
+        }
+        "objective" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "planning objective requires a subcommand: show, set, clear".to_string()
+                );
+            }
+            match tokens[2].as_str() {
+                "show" => {
+                    if tokens.len() > 3 {
+                        return Err("planning objective show takes no options".to_string());
+                    }
+                    Ok(ShellCommand::PlanningObjectiveShow)
+                }
+                "set" => {
+                    if tokens.len() != 4 {
+                        return Err("planning objective set requires JSON_OR_@FILE".to_string());
+                    }
+                    Ok(ShellCommand::PlanningObjectiveSet {
+                        payload_json: tokens[3].clone(),
+                    })
+                }
+                "clear" => {
+                    if tokens.len() > 3 {
+                        return Err("planning objective clear takes no options".to_string());
+                    }
+                    Ok(ShellCommand::PlanningObjectiveSet {
+                        payload_json: "null".to_string(),
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning objective subcommand '{other}' (expected show, set, clear)"
+                )),
+            }
+        }
+        "suggestions" => {
+            if tokens.len() < 3 {
+                return Err(
+                    "planning suggestions requires a subcommand: list, accept, reject".to_string(),
+                );
+            }
+            match tokens[2].as_str() {
+                "list" => {
+                    let mut status: Option<PlanningSuggestionStatus> = None;
+                    let mut idx = 3usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--status" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--status",
+                                    "planning suggestions list",
+                                )?;
+                                status = Some(parse_planning_suggestion_status(&raw)?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning suggestions list"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::PlanningSuggestionsList { status })
+                }
+                "accept" => {
+                    if tokens.len() != 4 {
+                        return Err(
+                            "planning suggestions accept requires SUGGESTION_ID".to_string()
+                        );
+                    }
+                    let suggestion_id = tokens[3].trim().to_string();
+                    if suggestion_id.is_empty() {
+                        return Err(
+                            "planning suggestions accept SUGGESTION_ID cannot be empty".to_string()
+                        );
+                    }
+                    Ok(ShellCommand::PlanningSuggestionAccept { suggestion_id })
+                }
+                "reject" => {
+                    if tokens.len() < 4 {
+                        return Err(
+                            "planning suggestions reject requires SUGGESTION_ID [--reason TEXT]"
+                                .to_string(),
+                        );
+                    }
+                    let suggestion_id = tokens[3].trim().to_string();
+                    if suggestion_id.is_empty() {
+                        return Err(
+                            "planning suggestions reject SUGGESTION_ID cannot be empty".to_string()
+                        );
+                    }
+                    let mut reason: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--reason" => {
+                                reason = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--reason",
+                                    "planning suggestions reject",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Unknown option '{other}' for planning suggestions reject"
+                                ));
+                            }
+                        }
+                    }
+                    Ok(ShellCommand::PlanningSuggestionReject {
+                        suggestion_id,
+                        reason,
+                    })
+                }
+                other => Err(format!(
+                    "Unknown planning suggestions subcommand '{other}' (expected list, accept, reject)"
+                )),
+            }
+        }
+        "sync" => {
+            if tokens.len() < 3 {
+                return Err("planning sync requires a subcommand: status, pull, push".to_string());
+            }
+            match tokens[2].as_str() {
+                "status" => {
+                    if tokens.len() > 3 {
+                        return Err("planning sync status takes no options".to_string());
+                    }
+                    Ok(ShellCommand::PlanningSyncStatus)
+                }
+                "pull" | "push" => {
+                    if tokens.len() < 4 {
+                        return Err(format!(
+                            "planning sync {} requires JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]",
+                            tokens[2]
+                        ));
+                    }
+                    let payload_json = tokens[3].clone();
+                    let mut source: Option<String> = None;
+                    let mut confidence: Option<f64> = None;
+                    let mut snapshot_id: Option<String> = None;
+                    let mut idx = 4usize;
+                    while idx < tokens.len() {
+                        match tokens[idx].as_str() {
+                            "--source" => {
+                                source = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--source",
+                                    "planning sync",
+                                )?);
+                            }
+                            "--confidence" => {
+                                let raw = parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--confidence",
+                                    "planning sync",
+                                )?;
+                                let parsed = raw.parse::<f64>().map_err(|e| {
+                                    format!("Invalid --confidence value '{raw}': {e}")
+                                })?;
+                                confidence = Some(parsed);
+                            }
+                            "--snapshot-id" => {
+                                snapshot_id = Some(parse_option_path(
+                                    tokens,
+                                    &mut idx,
+                                    "--snapshot-id",
+                                    "planning sync",
+                                )?);
+                            }
+                            other => {
+                                return Err(format!("Unknown option '{other}' for planning sync"));
+                            }
+                        }
+                    }
+                    if tokens[2].eq_ignore_ascii_case("pull") {
+                        Ok(ShellCommand::PlanningSyncPull {
+                            payload_json,
+                            source,
+                            confidence,
+                            snapshot_id,
+                        })
+                    } else {
+                        Ok(ShellCommand::PlanningSyncPush {
+                            payload_json,
+                            source,
+                            confidence,
+                            snapshot_id,
+                        })
+                    }
+                }
+                other => Err(format!(
+                    "Unknown planning sync subcommand '{other}' (expected status, pull, push)"
+                )),
+            }
+        }
+        other => Err(format!(
+            "Unknown planning subcommand '{other}' (expected profile, objective, suggestions, sync)"
         )),
     }
 }
@@ -11548,6 +12461,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "uniprot" => parse_uniprot_command(tokens),
         "macros" => parse_macros_command(tokens),
         "candidates" => parse_candidates_command(tokens),
+        "planning" => parse_planning_command(tokens),
         "guides" => parse_guides_command(tokens),
         "primers" => parse_primers_command(tokens),
         "set-param" => {
@@ -12711,21 +13625,92 @@ pub fn execute_shell_command_with_options(
                     )
                 })
                 .collect::<Vec<_>>();
-            routines.sort_by(|left, right| {
-                left.family
-                    .to_ascii_lowercase()
-                    .cmp(&right.family.to_ascii_lowercase())
-                    .then(
-                        left.title
-                            .to_ascii_lowercase()
-                            .cmp(&right.title.to_ascii_lowercase()),
-                    )
-                    .then(
-                        left.routine_id
-                            .to_ascii_lowercase()
-                            .cmp(&right.routine_id.to_ascii_lowercase()),
-                    )
-            });
+            let planning_enabled = engine.planning_meta_enabled();
+            let planning_objective = engine.planning_objective();
+            let planning_profile = engine.planning_effective_profile();
+            let mut planning_rows = routines
+                .drain(..)
+                .map(|routine| {
+                    let estimate = estimate_routine_planning(engine, &routine);
+                    let mut payload = serde_json::to_value(&routine).unwrap_or_else(|_| json!({}));
+                    if let Some(obj) = payload.as_object_mut() {
+                        obj.insert(
+                            "estimated_time_hours".to_string(),
+                            json!(estimate.estimated_time_hours),
+                        );
+                        obj.insert("estimated_cost".to_string(), json!(estimate.estimated_cost));
+                        obj.insert(
+                            "local_fit_score".to_string(),
+                            json!(estimate.local_fit_score),
+                        );
+                        obj.insert(
+                            "composite_meta_score".to_string(),
+                            json!(estimate.composite_meta_score),
+                        );
+                        obj.insert(
+                            "planning_estimate".to_string(),
+                            serde_json::to_value(&estimate).unwrap_or_else(|_| json!({})),
+                        );
+                    }
+                    (routine, estimate, payload)
+                })
+                .collect::<Vec<_>>();
+            if planning_enabled {
+                planning_rows.sort_by(
+                    |(left_routine, left_estimate, _), (right_routine, right_estimate, _)| {
+                        right_estimate
+                            .passes_guardrails
+                            .cmp(&left_estimate.passes_guardrails)
+                            .then_with(|| {
+                                right_estimate
+                                    .composite_meta_score
+                                    .total_cmp(&left_estimate.composite_meta_score)
+                            })
+                            .then(
+                                left_routine
+                                    .family
+                                    .to_ascii_lowercase()
+                                    .cmp(&right_routine.family.to_ascii_lowercase()),
+                            )
+                            .then(
+                                left_routine
+                                    .title
+                                    .to_ascii_lowercase()
+                                    .cmp(&right_routine.title.to_ascii_lowercase()),
+                            )
+                            .then(
+                                left_routine
+                                    .routine_id
+                                    .to_ascii_lowercase()
+                                    .cmp(&right_routine.routine_id.to_ascii_lowercase()),
+                            )
+                    },
+                );
+            } else {
+                planning_rows.sort_by(|(left, _, _), (right, _, _)| {
+                    left.family
+                        .to_ascii_lowercase()
+                        .cmp(&right.family.to_ascii_lowercase())
+                        .then(
+                            left.title
+                                .to_ascii_lowercase()
+                                .cmp(&right.title.to_ascii_lowercase()),
+                        )
+                        .then(
+                            left.routine_id
+                                .to_ascii_lowercase()
+                                .cmp(&right.routine_id.to_ascii_lowercase()),
+                        )
+                });
+            }
+            let guardrail_blocked_count = planning_rows
+                .iter()
+                .filter(|(_, estimate, _)| !estimate.passes_guardrails)
+                .count();
+            let routines_payload = planning_rows
+                .into_iter()
+                .map(|(_, _, payload)| payload)
+                .collect::<Vec<_>>();
             ShellRunResult {
                 state_changed: false,
                 output: json!({
@@ -12740,8 +13725,20 @@ pub fn execute_shell_command_with_options(
                     },
                     "available_families": available_families,
                     "available_statuses": available_statuses,
-                    "routine_count": routines.len(),
-                    "routines": routines,
+                    "routine_count": routines_payload.len(),
+                    "routines": routines_payload,
+                    "planning": {
+                        "enabled": planning_enabled,
+                        "profile_merge_order": [
+                            "global_profile",
+                            "confirmed_agent_overlay",
+                            "project_override"
+                        ],
+                        "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
+                        "objective": planning_objective,
+                        "guardrail_blocked_count": guardrail_blocked_count,
+                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
+                    },
                 }),
             }
         }
@@ -12999,6 +13996,41 @@ pub fn execute_shell_command_with_options(
                     .iter()
                     .any(|entry| entry.eq_ignore_ascii_case(left.routine_id.as_str()));
             let same_family = left.family.eq_ignore_ascii_case(right.family.as_str());
+            let planning_enabled = engine.planning_meta_enabled();
+            let planning_objective = engine.planning_objective();
+            let planning_profile = engine.planning_effective_profile();
+            let left_estimate = estimate_routine_planning(engine, &left);
+            let right_estimate = estimate_routine_planning(engine, &right);
+            axis_rows.push(json!({
+                "axis": "estimated_time_hours",
+                "left": format!("{:.2}", left_estimate.estimated_time_hours),
+                "right": format!("{:.2}", right_estimate.estimated_time_hours),
+                "same": (left_estimate.estimated_time_hours - right_estimate.estimated_time_hours).abs() < 1e-9,
+            }));
+            axis_rows.push(json!({
+                "axis": "estimated_cost",
+                "left": format!("{:.2}", left_estimate.estimated_cost),
+                "right": format!("{:.2}", right_estimate.estimated_cost),
+                "same": (left_estimate.estimated_cost - right_estimate.estimated_cost).abs() < 1e-9,
+            }));
+            axis_rows.push(json!({
+                "axis": "local_fit_score",
+                "left": format!("{:.3}", left_estimate.local_fit_score),
+                "right": format!("{:.3}", right_estimate.local_fit_score),
+                "same": (left_estimate.local_fit_score - right_estimate.local_fit_score).abs() < 1e-9,
+            }));
+            axis_rows.push(json!({
+                "axis": "composite_meta_score",
+                "left": format!("{:.3}", left_estimate.composite_meta_score),
+                "right": format!("{:.3}", right_estimate.composite_meta_score),
+                "same": (left_estimate.composite_meta_score - right_estimate.composite_meta_score).abs() < 1e-9,
+            }));
+            let preferred_routine_id =
+                if left_estimate.composite_meta_score >= right_estimate.composite_meta_score {
+                    left.routine_id.clone()
+                } else {
+                    right.routine_id.clone()
+                };
             let left_payload = left.clone();
             let right_payload = right.clone();
 
@@ -13018,7 +14050,245 @@ pub fn execute_shell_command_with_options(
                         "right_only_tags": right_only_tags,
                         "difference_matrix": axis_rows,
                         "disambiguation_questions": disambiguation_questions,
-                    }
+                    },
+                    "planning": {
+                        "enabled": planning_enabled,
+                        "profile_procurement_business_days_default": planning_profile.procurement_business_days_default,
+                        "objective": planning_objective,
+                        "left_estimate": left_estimate.clone(),
+                        "right_estimate": right_estimate.clone(),
+                        "preferred_routine_id": preferred_routine_id,
+                        "estimate_schema": PLANNING_ESTIMATE_SCHEMA,
+                    },
+                }),
+            }
+        }
+        ShellCommand::PlanningProfileShow { scope } => {
+            let scope_profile = engine.planning_profile(*scope);
+            let effective_profile = engine.planning_effective_profile();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_profile_view.v1",
+                    "profile_schema": PLANNING_PROFILE_SCHEMA,
+                    "scope": scope.as_str(),
+                    "profile": scope_profile,
+                    "effective_profile": effective_profile,
+                    "profile_merge_order": [
+                        "global_profile",
+                        "confirmed_agent_overlay",
+                        "project_override"
+                    ],
+                }),
+            }
+        }
+        ShellCommand::PlanningProfileSet {
+            scope,
+            payload_json,
+        } => {
+            let profile =
+                parse_optional_json_payload::<PlanningProfile>(payload_json, "planning profile")?;
+            engine
+                .set_planning_profile(*scope, profile)
+                .map_err(|e| e.to_string())?;
+            let scope_profile = engine.planning_profile(*scope);
+            let effective_profile = engine.planning_effective_profile();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_profile_update.v1",
+                    "profile_schema": PLANNING_PROFILE_SCHEMA,
+                    "scope": scope.as_str(),
+                    "profile": scope_profile,
+                    "effective_profile": effective_profile,
+                }),
+            }
+        }
+        ShellCommand::PlanningObjectiveShow => {
+            let objective = engine.planning_objective();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_objective_view.v1",
+                    "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+                    "objective": objective,
+                }),
+            }
+        }
+        ShellCommand::PlanningObjectiveSet { payload_json } => {
+            let objective = parse_optional_json_payload::<PlanningObjective>(
+                payload_json,
+                "planning objective",
+            )?;
+            engine
+                .set_planning_objective(objective)
+                .map_err(|e| e.to_string())?;
+            let current = engine.planning_objective();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_objective_update.v1",
+                    "objective_schema": PLANNING_OBJECTIVE_SCHEMA,
+                    "objective": current,
+                }),
+            }
+        }
+        ShellCommand::PlanningSuggestionsList { status } => {
+            let suggestions = engine.list_planning_suggestions(*status);
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_suggestions_list.v1",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "status_filter": status.map(|value| value.as_str()),
+                    "suggestion_count": suggestions.len(),
+                    "suggestions": suggestions,
+                }),
+            }
+        }
+        ShellCommand::PlanningSuggestionAccept { suggestion_id } => {
+            let suggestion = engine
+                .accept_planning_suggestion(suggestion_id)
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_suggestion_resolution.v1",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "status": "accepted",
+                    "suggestion": suggestion,
+                    "effective_profile": engine.planning_effective_profile(),
+                    "objective": engine.planning_objective(),
+                    "sync_status": sync_status,
+                }),
+            }
+        }
+        ShellCommand::PlanningSuggestionReject {
+            suggestion_id,
+            reason,
+        } => {
+            let suggestion = engine
+                .reject_planning_suggestion(suggestion_id, reason.as_deref())
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_suggestion_resolution.v1",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "status": "rejected",
+                    "suggestion": suggestion,
+                    "effective_profile": engine.planning_effective_profile(),
+                    "objective": engine.planning_objective(),
+                    "sync_status": sync_status,
+                }),
+            }
+        }
+        ShellCommand::PlanningSyncStatus => {
+            let status = engine.planning_sync_status();
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.planning_sync_status_view.v1",
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "status": status,
+                }),
+            }
+        }
+        ShellCommand::PlanningSyncPull {
+            payload_json,
+            source,
+            confidence,
+            snapshot_id,
+        } => {
+            if let Some(value) = confidence {
+                if !value.is_finite() || !(0.0..=1.0).contains(value) {
+                    return Err(format!(
+                        "Invalid planning sync pull confidence '{}'; expected 0.0..=1.0",
+                        value
+                    ));
+                }
+            }
+            let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
+                payload_json,
+                "planning sync pull",
+            )?;
+            let source = source
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("agent_pull");
+            let suggestion = engine
+                .propose_planning_suggestion(
+                    "pull",
+                    source,
+                    *confidence,
+                    snapshot_id.as_deref(),
+                    payload.profile_patch,
+                    payload.objective_patch,
+                    payload.message.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_sync_suggestion.v1",
+                    "direction": "pull",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "suggestion": suggestion,
+                    "sync_status": sync_status,
+                }),
+            }
+        }
+        ShellCommand::PlanningSyncPush {
+            payload_json,
+            source,
+            confidence,
+            snapshot_id,
+        } => {
+            if let Some(value) = confidence {
+                if !value.is_finite() || !(0.0..=1.0).contains(value) {
+                    return Err(format!(
+                        "Invalid planning sync push confidence '{}'; expected 0.0..=1.0",
+                        value
+                    ));
+                }
+            }
+            let payload = parse_required_json_payload::<PlanningSyncSuggestionPayload>(
+                payload_json,
+                "planning sync push",
+            )?;
+            let source = source
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("agent_push");
+            let suggestion = engine
+                .propose_planning_suggestion(
+                    "push",
+                    source,
+                    *confidence,
+                    snapshot_id.as_deref(),
+                    payload.profile_patch,
+                    payload.objective_patch,
+                    payload.message.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
+            let sync_status = engine.planning_sync_status();
+            ShellRunResult {
+                state_changed: true,
+                output: json!({
+                    "schema": "gentle.planning_sync_suggestion.v1",
+                    "direction": "push",
+                    "suggestion_schema": PLANNING_SUGGESTION_SCHEMA,
+                    "sync_status_schema": PLANNING_SYNC_STATUS_SCHEMA,
+                    "suggestion": suggestion,
+                    "sync_status": sync_status,
                 }),
             }
         }
@@ -15643,6 +16913,9 @@ pub fn execute_shell_command_with_options(
             profile,
             input_format,
             scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
             seed_filter,
             align_config,
             report_id,
@@ -15655,6 +16928,9 @@ pub fn execute_shell_command_with_options(
                     input_path: input_path.clone(),
                     input_format: *input_format,
                     scope: *scope,
+                    origin_mode: *origin_mode,
+                    target_gene_ids: target_gene_ids.clone(),
+                    roi_seed_capture_enabled: *roi_seed_capture_enabled,
                     seed_filter: seed_filter.clone(),
                     align_config: align_config.clone(),
                     report_id: report_id.clone(),
@@ -15796,6 +17072,28 @@ pub fn execute_shell_command_with_options(
                     "selected_read_count": export.selected_read_count,
                     "exon_row_count": export.exon_row_count,
                     "transition_row_count": export.transition_row_count,
+                }),
+            }
+        }
+        ShellCommand::RnaReadsExportScoreDensitySvg {
+            report_id,
+            path,
+            scale,
+        } => {
+            let export = engine
+                .export_rna_read_score_density_svg(report_id, path, *scale)
+                .map_err(|e| e.to_string())?;
+            ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": export.schema,
+                    "report_id": export.report_id,
+                    "path": export.path,
+                    "scale": export.scale.as_str(),
+                    "bin_count": export.bin_count,
+                    "max_bin_count": export.max_bin_count,
+                    "total_scored_reads": export.total_scored_reads,
+                    "derived_from_report_hits_only": export.derived_from_report_hits_only,
                 }),
             }
         }
@@ -16785,6 +18083,46 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_planning_commands() {
+        let profile = parse_shell_line("planning profile set @profile.json --scope global")
+            .expect("parse planning profile set");
+        assert!(matches!(
+            profile,
+            ShellCommand::PlanningProfileSet { scope, payload_json }
+                if scope == PlanningProfileScope::Global && payload_json == "@profile.json"
+        ));
+
+        let objective =
+            parse_shell_line("planning objective show").expect("parse planning objective show");
+        assert!(matches!(objective, ShellCommand::PlanningObjectiveShow));
+
+        let suggestions = parse_shell_line("planning suggestions list --status pending")
+            .expect("parse planning suggestions list");
+        assert!(matches!(
+            suggestions,
+            ShellCommand::PlanningSuggestionsList { status }
+                if status == Some(PlanningSuggestionStatus::Pending)
+        ));
+
+        let sync = parse_shell_line(
+            "planning sync pull @sync.json --source lab_manager --confidence 0.75 --snapshot-id snap_1",
+        )
+        .expect("parse planning sync pull");
+        assert!(matches!(
+            sync,
+            ShellCommand::PlanningSyncPull {
+                payload_json,
+                source,
+                confidence,
+                snapshot_id
+            } if payload_json == "@sync.json"
+                && source.as_deref() == Some("lab_manager")
+                && confidence == Some(0.75)
+                && snapshot_id.as_deref() == Some("snap_1")
+        ));
     }
 
     #[test]
@@ -17839,6 +19177,365 @@ filter set1 set2 --metric score --min 10
             rows[0].get("routine_id").and_then(|value| value.as_str()),
             Some("crispr.guides.scan_basic")
         );
+    }
+
+    #[test]
+    fn execute_planning_profile_merge_precedence_global_agent_project() {
+        let mut engine = GentleEngine::default();
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::Global,
+                payload_json: r#"{
+                  "schema":"gentle.planning_profile.v1",
+                  "capabilities":["gel_imager"],
+                  "inventory":{"enzymes":{"available":false,"procurement_business_days":3}},
+                  "machine_availability":{"thermocycler":{"available":true,"queue_business_days":0.5}}
+                }"#
+                .to_string(),
+            },
+        )
+        .expect("set global profile");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::ConfirmedAgentOverlay,
+                payload_json: r#"{
+                  "schema":"gentle.planning_profile.v1",
+                  "capabilities":["thermocycler"],
+                  "inventory":{"enzymes":{"available":true}}
+                }"#
+                .to_string(),
+            },
+        )
+        .expect("set agent overlay");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::ProjectOverride,
+                payload_json: r#"{
+                  "schema":"gentle.planning_profile.v1",
+                  "inventory":{"enzymes":{"available":false,"procurement_business_days":2}}
+                }"#
+                .to_string(),
+            },
+        )
+        .expect("set project override");
+
+        let effective = engine.planning_effective_profile();
+        let enzymes = effective
+            .inventory
+            .get("enzymes")
+            .expect("enzymes inventory");
+        assert!(
+            !enzymes.available,
+            "project override should win over agent/global"
+        );
+        assert_eq!(enzymes.procurement_business_days, Some(2.0));
+        assert!(
+            effective.capabilities.iter().any(|cap| cap == "gel_imager"),
+            "global capability should remain in merged profile"
+        );
+        assert!(
+            effective
+                .capabilities
+                .iter()
+                .any(|cap| cap == "thermocycler"),
+            "agent overlay capability should be merged"
+        );
+        let machine = effective
+            .machine_availability
+            .get("thermocycler")
+            .expect("thermocycler machine entry");
+        assert!(
+            (machine.queue_business_days - 0.5).abs() < f64::EPSILON,
+            "global machine queue assumption should survive merge"
+        );
+    }
+
+    #[test]
+    fn execute_planning_rejects_schema_mismatch() {
+        let mut engine = GentleEngine::default();
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::Global,
+                payload_json: r#"{"schema":"gentle.planning_profile.v0"}"#.to_string(),
+            },
+        )
+        .expect_err("profile schema mismatch must fail");
+        assert!(err.contains("Unsupported planning profile schema"));
+
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningObjectiveSet {
+                payload_json: r#"{"schema":"gentle.planning_objective.v0"}"#.to_string(),
+            },
+        )
+        .expect_err("objective schema mismatch must fail");
+        assert!(err.contains("Unsupported planning objective schema"));
+    }
+
+    #[test]
+    fn execute_planning_sync_payload_validation_rejects_unknown_fields() {
+        let mut engine = GentleEngine::default();
+        let err = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSyncPull {
+                payload_json: r#"{"unknown_patch":{"x":1}}"#.to_string(),
+                source: None,
+                confidence: None,
+                snapshot_id: None,
+            },
+        )
+        .expect_err("unknown sync payload fields must fail");
+        assert!(err.contains("Invalid planning sync pull JSON payload"));
+    }
+
+    #[test]
+    fn execute_routines_list_without_planning_preserves_legacy_order() {
+        let mut engine = GentleEngine::default();
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("routines_legacy_order.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "zeta.workflow",
+      "title": "Zeta Routine",
+      "family": "zeta",
+      "status": "implemented",
+      "vocabulary_tags": ["zeta"],
+      "template_name": "zeta_template",
+      "base_time_hours": 1.0,
+      "required_material_classes": ["missing_item"],
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    },
+    {
+      "routine_id": "alpha.workflow",
+      "title": "Alpha Routine",
+      "family": "alpha",
+      "status": "implemented",
+      "vocabulary_tags": ["alpha"],
+      "template_name": "alpha_template",
+      "base_time_hours": 10.0,
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    }
+  ]
+}"#,
+        )
+        .expect("write legacy-order catalog");
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RoutinesList {
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                family: None,
+                status: None,
+                tag: None,
+                query: None,
+            },
+        )
+        .expect("list routines");
+        assert_eq!(out.output["planning"]["enabled"].as_bool(), Some(false));
+        let rows = out.output["routines"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].get("routine_id").and_then(|v| v.as_str()),
+            Some("alpha.workflow"),
+            "legacy non-planning order should remain family/title based"
+        );
+    }
+
+    #[test]
+    fn execute_routines_list_applies_missing_material_penalty_default_business_days() {
+        let mut engine = GentleEngine::default();
+        let tmp = tempdir().expect("tempdir");
+        let catalog_path = tmp.path().join("routines_planning_penalty.json");
+        fs::write(
+            &catalog_path,
+            r#"{
+  "schema": "gentle.cloning_routines.v1",
+  "routines": [
+    {
+      "routine_id": "restriction.missing_mix",
+      "title": "Restriction with Missing Mix",
+      "family": "restriction",
+      "status": "implemented",
+      "vocabulary_tags": ["restriction"],
+      "template_name": "restriction_missing_mix",
+      "base_time_hours": 4.0,
+      "base_cost": 8.0,
+      "required_material_classes": ["custom_mix", "custom_mix"],
+      "input_ports": [{ "port_id": "seq_id", "kind": "sequence", "required": true, "cardinality": "one" }],
+      "output_ports": []
+    }
+  ]
+}"#,
+        )
+        .expect("write planning catalog");
+
+        execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningProfileSet {
+                scope: PlanningProfileScope::ProjectOverride,
+                payload_json: r#"{
+                  "schema":"gentle.planning_profile.v1",
+                  "procurement_business_days_default":10,
+                  "inventory":{"custom_mix":{"available":false}}
+                }"#
+                .to_string(),
+            },
+        )
+        .expect("set planning profile");
+
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RoutinesList {
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                family: None,
+                status: None,
+                tag: None,
+                query: None,
+            },
+        )
+        .expect("list routines");
+        let rows = out.output["routines"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(rows.len(), 1);
+        let estimate = rows[0]["planning_estimate"].clone();
+        let estimated_time_hours = estimate["estimated_time_hours"]
+            .as_f64()
+            .unwrap_or(f64::NAN);
+        assert!(
+            (estimated_time_hours - 340.0).abs() < 1e-9,
+            "expected base 4h + 10 business days (weekend-aware elapsed-time) penalty"
+        );
+        let procurement_days = estimate["explanation"]["procurement_delay_business_days"]
+            .as_f64()
+            .unwrap_or(f64::NAN);
+        assert!(
+            (procurement_days - 10.0).abs() < 1e-9,
+            "expected exactly one deduplicated missing material penalty"
+        );
+        let missing = estimate["explanation"]["missing_material_classes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].as_str(), Some("custom_mix"));
+    }
+
+    #[test]
+    fn execute_planning_suggestion_lifecycle_pending_accept_reject() {
+        let mut engine = GentleEngine::default();
+
+        let pull = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSyncPull {
+                payload_json: r#"{
+                  "profile_patch":{"schema":"gentle.planning_profile.v1","capabilities":["pcr_machine"]},
+                  "message":"sync pull"
+                }"#
+                .to_string(),
+                source: Some("lab_agent".to_string()),
+                confidence: Some(0.8),
+                snapshot_id: Some("snap_pull_1".to_string()),
+            },
+        )
+        .expect("sync pull suggestion");
+        let suggestion_id = pull.output["suggestion"]["suggestion_id"]
+            .as_str()
+            .expect("pull suggestion id")
+            .to_string();
+
+        let pending = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSuggestionsList {
+                status: Some(PlanningSuggestionStatus::Pending),
+            },
+        )
+        .expect("list pending suggestions");
+        assert_eq!(pending.output["suggestion_count"].as_u64(), Some(1));
+
+        let accepted = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSuggestionAccept {
+                suggestion_id: suggestion_id.clone(),
+            },
+        )
+        .expect("accept suggestion");
+        assert_eq!(accepted.output["status"].as_str(), Some("accepted"));
+        assert!(
+            engine
+                .planning_effective_profile()
+                .capabilities
+                .iter()
+                .any(|cap| cap == "pcr_machine"),
+            "accepted suggestion should update confirmed overlay profile"
+        );
+
+        let push = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSyncPush {
+                payload_json: r#"{
+                  "objective_patch":{"schema":"gentle.planning_objective.v1","weight_time":2.5},
+                  "message":"sync push"
+                }"#
+                .to_string(),
+                source: Some("lab_agent".to_string()),
+                confidence: Some(0.6),
+                snapshot_id: Some("snap_push_1".to_string()),
+            },
+        )
+        .expect("sync push suggestion");
+        let reject_id = push.output["suggestion"]["suggestion_id"]
+            .as_str()
+            .expect("push suggestion id")
+            .to_string();
+
+        let rejected = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSuggestionReject {
+                suggestion_id: reject_id.clone(),
+                reason: Some("manual_override".to_string()),
+            },
+        )
+        .expect("reject suggestion");
+        assert_eq!(rejected.output["status"].as_str(), Some("rejected"));
+        assert_eq!(
+            rejected.output["suggestion"]["rejection_reason"].as_str(),
+            Some("manual_override")
+        );
+
+        let accepted_rows = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSuggestionsList {
+                status: Some(PlanningSuggestionStatus::Accepted),
+            },
+        )
+        .expect("list accepted suggestions");
+        assert_eq!(accepted_rows.output["suggestion_count"].as_u64(), Some(1));
+        let rejected_rows = execute_shell_command(
+            &mut engine,
+            &ShellCommand::PlanningSuggestionsList {
+                status: Some(PlanningSuggestionStatus::Rejected),
+            },
+        )
+        .expect("list rejected suggestions");
+        assert_eq!(rejected_rows.output["suggestion_count"].as_u64(), Some(1));
     }
 
     #[test]
@@ -22668,6 +24365,9 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 seed_feature_id,
                 input_path,
                 scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
                 seed_filter,
                 align_config,
                 report_id,
@@ -22677,6 +24377,9 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 assert_eq!(seed_feature_id, 7);
                 assert_eq!(input_path, "reads.fa");
                 assert_eq!(scope, SplicingScopePreset::TargetGroupAnyStrand);
+                assert_eq!(origin_mode, RnaReadOriginMode::SingleGene);
+                assert!(target_gene_ids.is_empty());
+                assert!(!roi_seed_capture_enabled);
                 assert_eq!(seed_filter.kmer_len, 9);
                 assert_eq!(seed_filter.short_full_hash_max_bp, 420);
                 assert_eq!(seed_filter.long_window_bp, 140);
@@ -22694,6 +24397,27 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 assert!((align_config.min_identity_fraction - 0.60).abs() < f64::EPSILON);
                 assert_eq!(align_config.max_secondary_mappings, 2);
                 assert_eq!(report_id.as_deref(), Some("tp73_reads"));
+            }
+            other => panic!("expected RnaReadsInterpret, got {other:?}"),
+        }
+
+        let interpret_multi = parse_shell_line(
+            "rna-reads interpret seq_a 7 reads.fa --origin-mode multi_gene_sparse --target-gene TP73 --target-gene TP53 --roi-seed-capture",
+        )
+        .expect("parse rna-reads interpret multi-gene scaffold");
+        match interpret_multi {
+            ShellCommand::RnaReadsInterpret {
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                ..
+            } => {
+                assert_eq!(origin_mode, RnaReadOriginMode::MultiGeneSparse);
+                assert_eq!(
+                    target_gene_ids,
+                    vec!["TP73".to_string(), "TP53".to_string()]
+                );
+                assert!(roi_seed_capture_enabled);
             }
             other => panic!("expected RnaReadsInterpret, got {other:?}"),
         }
@@ -22763,6 +24487,18 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                     && path == "abundance.tsv"
                     && selection == RnaReadHitSelection::Aligned
         ));
+
+        let export_score_density = parse_shell_line(
+            "rna-reads export-score-density-svg tp73_reads score_density.svg --scale linear",
+        )
+        .expect("parse rna-reads export-score-density-svg");
+        assert!(matches!(
+            export_score_density,
+            ShellCommand::RnaReadsExportScoreDensitySvg { report_id, path, scale }
+                if report_id == "tp73_reads"
+                    && path == "score_density.svg"
+                    && scale == RnaReadScoreDensityScale::Linear
+        ));
     }
 
     #[test]
@@ -22772,8 +24508,20 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         )
         .expect("parse rna-reads interpret defaults");
         match cmd {
-            ShellCommand::RnaReadsInterpret { seed_filter, .. } => {
-                assert_eq!(seed_filter.kmer_len, RnaReadSeedFilterConfig::default().kmer_len);
+            ShellCommand::RnaReadsInterpret {
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                seed_filter,
+                ..
+            } => {
+                assert_eq!(origin_mode, RnaReadOriginMode::SingleGene);
+                assert!(target_gene_ids.is_empty());
+                assert!(!roi_seed_capture_enabled);
+                assert_eq!(
+                    seed_filter.kmer_len,
+                    RnaReadSeedFilterConfig::default().kmer_len
+                );
                 assert_eq!(seed_filter.kmer_len, 10);
             }
             other => panic!("expected RnaReadsInterpret, got {other:?}"),
@@ -22877,6 +24625,9 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: RnaReadOriginMode::SingleGene,
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some(report_id.clone()),
@@ -22990,6 +24741,21 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         );
         let abundance_text = fs::read_to_string(exported_abundance).expect("read abundance sheet");
         assert!(abundance_text.contains("row_kind"));
+
+        let exported_density_svg = fasta_dir.path().join("score_density.svg");
+        let export_density_result = execute_shell_command(
+            &mut engine,
+            &ShellCommand::RnaReadsExportScoreDensitySvg {
+                report_id: "rna_reads_test".to_string(),
+                path: exported_density_svg.display().to_string(),
+                scale: RnaReadScoreDensityScale::Log,
+            },
+        )
+        .expect("export rna-read score density svg");
+        assert_eq!(export_density_result.output["scale"].as_str(), Some("log"));
+        let density_text = fs::read_to_string(exported_density_svg).expect("read density svg");
+        assert!(density_text.contains("<svg"));
+        assert!(density_text.contains("seed-hit score density"));
     }
 
     #[test]

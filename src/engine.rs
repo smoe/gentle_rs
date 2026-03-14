@@ -51,6 +51,7 @@ use crate::{
     },
 };
 use flate2::read::GzDecoder;
+use rayon::join;
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -106,6 +107,13 @@ pub const PRIMER_DESIGN_REPORTS_METADATA_KEY: &str = "primer_design_reports";
 const PRIMER_DESIGN_REPORTS_SCHEMA: &str = "gentle.primer_design_reports.v1";
 const PRIMER_DESIGN_REPORT_SCHEMA: &str = "gentle.primer_design_report.v1";
 const QPCR_DESIGN_REPORT_SCHEMA: &str = "gentle.qpcr_design_report.v1";
+pub const PLANNING_METADATA_KEY: &str = "planning";
+pub const PLANNING_PROFILE_SCHEMA: &str = "gentle.planning_profile.v1";
+pub const PLANNING_OBJECTIVE_SCHEMA: &str = "gentle.planning_objective.v1";
+pub const PLANNING_ESTIMATE_SCHEMA: &str = "gentle.planning_estimate.v1";
+pub const PLANNING_SUGGESTION_SCHEMA: &str = "gentle.planning_suggestion.v1";
+pub const PLANNING_SYNC_STATUS_SCHEMA: &str = "gentle.planning_sync_status.v1";
+const PLANNING_STORE_SCHEMA: &str = "gentle.planning_store.v1";
 pub const WORKFLOW_MACRO_TEMPLATES_METADATA_KEY: &str = "workflow_macro_templates";
 const WORKFLOW_MACRO_TEMPLATES_SCHEMA: &str = "gentle.workflow_macro_templates.v1";
 pub const CLONING_MACRO_TEMPLATE_SCHEMA: &str = "gentle.cloning_macro_template.v1";
@@ -138,12 +146,16 @@ const RNA_READ_REPORT_SCHEMA: &str = "gentle.rna_read_report.v1";
 const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
 const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
+const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
+    "gentle.rna_read_score_density_svg_export.v1";
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1000;
 const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
 const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;
 const RNA_READ_RETAINED_HITS_MAX: usize = 5_000;
 const RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX: usize = 20;
 const RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT: usize = 64;
+const RNA_READ_INFER_PARALLEL_MIN_MATCHED_BITS: usize = 96;
+const RNA_READ_INFER_PARALLEL_MIN_MATCHED_OBSERVATIONS: usize = 256;
 const MAX_DOTPLOT_POINTS: usize = 250_000;
 const MAX_DOTPLOT_PAIR_EVALUATIONS: usize = 5_000_000;
 pub const DEFAULT_BIGWIG_TO_BEDGRAPH_BIN: &str = "bigWigToBedGraph";
@@ -1975,6 +1987,250 @@ struct PrimerDesignStore {
     qpcr_reports: HashMap<String, QpcrDesignReport>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanningProfileScope {
+    #[default]
+    Global,
+    ProjectOverride,
+    ConfirmedAgentOverlay,
+    Effective,
+}
+
+impl PlanningProfileScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::ProjectOverride => "project_override",
+            Self::ConfirmedAgentOverlay => "confirmed_agent_overlay",
+            Self::Effective => "effective",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanningSuggestionStatus {
+    #[default]
+    Pending,
+    Accepted,
+    Rejected,
+}
+
+impl PlanningSuggestionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Accepted => "accepted",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningInventoryItem {
+    pub available: bool,
+    pub unit_cost: Option<f64>,
+    pub procurement_business_days: Option<f64>,
+    pub note: Option<String>,
+}
+
+impl Default for PlanningInventoryItem {
+    fn default() -> Self {
+        Self {
+            available: true,
+            unit_cost: None,
+            procurement_business_days: None,
+            note: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningMachineAvailability {
+    pub available: bool,
+    pub queue_business_days: f64,
+    pub run_cost_per_hour: Option<f64>,
+    pub note: Option<String>,
+}
+
+impl Default for PlanningMachineAvailability {
+    fn default() -> Self {
+        Self {
+            available: true,
+            queue_business_days: 0.0,
+            run_cost_per_hour: None,
+            note: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningProfile {
+    pub schema: String,
+    pub profile_id: Option<String>,
+    pub currency: Option<String>,
+    pub procurement_business_days_default: f64,
+    pub capabilities: Vec<String>,
+    pub inventory: HashMap<String, PlanningInventoryItem>,
+    pub machine_availability: HashMap<String, PlanningMachineAvailability>,
+    pub notes: Option<String>,
+}
+
+impl Default for PlanningProfile {
+    fn default() -> Self {
+        Self {
+            schema: PLANNING_PROFILE_SCHEMA.to_string(),
+            profile_id: None,
+            currency: None,
+            procurement_business_days_default: 10.0,
+            capabilities: vec![],
+            inventory: HashMap::new(),
+            machine_availability: HashMap::new(),
+            notes: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningObjective {
+    pub schema: String,
+    pub weight_time: f64,
+    pub weight_cost: f64,
+    pub weight_local_fit: f64,
+    pub max_cost: Option<f64>,
+    pub max_time_hours: Option<f64>,
+    pub required_capabilities: Vec<String>,
+    pub enforce_guardrails: bool,
+}
+
+impl Default for PlanningObjective {
+    fn default() -> Self {
+        Self {
+            schema: PLANNING_OBJECTIVE_SCHEMA.to_string(),
+            weight_time: 1.0,
+            weight_cost: 1.0,
+            weight_local_fit: 1.0,
+            max_cost: None,
+            max_time_hours: None,
+            required_capabilities: vec![],
+            enforce_guardrails: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningEstimate {
+    pub schema: String,
+    pub estimated_time_hours: f64,
+    pub estimated_cost: f64,
+    pub local_fit_score: f64,
+    pub composite_meta_score: f64,
+    pub passes_guardrails: bool,
+    pub guardrail_failures: Vec<String>,
+    pub explanation: serde_json::Value,
+}
+
+impl Default for PlanningEstimate {
+    fn default() -> Self {
+        Self {
+            schema: PLANNING_ESTIMATE_SCHEMA.to_string(),
+            estimated_time_hours: 0.0,
+            estimated_cost: 0.0,
+            local_fit_score: 1.0,
+            composite_meta_score: 0.0,
+            passes_guardrails: true,
+            guardrail_failures: vec![],
+            explanation: json!({}),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningSuggestion {
+    pub schema: String,
+    pub suggestion_id: String,
+    pub status: PlanningSuggestionStatus,
+    pub direction: String,
+    pub source: String,
+    pub confidence: Option<f64>,
+    pub snapshot_id: Option<String>,
+    pub message: Option<String>,
+    pub profile_patch: Option<PlanningProfile>,
+    pub objective_patch: Option<PlanningObjective>,
+    pub diff: serde_json::Value,
+    pub created_at_unix_ms: u128,
+    pub resolved_at_unix_ms: Option<u128>,
+    pub rejection_reason: Option<String>,
+}
+
+impl Default for PlanningSuggestion {
+    fn default() -> Self {
+        Self {
+            schema: PLANNING_SUGGESTION_SCHEMA.to_string(),
+            suggestion_id: String::new(),
+            status: PlanningSuggestionStatus::Pending,
+            direction: "pull".to_string(),
+            source: String::new(),
+            confidence: None,
+            snapshot_id: None,
+            message: None,
+            profile_patch: None,
+            objective_patch: None,
+            diff: json!({}),
+            created_at_unix_ms: 0,
+            resolved_at_unix_ms: None,
+            rejection_reason: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanningSyncStatus {
+    pub schema: String,
+    pub pending_suggestion_count: usize,
+    pub last_pull_at_unix_ms: Option<u128>,
+    pub last_push_at_unix_ms: Option<u128>,
+    pub last_source: Option<String>,
+    pub last_snapshot_id: Option<String>,
+    pub last_error: Option<String>,
+}
+
+impl Default for PlanningSyncStatus {
+    fn default() -> Self {
+        Self {
+            schema: PLANNING_SYNC_STATUS_SCHEMA.to_string(),
+            pending_suggestion_count: 0,
+            last_pull_at_unix_ms: None,
+            last_push_at_unix_ms: None,
+            last_source: None,
+            last_snapshot_id: None,
+            last_error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PlanningStore {
+    schema: String,
+    updated_at_unix_ms: u128,
+    global_profile: Option<PlanningProfile>,
+    project_override_profile: Option<PlanningProfile>,
+    confirmed_agent_overlay_profile: Option<PlanningProfile>,
+    objective: Option<PlanningObjective>,
+    suggestions: HashMap<String, PlanningSuggestion>,
+    sync_status: PlanningSyncStatus,
+    next_suggestion_counter: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 struct DotplotAnalysisStore {
@@ -2605,6 +2861,23 @@ impl RnaReadInterpretationProfile {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+pub enum RnaReadOriginMode {
+    #[default]
+    SingleGene,
+    MultiGeneSparse,
+}
+
+impl RnaReadOriginMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleGene => "single_gene",
+            Self::MultiGeneSparse => "multi_gene_sparse",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum RnaReadHitSelection {
     All,
     SeedPassed,
@@ -2618,6 +2891,23 @@ impl RnaReadHitSelection {
             Self::All => "all",
             Self::SeedPassed => "seed_passed",
             Self::Aligned => "aligned",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadScoreDensityScale {
+    Linear,
+    #[default]
+    Log,
+}
+
+impl RnaReadScoreDensityScale {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Log => "log",
         }
     }
 }
@@ -2754,6 +3044,41 @@ pub struct RnaReadStrandAssignmentDiagnostics {
     pub chain_preferred_strand: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RnaReadOriginClass {
+    TargetCoherent,
+    TargetPartialLocalBlock,
+    RoiSameStrandLocalBlock,
+    RoiReverseStrandLocalBlock,
+    TpFamilyAmbiguous,
+    #[default]
+    BackgroundLikely,
+}
+
+impl RnaReadOriginClass {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::TargetCoherent => "target_coherent",
+            Self::TargetPartialLocalBlock => "target_partial_local_block",
+            Self::RoiSameStrandLocalBlock => "roi_same_strand_local_block",
+            Self::RoiReverseStrandLocalBlock => "roi_reverse_strand_local_block",
+            Self::TpFamilyAmbiguous => "tp_family_ambiguous",
+            Self::BackgroundLikely => "background_likely",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct RnaReadOriginCandidateContribution {
+    pub candidate_role: String,
+    pub transcript_id: String,
+    pub strand: String,
+    pub transition_hits: usize,
+    pub exon_hits: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RnaReadInterpretationHit {
@@ -2791,6 +3116,16 @@ pub struct RnaReadInterpretationHit {
     pub reverse_complement_applied: bool,
     #[serde(default)]
     pub strand_diagnostics: RnaReadStrandAssignmentDiagnostics,
+    #[serde(default)]
+    pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub origin_reason: String,
+    #[serde(default)]
+    pub origin_confidence: f64,
+    #[serde(default)]
+    pub strand_confidence: f64,
+    #[serde(default)]
+    pub origin_candidates: Vec<RnaReadOriginCandidateContribution>,
     pub perfect_seed_match: bool,
     pub passed_seed_filter: bool,
     pub best_mapping: Option<RnaReadMappingHit>,
@@ -2885,6 +3220,19 @@ pub struct RnaReadExonAbundanceExport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
+pub struct RnaReadScoreDensitySvgExport {
+    pub schema: String,
+    pub path: String,
+    pub report_id: String,
+    pub scale: RnaReadScoreDensityScale,
+    pub bin_count: usize,
+    pub max_bin_count: u64,
+    pub total_scored_reads: u64,
+    pub derived_from_report_hits_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct RnaSeedHashCatalogEntry {
     pub seed_bits: u32,
     pub kmer_sequence: String,
@@ -2908,6 +3256,12 @@ pub struct RnaReadInterpretationReport {
     pub input_path: String,
     pub input_format: RnaReadInputFormat,
     pub scope: SplicingScopePreset,
+    #[serde(default)]
+    pub origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    pub target_gene_ids: Vec<String>,
+    #[serde(default)]
+    pub roi_seed_capture_enabled: bool,
     pub seed_filter: RnaReadSeedFilterConfig,
     pub align_config: RnaReadAlignConfig,
     pub read_count_total: usize,
@@ -2925,6 +3279,10 @@ pub struct RnaReadInterpretationReport {
     pub transition_support_rows: Vec<RnaReadTransitionSupportRow>,
     #[serde(default)]
     pub isoform_support_rows: Vec<RnaReadIsoformSupportRow>,
+    #[serde(default)]
+    pub origin_class_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub score_density_bins: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2937,6 +3295,8 @@ pub struct RnaReadInterpretationReportSummary {
     pub input_format: RnaReadInputFormat,
     pub seed_feature_id: usize,
     pub scope: SplicingScopePreset,
+    #[serde(default)]
+    pub origin_mode: RnaReadOriginMode,
     pub read_count_total: usize,
     pub read_count_seed_passed: usize,
     pub read_count_aligned: usize,
@@ -3122,6 +3482,14 @@ struct SeedChainSpacingMetrics {
     support_fraction: f64,
     median_transcript_gap: f64,
     transcript_gap_count: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct RnaReadOriginClassification {
+    origin_class: RnaReadOriginClass,
+    reason: String,
+    origin_confidence: f64,
+    strand_confidence: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -3576,6 +3944,12 @@ pub enum Operation {
         #[serde(default)]
         scope: SplicingScopePreset,
         #[serde(default)]
+        origin_mode: RnaReadOriginMode,
+        #[serde(default)]
+        target_gene_ids: Vec<String>,
+        #[serde(default)]
+        roi_seed_capture_enabled: bool,
+        #[serde(default)]
         seed_filter: RnaReadSeedFilterConfig,
         #[serde(default)]
         align_config: RnaReadAlignConfig,
@@ -3619,6 +3993,12 @@ pub enum Operation {
         path: String,
         #[serde(default)]
         selection: RnaReadHitSelection,
+    },
+    ExportRnaReadScoreDensitySvg {
+        report_id: String,
+        path: String,
+        #[serde(default)]
+        scale: RnaReadScoreDensityScale,
     },
     ExtractRegion {
         input: SeqId,
@@ -4509,6 +4889,16 @@ pub struct RnaReadTopHitPreview {
     pub competing_opposite_strand: bool,
     #[serde(default)]
     pub ambiguous_strand_tie: bool,
+    #[serde(default)]
+    pub origin_class: RnaReadOriginClass,
+    #[serde(default)]
+    pub origin_reason: String,
+    #[serde(default)]
+    pub origin_confidence: f64,
+    #[serde(default)]
+    pub strand_confidence: f64,
+    #[serde(default)]
+    pub origin_candidates: Vec<RnaReadOriginCandidateContribution>,
     pub read_length_bp: usize,
     pub sequence: String,
     pub sequence_preview: String,
@@ -4566,6 +4956,8 @@ pub struct RnaReadInterpretProgress {
     pub transition_confirmations: usize,
     #[serde(default)]
     pub junction_crossing_seed_bits_indexed: usize,
+    #[serde(default)]
+    pub origin_class_counts: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5023,6 +5415,7 @@ impl GentleEngine {
                 "ExportRnaReadSampleSheet".to_string(),
                 "ExportRnaReadExonPathsTsv".to_string(),
                 "ExportRnaReadExonAbundanceTsv".to_string(),
+                "ExportRnaReadScoreDensitySvg".to_string(),
                 "ExtractRegion".to_string(),
                 "ExtractAnchoredRegion".to_string(),
                 "SelectCandidate".to_string(),
@@ -8795,6 +9188,7 @@ impl GentleEngine {
                 | Operation::ExportRnaReadSampleSheet { .. }
                 | Operation::ExportRnaReadExonPathsTsv { .. }
                 | Operation::ExportRnaReadExonAbundanceTsv { .. }
+                | Operation::ExportRnaReadScoreDensitySvg { .. }
         )
     }
 
@@ -10195,6 +10589,663 @@ impl GentleEngine {
         Ok(report)
     }
 
+    fn normalize_planning_class_key(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        for ch in raw.trim().chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+            } else if matches!(ch, '_' | '-' | '.' | ':') {
+                out.push('_');
+            }
+        }
+        let trimmed = out.trim_matches('_');
+        if trimmed.is_empty() {
+            "item".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn validate_planning_profile_schema(profile: &PlanningProfile) -> Result<(), EngineError> {
+        let schema = profile.schema.trim();
+        if !schema.is_empty() && schema != PLANNING_PROFILE_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported planning profile schema '{}' (expected '{}')",
+                    schema, PLANNING_PROFILE_SCHEMA
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_planning_objective_schema(
+        objective: &PlanningObjective,
+    ) -> Result<(), EngineError> {
+        let schema = objective.schema.trim();
+        if !schema.is_empty() && schema != PLANNING_OBJECTIVE_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported planning objective schema '{}' (expected '{}')",
+                    schema, PLANNING_OBJECTIVE_SCHEMA
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    fn normalize_planning_profile(mut profile: PlanningProfile) -> PlanningProfile {
+        profile.schema = PLANNING_PROFILE_SCHEMA.to_string();
+        profile.profile_id = profile
+            .profile_id
+            .and_then(|v| (!v.trim().is_empty()).then(|| v.trim().to_string()));
+        profile.currency = profile
+            .currency
+            .and_then(|v| (!v.trim().is_empty()).then(|| v.trim().to_ascii_uppercase()));
+        if !profile.procurement_business_days_default.is_finite()
+            || profile.procurement_business_days_default <= 0.0
+        {
+            profile.procurement_business_days_default = 10.0;
+        }
+        profile.notes = profile
+            .notes
+            .and_then(|v| (!v.trim().is_empty()).then(|| v.trim().to_string()));
+
+        let mut normalized_caps = profile
+            .capabilities
+            .iter()
+            .map(|value| Self::normalize_planning_class_key(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        normalized_caps.sort_by_key(|value| value.to_ascii_lowercase());
+        profile.capabilities = normalized_caps;
+
+        let mut inventory: HashMap<String, PlanningInventoryItem> = HashMap::new();
+        for (key, mut item) in profile.inventory {
+            let normalized = Self::normalize_planning_class_key(key.as_str());
+            item.procurement_business_days = item
+                .procurement_business_days
+                .filter(|value| value.is_finite() && *value > 0.0);
+            item.unit_cost = item
+                .unit_cost
+                .filter(|value| value.is_finite() && *value >= 0.0);
+            item.note = item
+                .note
+                .and_then(|v| (!v.trim().is_empty()).then(|| v.trim().to_string()));
+            inventory.insert(normalized, item);
+        }
+        profile.inventory = inventory;
+
+        let mut machines: HashMap<String, PlanningMachineAvailability> = HashMap::new();
+        for (key, mut machine) in profile.machine_availability {
+            let normalized = Self::normalize_planning_class_key(key.as_str());
+            if !machine.queue_business_days.is_finite() || machine.queue_business_days < 0.0 {
+                machine.queue_business_days = 0.0;
+            }
+            machine.run_cost_per_hour = machine
+                .run_cost_per_hour
+                .filter(|value| value.is_finite() && *value >= 0.0);
+            machine.note = machine
+                .note
+                .and_then(|v| (!v.trim().is_empty()).then(|| v.trim().to_string()));
+            machines.insert(normalized, machine);
+        }
+        profile.machine_availability = machines;
+        profile
+    }
+
+    fn normalize_planning_objective(mut objective: PlanningObjective) -> PlanningObjective {
+        objective.schema = PLANNING_OBJECTIVE_SCHEMA.to_string();
+        if !objective.weight_time.is_finite() || objective.weight_time < 0.0 {
+            objective.weight_time = 0.0;
+        }
+        if !objective.weight_cost.is_finite() || objective.weight_cost < 0.0 {
+            objective.weight_cost = 0.0;
+        }
+        if !objective.weight_local_fit.is_finite() || objective.weight_local_fit < 0.0 {
+            objective.weight_local_fit = 0.0;
+        }
+        if objective.weight_time == 0.0
+            && objective.weight_cost == 0.0
+            && objective.weight_local_fit == 0.0
+        {
+            objective.weight_time = 1.0;
+            objective.weight_cost = 1.0;
+            objective.weight_local_fit = 1.0;
+        }
+        objective.max_cost = objective
+            .max_cost
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        objective.max_time_hours = objective
+            .max_time_hours
+            .filter(|value| value.is_finite() && *value >= 0.0);
+        let mut required_caps = objective
+            .required_capabilities
+            .iter()
+            .map(|value| Self::normalize_planning_class_key(value))
+            .filter(|value| !value.is_empty())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        required_caps.sort_by_key(|value| value.to_ascii_lowercase());
+        objective.required_capabilities = required_caps;
+        objective
+    }
+
+    fn merge_planning_profile(base: &mut PlanningProfile, overlay: &PlanningProfile) {
+        if let Some(profile_id) = overlay
+            .profile_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            base.profile_id = Some(profile_id.to_string());
+        }
+        if let Some(currency) = overlay
+            .currency
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            base.currency = Some(currency.to_ascii_uppercase());
+        }
+        if overlay.procurement_business_days_default.is_finite()
+            && overlay.procurement_business_days_default > 0.0
+        {
+            base.procurement_business_days_default = overlay.procurement_business_days_default;
+        }
+        for capability in &overlay.capabilities {
+            let key = Self::normalize_planning_class_key(capability);
+            if !key.is_empty() && !base.capabilities.iter().any(|existing| existing == &key) {
+                base.capabilities.push(key);
+            }
+        }
+        for (key, item) in &overlay.inventory {
+            let normalized = Self::normalize_planning_class_key(key.as_str());
+            base.inventory.insert(normalized, item.clone());
+        }
+        for (key, machine) in &overlay.machine_availability {
+            let normalized = Self::normalize_planning_class_key(key.as_str());
+            base.machine_availability
+                .insert(normalized, machine.clone());
+        }
+        if let Some(notes) = overlay
+            .notes
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            base.notes = Some(notes.to_string());
+        }
+        base.capabilities
+            .sort_by_key(|value| value.to_ascii_lowercase());
+        base.capabilities.dedup();
+        base.schema = PLANNING_PROFILE_SCHEMA.to_string();
+    }
+
+    fn read_planning_store_from_metadata(value: Option<&serde_json::Value>) -> PlanningStore {
+        let mut store = value
+            .cloned()
+            .and_then(|v| serde_json::from_value::<PlanningStore>(v).ok())
+            .unwrap_or_default();
+        if store.schema.trim().is_empty() {
+            store.schema = PLANNING_STORE_SCHEMA.to_string();
+        }
+        store.global_profile = store
+            .global_profile
+            .take()
+            .map(Self::normalize_planning_profile);
+        store.project_override_profile = store
+            .project_override_profile
+            .take()
+            .map(Self::normalize_planning_profile);
+        store.confirmed_agent_overlay_profile = store
+            .confirmed_agent_overlay_profile
+            .take()
+            .map(Self::normalize_planning_profile);
+        store.objective = store
+            .objective
+            .take()
+            .map(Self::normalize_planning_objective);
+
+        for suggestion in store.suggestions.values_mut() {
+            suggestion.schema = PLANNING_SUGGESTION_SCHEMA.to_string();
+            suggestion.source = suggestion.source.trim().to_string();
+            suggestion.direction = suggestion.direction.trim().to_ascii_lowercase();
+            if !matches!(suggestion.direction.as_str(), "pull" | "push") {
+                suggestion.direction = "pull".to_string();
+            }
+            suggestion.profile_patch = suggestion
+                .profile_patch
+                .take()
+                .map(Self::normalize_planning_profile);
+            suggestion.objective_patch = suggestion
+                .objective_patch
+                .take()
+                .map(Self::normalize_planning_objective);
+            suggestion.confidence = suggestion
+                .confidence
+                .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
+        }
+        store.sync_status.schema = PLANNING_SYNC_STATUS_SCHEMA.to_string();
+        store.sync_status.pending_suggestion_count = store
+            .suggestions
+            .values()
+            .filter(|row| row.status == PlanningSuggestionStatus::Pending)
+            .count();
+        if store.next_suggestion_counter == 0 {
+            store.next_suggestion_counter = 1;
+        }
+        store
+    }
+
+    fn read_planning_store(&self) -> PlanningStore {
+        Self::read_planning_store_from_metadata(self.state.metadata.get(PLANNING_METADATA_KEY))
+    }
+
+    fn write_planning_store(&mut self, mut store: PlanningStore) -> Result<(), EngineError> {
+        store.schema = PLANNING_STORE_SCHEMA.to_string();
+        store.updated_at_unix_ms = Self::now_unix_ms();
+        store.sync_status.schema = PLANNING_SYNC_STATUS_SCHEMA.to_string();
+        store.sync_status.pending_suggestion_count = store
+            .suggestions
+            .values()
+            .filter(|row| row.status == PlanningSuggestionStatus::Pending)
+            .count();
+        if store.next_suggestion_counter == 0 {
+            store.next_suggestion_counter = 1;
+        }
+
+        let is_empty = store.global_profile.is_none()
+            && store.project_override_profile.is_none()
+            && store.confirmed_agent_overlay_profile.is_none()
+            && store.objective.is_none()
+            && store.suggestions.is_empty()
+            && store.sync_status.pending_suggestion_count == 0
+            && store.sync_status.last_pull_at_unix_ms.is_none()
+            && store.sync_status.last_push_at_unix_ms.is_none()
+            && store.sync_status.last_source.is_none()
+            && store.sync_status.last_snapshot_id.is_none()
+            && store.sync_status.last_error.is_none();
+        if is_empty {
+            self.state.metadata.remove(PLANNING_METADATA_KEY);
+            return Ok(());
+        }
+
+        let value = serde_json::to_value(store).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize planning metadata: {e}"),
+        })?;
+        self.state
+            .metadata
+            .insert(PLANNING_METADATA_KEY.to_string(), value);
+        Ok(())
+    }
+
+    pub fn planning_profile(&self, scope: PlanningProfileScope) -> Option<PlanningProfile> {
+        let store = self.read_planning_store();
+        match scope {
+            PlanningProfileScope::Global => store.global_profile,
+            PlanningProfileScope::ProjectOverride => store.project_override_profile,
+            PlanningProfileScope::ConfirmedAgentOverlay => store.confirmed_agent_overlay_profile,
+            PlanningProfileScope::Effective => Some(self.planning_effective_profile()),
+        }
+    }
+
+    pub fn planning_effective_profile(&self) -> PlanningProfile {
+        let store = self.read_planning_store();
+        let mut effective = PlanningProfile::default();
+        if let Some(global) = store.global_profile {
+            Self::merge_planning_profile(&mut effective, &global);
+        }
+        if let Some(overlay) = store.confirmed_agent_overlay_profile {
+            Self::merge_planning_profile(&mut effective, &overlay);
+        }
+        if let Some(project_override) = store.project_override_profile {
+            Self::merge_planning_profile(&mut effective, &project_override);
+        }
+        effective.schema = PLANNING_PROFILE_SCHEMA.to_string();
+        effective
+    }
+
+    pub fn set_planning_profile(
+        &mut self,
+        scope: PlanningProfileScope,
+        profile: Option<PlanningProfile>,
+    ) -> Result<(), EngineError> {
+        if scope == PlanningProfileScope::Effective {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Cannot set profile scope 'effective' directly".to_string(),
+            });
+        }
+        let mut store = self.read_planning_store();
+        if let Some(profile) = profile.as_ref() {
+            Self::validate_planning_profile_schema(profile)?;
+        }
+        let normalized = profile.map(Self::normalize_planning_profile);
+        match scope {
+            PlanningProfileScope::Global => store.global_profile = normalized,
+            PlanningProfileScope::ProjectOverride => store.project_override_profile = normalized,
+            PlanningProfileScope::ConfirmedAgentOverlay => {
+                store.confirmed_agent_overlay_profile = normalized
+            }
+            PlanningProfileScope::Effective => {}
+        }
+        self.write_planning_store(store)
+    }
+
+    pub fn planning_objective(&self) -> PlanningObjective {
+        self.read_planning_store()
+            .objective
+            .map(Self::normalize_planning_objective)
+            .unwrap_or_default()
+    }
+
+    pub fn set_planning_objective(
+        &mut self,
+        objective: Option<PlanningObjective>,
+    ) -> Result<(), EngineError> {
+        let mut store = self.read_planning_store();
+        if let Some(objective) = objective.as_ref() {
+            Self::validate_planning_objective_schema(objective)?;
+        }
+        store.objective = objective.map(Self::normalize_planning_objective);
+        self.write_planning_store(store)
+    }
+
+    pub fn planning_meta_enabled(&self) -> bool {
+        let store = self.read_planning_store();
+        store.global_profile.is_some()
+            || store.project_override_profile.is_some()
+            || store.confirmed_agent_overlay_profile.is_some()
+            || store.objective.is_some()
+    }
+
+    fn build_planning_diff(
+        current_profile: Option<&PlanningProfile>,
+        profile_patch: Option<&PlanningProfile>,
+        current_objective: Option<&PlanningObjective>,
+        objective_patch: Option<&PlanningObjective>,
+    ) -> serde_json::Value {
+        let mut out = serde_json::Map::<String, serde_json::Value>::new();
+        if let Some(patch) = profile_patch {
+            let current_value = current_profile
+                .and_then(|value| serde_json::to_value(value).ok())
+                .unwrap_or_else(|| json!({}));
+            let patch_value = serde_json::to_value(patch).unwrap_or_else(|_| json!({}));
+            out.insert("profile_current".to_string(), current_value);
+            out.insert("profile_patch".to_string(), patch_value);
+        }
+        if let Some(patch) = objective_patch {
+            let current_value = current_objective
+                .and_then(|value| serde_json::to_value(value).ok())
+                .unwrap_or_else(|| json!({}));
+            let patch_value = serde_json::to_value(patch).unwrap_or_else(|_| json!({}));
+            out.insert("objective_current".to_string(), current_value);
+            out.insert("objective_patch".to_string(), patch_value);
+        }
+        serde_json::Value::Object(out)
+    }
+
+    pub fn propose_planning_suggestion(
+        &mut self,
+        direction: &str,
+        source: &str,
+        confidence: Option<f64>,
+        snapshot_id: Option<&str>,
+        profile_patch: Option<PlanningProfile>,
+        objective_patch: Option<PlanningObjective>,
+        message: Option<&str>,
+    ) -> Result<PlanningSuggestion, EngineError> {
+        let direction = direction.trim().to_ascii_lowercase();
+        if !matches!(direction.as_str(), "pull" | "push") {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Unsupported planning sync direction '{direction}'"),
+            });
+        }
+        if profile_patch.is_none() && objective_patch.is_none() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "Planning suggestion requires at least one of profile_patch/objective_patch"
+                        .to_string(),
+            });
+        }
+        let source = source.trim();
+        if source.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Planning suggestion source cannot be empty".to_string(),
+            });
+        }
+
+        let mut store = self.read_planning_store();
+        let counter = store.next_suggestion_counter.max(1);
+        store.next_suggestion_counter = counter.saturating_add(1);
+        let suggestion_id = format!("planning_suggestion_{counter:06}");
+
+        if let Some(profile_patch) = profile_patch.as_ref() {
+            Self::validate_planning_profile_schema(profile_patch)?;
+        }
+        if let Some(objective_patch) = objective_patch.as_ref() {
+            Self::validate_planning_objective_schema(objective_patch)?;
+        }
+        let normalized_profile_patch = profile_patch.map(Self::normalize_planning_profile);
+        let normalized_objective_patch = objective_patch.map(Self::normalize_planning_objective);
+        let diff = Self::build_planning_diff(
+            store.confirmed_agent_overlay_profile.as_ref(),
+            normalized_profile_patch.as_ref(),
+            store.objective.as_ref(),
+            normalized_objective_patch.as_ref(),
+        );
+        let now = Self::now_unix_ms();
+        let clean_message = message
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        let confidence =
+            confidence.filter(|value| value.is_finite() && *value >= 0.0 && *value <= 1.0);
+        let snapshot_id = snapshot_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+
+        let suggestion = PlanningSuggestion {
+            schema: PLANNING_SUGGESTION_SCHEMA.to_string(),
+            suggestion_id: suggestion_id.clone(),
+            status: PlanningSuggestionStatus::Pending,
+            direction: direction.clone(),
+            source: source.to_string(),
+            confidence,
+            snapshot_id: snapshot_id.clone(),
+            message: clean_message,
+            profile_patch: normalized_profile_patch,
+            objective_patch: normalized_objective_patch,
+            diff,
+            created_at_unix_ms: now,
+            resolved_at_unix_ms: None,
+            rejection_reason: None,
+        };
+        if direction == "pull" {
+            store.sync_status.last_pull_at_unix_ms = Some(now);
+        } else {
+            store.sync_status.last_push_at_unix_ms = Some(now);
+        }
+        store.sync_status.last_source = Some(source.to_string());
+        store.sync_status.last_snapshot_id = snapshot_id;
+        store.sync_status.last_error = None;
+        store.suggestions.insert(suggestion_id, suggestion.clone());
+        self.write_planning_store(store)?;
+        Ok(suggestion)
+    }
+
+    pub fn list_planning_suggestions(
+        &self,
+        status: Option<PlanningSuggestionStatus>,
+    ) -> Vec<PlanningSuggestion> {
+        let store = self.read_planning_store();
+        let mut rows = store
+            .suggestions
+            .values()
+            .filter(|row| status.is_none_or(|probe| row.status == probe))
+            .cloned()
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| {
+            left.created_at_unix_ms
+                .cmp(&right.created_at_unix_ms)
+                .then(left.suggestion_id.cmp(&right.suggestion_id))
+        });
+        rows
+    }
+
+    pub fn accept_planning_suggestion(
+        &mut self,
+        suggestion_id: &str,
+    ) -> Result<PlanningSuggestion, EngineError> {
+        let target = suggestion_id.trim();
+        if target.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "suggestion_id cannot be empty".to_string(),
+            });
+        }
+        let mut store = self.read_planning_store();
+        let Some(mut suggestion) = store.suggestions.get(target).cloned() else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Planning suggestion '{}' not found", target),
+            });
+        };
+        if suggestion.status != PlanningSuggestionStatus::Pending {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Planning suggestion '{}' is already {}",
+                    target,
+                    suggestion.status.as_str()
+                ),
+            });
+        }
+        if let Some(profile_patch) = suggestion.profile_patch.clone() {
+            let mut overlay = store
+                .confirmed_agent_overlay_profile
+                .clone()
+                .unwrap_or_default();
+            Self::merge_planning_profile(&mut overlay, &profile_patch);
+            store.confirmed_agent_overlay_profile = Some(Self::normalize_planning_profile(overlay));
+        }
+        if let Some(objective_patch) = suggestion.objective_patch.clone() {
+            store.objective = Some(Self::normalize_planning_objective(objective_patch));
+        }
+        suggestion.status = PlanningSuggestionStatus::Accepted;
+        suggestion.resolved_at_unix_ms = Some(Self::now_unix_ms());
+        suggestion.rejection_reason = None;
+        store
+            .suggestions
+            .insert(target.to_string(), suggestion.clone());
+        self.write_planning_store(store)?;
+        Ok(suggestion)
+    }
+
+    pub fn reject_planning_suggestion(
+        &mut self,
+        suggestion_id: &str,
+        reason: Option<&str>,
+    ) -> Result<PlanningSuggestion, EngineError> {
+        let target = suggestion_id.trim();
+        if target.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "suggestion_id cannot be empty".to_string(),
+            });
+        }
+        let mut store = self.read_planning_store();
+        let Some(mut suggestion) = store.suggestions.get(target).cloned() else {
+            return Err(EngineError {
+                code: ErrorCode::NotFound,
+                message: format!("Planning suggestion '{}' not found", target),
+            });
+        };
+        if suggestion.status != PlanningSuggestionStatus::Pending {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Planning suggestion '{}' is already {}",
+                    target,
+                    suggestion.status.as_str()
+                ),
+            });
+        }
+        suggestion.status = PlanningSuggestionStatus::Rejected;
+        suggestion.resolved_at_unix_ms = Some(Self::now_unix_ms());
+        suggestion.rejection_reason = reason
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+        store
+            .suggestions
+            .insert(target.to_string(), suggestion.clone());
+        self.write_planning_store(store)?;
+        Ok(suggestion)
+    }
+
+    pub fn planning_sync_status(&self) -> PlanningSyncStatus {
+        self.read_planning_store().sync_status
+    }
+
+    pub fn mark_planning_sync_error(
+        &mut self,
+        direction: Option<&str>,
+        source: Option<&str>,
+        snapshot_id: Option<&str>,
+        error: &str,
+    ) -> Result<PlanningSyncStatus, EngineError> {
+        let clean_error = error.trim();
+        if clean_error.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Planning sync error message cannot be empty".to_string(),
+            });
+        }
+        let mut store = self.read_planning_store();
+        let now = Self::now_unix_ms();
+        if let Some(direction) = direction
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase())
+        {
+            match direction.as_str() {
+                "pull" => store.sync_status.last_pull_at_unix_ms = Some(now),
+                "push" => store.sync_status.last_push_at_unix_ms = Some(now),
+                _ => {}
+            }
+        }
+        if let Some(source) = source
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+        {
+            store.sync_status.last_source = Some(source);
+        }
+        if let Some(snapshot_id) = snapshot_id
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+        {
+            store.sync_status.last_snapshot_id = Some(snapshot_id);
+        }
+        store.sync_status.last_error = Some(clean_error.to_string());
+        let status = store.sync_status.clone();
+        self.write_planning_store(store)?;
+        Ok(status)
+    }
+
     fn read_rna_read_report_store_from_metadata(
         value: Option<&serde_json::Value>,
     ) -> RnaReadReportStore {
@@ -10298,6 +11349,7 @@ impl GentleEngine {
                 input_format: report.input_format,
                 seed_feature_id: report.seed_feature_id,
                 scope: report.scope,
+                origin_mode: report.origin_mode,
                 read_count_total: report.read_count_total,
                 read_count_seed_passed: report.read_count_seed_passed,
                 read_count_aligned: report.read_count_aligned,
@@ -10394,7 +11446,7 @@ impl GentleEngine {
                 format!("{:.2}", hit.seed_median_transcript_gap)
             };
             let header = format!(
-                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} perfect={} rc_applied={} exon_path_tx={} exon_path={} exon_transitions={}/{} {}",
+                "{} record_index={} byte_offset={} seed_hit_fraction={:.3} seed_gap_median={} seed_gap_count={} seed_chain_support={} seed_chain_frac={:.3} seed_chain_tx={} origin_class={} origin_conf={:.3} strand_conf={:.3} perfect={} rc_applied={} exon_path_tx={} exon_path={} exon_transitions={}/{} {}",
                 hit.header_id,
                 hit.record_index,
                 hit.source_byte_offset,
@@ -10408,6 +11460,9 @@ impl GentleEngine {
                 } else {
                     hit.seed_chain_transcript_id.as_str()
                 },
+                hit.origin_class.as_str(),
+                hit.origin_confidence,
+                hit.strand_confidence,
                 hit.perfect_seed_match,
                 hit.reverse_complement_applied,
                 if hit.exon_path_transcript_id.is_empty() {
@@ -10504,7 +11559,7 @@ impl GentleEngine {
         let mut writer = BufWriter::new(file);
         writeln!(
             writer,
-            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
+            "report_id\tseq_id\trecord_index\theader_id\tsource_byte_offset\tread_length_bp\tseed_hit_fraction\tweighted_seed_hit_fraction\tweighted_matched_kmers\tseed_chain_transcript_id\tseed_chain_support_kmers\tseed_chain_support_fraction\tseed_median_transcript_gap\tseed_transcript_gap_count\tmatched_kmers\ttested_kmers\tpassed_seed_filter\treverse_complement_applied\torigin_class\torigin_reason\torigin_confidence\tstrand_confidence\texon_path_transcript_id\texon_path\texon_transitions_confirmed\texon_transitions_total\tbest_transcript_id\tbest_strand\tbest_target_start_1based\tbest_target_end_1based\tbest_identity_fraction\tbest_query_coverage_fraction"
         )
         .map_err(|e| EngineError {
             code: ErrorCode::Io,
@@ -10544,39 +11599,42 @@ impl GentleEngine {
                     String::new(),
                 )
             };
-            writeln!(
-                writer,
-                "{}\t{}\t{}\t{}\t{}\t{}\t{:.6}\t{:.6}\t{:.6}\t{}\t{}\t{:.6}\t{:.6}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            let row = [
                 Self::sanitize_tsv_cell(&report.report_id),
                 Self::sanitize_tsv_cell(&report.seq_id),
-                hit.record_index,
+                hit.record_index.to_string(),
                 Self::sanitize_tsv_cell(&hit.header_id),
-                hit.source_byte_offset,
-                hit.read_length_bp,
-                hit.seed_hit_fraction,
-                hit.weighted_seed_hit_fraction,
-                hit.weighted_matched_kmers,
+                hit.source_byte_offset.to_string(),
+                hit.read_length_bp.to_string(),
+                format!("{:.6}", hit.seed_hit_fraction),
+                format!("{:.6}", hit.weighted_seed_hit_fraction),
+                format!("{:.6}", hit.weighted_matched_kmers),
                 Self::sanitize_tsv_cell(&hit.seed_chain_transcript_id),
-                hit.seed_chain_support_kmers,
-                hit.seed_chain_support_fraction,
-                hit.seed_median_transcript_gap,
-                hit.seed_transcript_gap_count,
-                hit.matched_kmers,
-                hit.tested_kmers,
-                hit.passed_seed_filter,
-                hit.reverse_complement_applied,
+                hit.seed_chain_support_kmers.to_string(),
+                format!("{:.6}", hit.seed_chain_support_fraction),
+                format!("{:.6}", hit.seed_median_transcript_gap),
+                hit.seed_transcript_gap_count.to_string(),
+                hit.matched_kmers.to_string(),
+                hit.tested_kmers.to_string(),
+                hit.passed_seed_filter.to_string(),
+                hit.reverse_complement_applied.to_string(),
+                Self::sanitize_tsv_cell(hit.origin_class.as_str()),
+                Self::sanitize_tsv_cell(&hit.origin_reason),
+                format!("{:.6}", hit.origin_confidence),
+                format!("{:.6}", hit.strand_confidence),
                 Self::sanitize_tsv_cell(&hit.exon_path_transcript_id),
                 Self::sanitize_tsv_cell(&hit.exon_path),
-                hit.exon_transitions_confirmed,
-                hit.exon_transitions_total,
+                hit.exon_transitions_confirmed.to_string(),
+                hit.exon_transitions_total.to_string(),
                 Self::sanitize_tsv_cell(best_transcript_id),
                 Self::sanitize_tsv_cell(best_strand),
                 best_target_start_1based,
                 best_target_end_1based,
                 best_identity_fraction,
                 best_query_coverage_fraction,
-            )
-            .map_err(|e| EngineError {
+            ]
+            .join("\t");
+            writeln!(writer, "{row}").map_err(|e| EngineError {
                 code: ErrorCode::Io,
                 message: format!("Could not write RNA-read exon-path row to '{}': {e}", path),
             })?;
@@ -10720,6 +11778,194 @@ impl GentleEngine {
             selected_read_count,
             exon_row_count: exon_counts.len(),
             transition_row_count: transition_counts.len(),
+        })
+    }
+
+    fn derive_score_density_bins_from_report(
+        report: &RnaReadInterpretationReport,
+    ) -> (Vec<u64>, bool) {
+        if !report.score_density_bins.is_empty() {
+            return (report.score_density_bins.clone(), false);
+        }
+        let mut bins = vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT];
+        for hit in &report.hits {
+            let idx = Self::score_density_bin_index(hit.seed_hit_fraction);
+            if let Some(bucket) = bins.get_mut(idx) {
+                *bucket = bucket.saturating_add(1);
+            }
+        }
+        (bins, true)
+    }
+
+    fn escape_svg_text(raw: &str) -> String {
+        raw.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+
+    fn render_rna_read_score_density_svg_text(
+        report: &RnaReadInterpretationReport,
+        bins: &[u64],
+        scale: RnaReadScoreDensityScale,
+    ) -> String {
+        let width = 960.0f64;
+        let height = 300.0f64;
+        let margin_left = 56.0f64;
+        let margin_right = 24.0f64;
+        let margin_top = 36.0f64;
+        let margin_bottom = 40.0f64;
+        let axis_bottom = height - margin_bottom;
+        let plot_top = margin_top + 16.0;
+        let plot_height = (axis_bottom - plot_top).max(1.0);
+        let chart_left = margin_left;
+        let chart_right = width - margin_right;
+        let chart_width = (chart_right - chart_left).max(1.0);
+        let max_count = bins.iter().copied().max().unwrap_or(0);
+        let max_scaled = if scale == RnaReadScoreDensityScale::Log {
+            (max_count as f64 + 1.0).ln().max(1.0)
+        } else {
+            (max_count.max(1)) as f64
+        };
+        let threshold = report.seed_filter.min_seed_hit_fraction.clamp(0.0, 1.0);
+        let threshold_x = chart_left + chart_width * threshold;
+        let bar_count = bins.len().max(1);
+        let bin_width = chart_width / bar_count as f64;
+        let scale_text = if scale == RnaReadScoreDensityScale::Log {
+            "log(1+count)"
+        } else {
+            "linear count"
+        };
+        let title = format!("RNA-read seed-hit score density ({scale_text})");
+        let subtitle = format!(
+            "report={} | reads={} seed-passed={} aligned={}",
+            report.report_id,
+            report.read_count_total,
+            report.read_count_seed_passed,
+            report.read_count_aligned
+        );
+
+        let mut svg = String::new();
+        svg.push_str(&format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width:.0}\" height=\"{height:.0}\" viewBox=\"0 0 {width:.0} {height:.0}\">\n"
+        ));
+        svg.push_str("<rect x=\"0\" y=\"0\" width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n");
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"22\" font-family=\"monospace\" font-size=\"14\" fill=\"#111827\">{title}</text>\n",
+            x = chart_left,
+            title = Self::escape_svg_text(&title)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"36\" font-family=\"monospace\" font-size=\"11\" fill=\"#4b5563\">{subtitle}</text>\n",
+            x = chart_left,
+            subtitle = Self::escape_svg_text(&subtitle)
+        ));
+        svg.push_str(&format!(
+            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"none\" stroke=\"#9ca3af\" stroke-width=\"1\"/>\n",
+            x = chart_left,
+            y = plot_top,
+            w = chart_width,
+            h = axis_bottom - plot_top
+        ));
+        for (idx, count) in bins.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            let x0 = chart_left + idx as f64 * bin_width + 0.6;
+            let x1 = if idx + 1 == bins.len() {
+                chart_right - 0.6
+            } else {
+                chart_left + (idx + 1) as f64 * bin_width - 0.6
+            };
+            if x1 <= x0 {
+                continue;
+            }
+            let scaled = if scale == RnaReadScoreDensityScale::Log {
+                (*count as f64 + 1.0).ln()
+            } else {
+                *count as f64
+            };
+            let bar_height = (scaled / max_scaled) * plot_height;
+            let y = axis_bottom - bar_height;
+            svg.push_str(&format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"#10b981\"/>\n",
+                x = x0,
+                y = y,
+                w = (x1 - x0).max(0.2),
+                h = (axis_bottom - y).max(0.2)
+            ));
+        }
+        svg.push_str(&format!(
+            "<line x1=\"{x1:.1}\" y1=\"{y:.1}\" x2=\"{x2:.1}\" y2=\"{y:.1}\" stroke=\"#6b7280\" stroke-width=\"1\"/>\n",
+            x1 = chart_left,
+            x2 = chart_right,
+            y = axis_bottom
+        ));
+        svg.push_str(&format!(
+            "<line x1=\"{x:.2}\" y1=\"{y1:.1}\" x2=\"{x:.2}\" y2=\"{y2:.1}\" stroke=\"#dc2626\" stroke-width=\"1\"/>\n",
+            x = threshold_x,
+            y1 = plot_top,
+            y2 = axis_bottom
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.2}\" y=\"{y:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#dc2626\">{label}</text>\n",
+            x = threshold_x + 2.0,
+            y = plot_top + 10.0,
+            label = format!("{threshold:.2}")
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"{y:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#6b7280\">0.0</text>\n",
+            x = chart_left,
+            y = axis_bottom + 14.0
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"{y:.1}\" text-anchor=\"end\" font-family=\"monospace\" font-size=\"10\" fill=\"#6b7280\">1.0</text>\n",
+            x = chart_right,
+            y = axis_bottom + 14.0
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"{y:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#4b5563\">bins={bins} max_count={max_count} total_scored={total_scored}</text>\n",
+            x = chart_left,
+            y = height - 8.0,
+            bins = bins.len(),
+            max_count = max_count,
+            total_scored = bins.iter().copied().sum::<u64>()
+        ));
+        svg.push_str("</svg>\n");
+        svg
+    }
+
+    pub fn export_rna_read_score_density_svg(
+        &self,
+        report_id: &str,
+        path: &str,
+        scale: RnaReadScoreDensityScale,
+    ) -> Result<RnaReadScoreDensitySvgExport, EngineError> {
+        let report = self.get_rna_read_report(report_id)?;
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "RNA-read score-density SVG export requires non-empty path".to_string(),
+            });
+        }
+        let (bins, derived_from_report_hits_only) =
+            Self::derive_score_density_bins_from_report(&report);
+        let svg = Self::render_rna_read_score_density_svg_text(&report, &bins, scale);
+        std::fs::write(path, svg).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA-read score-density SVG to '{path}': {e}"),
+        })?;
+        Ok(RnaReadScoreDensitySvgExport {
+            schema: RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA.to_string(),
+            path: path.to_string(),
+            report_id: report.report_id,
+            scale,
+            bin_count: bins.len(),
+            max_bin_count: bins.iter().copied().max().unwrap_or(0),
+            total_scored_reads: bins.iter().copied().sum::<u64>(),
+            derived_from_report_hits_only,
         })
     }
 
@@ -11662,6 +12908,169 @@ impl GentleEngine {
         raw_pass && weighted_pass && unique_pass && chain_pass && gap_pass && transition_pass
     }
 
+    fn classify_rna_read_origin(
+        seed_hit_fraction: f64,
+        weighted_seed_hit_fraction: f64,
+        passed_seed_filter: bool,
+        spacing_metrics: &SeedChainSpacingMetrics,
+        path_inference: &ReadExonPathInference,
+        target_feature_strand: &str,
+        seed_filter: &RnaReadSeedFilterConfig,
+    ) -> RnaReadOriginClassification {
+        let selected_strand = path_inference.strand.trim();
+        let target_strand = target_feature_strand.trim();
+        let has_target_strand = !target_strand.is_empty();
+        let has_selected_strand = !selected_strand.is_empty();
+        let strand_matches_target =
+            has_target_strand && has_selected_strand && selected_strand == target_strand;
+        let transition_fraction = if path_inference.total_transitions == 0 {
+            0.0
+        } else {
+            path_inference.confirmed_transitions as f64 / path_inference.total_transitions as f64
+        };
+        let has_local_block = seed_hit_fraction + f64::EPSILON >= seed_filter.min_seed_hit_fraction
+            || weighted_seed_hit_fraction + f64::EPSILON
+                >= seed_filter.min_weighted_seed_hit_fraction;
+        let coherent_chain = spacing_metrics.support_fraction + f64::EPSILON
+            >= seed_filter.min_chain_consistency_fraction;
+        let strand_confidence = if !has_selected_strand {
+            0.0
+        } else if path_inference.strand_diagnostics.ambiguous_near_tie {
+            0.35
+        } else if path_inference.strand_diagnostics.competing_opposite_strand {
+            0.70
+        } else {
+            1.0
+        };
+        let origin_confidence = (weighted_seed_hit_fraction.clamp(0.0, 1.0) * 0.45
+            + spacing_metrics.support_fraction.clamp(0.0, 1.0) * 0.35
+            + transition_fraction.clamp(0.0, 1.0) * 0.20)
+            .clamp(0.0, 1.0);
+        let (origin_class, reason) = if passed_seed_filter && coherent_chain {
+            (
+                RnaReadOriginClass::TargetCoherent,
+                "passed strict seed gate with coherent transcript-chain support".to_string(),
+            )
+        } else if has_local_block && coherent_chain {
+            (
+                RnaReadOriginClass::TargetPartialLocalBlock,
+                "strong local seed support with coherent chain, but strict gate not fully met"
+                    .to_string(),
+            )
+        } else if has_local_block && has_target_strand && has_selected_strand {
+            if strand_matches_target {
+                (
+                    RnaReadOriginClass::RoiSameStrandLocalBlock,
+                    "local ROI support on target-feature strand".to_string(),
+                )
+            } else {
+                (
+                    RnaReadOriginClass::RoiReverseStrandLocalBlock,
+                    "local ROI support on reverse strand relative to target feature".to_string(),
+                )
+            }
+        } else if path_inference.strand_diagnostics.ambiguous_near_tie
+            || path_inference.strand_diagnostics.competing_opposite_strand
+        {
+            (
+                RnaReadOriginClass::TpFamilyAmbiguous,
+                "cross-strand competition/ambiguity suggests family-like or shared-domain seed support"
+                    .to_string(),
+            )
+        } else {
+            (
+                RnaReadOriginClass::BackgroundLikely,
+                "insufficient coherent local support under current seed/coherence model"
+                    .to_string(),
+            )
+        };
+        RnaReadOriginClassification {
+            origin_class,
+            reason,
+            origin_confidence,
+            strand_confidence,
+        }
+    }
+
+    fn build_rna_read_origin_candidates(
+        path_inference: &ReadExonPathInference,
+        spacing_metrics: &SeedChainSpacingMetrics,
+        transcript_models_by_id: &HashMap<String, TranscriptExonPathModel>,
+    ) -> Vec<RnaReadOriginCandidateContribution> {
+        let mut rows = Vec::<RnaReadOriginCandidateContribution>::new();
+        let mut seen = HashSet::<String>::new();
+        let mut push_row = |candidate_role: &str,
+                            transcript_id: &str,
+                            strand: &str,
+                            transition_hits: usize,
+                            exon_hits: usize| {
+            let tid = transcript_id.trim();
+            if tid.is_empty() || !seen.insert(tid.to_string()) {
+                return;
+            }
+            rows.push(RnaReadOriginCandidateContribution {
+                candidate_role: candidate_role.to_string(),
+                transcript_id: tid.to_string(),
+                strand: strand.to_string(),
+                transition_hits,
+                exon_hits,
+            });
+        };
+        push_row(
+            "selected_path",
+            &path_inference.transcript_id,
+            &path_inference.strand,
+            path_inference.confirmed_transitions,
+            path_inference.strand_diagnostics.selected_exon_hits,
+        );
+        push_row(
+            "plus_best",
+            &path_inference.strand_diagnostics.plus_best_transcript_id,
+            "+",
+            path_inference.strand_diagnostics.plus_best_transition_hits,
+            path_inference.strand_diagnostics.plus_best_exon_hits,
+        );
+        push_row(
+            "minus_best",
+            &path_inference.strand_diagnostics.minus_best_transcript_id,
+            "-",
+            path_inference.strand_diagnostics.minus_best_transition_hits,
+            path_inference.strand_diagnostics.minus_best_exon_hits,
+        );
+        if !spacing_metrics.transcript_id.trim().is_empty() {
+            let seed_chain_strand = transcript_models_by_id
+                .get(spacing_metrics.transcript_id.as_str())
+                .map(|model| model.strand.as_str())
+                .unwrap_or("");
+            push_row(
+                "seed_chain_best",
+                spacing_metrics.transcript_id.as_str(),
+                seed_chain_strand,
+                0,
+                spacing_metrics.support_kmers,
+            );
+        }
+        rows
+    }
+
+    fn build_read_seed_support_sets(
+        matched_seed_bits: &HashSet<u32>,
+        seed_to_exons: &HashMap<u32, Vec<usize>>,
+        seed_to_transitions: &HashMap<u32, Vec<(usize, usize)>>,
+    ) -> (HashSet<usize>, HashSet<(usize, usize)>) {
+        let mut read_supported_exons = HashSet::<usize>::new();
+        let mut read_supported_transitions = HashSet::<(usize, usize)>::new();
+        for bits in matched_seed_bits {
+            if let Some(exons) = seed_to_exons.get(bits) {
+                read_supported_exons.extend(exons.iter().copied());
+            }
+            if let Some(transitions) = seed_to_transitions.get(bits) {
+                read_supported_transitions.extend(transitions.iter().copied());
+            }
+        }
+        (read_supported_exons, read_supported_transitions)
+    }
+
     fn compute_seed_chain_spacing_metrics(
         matched_seed_observations: &[SeedMatchObservation],
         seed_template_positions: &HashMap<u32, Vec<SeedTemplatePosition>>,
@@ -11801,6 +13210,11 @@ impl GentleEngine {
             selected_strand: hit.strand_diagnostics.selected_strand.clone(),
             competing_opposite_strand: hit.strand_diagnostics.competing_opposite_strand,
             ambiguous_strand_tie: hit.strand_diagnostics.ambiguous_near_tie,
+            origin_class: hit.origin_class,
+            origin_reason: hit.origin_reason.clone(),
+            origin_confidence: hit.origin_confidence,
+            strand_confidence: hit.strand_confidence,
+            origin_candidates: hit.origin_candidates.clone(),
             read_length_bp: hit.read_length_bp,
             sequence: hit.sequence.clone(),
             sequence_preview,
@@ -12631,19 +14045,32 @@ impl GentleEngine {
         report: RnaReadInterpretationReport,
         result: &mut OpResult,
     ) -> Result<(), EngineError> {
+        let origin_summary = if report.origin_class_counts.is_empty() {
+            "origin_classes=none".to_string()
+        } else {
+            let parts = report
+                .origin_class_counts
+                .iter()
+                .map(|(class, count)| format!("{class}:{count}"))
+                .collect::<Vec<_>>();
+            format!("origin_classes={}", parts.join(","))
+        };
         let replaced = self
             .read_rna_read_report_store()
             .reports
             .contains_key(report.report_id.as_str());
         self.upsert_rna_read_report(report.clone())?;
         result.messages.push(format!(
-            "{} RNA-read report '{}' (profile={}, reads={}, seed_passed={}, aligned={})",
+            "{} RNA-read report '{}' (profile={}, mode={}, targets={}, reads={}, seed_passed={}, aligned={}, {})",
             if replaced { "Updated" } else { "Created" },
             report.report_id,
             report.profile.as_str(),
+            report.origin_mode.as_str(),
+            report.target_gene_ids.len(),
             report.read_count_total,
             report.read_count_seed_passed,
-            report.read_count_aligned
+            report.read_count_aligned,
+            origin_summary
         ));
         Ok(())
     }
@@ -12656,6 +14083,9 @@ impl GentleEngine {
         input_path: &str,
         input_format: RnaReadInputFormat,
         scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: &[String],
+        roi_seed_capture_enabled: bool,
         seed_filter: &RnaReadSeedFilterConfig,
         align_config: &RnaReadAlignConfig,
         report_id: Option<&str>,
@@ -12669,6 +14099,9 @@ impl GentleEngine {
             input_path,
             input_format,
             scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
             seed_filter,
             align_config,
             report_id,
@@ -12685,6 +14118,9 @@ impl GentleEngine {
         input_path: &str,
         input_format: RnaReadInputFormat,
         scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: &[String],
+        roi_seed_capture_enabled: bool,
         seed_filter: &RnaReadSeedFilterConfig,
         align_config: &RnaReadAlignConfig,
         report_id: Option<&str>,
@@ -12698,6 +14134,9 @@ impl GentleEngine {
             input_path,
             input_format,
             scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
             seed_filter,
             align_config,
             report_id,
@@ -12717,6 +14156,9 @@ impl GentleEngine {
             input_path: report.input_path.clone(),
             input_format: report.input_format,
             scope: report.scope,
+            origin_mode: report.origin_mode,
+            target_gene_ids: report.target_gene_ids.clone(),
+            roi_seed_capture_enabled: report.roi_seed_capture_enabled,
             seed_filter: report.seed_filter.clone(),
             align_config: report.align_config.clone(),
             report_id: Some(report.report_id.clone()),
@@ -12752,6 +14194,9 @@ impl GentleEngine {
         input_path: &str,
         input_format: RnaReadInputFormat,
         scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: &[String],
+        roi_seed_capture_enabled: bool,
         seed_filter: &RnaReadSeedFilterConfig,
         align_config: &RnaReadAlignConfig,
         report_id: Option<&str>,
@@ -12765,6 +14210,9 @@ impl GentleEngine {
             input_path,
             input_format,
             scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
             seed_filter,
             align_config,
             report_id,
@@ -12781,12 +14229,56 @@ impl GentleEngine {
         input_path: &str,
         input_format: RnaReadInputFormat,
         scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: &[String],
+        roi_seed_capture_enabled: bool,
         seed_filter: &RnaReadSeedFilterConfig,
         align_config: &RnaReadAlignConfig,
         report_id: Option<&str>,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         should_continue: &mut dyn FnMut() -> bool,
     ) -> Result<RnaReadInterpretationReport, EngineError> {
+        let mut normalized_target_gene_ids = target_gene_ids
+            .iter()
+            .map(|id| id.trim())
+            .filter(|id| !id.is_empty())
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>();
+        normalized_target_gene_ids
+            .sort_by(|left, right| left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase()));
+        normalized_target_gene_ids.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        let mut origin_mode_warnings = Vec::<String>::new();
+        if matches!(origin_mode, RnaReadOriginMode::MultiGeneSparse) {
+            origin_mode_warnings.push(
+                "origin_mode=multi_gene_sparse requested; phase-1 engine path currently runs single-gene baseline indexing (request is persisted for follow-up implementation)"
+                    .to_string(),
+            );
+        }
+        if !normalized_target_gene_ids.is_empty() {
+            let preview = normalized_target_gene_ids
+                .iter()
+                .take(8)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(",");
+            let suffix = if normalized_target_gene_ids.len() > 8 {
+                format!(" (+{} more)", normalized_target_gene_ids.len() - 8)
+            } else {
+                String::new()
+            };
+            origin_mode_warnings.push(format!(
+                "target_gene_ids provided ({}): {}{}; phase-1 scoring keeps single-seed-feature transcript scope",
+                normalized_target_gene_ids.len(),
+                preview,
+                suffix
+            ));
+        }
+        if roi_seed_capture_enabled {
+            origin_mode_warnings.push(
+                "roi_seed_capture_enabled=true requested; ROI capture layer is planned but not active in phase-1 scoring"
+                    .to_string(),
+            );
+        }
         if !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1) {
             return Err(EngineError {
                 code: ErrorCode::Unsupported,
@@ -12860,6 +14352,7 @@ impl GentleEngine {
                 message: format!("Sequence '{seq_id}' not found"),
             })?;
         let splicing = self.build_splicing_expert_view(seq_id, seed_feature_id, scope)?;
+        let target_feature_strand = splicing.strand.clone();
         let templates = splicing
             .transcripts
             .iter()
@@ -12954,6 +14447,7 @@ impl GentleEngine {
                 reads_with_transition_support: 0,
                 transition_confirmations: 0,
                 junction_crossing_seed_bits_indexed,
+                origin_class_counts: BTreeMap::new(),
             },
         )) {
             return Err(EngineError {
@@ -12997,6 +14491,7 @@ impl GentleEngine {
         let mut support_junction_counts = vec![0usize; splicing.junctions.len()];
         let mut reads_with_transition_support = 0usize;
         let mut transition_confirmations = 0usize;
+        let mut origin_class_counts = BTreeMap::<String, usize>::new();
         let alignment_enabled = !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1)
             && align_config.max_secondary_mappings > 0;
         let final_visit_progress =
@@ -13061,27 +14556,48 @@ impl GentleEngine {
                     weighted_matched_kmers / tested_kmers as f64
                 };
                 let inference_started = Instant::now();
-                let mut read_supported_exons = HashSet::<usize>::new();
-                let mut read_supported_transitions = HashSet::<(usize, usize)>::new();
-                for bits in &matched_seed_bits {
-                    if let Some(exons) = seed_to_exons.get(bits) {
-                        read_supported_exons.extend(exons.iter().copied());
-                    }
-                    if let Some(transitions) = seed_to_transitions.get(bits) {
-                        read_supported_transitions.extend(transitions.iter().copied());
-                    }
-                }
+                let should_parallelize_infer = matched_seed_bits.len()
+                    >= RNA_READ_INFER_PARALLEL_MIN_MATCHED_BITS
+                    || matched_seed_observations.len()
+                        >= RNA_READ_INFER_PARALLEL_MIN_MATCHED_OBSERVATIONS;
+                let ((read_supported_exons, read_supported_transitions), spacing_metrics) =
+                    if should_parallelize_infer {
+                        join(
+                            || {
+                                Self::build_read_seed_support_sets(
+                                    &matched_seed_bits,
+                                    &seed_to_exons,
+                                    &seed_to_transitions,
+                                )
+                            },
+                            || {
+                                Self::compute_seed_chain_spacing_metrics(
+                                    &matched_seed_observations,
+                                    &seed_template_positions,
+                                    &templates,
+                                )
+                            },
+                        )
+                    } else {
+                        (
+                            Self::build_read_seed_support_sets(
+                                &matched_seed_bits,
+                                &seed_to_exons,
+                                &seed_to_transitions,
+                            ),
+                            Self::compute_seed_chain_spacing_metrics(
+                                &matched_seed_observations,
+                                &seed_template_positions,
+                                &templates,
+                            ),
+                        )
+                    };
                 let (seed_hit_fraction, perfect_seed_match, _raw_passed_seed_filter) =
                     Self::seed_hit_metrics(
                         tested_kmers,
                         matched_kmers,
                         seed_filter.min_seed_hit_fraction,
                     );
-                let spacing_metrics = Self::compute_seed_chain_spacing_metrics(
-                    &matched_seed_observations,
-                    &seed_template_positions,
-                    &templates,
-                );
                 let path_inference = Self::infer_read_exon_path(
                     &transcript_exon_models,
                     &read_supported_exons,
@@ -13100,6 +14616,23 @@ impl GentleEngine {
                     path_inference.total_transitions,
                     seed_filter,
                 );
+                let origin_classification = Self::classify_rna_read_origin(
+                    seed_hit_fraction,
+                    weighted_seed_hit_fraction,
+                    passed_seed_filter,
+                    &spacing_metrics,
+                    &path_inference,
+                    target_feature_strand.as_str(),
+                    seed_filter,
+                );
+                let origin_candidates = Self::build_rna_read_origin_candidates(
+                    &path_inference,
+                    &spacing_metrics,
+                    &transcript_models_by_id,
+                );
+                *origin_class_counts
+                    .entry(origin_classification.origin_class.as_str().to_string())
+                    .or_insert(0) += 1;
                 if passed_seed_filter && !read_supported_transitions.is_empty() {
                     reads_with_transition_support = reads_with_transition_support.saturating_add(1);
                     transition_confirmations =
@@ -13189,6 +14722,11 @@ impl GentleEngine {
                     exon_transitions_total: path_inference.total_transitions,
                     reverse_complement_applied,
                     strand_diagnostics: path_inference.strand_diagnostics,
+                    origin_class: origin_classification.origin_class,
+                    origin_reason: origin_classification.reason,
+                    origin_confidence: origin_classification.origin_confidence,
+                    strand_confidence: origin_classification.strand_confidence,
+                    origin_candidates,
                     perfect_seed_match,
                     passed_seed_filter,
                     best_mapping,
@@ -13242,6 +14780,7 @@ impl GentleEngine {
                             reads_with_transition_support,
                             transition_confirmations,
                             junction_crossing_seed_bits_indexed,
+                            origin_class_counts: origin_class_counts.clone(),
                         });
                     if !on_progress(progress_event) {
                         return Err(EngineError {
@@ -13298,6 +14837,7 @@ impl GentleEngine {
             reads_with_transition_support,
             transition_confirmations,
             junction_crossing_seed_bits_indexed,
+            origin_class_counts: origin_class_counts.clone(),
         });
         if !on_progress(final_progress) {
             return Err(EngineError {
@@ -13314,7 +14854,7 @@ impl GentleEngine {
                 &support_junction_counts,
                 support_aligned_reads,
             );
-        let mut warnings = Vec::<String>::new();
+        let mut warnings = origin_mode_warnings;
         if !alignment_enabled {
             warnings.push(
                 "phase-1 profile runs seed filtering only; alignment is deferred to a later pass"
@@ -13353,6 +14893,9 @@ impl GentleEngine {
             input_path: input_path.to_string(),
             input_format,
             scope,
+            origin_mode,
+            target_gene_ids: normalized_target_gene_ids,
+            roi_seed_capture_enabled,
             seed_filter: seed_filter.clone(),
             align_config: align_config.clone(),
             read_count_total: reads_total,
@@ -13364,6 +14907,8 @@ impl GentleEngine {
             junction_support_frequencies,
             transition_support_rows,
             isoform_support_rows,
+            origin_class_counts,
+            score_density_bins,
         })
     }
 
@@ -20768,7 +22313,8 @@ impl GentleEngine {
         | Operation::ExportRnaReadHitsFasta { path, .. }
         | Operation::ExportRnaReadSampleSheet { path, .. }
         | Operation::ExportRnaReadExonPathsTsv { path, .. }
-        | Operation::ExportRnaReadExonAbundanceTsv { path, .. } = op
+        | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
+        | Operation::ExportRnaReadScoreDensitySvg { path, .. } = op
         {
             Self::push_unique_token(&mut summary.file_paths, path);
         }
@@ -20796,7 +22342,8 @@ impl GentleEngine {
             | Operation::ExportRnaReadHitsFasta { path, .. }
             | Operation::ExportRnaReadSampleSheet { path, .. }
             | Operation::ExportRnaReadExonPathsTsv { path, .. }
-            | Operation::ExportRnaReadExonAbundanceTsv { path, .. } => {
+            | Operation::ExportRnaReadExonAbundanceTsv { path, .. }
+            | Operation::ExportRnaReadScoreDensitySvg { path, .. } => {
                 push(path);
             }
             _ => {}
@@ -27189,6 +28736,9 @@ impl GentleEngine {
                 input_path,
                 input_format,
                 scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
                 seed_filter,
                 align_config,
                 report_id,
@@ -27201,6 +28751,9 @@ impl GentleEngine {
                     &input_path,
                     input_format,
                     scope,
+                    origin_mode,
+                    &target_gene_ids,
+                    roi_seed_capture_enabled,
                     &seed_filter,
                     &align_config,
                     report_id.as_deref(),
@@ -27299,6 +28852,27 @@ impl GentleEngine {
                     export.exon_row_count,
                     export.transition_row_count
                 ));
+            }
+            Operation::ExportRnaReadScoreDensitySvg {
+                report_id,
+                path,
+                scale,
+            } => {
+                let export = self.export_rna_read_score_density_svg(&report_id, &path, scale)?;
+                result.messages.push(format!(
+                    "Exported RNA-read score-density SVG '{}' to '{}' (scale={}, bins={}, max_bin_count={})",
+                    export.report_id,
+                    export.path,
+                    export.scale.as_str(),
+                    export.bin_count,
+                    export.max_bin_count
+                ));
+                if export.derived_from_report_hits_only {
+                    result.warnings.push(format!(
+                        "Report '{}' did not persist score_density_bins; derived bins from retained hits only",
+                        export.report_id
+                    ));
+                }
             }
             Operation::ExtractRegion {
                 input,
@@ -34371,6 +35945,71 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn test_extract_genome_gene_reports_alias_guidance_for_contig_mismatch() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">NC_000017.11\nACGTACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "17\tsrc\tgene\t1\t12\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"MYGENE\";\n",
+        )
+        .unwrap();
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let mut engine = GentleEngine::new();
+        let _guard = EnvVarGuard::set(
+            crate::genomes::MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyGenome".to_string(),
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+
+        let err = engine
+            .apply(Operation::ExtractGenomeGene {
+                genome_id: "ToyGenome".to_string(),
+                gene_query: "MYGENE".to_string(),
+                occurrence: None,
+                output_id: Some("toy_gene".to_string()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path.to_string_lossy().to_string()),
+                cache_dir: None,
+            })
+            .expect_err("contig mismatch should fail");
+        assert!(
+            err.message
+                .contains("Could not load gene region 17:1-12 from 'ToyGenome'")
+        );
+        assert!(err.message.contains("Tried aliases:"));
+        assert!(err.message.contains("Available contigs"));
+        assert!(err.message.contains("Suggested matching contigs"));
+        assert!(err.message.contains("NC_000017.11"));
+    }
+
+    #[test]
     fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
         let td = tempdir().unwrap();
         let root = td.path();
@@ -38480,6 +40119,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_gz.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: RnaReadOriginMode::SingleGene,
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter,
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_gz".to_string()),
@@ -38551,6 +40193,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path.to_str().expect("path"),
                 RnaReadInputFormat::Fasta,
                 SplicingScopePreset::AllOverlappingBothStrands,
+                RnaReadOriginMode::SingleGene,
+                &[],
+                false,
                 &seed_filter,
                 &RnaReadAlignConfig::default(),
                 Some("rna_reads_transition_gate"),
@@ -38628,6 +40273,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: cdna_seed_filter,
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_poly_t_cdna".to_string()),
@@ -38652,6 +40300,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: direct_seed_filter,
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_poly_t_direct".to_string()),
@@ -38706,6 +40357,83 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
     }
 
     #[test]
+    fn test_interpret_rna_reads_sparse_origin_scaffolding_persists_and_warns() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_sparse_mode.fa");
+        fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: RnaReadOriginMode::MultiGeneSparse,
+                target_gene_ids: vec!["TP73".to_string(), "TP53".to_string(), "TP73".to_string()],
+                roi_seed_capture_enabled: true,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_sparse_mode".to_string()),
+            })
+            .expect("interpret reads with sparse-origin scaffolding");
+        let report = engine
+            .get_rna_read_report("rna_reads_sparse_mode")
+            .expect("stored report");
+        assert_eq!(report.origin_mode, RnaReadOriginMode::MultiGeneSparse);
+        assert_eq!(
+            report.target_gene_ids,
+            vec!["TP53".to_string(), "TP73".to_string()]
+        );
+        assert!(report.roi_seed_capture_enabled);
+        assert!(report.warnings.iter().any(|warning| {
+            warning.contains("origin_mode=multi_gene_sparse requested")
+        }));
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("target_gene_ids provided (2)"))
+        );
+        assert!(report.warnings.iter().any(|warning| {
+            warning.contains("roi_seed_capture_enabled=true requested")
+        }));
+    }
+
+    #[test]
     fn test_interpret_rna_reads_progress_reports_histogram_updates() {
         let mut state = ProjectState::default();
         state
@@ -38757,6 +40485,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                     input_path: input_path.display().to_string(),
                     input_format: RnaReadInputFormat::Fasta,
                     scope: SplicingScopePreset::AllOverlappingBothStrands,
+                    origin_mode: Default::default(),
+                    target_gene_ids: vec![],
+                    roi_seed_capture_enabled: false,
                     seed_filter: RnaReadSeedFilterConfig::default(),
                     align_config: RnaReadAlignConfig::default(),
                     report_id: Some("rna_reads_progress".to_string()),
@@ -38858,6 +40589,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             input_path.to_str().expect("path"),
             RnaReadInputFormat::Fasta,
             SplicingScopePreset::AllOverlappingBothStrands,
+            RnaReadOriginMode::SingleGene,
+            &[],
+            false,
             &RnaReadSeedFilterConfig::default(),
             &RnaReadAlignConfig::default(),
             Some("rna_reads_cancel"),
@@ -38939,6 +40673,137 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(GentleEngine::seed_filter_passes(
             0.95, 0.60, 8, 8, 1.0, 1.0, 7, 1, 1, &cfg
         ));
+    }
+
+    #[test]
+    fn test_classify_rna_read_origin_target_coherent_when_strict_gate_passes() {
+        let cfg = RnaReadSeedFilterConfig::default();
+        let spacing = SeedChainSpacingMetrics {
+            support_kmers: 120,
+            support_fraction: 0.82,
+            transcript_id: "NM_005427.4".to_string(),
+            ..SeedChainSpacingMetrics::default()
+        };
+        let path = ReadExonPathInference {
+            transcript_id: "NM_005427.4".to_string(),
+            strand: "+".to_string(),
+            confirmed_transitions: 3,
+            total_transitions: 4,
+            strand_diagnostics: RnaReadStrandAssignmentDiagnostics {
+                selected_strand: "+".to_string(),
+                selected_exon_hits: 9,
+                selected_transition_hits: 3,
+                ..RnaReadStrandAssignmentDiagnostics::default()
+            },
+            ..ReadExonPathInference::default()
+        };
+        let classified =
+            GentleEngine::classify_rna_read_origin(0.72, 0.66, true, &spacing, &path, "+", &cfg);
+        assert_eq!(classified.origin_class, RnaReadOriginClass::TargetCoherent);
+        assert!(classified.origin_confidence > 0.5);
+        assert!((classified.strand_confidence - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_classify_rna_read_origin_marks_reverse_strand_local_block() {
+        let cfg = RnaReadSeedFilterConfig::default();
+        let spacing = SeedChainSpacingMetrics {
+            support_kmers: 14,
+            support_fraction: 0.21,
+            transcript_id: "NM_reverse".to_string(),
+            ..SeedChainSpacingMetrics::default()
+        };
+        let path = ReadExonPathInference {
+            transcript_id: "NM_reverse".to_string(),
+            strand: "-".to_string(),
+            confirmed_transitions: 0,
+            total_transitions: 0,
+            strand_diagnostics: RnaReadStrandAssignmentDiagnostics {
+                selected_strand: "-".to_string(),
+                selected_exon_hits: 2,
+                selected_transition_hits: 0,
+                ..RnaReadStrandAssignmentDiagnostics::default()
+            },
+            ..ReadExonPathInference::default()
+        };
+        let classified =
+            GentleEngine::classify_rna_read_origin(0.41, 0.18, false, &spacing, &path, "+", &cfg);
+        assert_eq!(
+            classified.origin_class,
+            RnaReadOriginClass::RoiReverseStrandLocalBlock
+        );
+    }
+
+    #[test]
+    fn test_build_rna_read_origin_candidates_collects_ranked_roles() {
+        let path = ReadExonPathInference {
+            transcript_id: "tx_selected".to_string(),
+            strand: "+".to_string(),
+            confirmed_transitions: 2,
+            total_transitions: 4,
+            strand_diagnostics: RnaReadStrandAssignmentDiagnostics {
+                selected_exon_hits: 6,
+                plus_best_transcript_id: "tx_selected".to_string(),
+                plus_best_transition_hits: 2,
+                plus_best_exon_hits: 6,
+                minus_best_transcript_id: "tx_minus".to_string(),
+                minus_best_transition_hits: 1,
+                minus_best_exon_hits: 4,
+                ..RnaReadStrandAssignmentDiagnostics::default()
+            },
+            ..ReadExonPathInference::default()
+        };
+        let spacing = SeedChainSpacingMetrics {
+            transcript_id: "tx_chain".to_string(),
+            support_kmers: 55,
+            support_fraction: 0.64,
+            ..SeedChainSpacingMetrics::default()
+        };
+        let transcript_models_by_id = HashMap::from([
+            (
+                "tx_chain".to_string(),
+                TranscriptExonPathModel {
+                    transcript_id: "tx_chain".to_string(),
+                    strand: "-".to_string(),
+                    ..TranscriptExonPathModel::default()
+                },
+            ),
+            (
+                "tx_selected".to_string(),
+                TranscriptExonPathModel {
+                    transcript_id: "tx_selected".to_string(),
+                    strand: "+".to_string(),
+                    ..TranscriptExonPathModel::default()
+                },
+            ),
+            (
+                "tx_minus".to_string(),
+                TranscriptExonPathModel {
+                    transcript_id: "tx_minus".to_string(),
+                    strand: "-".to_string(),
+                    ..TranscriptExonPathModel::default()
+                },
+            ),
+        ]);
+        let candidates = GentleEngine::build_rna_read_origin_candidates(
+            &path,
+            &spacing,
+            &transcript_models_by_id,
+        );
+        let roles = candidates
+            .iter()
+            .map(|row| row.candidate_role.as_str())
+            .collect::<HashSet<_>>();
+        assert!(roles.contains("selected_path"));
+        assert!(roles.contains("minus_best"));
+        assert!(roles.contains("seed_chain_best"));
+        assert_eq!(
+            candidates
+                .iter()
+                .filter(|row| row.transcript_id == "tx_selected")
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -39421,13 +41286,25 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         };
 
         let (chimp_total, chimp_passed, chimp_best_raw, _chimp_best_weighted, chimp_failed) =
-            evaluate_set("test_files/ensembl_chimp_tp73_all.fasta", &mut bins);
+            evaluate_set(
+                "test_files/fixtures/mapping/ensembl_chimp_tp73_all.fasta",
+                &mut bins,
+            );
         let (human_total, human_passed, human_best_raw, _human_best_weighted, human_failed) =
-            evaluate_set("test_files/ensembl_human_tp73_all.fasta", &mut bins);
+            evaluate_set(
+                "test_files/fixtures/mapping/ensembl_human_tp73_all.fasta",
+                &mut bins,
+            );
         let (tp53_total, tp53_passed, tp53_best_raw, tp53_best_weighted, tp53_failed) =
-            evaluate_set("test_files/ensembl_human_tp53_all.fasta", &mut bins);
+            evaluate_set(
+                "test_files/fixtures/mapping/ensembl_human_tp53_all.fasta",
+                &mut bins,
+            );
         let (mouse_total, _mouse_passed, _mouse_best_raw, _mouse_best_weighted, _mouse_failed) =
-            evaluate_set("test_files/ensembl_mouse_trp73_all.fasta", &mut bins);
+            evaluate_set(
+                "test_files/fixtures/mapping/ensembl_mouse_trp73_all.fasta",
+                &mut bins,
+            );
         assert!(mouse_total > 0, "mouse trp73 set should contain reads");
 
         assert_eq!(
@@ -39624,6 +41501,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_support".to_string()),
@@ -39694,6 +41574,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_sheet".to_string()),
@@ -39760,6 +41643,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_paths".to_string()),
@@ -39790,6 +41676,96 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert_eq!(abundance_export.selected_read_count, 1);
         let abundance_text = fs::read_to_string(abundance_tsv).expect("read abundance tsv");
         assert!(abundance_text.contains("row_kind"));
+    }
+
+    #[test]
+    fn test_export_rna_read_score_density_svg() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let read_sequence = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads.fa");
+        fs::write(&input_path, format!(">read_1\n{read_sequence}\n")).expect("write reads");
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
+                seed_filter: RnaReadSeedFilterConfig::default(),
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_density".to_string()),
+            })
+            .expect("interpret reads");
+
+        let log_svg = td.path().join("score_density_log.svg");
+        let log_export = engine
+            .export_rna_read_score_density_svg(
+                "rna_reads_density",
+                log_svg.to_str().expect("log svg path"),
+                RnaReadScoreDensityScale::Log,
+            )
+            .expect("export score-density log svg");
+        assert_eq!(log_export.scale, RnaReadScoreDensityScale::Log);
+        assert!(!log_export.derived_from_report_hits_only);
+        let log_text = fs::read_to_string(&log_svg).expect("read log svg");
+        assert!(log_text.contains("log(1+count)"));
+        assert!(log_text.contains("report=rna_reads_density"));
+
+        let mut report = engine
+            .get_rna_read_report("rna_reads_density")
+            .expect("report");
+        report.score_density_bins.clear();
+        engine
+            .upsert_rna_read_report(report)
+            .expect("upsert report without bins");
+
+        let linear_svg = td.path().join("score_density_linear.svg");
+        let linear_export = engine
+            .export_rna_read_score_density_svg(
+                "rna_reads_density",
+                linear_svg.to_str().expect("linear svg path"),
+                RnaReadScoreDensityScale::Linear,
+            )
+            .expect("export score-density linear svg");
+        assert_eq!(linear_export.scale, RnaReadScoreDensityScale::Linear);
+        assert!(linear_export.derived_from_report_hits_only);
+        let linear_text = fs::read_to_string(&linear_svg).expect("read linear svg");
+        assert!(linear_text.contains("linear count"));
     }
 
     #[test]
@@ -39842,6 +41818,9 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 input_path: input_path.display().to_string(),
                 input_format: RnaReadInputFormat::Fasta,
                 scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: Default::default(),
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_top5000".to_string()),

@@ -114,7 +114,7 @@ Current draft operations:
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
-- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, seed_filter, align_config, report_id? }` (Nanopore cDNA profile implemented in phase-1)
+- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id? }` (Nanopore cDNA profile implemented in phase-1; sparse multi-gene/ROI-capture params are persisted scaffolding in current phase)
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
@@ -122,6 +122,7 @@ Current draft operations:
 - `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
 - `ExportRnaReadExonPathsTsv { report_id, path, selection }`
 - `ExportRnaReadExonAbundanceTsv { report_id, path, selection }`
+- `ExportRnaReadScoreDensitySvg { report_id, path, scale }`
 - `ExtractRegion { input, from, to, output_id? }`
 - `PrepareGenome { genome_id, catalog_path?, cache_dir?, timeout_seconds? }`
 - `ExtractGenomeRegion { genome_id, chromosome, start_1based, end_1based, output_id?, annotation_scope?, max_annotation_features?, include_genomic_annotation?, catalog_path?, cache_dir? }`
@@ -481,6 +482,59 @@ Adapter-equivalence guarantee for UI-intent tools:
   - returns both routine definitions plus comparison payload:
     shared/unique tags, cross-reference status, aligned difference-matrix rows,
     and merged disambiguation questions
+  - includes planning-aware estimate rows in comparison payload:
+    - `estimated_time_hours`
+    - `estimated_cost`
+    - `local_fit_score`
+    - `composite_meta_score`
+
+- Planning meta-layer contracts (shared shell/CLI, engine-owned):
+  - profile schema: `gentle.planning_profile.v1`
+  - objective schema: `gentle.planning_objective.v1`
+  - estimate schema: `gentle.planning_estimate.v1`
+  - suggestion schema: `gentle.planning_suggestion.v1`
+  - sync-status schema: `gentle.planning_sync_status.v1`
+  - merge precedence for effective profile:
+    - `global_profile -> confirmed_agent_overlay -> project_override`
+  - purchasing latency heuristic in v1:
+    - each missing required material class adds default
+      `procurement_business_days_default` (default `10`) to estimate
+      (Monday-Friday business-day model; no holiday calendar yet)
+    - business-day delays are converted to `estimated_time_hours` with a
+      deterministic weekend-aware factor (`24h * 7/5` per business day)
+  - schema compatibility rule:
+    - profile/objective payloads with mismatched schema ids are rejected
+      (`InvalidInput`) instead of silently coerced
+- `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
+  - inspect one planning profile scope or merged effective profile
+- `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
+  - set/replace selected planning profile scope
+- `planning profile clear [--scope global|project_override|confirmed_agent_overlay]`
+  - clear selected planning profile scope
+- `planning objective show`
+  - inspect current planning objective
+- `planning objective set JSON_OR_@FILE`
+  - set/replace planning objective
+- `planning objective clear`
+  - clear planning objective (engine defaults apply)
+- `planning suggestions list [--status pending|accepted|rejected]`
+  - list pending/resolved planning sync suggestions
+- `planning suggestions accept SUGGESTION_ID`
+  - accept suggestion and apply patch into confirmed overlay/objective
+- `planning suggestions reject SUGGESTION_ID [--reason TEXT]`
+  - reject suggestion with optional reason
+- `planning sync status`
+  - inspect planning sync lifecycle metadata
+- `planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]`
+  - register inbound advisory suggestion as pending
+- `planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]`
+  - register outbound advisory suggestion as pending
+  - payload for `planning sync pull|push`:
+    - optional `profile_patch` (`gentle.planning_profile.v1`)
+    - optional `objective_patch` (`gentle.planning_objective.v1`)
+    - optional `message`
+  - activation policy remains explicit user action (`accept`/`reject`);
+    no auto-apply in v1
 
 - `screenshot-window OUTPUT.png`
   - currently disabled by security policy
@@ -1311,7 +1365,7 @@ Dotplot + flexibility operation contract (implemented baseline):
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 
 - Operation:
-  - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, seed_filter, align_config, report_id? }`
+  - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id? }`
   - implemented profile: `nanopore_cdna_v1`
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:
@@ -1338,6 +1392,14 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - full-read hashing is always used for every read
     - `short_full_hash_max_bp`, `long_window_bp`, and `long_window_count`
       remain compatibility fields and currently have no runtime effect
+  - phase-1 sparse-origin scaffolding behavior:
+    - `origin_mode` accepts `single_gene|multi_gene_sparse` (default
+      `single_gene`)
+    - `target_gene_ids[]` and `roi_seed_capture_enabled` are persisted in the
+      report payload for deterministic follow-up runs
+    - current phase still executes the single-feature baseline index path;
+      requests for sparse multi-gene/ROI capture are surfaced as deterministic
+      warnings in report `warnings[]`
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -1345,13 +1407,24 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - report payload now includes per-report:
     - `exon_support_frequencies[]`
     - `junction_support_frequencies[]`
+    - request provenance fields:
+      - `origin_mode`
+      - `target_gene_ids[]`
+      - `roi_seed_capture_enabled`
+    - `origin_class_counts` (running/final deterministic class tallies)
+  - per-hit payload now includes:
+    - `origin_class`
+    - `origin_reason`
+    - `origin_confidence`
+    - `strand_confidence`
+    - `origin_candidates[]` (selected/plus/minus/seed-chain candidate hints)
 - Sample-sheet export:
   - operation: `ExportRnaReadSampleSheet { path, seq_id?, report_ids?, append? }`
   - export schema: `gentle.rna_read_sample_sheet_export.v1`
   - output: TSV with run/read metrics and JSON-serialized exon/junction
     frequency columns for cohort-level downstream analysis.
 - Shared-shell command family:
-  - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+- `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads export-report REPORT_ID OUTPUT.json`
@@ -1359,6 +1432,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
   - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
   - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+  - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
 - `rna-reads export-hits-fasta` header extensions:
   - `exon_path_tx=<transcript_id|none>`
   - `exon_path=<ordinal_path|none>` using `:` for hash-confirmed adjacent
@@ -1366,6 +1440,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - `exon_transitions=<confirmed>/<total>`
   - `rc_applied=<true|false>` (automatic cDNA poly-T reverse-complement
     normalization marker)
+  - `origin_class=<...>` plus `origin_conf=<...>` and `strand_conf=<...>`
 - cDNA/direct-RNA normalization controls in `seed_filter`:
   - `cdna_poly_t_flip_enabled` (default `true`)
   - `poly_t_prefix_min_bp` (default `18`): minimum T support used by the

@@ -181,10 +181,11 @@ RNA-read interpretation capability status (Nanopore cDNA phase-1):
   - `rna-reads export-sample-sheet`
   - `rna-reads export-paths-tsv`
   - `rna-reads export-abundance-tsv`
+  - `rna-reads export-score-density-svg`
   backed by `InterpretRnaReads`, `ListRnaReadReports`, `ShowRnaReadReport`,
   `ExportRnaReadReport`, `ExportRnaReadHitsFasta`,
-  `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`, and
-  `ExportRnaReadExonAbundanceTsv`.
+  `ExportRnaReadSampleSheet`, `ExportRnaReadExonPathsTsv`,
+  `ExportRnaReadExonAbundanceTsv`, and `ExportRnaReadScoreDensitySvg`.
   Input supports FASTA plus gzipped FASTA (`.fa/.fasta` and `.fa.gz/.fasta.gz`).
   Progress output includes periodic `progress rna-reads ...` lines during
   `apply_with_progress` runs.
@@ -913,7 +914,7 @@ Shared shell command:
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
-    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
@@ -921,6 +922,7 @@ Shared shell command:
     - `rna-reads export-sample-sheet OUTPUT.tsv [--seq-id ID] [--report-id ID]... [--append]`
     - `rna-reads export-paths-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
     - `rna-reads export-abundance-tsv REPORT_ID OUTPUT.tsv [--selection all|seed_passed|aligned]`
+    - `rna-reads export-score-density-svg REPORT_ID OUTPUT.svg [--scale linear|log]`
     - `rna-reads export-hits-fasta` headers include seed metrics and exon-path
       annotations:
       - `exon_path_tx=<transcript_id|none>`
@@ -929,6 +931,8 @@ Shared shell command:
       - `exon_transitions=<confirmed>/<total>`
       - `rc_applied=<true|false>` indicating automatic cDNA poly-T
         reverse-complement normalization was applied
+      - `origin_class=<...>` with `origin_conf` / `strand_conf` summary values
+        from deterministic origin classification
     - cDNA/direct-RNA seed-normalization semantics:
       - default (`--cdna-poly-t-flip`): reads with a T-rich 5' head are
         reverse-complement normalized before hashing/scoring
@@ -941,6 +945,13 @@ Shared shell command:
       - all reads are hashed across their full span (no 3-window sampling)
       - `--short-max-bp`, `--long-window-bp`, and `--long-window-count` are
         compatibility options and currently have no effect
+    - sparse-origin scaffolding options:
+      - `--origin-mode` accepts `single_gene` (default) and
+        `multi_gene_sparse`
+      - `--target-gene` (repeatable) and `--roi-seed-capture` are persisted in
+        the report payload for deterministic follow-up runs
+      - phase-1 execution still uses the single-feature baseline index; sparse
+        multi-gene/ROI-capture requests are surfaced as report warnings
     - phase-1 seed-pass gate policy:
       - `pass = raw_hit_fraction >= min_seed_hit_fraction AND weighted_hit_fraction >= min_weighted_seed_hit_fraction AND unique_matched_kmers >= min(min_unique_matched_kmers, tested_kmers) AND chain_consistency_fraction >= min_chain_consistency_fraction AND median_transcript_gap <= max_median_transcript_gap AND confirmed_transitions >= min_confirmed_transitions AND confirmed_transition_fraction >= min_transition_support_fraction`
       - `chain_consistency_fraction` is the fraction of matched seed observations
@@ -1365,6 +1376,61 @@ Typed routine catalog command (`gentle_cli routines ...` or `gentle_cli shell 'r
   - Returns deterministic side-by-side comparison payload for two routines.
   - Response schema: `gentle.cloning_routine_compare.v1`.
   - Includes shared/unique vocabulary tags, difference-matrix rows, and merged disambiguation questions.
+  - Also includes planning-aware estimate rows:
+    `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
+    `composite_meta_score`.
+
+Planning meta-layer commands (`gentle_cli planning ...` or `gentle_cli shell 'planning ...'`):
+
+- Planning schemas:
+  - `gentle.planning_profile.v1`
+  - `gentle.planning_objective.v1`
+  - `gentle.planning_estimate.v1`
+  - `gentle.planning_suggestion.v1`
+  - `gentle.planning_sync_status.v1`
+- Effective profile merge precedence:
+  - `global_profile -> confirmed_agent_overlay -> project_override`
+- Schema compatibility:
+  - payloads declaring a non-matching planning schema id are rejected
+    (not auto-upgraded silently).
+- `planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]`
+  - Shows one profile scope or merged effective profile.
+- `planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]`
+  - Sets/replaces one profile scope.
+- `planning profile clear [--scope global|project_override|confirmed_agent_overlay]`
+  - Clears one profile scope.
+- `planning objective show`
+  - Shows current objective weights/guardrails.
+- `planning objective set JSON_OR_@FILE`
+  - Sets/replaces current planning objective.
+- `planning objective clear`
+  - Clears objective and falls back to engine defaults.
+- `planning suggestions list [--status pending|accepted|rejected]`
+  - Lists planning sync suggestions.
+- `planning suggestions accept SUGGESTION_ID`
+  - Accepts a pending suggestion and applies its patches.
+- `planning suggestions reject SUGGESTION_ID [--reason TEXT]`
+  - Rejects a pending suggestion.
+- `planning sync status`
+  - Shows sync metadata and pending count.
+- `planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]`
+  - Registers a pending inbound advisory suggestion.
+- `planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]`
+  - Registers a pending outbound advisory suggestion.
+- Sync payload shape (`pull`/`push`):
+  - optional `profile_patch` (`gentle.planning_profile.v1`)
+  - optional `objective_patch` (`gentle.planning_objective.v1`)
+  - optional `message`
+
+Planning estimate rule (v1 purchasing simplification):
+
+- Missing required local material adds procurement delay using
+  `procurement_business_days_default` (default `10`) unless overridden on the
+  item (`inventory.<class>.procurement_business_days`).
+- Delay is applied once per missing required material class (deduplicated).
+- Business-day model in v1: Monday-Friday only (no holiday calendar).
+- Business-day delays are converted to `estimated_time_hours` with a
+  deterministic weekend-aware factor (`24h * 7/5` per business day).
 
 Shipped starter assets:
 

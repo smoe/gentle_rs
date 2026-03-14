@@ -556,6 +556,18 @@ fn usage() {
   gentle_cli routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]\n  \
   gentle_cli routines explain ROUTINE_ID [--catalog PATH]\n  \
   gentle_cli routines compare ROUTINE_A ROUTINE_B [--catalog PATH]\n\n  \
+  gentle_cli planning profile show [--scope global|project_override|confirmed_agent_overlay|effective]\n  \
+  gentle_cli planning profile set JSON_OR_@FILE [--scope global|project_override|confirmed_agent_overlay]\n  \
+  gentle_cli planning profile clear [--scope global|project_override|confirmed_agent_overlay]\n  \
+  gentle_cli planning objective show\n  \
+  gentle_cli planning objective set JSON_OR_@FILE\n  \
+  gentle_cli planning objective clear\n  \
+  gentle_cli planning suggestions list [--status pending|accepted|rejected]\n  \
+  gentle_cli planning suggestions accept SUGGESTION_ID\n  \
+  gentle_cli planning suggestions reject SUGGESTION_ID [--reason TEXT]\n  \
+  gentle_cli planning sync status\n  \
+  gentle_cli planning sync pull JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n  \
+  gentle_cli planning sync push JSON_OR_@FILE [--source ID] [--confidence N] [--snapshot-id ID]\n\n  \
   gentle_cli resources sync-rebase INPUT.withrefm [OUTPUT.rebase.json] [--commercial-only]\n  \
   gentle_cli resources sync-jaspar INPUT.jaspar.txt [OUTPUT.motifs.json]\n\n  \
   Tip: pass @file.json instead of inline JSON\n  \
@@ -572,6 +584,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "agents",
     "ui",
     "routines",
+    "planning",
     "panels",
     "macros",
     "resources",
@@ -3160,6 +3173,144 @@ T [ 0 0 0 10 ]
                 .keys()
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn test_forwarded_primers_design_roundtrip_preserves_non_annealing_5prime_tail() {
+        let mut state = ProjectState::default();
+        state.sequences.insert(
+            "tpl".to_string(),
+            gentle::dna_sequence::DNAsequence::from_sequence(
+                "GGGGGGGGGGGGGGGGGGGGCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCAAAAAAAAAAAAAAAAAAAATTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+            )
+            .expect("sequence"),
+        );
+
+        let request = serde_json::to_string(&Operation::DesignPrimerPairs {
+            template: "tpl".to_string(),
+            roi_start_0based: 30,
+            roi_end_0based: 70,
+            forward: gentle::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(5),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 10,
+                non_annealing_5prime_tail: Some("GAATTC".to_string()),
+                ..Default::default()
+            },
+            reverse: gentle::engine::PrimerDesignSideConstraint {
+                min_length: 20,
+                max_length: 20,
+                location_0based: Some(60),
+                start_0based: None,
+                end_0based: None,
+                min_tm_c: 40.0,
+                max_tm_c: 90.0,
+                min_gc_fraction: 0.0,
+                max_gc_fraction: 1.0,
+                max_anneal_hits: 10,
+                non_annealing_5prime_tail: Some("CTCGAG".to_string()),
+                ..Default::default()
+            },
+            min_amplicon_bp: 40,
+            max_amplicon_bp: 130,
+            pair_constraints: gentle::engine::PrimerDesignPairConstraint::default(),
+            max_tm_delta_c: Some(50.0),
+            max_pairs: Some(10),
+            report_id: Some("tail_roundtrip".to_string()),
+        })
+        .expect("serialize request");
+
+        let (design_changed, design_output, state) = execute_forwarded_like_cli(
+            state,
+            vec![
+                "gentle_cli".to_string(),
+                "primers".to_string(),
+                "design".to_string(),
+                request,
+                "--backend".to_string(),
+                "internal".to_string(),
+            ],
+        );
+        assert!(design_changed);
+        assert_eq!(
+            design_output["report"]["report_id"].as_str(),
+            Some("tail_roundtrip")
+        );
+        assert!(
+            design_output["report"]["pair_count"]
+                .as_u64()
+                .unwrap_or_default()
+                >= 1
+        );
+
+        let design_first_pair = &design_output["report"]["pairs"][0];
+        assert_eq!(
+            design_first_pair["forward"]["anneal_length_bp"].as_u64(),
+            Some(20)
+        );
+        assert_eq!(
+            design_first_pair["reverse"]["anneal_length_bp"].as_u64(),
+            Some(20)
+        );
+        assert_eq!(
+            design_first_pair["forward"]["non_annealing_5prime_tail_bp"].as_u64(),
+            Some(6)
+        );
+        assert_eq!(
+            design_first_pair["reverse"]["non_annealing_5prime_tail_bp"].as_u64(),
+            Some(6)
+        );
+        assert!(
+            design_first_pair["forward"]["sequence"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("GAATTC")
+        );
+        assert!(
+            design_first_pair["reverse"]["sequence"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("CTCGAG")
+        );
+
+        let (show_changed, shown_output, _state) = execute_forwarded_like_cli(
+            state,
+            vec![
+                "gentle_cli".to_string(),
+                "primers".to_string(),
+                "show-report".to_string(),
+                "tail_roundtrip".to_string(),
+            ],
+        );
+        assert!(!show_changed);
+        let shown_first_pair = &shown_output["report"]["pairs"][0];
+        assert_eq!(
+            shown_first_pair["forward"]["non_annealing_5prime_tail_bp"].as_u64(),
+            Some(6)
+        );
+        assert_eq!(
+            shown_first_pair["reverse"]["non_annealing_5prime_tail_bp"].as_u64(),
+            Some(6)
+        );
+        assert!(
+            shown_first_pair["forward"]["sequence"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("GAATTC")
+        );
+        assert!(
+            shown_first_pair["reverse"]["sequence"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("CTCGAG")
         );
     }
 

@@ -1036,6 +1036,47 @@ impl GenomeCatalog {
 
                 let mut available: Vec<String> = index.keys().cloned().collect();
                 available.sort_unstable();
+                let query_lower = chromosome.trim().to_ascii_lowercase();
+                let query_normalized = normalize_chromosome_token(chromosome);
+                let mut suggestions = available
+                    .iter()
+                    .filter_map(|candidate| {
+                        let candidate_lower = candidate.to_ascii_lowercase();
+                        let candidate_normalized = normalize_chromosome_token(candidate);
+                        let score = if candidate_normalized == query_normalized {
+                            0u8
+                        } else if !query_normalized.is_empty()
+                            && (candidate_normalized.starts_with(&query_normalized)
+                                || query_normalized.starts_with(&candidate_normalized))
+                        {
+                            1u8
+                        } else if !query_lower.is_empty()
+                            && (candidate_lower.contains(&query_lower)
+                                || query_lower.contains(&candidate_lower))
+                        {
+                            2u8
+                        } else {
+                            return None;
+                        };
+                        Some((score, candidate.clone()))
+                    })
+                    .collect::<Vec<_>>();
+                suggestions.sort_by(|left, right| {
+                    left.0
+                        .cmp(&right.0)
+                        .then(left.1.len().cmp(&right.1.len()))
+                        .then(left.1.cmp(&right.1))
+                });
+                let mut suggested_names = Vec::new();
+                for (_, name) in suggestions {
+                    if suggested_names.iter().any(|v| v == &name) {
+                        continue;
+                    }
+                    suggested_names.push(name);
+                    if suggested_names.len() >= 8 {
+                        break;
+                    }
+                }
                 let preview_limit = 12usize;
                 let preview_items = available
                     .iter()
@@ -1055,16 +1096,25 @@ impl GenomeCatalog {
                     .find(|name| name.eq_ignore_ascii_case(chromosome))
                     .map(|name| format!(" Case-sensitive match exists as '{name}'."))
                     .unwrap_or_default();
+                let suggestions_hint = if suggested_names.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " Suggested matching contigs: {}.",
+                        suggested_names.join(", ")
+                    )
+                };
                 format!(
                     "Chromosome/contig '{}' not found in genome '{}'. Tried aliases: {}. \
 Available contigs ({}): {}. This can happen when prepared sequence/annotation naming differs \
-or cache contents are stale; re-run PrepareGenome for this genome/cache.{}",
+or cache contents are stale; re-run PrepareGenome for this genome/cache.{}{}",
                     chromosome,
                     resolved_genome_id,
                     tried_aliases.join(", "),
                     available.len(),
                     preview,
-                    case_hint
+                    case_hint,
+                    suggestions_hint
                 )
             })?;
 
@@ -4744,6 +4794,50 @@ mod tests {
         assert!(err.contains("Available contigs"));
         assert!(err.contains("chr1"));
         assert!(err.contains("PrepareGenome"));
+    }
+
+    #[test]
+    fn test_get_sequence_region_missing_contig_reports_suggestions_for_accession_style_names() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        let fasta = root.join("toy.fa");
+        let ann = root.join("toy.gtf");
+        fs::write(&fasta, ">NC_000017.11\nACGTACGT\n").unwrap();
+        fs::write(
+            &ann,
+            "17\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"GENE1\"; gene_name \"GENE1\";\n",
+        )
+        .unwrap();
+
+        let cache_dir = root.join("cache");
+        let catalog_path = root.join("catalog.json");
+        let catalog_json = format!(
+            r#"{{
+  "ToyGenome": {{
+    "sequence_local": "{}",
+    "annotations_local": "{}",
+    "cache_dir": "{}"
+  }}
+}}"#,
+            fasta.display(),
+            ann.display(),
+            cache_dir.display()
+        );
+        fs::write(&catalog_path, catalog_json).unwrap();
+
+        let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
+        let _guard = EnvVarGuard::set(
+            MAKEBLASTDB_ENV_BIN,
+            "__gentle_makeblastdb_missing_for_test__",
+        );
+        catalog.prepare_genome_once("ToyGenome").unwrap();
+
+        let err = catalog
+            .get_sequence_region("ToyGenome", "17", 1, 4)
+            .expect_err("missing contig should fail");
+        assert!(err.contains("Suggested matching contigs"));
+        assert!(err.contains("NC_000017.11"));
     }
 
     #[test]

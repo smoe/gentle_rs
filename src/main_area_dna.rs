@@ -12,9 +12,9 @@ use crate::{
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationProfile,
-        RnaReadSeedFilterConfig, RnaReadTopHitPreview, RnaSeedHashCatalogEntry,
-        SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset, TfThresholdOverride,
-        TfbsProgress, Workflow,
+        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset,
+        TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -277,6 +277,8 @@ struct RnaReadInterpretOpsUiState {
     align_band_width_bp: String,
     align_min_identity_fraction: String,
     align_max_secondary_mappings: String,
+    #[serde(default = "default_true")]
+    score_density_use_log_scale: bool,
     show_advanced: bool,
 }
 
@@ -304,6 +306,7 @@ impl Default for RnaReadInterpretOpsUiState {
             align_band_width_bp: "24".to_string(),
             align_min_identity_fraction: "0.60".to_string(),
             align_max_secondary_mappings: "0".to_string(),
+            score_density_use_log_scale: true,
             show_advanced: false,
         }
     }
@@ -1975,6 +1978,7 @@ mod tests {
         assert_eq!(decoded.rna_reads_ui.max_median_transcript_gap, "4.0");
         assert_eq!(decoded.rna_reads_ui.min_confirmed_exon_transitions, "1");
         assert_eq!(decoded.rna_reads_ui.min_transition_support_fraction, "0.05");
+        assert!(decoded.rna_reads_ui.score_density_use_log_scale);
         assert_eq!(
             decoded.rna_reads_ui.scope,
             SplicingScopePreset::AllOverlappingBothStrands
@@ -9843,14 +9847,25 @@ impl MainAreaDna {
                 let controls_enabled = self.rna_read_task.is_none();
                 ui.add_enabled_ui(controls_enabled, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Input FASTA");
+                        ui.label("Input FASTA").on_hover_text(
+                            "Path to input reads in FASTA format (.fa/.fasta, optional .gz).",
+                        );
                         if ui
                             .text_edit_singleline(&mut self.rna_reads_ui.input_path)
+                            .on_hover_text(
+                                "Reads are streamed from this file. .sra is not accepted directly in phase 1.",
+                            )
                             .changed()
                         {
                             persist_ui_state = true;
                         }
-                        if ui.button("Browse...").clicked() {
+                        if ui
+                            .button("Browse...")
+                            .on_hover_text(
+                                "Open a file chooser for FASTA/FASTA.gz input. If Report ID is empty, it is auto-derived from the filename.",
+                            )
+                            .clicked()
+                        {
                             let report_id_was_empty = self.rna_reads_ui.report_id.trim().is_empty();
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("FASTA", &["fa", "fasta", "gz"])
@@ -9868,16 +9883,23 @@ impl MainAreaDna {
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Report ID");
+                        ui.label("Report ID").on_hover_text(
+                            "Identifier used to store and retrieve this interpretation report. Leave empty for auto-ID.",
+                        );
                         if ui
                             .text_edit_singleline(&mut self.rna_reads_ui.report_id)
+                            .on_hover_text(
+                                "Used by export/report commands and GUI report lookup.",
+                            )
                             .changed()
                         {
                             persist_ui_state = true;
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Scope");
+                        ui.label("Scope").on_hover_text(
+                            "Controls which transcript templates are indexed and scored for seed matching.",
+                        );
                         egui::ComboBox::from_id_salt(format!(
                             "rna_read_scope_{}_{}",
                             view.seq_id, view.target_feature_id
@@ -9890,12 +9912,18 @@ impl MainAreaDna {
                                     SplicingScopePreset::AllOverlappingBothStrands,
                                     "All overlapping (both strands)",
                                 )
+                                .on_hover_text(
+                                    "Broadest mode: include all overlapping transcripts on both strands.",
+                                )
                                 .changed();
                             persist_ui_state |= ui
                                 .selectable_value(
                                     &mut self.rna_reads_ui.scope,
                                     SplicingScopePreset::TargetGroupAnyStrand,
                                     "Target group (any strand)",
+                                )
+                                .on_hover_text(
+                                    "Restrict to target-gene transcripts, but allow both strands inside that group.",
                                 )
                                 .changed();
                             persist_ui_state |= ui
@@ -9904,6 +9932,9 @@ impl MainAreaDna {
                                     SplicingScopePreset::AllOverlappingTargetStrand,
                                     "All overlapping (target strand)",
                                 )
+                                .on_hover_text(
+                                    "Include all overlapping transcripts only on the target strand.",
+                                )
                                 .changed();
                             persist_ui_state |= ui
                                 .selectable_value(
@@ -9911,10 +9942,16 @@ impl MainAreaDna {
                                     SplicingScopePreset::TargetGroupTargetStrand,
                                     "Target group (target strand)",
                                 )
+                                .on_hover_text(
+                                    "Most specific mode: target-gene transcripts on target strand only.",
+                                )
                                 .changed();
                         });
                         persist_ui_state |= ui
                             .checkbox(&mut self.rna_reads_ui.show_advanced, "Show advanced")
+                            .on_hover_text(
+                                "Show or hide detailed seed/alignment threshold controls.",
+                            )
                             .changed();
                     });
                     ui.horizontal_wrapped(|ui| {
@@ -9923,8 +9960,17 @@ impl MainAreaDna {
                                 &mut self.rna_reads_ui.cdna_poly_t_flip_enabled,
                                 "Input is cDNA (normalize T-rich 5' head)",
                             )
+                            .on_hover_text(
+                                "If enabled, reads with a T-rich 5' head are reverse-complement normalized before scoring.",
+                            )
                             .changed();
-                        if ui.button("Apply TP73 specificity preset").clicked() {
+                        if ui
+                            .button("Apply TP73 specificity preset")
+                            .on_hover_text(
+                                "Apply stricter TP73-focused defaults (scope, chain, gap, and transition thresholds) for pilot filtering.",
+                            )
+                            .clicked()
+                        {
                             self.apply_rna_reads_tp73_specificity_preset();
                             persist_ui_state = true;
                         }
@@ -9978,14 +10024,19 @@ impl MainAreaDna {
                         );
                         ui.add_space(4.0);
                         ui.horizontal_wrapped(|ui| {
-                            ui.label("k-mer");
+                            ui.label("k-mer").on_hover_text(
+                                "Seed length used for hash matching (phase-1 default: 9).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(&mut self.rna_reads_ui.kmer_len)
                                         .desired_width(46.0),
                                 )
+                                .on_hover_text("Seed hash length in bases.")
                                 .changed();
-                            ui.label("short<");
+                            ui.label("short<").on_hover_text(
+                                "Compatibility field in phase-1 (no runtime effect).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -9993,22 +10044,37 @@ impl MainAreaDna {
                                     )
                                     .desired_width(54.0),
                                 )
+                                .on_hover_text(
+                                    "Legacy short-read threshold retained for compatibility; ignored in full-read hashing mode.",
+                                )
                                 .changed();
-                            ui.label("long window");
+                            ui.label("long window").on_hover_text(
+                                "Compatibility field in phase-1 (no runtime effect).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(&mut self.rna_reads_ui.long_window_bp)
                                         .desired_width(54.0),
                                 )
+                                .on_hover_text(
+                                    "Legacy sampling window size retained for compatibility; ignored in full-read hashing mode.",
+                                )
                                 .changed();
-                            ui.label("count");
+                            ui.label("count").on_hover_text(
+                                "Compatibility field in phase-1 (no runtime effect).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(&mut self.rna_reads_ui.long_window_count)
                                         .desired_width(42.0),
                                 )
+                                .on_hover_text(
+                                    "Legacy number of windows retained for compatibility; ignored in full-read hashing mode.",
+                                )
                                 .changed();
-                            ui.label("min hit");
+                            ui.label("min hit").on_hover_text(
+                                "Minimum raw matched/tested seed fraction required to pass.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10016,8 +10082,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(56.0),
                                 )
+                                .on_hover_text(
+                                    "Raw seed-hit threshold in [0,1], for example 0.30.",
+                                )
                                 .changed();
-                            ui.label("min weighted");
+                            ui.label("min weighted").on_hover_text(
+                                "Minimum occurrence-weighted seed-hit fraction required to pass.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10025,8 +10096,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(56.0),
                                 )
+                                .on_hover_text(
+                                    "Weighted threshold in [0,1]; downweights highly repeated seed bits.",
+                                )
                                 .changed();
-                            ui.label("min unique");
+                            ui.label("min unique").on_hover_text(
+                                "Minimum number of distinct matched seed hashes.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10034,8 +10110,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(56.0),
                                 )
+                                .on_hover_text(
+                                    "Prevents low-complexity reads from passing on repetitive seeds alone.",
+                                )
                                 .changed();
-                            ui.label("max median gap");
+                            ui.label("max median gap").on_hover_text(
+                                "Maximum allowed median distance between matched seed positions in the inferred transcript chain.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10043,8 +10124,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(64.0),
                                 )
+                                .on_hover_text(
+                                    "Lower values require denser, more contiguous seed placement.",
+                                )
                                 .changed();
-                            ui.label("min chain");
+                            ui.label("min chain").on_hover_text(
+                                "Minimum coherent-chain support fraction for matched seed observations.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10052,8 +10138,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(62.0),
                                 )
+                                .on_hover_text(
+                                    "Fraction in [0,1]; higher values reject dispersed local matches.",
+                                )
                                 .changed();
-                            ui.label("min transitions");
+                            ui.label("min transitions").on_hover_text(
+                                "Minimum number of confirmed exon-exon transitions in inferred exon path.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10061,8 +10152,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(52.0),
                                 )
+                                .on_hover_text(
+                                    "Require at least this many confirmed junction transitions for pass.",
+                                )
                                 .changed();
-                            ui.label("min transition frac");
+                            ui.label("min transition frac").on_hover_text(
+                                "Minimum confirmed/expected transition fraction in inferred exon path.",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10070,9 +10166,14 @@ impl MainAreaDna {
                                     )
                                     .desired_width(62.0),
                                 )
+                                .on_hover_text(
+                                    "Fraction in [0,1] controlling transition-consistency strictness.",
+                                )
                                 .changed();
                             if self.rna_reads_ui.cdna_poly_t_flip_enabled {
-                                ui.label("poly-T head min T-bp");
+                                ui.label("poly-T head min T-bp").on_hover_text(
+                                    "Minimum T support used by the tolerant 5' poly-T-head detector for cDNA normalization.",
+                                );
                                 persist_ui_state |= ui
                                     .add(
                                         egui::TextEdit::singleline(
@@ -10080,11 +10181,16 @@ impl MainAreaDna {
                                         )
                                         .desired_width(56.0),
                                     )
+                                    .on_hover_text(
+                                        "Higher values require stronger T-rich heads before reverse-complement normalization.",
+                                    )
                                     .changed();
                             }
                         });
                         ui.horizontal_wrapped(|ui| {
-                            ui.label("align band");
+                            ui.label("align band").on_hover_text(
+                                "Phase-2 alignment placeholder parameter (currently not used in phase-1 seed-only runs).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10092,8 +10198,13 @@ impl MainAreaDna {
                                     )
                                     .desired_width(54.0),
                                 )
+                                .on_hover_text(
+                                    "Banded aligner width for future phase-2 mapping.",
+                                )
                                 .changed();
-                            ui.label("min identity");
+                            ui.label("min identity").on_hover_text(
+                                "Phase-2 alignment placeholder parameter (currently not used in phase-1 seed-only runs).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
@@ -10101,14 +10212,22 @@ impl MainAreaDna {
                                     )
                                     .desired_width(56.0),
                                 )
+                                .on_hover_text(
+                                    "Minimum identity fraction for future phase-2 mapping.",
+                                )
                                 .changed();
-                            ui.label("max secondary");
+                            ui.label("max secondary").on_hover_text(
+                                "Phase-2 alignment placeholder parameter (currently not used in phase-1 seed-only runs).",
+                            );
                             persist_ui_state |= ui
                                 .add(
                                     egui::TextEdit::singleline(
                                         &mut self.rna_reads_ui.align_max_secondary_mappings,
                                     )
                                     .desired_width(42.0),
+                                )
+                                .on_hover_text(
+                                    "Maximum number of secondary mappings kept in future phase-2 mapping.",
                                 )
                                 .changed();
                         });
@@ -10274,6 +10393,17 @@ impl MainAreaDna {
                             progress.median_read_length_bp,
                             progress.p95_read_length_bp
                         ));
+                        if !progress.origin_class_counts.is_empty() {
+                            let class_parts = progress
+                                .origin_class_counts
+                                .iter()
+                                .map(|(class, count)| format!("{class}={count}"))
+                                .collect::<Vec<_>>();
+                            ui.small(format!(
+                                "Origin classes: {}",
+                                class_parts.join(" | ")
+                            ));
+                        }
                         let elapsed_ms = task.started.elapsed().as_secs_f64() * 1000.0;
                         let seed_ms = progress.seed_compute_ms.max(0.0);
                         let align_ms = progress.align_compute_ms.max(0.0);
@@ -10320,7 +10450,34 @@ impl MainAreaDna {
                             self.rna_seed_overlay_show_introns,
                             self.rna_seed_overlay_exonic_coords,
                         );
-                        self.render_rna_read_score_density_plot(ui, progress);
+                        ui.horizontal(|ui| {
+                            ui.small("Score density scale:");
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_reads_ui.score_density_use_log_scale,
+                                    false,
+                                    "Linear",
+                                )
+                                .on_hover_text(
+                                    "Draw score-density bar heights proportionally to raw bin counts.",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .selectable_value(
+                                    &mut self.rna_reads_ui.score_density_use_log_scale,
+                                    true,
+                                    "Log",
+                                )
+                                .on_hover_text(
+                                    "Draw score-density bar heights using log(1+count) to emphasize sparse bins.",
+                                )
+                                .changed();
+                        });
+                        self.render_rna_read_score_density_plot(
+                            ui,
+                            progress,
+                            self.rna_reads_ui.score_density_use_log_scale,
+                        );
                         self.render_rna_read_transition_support_table(ui, progress);
                         self.render_rna_read_isoform_support_table(ui, progress);
                         highlight_selection_update =
@@ -10375,7 +10532,34 @@ impl MainAreaDna {
                         self.rna_seed_overlay_show_introns,
                         self.rna_seed_overlay_exonic_coords,
                     );
-                    self.render_rna_read_score_density_plot(ui, progress);
+                    ui.horizontal(|ui| {
+                        ui.small("Score density scale:");
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.score_density_use_log_scale,
+                                false,
+                                "Linear",
+                            )
+                            .on_hover_text(
+                                "Draw score-density bar heights proportionally to raw bin counts.",
+                            )
+                            .changed();
+                        persist_ui_state |= ui
+                            .selectable_value(
+                                &mut self.rna_reads_ui.score_density_use_log_scale,
+                                true,
+                                "Log",
+                            )
+                            .on_hover_text(
+                                "Draw score-density bar heights using log(1+count) to emphasize sparse bins.",
+                            )
+                            .changed();
+                    });
+                    self.render_rna_read_score_density_plot(
+                        ui,
+                        progress,
+                        self.rna_reads_ui.score_density_use_log_scale,
+                    );
                     self.render_rna_read_transition_support_table(ui, progress);
                     self.render_rna_read_isoform_support_table(ui, progress);
                     highlight_selection_update =
@@ -10414,6 +10598,17 @@ impl MainAreaDna {
                                             );
                                         }
                                     }
+                                    if !report.origin_class_counts.is_empty() {
+                                        let class_parts = report
+                                            .origin_class_counts
+                                            .iter()
+                                            .map(|(class, count)| format!("{class}={count}"))
+                                            .collect::<Vec<_>>();
+                                        ui.small(format!(
+                                            "Origin classes: {}",
+                                            class_parts.join(" | ")
+                                        ));
+                                    }
                                     ui.collapsing("Retained read preview (top 20)", |ui| {
                                         egui::ScrollArea::vertical()
                                             .max_height(140.0)
@@ -10425,7 +10620,7 @@ impl MainAreaDna {
                                                         .take(48)
                                                         .collect::<String>();
                                                     ui.monospace(format!(
-                                                        "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} matched/tested={}/{} pass={} seq={}",
+                                                        "#{} {} score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} class={} oconf={:.2} sconf={:.2} matched/tested={}/{} pass={} seq={}",
                                                         hit.record_index + 1,
                                                         hit.header_id,
                                                         hit.seed_hit_fraction,
@@ -10438,6 +10633,9 @@ impl MainAreaDna {
                                                         hit.seed_transcript_gap_count,
                                                         hit.seed_chain_support_fraction,
                                                         hit.seed_chain_support_kmers,
+                                                        hit.origin_class.as_str(),
+                                                        hit.origin_confidence,
+                                                        hit.strand_confidence,
                                                         hit.matched_kmers,
                                                         hit.tested_kmers,
                                                         hit.passed_seed_filter,
@@ -10456,6 +10654,9 @@ impl MainAreaDna {
                         self.rna_read_task.is_none(),
                         egui::Button::new("Run Nanopore cDNA interpretation"),
                     )
+                    .on_hover_text(
+                        "Start asynchronous seed filtering with current settings and stream progress in this panel.",
+                    )
                     .clicked()
                 {
                     self.run_splicing_rna_read_interpretation(view);
@@ -10464,6 +10665,9 @@ impl MainAreaDna {
                     .add_enabled(
                         self.rna_read_task.is_none(),
                         egui::Button::new("Export Seed Hash Catalog (TSV)..."),
+                    )
+                    .on_hover_text(
+                        "Export indexed seed hashes (sequence, positions, transcript context) for auditing.",
                     )
                     .clicked()
                 {
@@ -10474,6 +10678,9 @@ impl MainAreaDna {
                         self.rna_read_task.is_none(),
                         egui::Button::new("Export Retained Top Reads (FASTA)..."),
                     )
+                    .on_hover_text(
+                        "Export retained top-ranked reads with seed diagnostics in FASTA headers.",
+                    )
                     .clicked()
                 {
                     self.export_retained_rna_hits_fasta();
@@ -10482,6 +10689,9 @@ impl MainAreaDna {
                     .add_enabled(
                         self.rna_read_task.is_none(),
                         egui::Button::new("Export Exon Paths (TSV)..."),
+                    )
+                    .on_hover_text(
+                        "Export per-read inferred exon paths and seed metrics for downstream review.",
                     )
                     .clicked()
                 {
@@ -10492,12 +10702,30 @@ impl MainAreaDna {
                         self.rna_read_task.is_none(),
                         egui::Button::new("Export Exon Abundance (TSV)..."),
                     )
+                    .on_hover_text(
+                        "Export exon/transition support abundance aggregated across retained reads.",
+                    )
                     .clicked()
                 {
                     self.export_rna_read_exon_abundance_tsv();
                 }
                 if ui
+                    .add_enabled(
+                        self.rna_read_task.is_none(),
+                        egui::Button::new("Export Score Density (SVG)..."),
+                    )
+                    .on_hover_text(
+                        "Export the seed-hit score-density chart as SVG using the current Linear/Log scale toggle.",
+                    )
+                    .clicked()
+                {
+                    self.export_rna_read_score_density_svg();
+                }
+                if ui
                     .button("Export RNA sample sheet (all reports for current sequence)...")
+                    .on_hover_text(
+                        "Export one TSV row per RNA-read report with summary metrics for cohort annotation.",
+                    )
                     .clicked()
                 {
                     let default_name = format!("{}_rna_read_sample_sheet.tsv", view.seq_id);
@@ -10806,7 +11034,7 @@ impl MainAreaDna {
             format!("{:.2}", row.seed_median_transcript_gap)
         };
         format!(
-            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} len={}\n{}",
+            ">{header_id} record_index={} score={:.3} wscore={:.4} wsupport={:.2} gap_med={} gap_n={} chain={:.2}/{} tx={} class={} origin_conf={:.3} strand_conf={:.3} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} len={}\n{}",
             row.record_index + 1,
             row.seed_hit_fraction,
             row.weighted_seed_hit_fraction,
@@ -10820,6 +11048,9 @@ impl MainAreaDna {
             } else {
                 row.seed_chain_transcript_id.as_str()
             },
+            row.origin_class.as_str(),
+            row.origin_confidence,
+            row.strand_confidence,
             if row.selected_strand.is_empty() {
                 "na"
             } else {
@@ -11119,6 +11350,9 @@ impl MainAreaDna {
             input_path: input_path.clone(),
             input_format: self.rna_reads_ui.input_format,
             scope: self.rna_reads_ui.scope,
+            origin_mode: Default::default(),
+            target_gene_ids: vec![],
+            roi_seed_capture_enabled: false,
             seed_filter: RnaReadSeedFilterConfig {
                 kmer_len,
                 short_full_hash_max_bp,
@@ -11278,6 +11512,34 @@ impl MainAreaDna {
         });
     }
 
+    fn export_rna_read_score_density_svg(&mut self) {
+        let report_id = self.rna_reads_ui.report_id.trim().to_string();
+        if report_id.is_empty() {
+            let message = "Set a Report ID first to export score-density SVG".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
+        let default_name = format!("{report_id}_score_density.svg");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        else {
+            return;
+        };
+        let scale = if self.rna_reads_ui.score_density_use_log_scale {
+            RnaReadScoreDensityScale::Log
+        } else {
+            RnaReadScoreDensityScale::Linear
+        };
+        self.apply_operation_with_feedback(Operation::ExportRnaReadScoreDensitySvg {
+            report_id,
+            path: path.display().to_string(),
+            scale,
+        });
+    }
+
     fn start_rna_read_interpretation(&mut self, op: Operation) {
         let Some(engine) = self.engine.clone() else {
             self.op_status = "No engine attached".to_string();
@@ -11330,6 +11592,9 @@ impl MainAreaDna {
             input_path,
             input_format,
             scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
             seed_filter,
             align_config,
             report_id,
@@ -11341,6 +11606,9 @@ impl MainAreaDna {
                 input_path,
                 input_format,
                 scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
                 seed_filter,
                 align_config,
                 report_id,
@@ -11351,6 +11619,9 @@ impl MainAreaDna {
                 input_path,
                 input_format,
                 scope,
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
                 seed_filter,
                 align_config,
                 report_id,
@@ -11376,6 +11647,9 @@ impl MainAreaDna {
                         &input_path,
                         input_format,
                         scope,
+                        origin_mode,
+                        &target_gene_ids,
+                        roi_seed_capture_enabled,
                         &seed_filter,
                         &align_config,
                         report_id.as_deref(),
@@ -11964,7 +12238,7 @@ impl MainAreaDna {
             ));
             if let Some(selected) = selected_top_hit {
                 ui.small(format!(
-                    "Selected top read #{} supports {} hash positions ({} visible pixel buckets); hash recompute {:.2} ms | score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} tx={}",
+                    "Selected top read #{} supports {} hash positions ({} visible pixel buckets); hash recompute {:.2} ms | score={:.3} wscore={:.4} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2}",
                     selected.record_index + 1,
                     selected_supported_positions,
                     selected_supported_pixel_buckets.len(),
@@ -11984,6 +12258,9 @@ impl MainAreaDna {
                     } else {
                         selected.seed_chain_transcript_id.as_str()
                     },
+                    selected.origin_class.as_str(),
+                    selected.origin_confidence,
+                    selected.strand_confidence,
                 ));
             } else {
                 ui.small("Select one of the best-performing reads to light supported hash positions in green.");
@@ -12022,12 +12299,20 @@ impl MainAreaDna {
         &self,
         ui: &mut egui::Ui,
         progress: &RnaReadInterpretProgress,
+        use_log_scale: bool,
     ) {
         if progress.score_density_bins.is_empty() {
             ui.small("No score-density bins available yet.");
             return;
         }
-        ui.small("Seed-hit score density across tested reads");
+        let scale_label = if use_log_scale {
+            "log-scale counts"
+        } else {
+            "linear counts"
+        };
+        ui.small(format!(
+            "Seed-hit score density across tested reads ({scale_label})"
+        ));
         let desired = Vec2::new(ui.available_width().max(280.0), 120.0);
         let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
         let painter = ui.painter_at(rect);
@@ -12056,6 +12341,11 @@ impl MainAreaDna {
         let axis_bottom = rect.bottom() - 16.0;
         let plot_top = rect.top() + 4.0;
         let plot_h = (axis_bottom - plot_top).max(1.0);
+        let max_scaled_count = if use_log_scale {
+            (max_count as f32 + 1.0).ln().max(1.0)
+        } else {
+            max_count as f32
+        };
         let bin_w = rect.width() / progress.score_density_bins.len().max(1) as f32;
         for (idx, count) in progress.score_density_bins.iter().enumerate() {
             if *count == 0 {
@@ -12070,7 +12360,12 @@ impl MainAreaDna {
             if x1 <= x0 {
                 continue;
             }
-            let h = (*count as f32 / max_count as f32) * plot_h;
+            let scaled_count = if use_log_scale {
+                (*count as f32 + 1.0).ln()
+            } else {
+                *count as f32
+            };
+            let h = (scaled_count / max_scaled_count) * plot_h;
             let bar = egui::Rect::from_min_max(
                 egui::pos2(x0, axis_bottom - h),
                 egui::pos2(x1, axis_bottom - 0.6),
@@ -12125,17 +12420,17 @@ impl MainAreaDna {
         ui: &mut egui::Ui,
         progress: &RnaReadInterpretProgress,
     ) {
-        let reads_with_support_pct = if progress.reads_processed == 0 {
+        let seed_passed_denominator = progress.seed_passed;
+        let reads_with_support_pct = if seed_passed_denominator == 0 {
             0.0
         } else {
-            (progress.reads_with_transition_support as f64 / progress.reads_processed as f64)
-                * 100.0
+            (progress.reads_with_transition_support as f64 / seed_passed_denominator as f64) * 100.0
         };
         ui.small(format!(
-            "Junction-crossing seed bits indexed: {} | reads with confirmed exon-exon transitions: {}/{} ({:.2}%) | confirmed transitions total={}",
+            "Junction-crossing seed bits indexed: {} | reads with confirmed exon-exon transitions (seed-passed): {}/{} ({:.2}%) | confirmed transitions total={}",
             progress.junction_crossing_seed_bits_indexed,
             progress.reads_with_transition_support,
-            progress.reads_processed,
+            seed_passed_denominator,
             reads_with_support_pct,
             progress.transition_confirmations,
         ));
@@ -12368,7 +12663,7 @@ impl MainAreaDna {
                                         (row.sequence.as_str(), false)
                                     };
                                     let response = ui.selectable_label(selected, format!(
-                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} len={} seq={}{}",
+                                        "#{} {} score={:.3} wscore={:.4} wsupport={:.2} gap-med={} gap-n={} chain={:.2}/{} tx={} class={} oconf={:.2} sconf={:.2} strand={} opp={} ambig={} matched/tested={}/{} pass={} rc={} len={} seq={}{}",
                                         row.record_index + 1,
                                         row.header_id,
                                         row.seed_hit_fraction,
@@ -12383,6 +12678,9 @@ impl MainAreaDna {
                                         row.seed_chain_support_fraction,
                                         row.seed_chain_support_kmers,
                                         if row.seed_chain_transcript_id.is_empty() { "none" } else { row.seed_chain_transcript_id.as_str() },
+                                        row.origin_class.as_str(),
+                                        row.origin_confidence,
+                                        row.strand_confidence,
                                         if row.selected_strand.is_empty() { "na" } else { row.selected_strand.as_str() },
                                         row.competing_opposite_strand,
                                         row.ambiguous_strand_tie,

@@ -2,6 +2,11 @@
 
 Status: in progress (phase-1 baseline implementation underway)
 
+Related follow-up plan:
+
+- `docs/rna_read_origin_sparse_index_plan.md` (multi-gene sparse seed index,
+  origin classes, antisense-ready ROI seed-capture model)
+
 ## Goal and scope
 
 Near-term objective: support cloning-oriented interpretation for small genomic
@@ -103,6 +108,10 @@ cross-strand evidence assignment explicit, auditable, and deterministic.
   track.
 - Keep mutation paths explicit: apply-suggestion actions remain user-confirmed,
   deterministic engine operations only (no GUI-only mutation logic).
+- Add evidence-to-primer handoff:
+  seed-support and origin diagnostics should be reusable as deterministic
+  guidance input for primer-target ranking, while final primer scoring remains
+  owned by shared primer-design engine contracts.
 
 ### Phase 4: transcriptome-scale signal-to-noise calibration
 

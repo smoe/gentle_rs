@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-11
+Last updated: 2026-03-14
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -16,6 +16,23 @@ order. Durable architecture constraints and decisions remain in
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
+- Planning meta-layer shell/CLI baseline is now available:
+  - direct/shared-shell command family: `planning ...`
+  - profile/objective/suggestion/sync contracts:
+    `gentle.planning_profile.v1`,
+    `gentle.planning_objective.v1`,
+    `gentle.planning_estimate.v1`,
+    `gentle.planning_suggestion.v1`,
+    `gentle.planning_sync_status.v1`
+  - deterministic profile merge precedence:
+    `global -> confirmed_agent_overlay -> project_override`
+  - advisory agent sync lifecycle with explicit user
+    `accept`/`reject` activation policy
+  - strict schema compatibility checks for planning profile/objective payloads
+    (mismatched schema ids fail fast)
+  - procurement/queue business-day delays are converted to elapsed
+    `estimated_time_hours` with deterministic weekend-aware mapping
+    (`24h * 7/5` per business day)
 - CLI state loading now treats empty/whitespace `--state` files as
   uninitialized and starts from `ProjectState::default()` instead of failing
   parse.
@@ -130,9 +147,15 @@ order. Durable architecture constraints and decisions remain in
     - `disambiguation_questions`, `failure_modes`
   - shared-shell/CLI discovery command:
     `routines list [--catalog PATH] [--family NAME] [--status NAME] [--tag TAG] [--query TEXT]`
+    - routine rows now include planning estimate fields when planning context
+      exists (`estimated_time_hours`, `estimated_cost`, `local_fit_score`,
+      `composite_meta_score`, full `planning_estimate` explanation payload)
   - shared-shell/CLI explainability commands:
     - `routines explain ROUTINE_ID [--catalog PATH]`
     - `routines compare ROUTINE_A ROUTINE_B [--catalog PATH]`
+    - compare matrix now includes planning-estimate axes
+      (`estimated_time_hours`, `estimated_cost`, `local_fit_score`,
+      `composite_meta_score`)
   - GUI staged Routine Assistant baseline is now available
     (`Patterns -> Routine Assistant...`) with:
     - goal/candidate selection
@@ -560,9 +583,10 @@ Notes:
 7. XML import follow-up remains for `INSDSet/INSDSeq` dialect support.
 8. Visualization and workflow UX gaps remain:
    - chromosomal-scale BED overview/density view is missing
-   - genome-extract failure diagnostics for chromosome/contig mismatches still
-     need explicit alias-aware guidance (for example `17` vs `chr17`) with
-     prepared-contig suggestions from the active reference
+  - genome-extract failure diagnostics now include alias-aware guidance
+    (`17` vs `chr17`) plus prepared-contig previews/suggestions from the
+    active reference; a dedicated "apply suggested contig" one-click GUI
+    action remains pending
    - GUI-driven feature editing is not yet first-class:
      - no explicit edit workflow yet for exon/intron/transcript boundary curation
        informed by RNA-seq interpretation
@@ -599,6 +623,14 @@ Notes:
    is not yet implemented (current baseline is deterministic in-app extraction).
 10. Screenshot bridge execution remains disabled by security policy.
 11. Auto-updated documentation with embedded graphics remains postponed.
+12. RNA mapping benchmark-fixture curation is still incomplete:
+   - compact committed pack now exists at `test_files/fixtures/mapping/` and
+     is used by deterministic TP73 seed-filter tests
+   - legacy `test_files/mapping/True_TP73/` and
+     `test_files/mapping/False_TP73/` corpora still
+     need full pinned-source provenance capture before broader CI adoption
+   - follow-up: add a TP53-forward benchmark profile (higher-abundance,
+     TP73-family-adjacent) while keeping fixture footprint small
 
 ### MCP server communication track (UI-intent parity baseline implemented)
 
@@ -704,6 +736,9 @@ suggestion-first editing handoff.
 
 Detailed execution plan: `docs/rna_seq_nanopore_cloning_regions_plan.md`.
 
+Detailed origin-classification + sparse-index follow-up plan:
+`docs/rna_read_origin_sparse_index_plan.md`.
+
 Status:
 
 - In progress (phase-1 baseline implementation started).
@@ -742,9 +777,20 @@ Status:
     isoform rows now expose chain-same/opposite-competition/ambiguity counts,
     and top-read rows expose selected strand plus opposite-strand competition
     and ambiguity flags.
-  - Deterministic TP73-based filter tests now cover expected positive behavior
-    (TP73-derived reads with 30% deletions still pass) and negative behavior
-    (same-length deterministic random reads fail).
+  - Added origin-classification schema scaffolding (non-breaking):
+    per-read origin class/reason/confidence fields, candidate-contribution
+    hints, and running/final origin-class count summaries in reports/progress.
+  - Added non-breaking sparse-origin operation scaffolding:
+    `InterpretRnaReads` and shared-shell `rna-reads interpret` now accept
+    `origin_mode`, `target_gene_ids[]`, and `roi_seed_capture_enabled` with
+    deterministic report persistence plus explicit phase-1 fallback warnings
+    when sparse multi-gene/ROI capture is requested before phase-2 index work.
+  - Deterministic TP73 seed-filter tests now use compact committed mapping
+    fixtures (`test_files/fixtures/mapping/`) and cover:
+    - expected TP73 positive behavior (TP73-derived reads with 30% deletions
+      still pass)
+    - close-family negative control (human TP53 set rejected for TP73 model)
+    - generic negative control (same-length deterministic random reads fail)
   - Histogram guide overlays are now user-toggleable (`Exons`, `Introns`) for
     clearer exon-context interpretation during filtering runs.
   - Histogram coordinate mode now supports genomic axis and exonic-only compact
@@ -761,6 +807,9 @@ Status:
     make overhead diagnosis explicit.
   - Runtime/summary status now reports seed-pass percentages (not only raw
     counts) for faster triage on large batches.
+  - Seed-hit score-density panel now supports `Linear`/`Log` rendering
+    (`Log` default) so sparse higher-score bins remain visible in heavily
+    skewed distributions while still allowing raw-count inspection.
   - Splicing Expert now exposes explicit cDNA/direct-RNA interpretation mode
     control (`Input is cDNA` checkbox) with configurable poly-T prefix minimum
     for automatic reverse-complement normalization.
@@ -779,6 +828,9 @@ Status:
   - New RNA-read TSV exports are available for downstream analysis:
     - per-read exon-path table (`rna-reads export-paths-tsv` / GUI export)
     - exon/transition abundance table (`rna-reads export-abundance-tsv` / GUI export)
+  - RNA-read score-density chart export is now available as SVG from GUI/CLI
+    (`Export Score Density (SVG)...` /
+    `rna-reads export-score-density-svg ... --scale linear|log`).
   - Splicing Expert now shows seed-confirmed exon-exon transition support
     tables with per-transition read counts/percentages and indexed
     junction-crossing seed-bit diagnostics.
@@ -859,6 +911,13 @@ Track boundaries:
      parity-equivalent.
    - detailed execution notes: `docs/rna_seq_nanopore_cloning_regions_plan.md`
      (Phase 2b).
+11. Add RNA-seed-guided primer-design handoff (planned):
+   - reuse persisted seed-hash support maps to prioritize primerable regions
+     with coherent transcript evidence.
+   - down-rank primer targets dominated by high-frequency/common seed hashes
+     to reduce cross-gene conserved-domain artifacts.
+   - keep this as guidance input only; final primer scoring/reporting remains
+     under shared engine primer-design contracts.
 
 ### Isoform-architecture panel track (baseline implemented; follow-ups)
 
@@ -1276,6 +1335,13 @@ Repeated multi-tool gaps to prioritize:
        coverage versus internal backend normalization
      - add richer Primer3 preflight diagnostics/UI surfacing
        (binary/version/config-path checks + environment guidance)
+     - add hash-guided primer targeting mode:
+       - use persisted RNA seed-support maps to bias candidate primer anchors
+         toward transcript-coherent regions
+       - penalize anchors dominated by common/reused hashes that show broad
+         cross-gene ambiguity
+       - keep this as deterministic guidance input; final pair scoring still
+         runs through shared primer report contracts
      - pair interaction checks and richer thermodynamic scoring
      - saved/reusable primer sets with explicit versioning
      - async-capable batch off-target/specificity checks so primer-pair

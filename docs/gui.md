@@ -305,8 +305,11 @@ Feature tree grouping:
     for direct seed-location vs exon-context inspection
   - coordinate mode toggle supports genomic coordinates or exonic-only compact
     coordinates (merged exons adjacent without intronic gaps)
+  - Seed-hit score-density chart includes a `Linear`/`Log` scale toggle
+    (default `Log`); log mode uses `log(1+count)` so sparse high-score bins
+    remain visible during strongly skewed runs
   - `Seed-confirmed exon-exon transitions` table reports per-transition support
-    counts and percentages across processed reads, plus junction-crossing
+    counts and percentages across seed-passed reads, plus junction-crossing
     indexed-seed diagnostics
   - `Isoform support ranking` table shows one row per known transcript in scope
     with assigned-read counts, seed-pass counts, transition coverage, gap
@@ -318,6 +321,9 @@ Feature tree grouping:
     positions in green with a displayed recompute time
   - top-read rows include strand assignment diagnostics for the joint
     two-strand run (`strand`, `opp`, `ambig`)
+  - top-read rows now also expose origin diagnostics from engine
+    classification (`class`, `oconf`, `sconf`) and running class totals are
+    shown while processing
   - top-read rows support FASTA copy paths:
     - checkbox-select one/many rows, then `Copy selected FASTA`
     - `Copy highlighted FASTA` for the active highlighted row
@@ -327,6 +333,7 @@ Feature tree grouping:
     - `Export Retained Top Reads (FASTA)...`
     - `Export Exon Paths (TSV)...` (per-read path/mapping summary rows)
     - `Export Exon Abundance (TSV)...` (exon/transition abundance rows)
+    - `Export Score Density (SVG)...` (uses current `Linear`/`Log` scale toggle)
     - `Export RNA sample sheet ...` (multi-report cohort summary)
   - top-read ranking now includes weighted seed score (inverse seed-occurrence
     weighting) to reduce dominance from repetitive low-complexity seeds
@@ -584,12 +591,21 @@ Common examples:
 - `tracks import-bed SEQ_ID PATH ...` — project BED track onto anchored sequence.
 - `candidates generate SET_NAME SEQ_ID --length N ...` — create candidate set.
 - `guides oligos-export GUIDE_SET_ID OUTPUT_PATH ...` — export guide oligo set.
+- `planning profile show --scope effective` — inspect merged planning profile
+  (`global -> confirmed_agent_overlay -> project_override`).
+- `planning sync pull @suggestion.json --source lab_manager` — register a
+  pending advisory planning suggestion (apply via
+  `planning suggestions accept SUGGESTION_ID`).
 
 Status output note:
 
 - `genomes status` / `helpers status` include optional
   `nucleotide_length_bp`, `molecular_mass_da`, and `molecular_mass_source`
   alongside source-type/source-path fields.
+- `routines list` / `routines compare` include planning estimates when planning
+  data is configured:
+  `estimated_time_hours`, `estimated_cost`, `local_fit_score`,
+  `composite_meta_score`.
 
 Screenshot command status:
 
@@ -1456,6 +1472,9 @@ Recommended flow:
      SHA-1 fingerprints
    - use built-in `Chromosome inspector` to list all contigs/chromosomes for a
      prepared genome as proportional line lengths
+   - when extraction fails with chromosome/contig mismatch, status messages now
+     include tried aliases, available-contig preview, and suggested matching
+     contigs (for example accession-style names such as `NC_000017.11`)
    - use `Retrieve` directly from an inspected row
 5. Overlay signal tracks (BED, BigWig, or VCF) onto an extracted sequence:
    - open `Genome -> Import Genome Track...`
