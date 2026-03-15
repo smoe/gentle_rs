@@ -149,11 +149,16 @@ const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_expo
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
 const RNA_READ_SCORE_DENSITY_SVG_EXPORT_SCHEMA: &str =
     "gentle.rna_read_score_density_svg_export.v1";
-const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1000;
+#[cfg(debug_assertions)]
+const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
+#[cfg(not(debug_assertions))]
+const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 10_000;
+const RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL: Duration = Duration::from_secs(2);
 const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
 const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;
 const RNA_READ_RETAINED_HITS_MAX: usize = 5_000;
 const RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS: usize = 10_000;
+const RNA_READ_COOPERATIVE_YIELD_EVERY_READS: usize = 512;
 const RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX: usize = 20;
 const RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT: usize = 64;
 const RNA_READ_INFER_PARALLEL_MIN_MATCHED_BITS: usize = 96;
@@ -13329,6 +13334,12 @@ impl GentleEngine {
         }
     }
 
+    fn should_emit_rna_read_progress(reads_processed: usize, elapsed_since_last_emit: Duration) -> bool {
+        reads_processed <= 3
+            || reads_processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0
+            || elapsed_since_last_emit >= RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL
+    }
+
     fn retain_top_rna_read_hit(
         retained_hits: &mut BinaryHeap<RetainedRnaReadHit>,
         hit: RnaReadInterpretationHit,
@@ -14901,6 +14912,7 @@ impl GentleEngine {
                 message: "RNA-read interpretation cancelled before FASTA scan started".to_string(),
             });
         }
+        let mut last_progress_emit_at = Instant::now();
         if !should_continue() {
             return Err(EngineError {
                 code: ErrorCode::Internal,
@@ -15155,8 +15167,8 @@ impl GentleEngine {
                 Self::retain_top_rna_read_preview_hit(&mut progress_top_hits, &hit);
                 Self::retain_top_rna_read_hit(&mut retained_hits, hit);
                 reads_processed = reads_processed.saturating_add(1);
-                let should_emit = reads_processed % RNA_READ_PROGRESS_UPDATE_EVERY_READS == 0
-                    || reads_processed <= 3;
+                let should_emit =
+                    Self::should_emit_rna_read_progress(reads_processed, last_progress_emit_at.elapsed());
                 if should_emit {
                     isoform_support_rows =
                         Self::collect_isoform_support_rows(&isoform_support_accumulators);
@@ -15210,6 +15222,12 @@ impl GentleEngine {
                         });
                     }
                     cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
+                    last_progress_emit_at = Instant::now();
+                }
+                // Cooperative scheduler yield to keep GUI/event-loop responsiveness while
+                // high-throughput mapping saturates available CPU.
+                if reads_processed % RNA_READ_COOPERATIVE_YIELD_EVERY_READS == 0 {
+                    std::thread::yield_now();
                 }
                 if let Some(path) = checkpoint_path.as_deref() {
                     if reads_processed > 0 && reads_processed % checkpoint_every_reads == 0 {
@@ -40995,6 +41013,32 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
         assert!(report.warnings.iter().any(|warning| {
             warning.contains("roi_seed_capture_enabled=true requested")
         }));
+    }
+
+    #[test]
+    fn test_rna_read_progress_emit_policy_supports_read_and_timer_triggers() {
+        assert!(GentleEngine::should_emit_rna_read_progress(
+            1,
+            Duration::from_millis(50)
+        ));
+        assert!(!GentleEngine::should_emit_rna_read_progress(
+            RNA_READ_PROGRESS_UPDATE_EVERY_READS.saturating_sub(1),
+            Duration::from_secs(1)
+        ));
+        assert!(GentleEngine::should_emit_rna_read_progress(
+            RNA_READ_PROGRESS_UPDATE_EVERY_READS,
+            Duration::from_millis(10)
+        ));
+        assert!(GentleEngine::should_emit_rna_read_progress(
+            RNA_READ_PROGRESS_UPDATE_EVERY_READS.saturating_sub(1),
+            Duration::from_secs(2)
+        ));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn test_rna_read_progress_update_stride_default_debug() {
+        assert_eq!(RNA_READ_PROGRESS_UPDATE_EVERY_READS, 1_000);
     }
 
     #[test]

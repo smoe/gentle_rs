@@ -11962,7 +11962,7 @@ impl MainAreaDna {
         let mut done: Option<Result<OpResult, EngineError>> = None;
         if let Some(task) = &self.rna_read_task {
             let compression = Self::rna_reads_input_compression_label(&task.input_path);
-            ctx.request_repaint_after(Duration::from_millis(100));
+            ctx.request_repaint_after(Duration::from_millis(250));
             match task.receiver.lock() {
                 Ok(rx) => {
                     const MAX_PROGRESS_MESSAGES_PER_TICK: usize = 64;

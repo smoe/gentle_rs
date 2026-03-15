@@ -242,6 +242,11 @@ Feature tree grouping:
 - The splicing expert window also includes `Nanopore cDNA interpretation`:
   - phase-1 FASTA input run panel for `InterpretRnaReads`
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
+  - progress updates are throttled to reduce UI overhead:
+    - debug builds: read-count updates approximately every `1000` reads
+    - release builds: read-count updates approximately every `10000` reads
+    - both build types additionally emit time-based updates approximately every
+      `2s` while processing continues
   - input FASTA path can be selected via file picker (`Browse...`) in addition
     to manual path entry
   - if `Report ID` is left empty, a default ID is derived from the input file
