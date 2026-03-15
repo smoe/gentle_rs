@@ -12,11 +12,9 @@ use crate::{
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationProfile,
-        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale,
-        RnaReadSeedFilterConfig,
-        RnaReadTopHitPreview,
-        RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset,
-        TfThresholdOverride, TfbsProgress, Workflow,
+        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig,
+        RnaReadTopHitPreview, RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary,
+        SnpMutationSpec, SplicingScopePreset, TfThresholdOverride, TfbsProgress, Workflow,
     },
     engine_shell::{
         ShellCommand, ShellExecutionOptions, execute_shell_command_with_options, parse_shell_line,
@@ -266,6 +264,14 @@ struct RnaReadInterpretOpsUiState {
     target_gene_ids: String,
     #[serde(default)]
     roi_seed_capture_enabled: bool,
+    #[serde(default)]
+    report_mode: RnaReadReportMode,
+    #[serde(default)]
+    checkpoint_path: String,
+    #[serde(default = "default_rna_checkpoint_every_reads_text")]
+    checkpoint_every_reads: String,
+    #[serde(default)]
+    resume_from_checkpoint: bool,
     #[serde(default = "default_true")]
     cdna_poly_t_flip_enabled: bool,
     #[serde(default = "default_poly_t_prefix_min_bp_text")]
@@ -301,6 +307,10 @@ impl Default for RnaReadInterpretOpsUiState {
             origin_mode: RnaReadOriginMode::SingleGene,
             target_gene_ids: String::new(),
             roi_seed_capture_enabled: false,
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: String::new(),
+            checkpoint_every_reads: "10000".to_string(),
+            resume_from_checkpoint: false,
             cdna_poly_t_flip_enabled: true,
             poly_t_prefix_min_bp: "18".to_string(),
             kmer_len: "10".to_string(),
@@ -2000,6 +2010,38 @@ mod tests {
             decoded.rna_reads_ui.scope,
             SplicingScopePreset::AllOverlappingBothStrands
         );
+        assert_eq!(
+            decoded.rna_reads_ui.report_mode,
+            crate::engine::RnaReadReportMode::Full
+        );
+        assert!(decoded.rna_reads_ui.checkpoint_path.is_empty());
+        assert_eq!(decoded.rna_reads_ui.checkpoint_every_reads, "10000");
+        assert!(!decoded.rna_reads_ui.resume_from_checkpoint);
+    }
+
+    #[test]
+    fn rna_reads_ui_checkpoint_defaults_when_missing_from_partial_state() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let area = MainAreaDna::new(dna, None, None);
+        let mut value = serde_json::to_value(area.current_engine_ops_state()).unwrap();
+        let rna = value
+            .as_object_mut()
+            .unwrap()
+            .get_mut("rna_reads_ui")
+            .and_then(|v| v.as_object_mut())
+            .expect("rna_reads_ui object");
+        rna.remove("report_mode");
+        rna.remove("checkpoint_path");
+        rna.remove("checkpoint_every_reads");
+        rna.remove("resume_from_checkpoint");
+        let decoded: super::EngineOpsUiState = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            decoded.rna_reads_ui.report_mode,
+            crate::engine::RnaReadReportMode::Full
+        );
+        assert!(decoded.rna_reads_ui.checkpoint_path.is_empty());
+        assert_eq!(decoded.rna_reads_ui.checkpoint_every_reads, "10000");
+        assert!(!decoded.rna_reads_ui.resume_from_checkpoint);
     }
 
     #[test]
@@ -2178,14 +2220,22 @@ mod tests {
 
     #[test]
     fn large_splicing_matrix_defaults_to_collapsed_section() {
-        assert!(!MainAreaDna::splicing_matrix_should_default_collapsed(20, 200));
-        assert!(MainAreaDna::splicing_matrix_should_default_collapsed(100, 200));
+        assert!(!MainAreaDna::splicing_matrix_should_default_collapsed(
+            20, 200
+        ));
+        assert!(MainAreaDna::splicing_matrix_should_default_collapsed(
+            100, 200
+        ));
     }
 
     #[test]
     fn large_splicing_transition_matrix_defaults_to_collapsed_section() {
-        assert!(!MainAreaDna::splicing_transition_should_default_collapsed(80));
-        assert!(MainAreaDna::splicing_transition_should_default_collapsed(81));
+        assert!(!MainAreaDna::splicing_transition_should_default_collapsed(
+            80
+        ));
+        assert!(MainAreaDna::splicing_transition_should_default_collapsed(
+            81
+        ));
     }
 
     #[test]
@@ -2207,6 +2257,10 @@ fn default_poly_t_prefix_min_bp_text() -> String {
 
 fn default_min_chain_consistency_fraction_text() -> String {
     "0.40".to_string()
+}
+
+fn default_rna_checkpoint_every_reads_text() -> String {
+    "10000".to_string()
 }
 
 fn default_primer_backend_auto() -> PrimerDesignBackend {
@@ -10125,6 +10179,82 @@ impl MainAreaDna {
                             )
                             .color(egui::Color32::from_rgb(100, 116, 139)),
                         );
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Report mode").on_hover_text(
+                                "Controls whether retained top-hits are persisted in full or only for seed-passed reads.",
+                            );
+                            egui::ComboBox::from_id_salt(format!(
+                                "rna_read_report_mode_{}_{}",
+                                view.seq_id, view.target_feature_id
+                            ))
+                            .selected_text(self.rna_reads_ui.report_mode.as_str())
+                            .show_ui(ui, |ui| {
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.report_mode,
+                                        RnaReadReportMode::Full,
+                                        "full",
+                                    )
+                                    .on_hover_text(
+                                        "Persist retained hits exactly as ranked by the seed-stage retention policy.",
+                                    )
+                                    .changed();
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.report_mode,
+                                        RnaReadReportMode::SeedPassedOnly,
+                                        "seed_passed_only",
+                                    )
+                                    .on_hover_text(
+                                        "Persist only retained hits that passed the seed gate (smaller reports).",
+                                    )
+                                    .changed();
+                            });
+                            ui.label("Checkpoint path").on_hover_text(
+                                "Optional JSON checkpoint file for deterministic pause/resume.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.checkpoint_path,
+                                    )
+                                    .desired_width(260.0),
+                                )
+                                .on_hover_text(
+                                    "If set, periodic checkpoint snapshots are written here.",
+                                )
+                                .changed();
+                            ui.label("every reads").on_hover_text(
+                                "Checkpoint write cadence in processed reads (must be > 0).",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.checkpoint_every_reads,
+                                    )
+                                    .desired_width(68.0),
+                                )
+                                .on_hover_text(
+                                    "Example: 10000 writes a checkpoint every 10k processed reads.",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .checkbox(
+                                    &mut self.rna_reads_ui.resume_from_checkpoint,
+                                    "Resume",
+                                )
+                                .on_hover_text(
+                                    "Resume from checkpoint_path. Requires checkpoint_path to be set.",
+                                )
+                                .changed();
+                        });
+                        ui.small(
+                            egui::RichText::new(
+                                "Checkpoint+resume settings map directly to InterpretRnaReads runtime options and are shared with CLI/JS/Lua.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
                     }
                     ui.horizontal_wrapped(|ui| {
                         persist_ui_state |= ui
@@ -11585,6 +11715,32 @@ impl MainAreaDna {
                 Some(raw.to_string())
             }
         };
+        let checkpoint_every_reads = match Self::parse_positive_usize_text(
+            &self.rna_reads_ui.checkpoint_every_reads,
+            "checkpoint_every_reads",
+        ) {
+            Ok(value) => value,
+            Err(message) => {
+                self.op_status = message.clone();
+                self.op_error_popup = Some(message);
+                return;
+            }
+        };
+        let checkpoint_path = {
+            let trimmed = self.rna_reads_ui.checkpoint_path.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        };
+        if self.rna_reads_ui.resume_from_checkpoint && checkpoint_path.is_none() {
+            let message =
+                "resume_from_checkpoint=true requires a non-empty checkpoint_path".to_string();
+            self.op_status = message.clone();
+            self.op_error_popup = Some(message);
+            return;
+        }
         let target_gene_ids = Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids);
         self.save_engine_ops_state();
         self.refresh_rna_seed_catalog_preview(
@@ -11624,10 +11780,10 @@ impl MainAreaDna {
                 max_secondary_mappings,
             },
             report_id,
-            report_mode: RnaReadReportMode::Full,
-            checkpoint_path: None,
-            checkpoint_every_reads: 10_000,
-            resume_from_checkpoint: false,
+            report_mode: self.rna_reads_ui.report_mode,
+            checkpoint_path,
+            checkpoint_every_reads,
+            resume_from_checkpoint: self.rna_reads_ui.resume_from_checkpoint,
         });
     }
 
@@ -11837,9 +11993,36 @@ impl MainAreaDna {
         self.rna_seed_selected_record_indices.clear();
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
+        let (report_mode_label, checkpoint_label, checkpoint_every_reads, resume_checkpoint) =
+            match &op {
+                Operation::InterpretRnaReads {
+                    report_mode,
+                    checkpoint_path,
+                    checkpoint_every_reads,
+                    resume_from_checkpoint,
+                    ..
+                } => (
+                    report_mode.as_str(),
+                    checkpoint_path
+                        .as_deref()
+                        .filter(|path| !path.trim().is_empty())
+                        .unwrap_or("none"),
+                    *checkpoint_every_reads,
+                    *resume_from_checkpoint,
+                ),
+                _ => ("unknown", "none", 0, false),
+            };
         self.op_status = format!(
-            "RNA-read interpretation started ({} mode, origin={}, targets={}, roi_capture={}): '{}'",
-            read_mode_label, origin_mode_label, target_gene_count, roi_capture_enabled, input_path
+            "RNA-read interpretation started ({} mode, origin={}, targets={}, roi_capture={}, report_mode={}, checkpoint='{}', every={}, resume={}): '{}'",
+            read_mode_label,
+            origin_mode_label,
+            target_gene_count,
+            roi_capture_enabled,
+            report_mode_label,
+            checkpoint_label,
+            checkpoint_every_reads,
+            resume_checkpoint,
+            input_path
         );
         self.rna_read_task = Some(RnaReadTask {
             started,
@@ -11865,6 +12048,10 @@ impl MainAreaDna {
             seed_filter,
             align_config,
             report_id,
+            report_mode,
+            checkpoint_path,
+            checkpoint_every_reads,
+            resume_from_checkpoint,
         ) = match op {
             Operation::InterpretRnaReads {
                 seq_id,
@@ -11879,7 +12066,10 @@ impl MainAreaDna {
                 seed_filter,
                 align_config,
                 report_id,
-                ..
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
             } => (
                 seq_id,
                 seed_feature_id,
@@ -11893,6 +12083,10 @@ impl MainAreaDna {
                 seed_filter,
                 align_config,
                 report_id,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
             ),
             other => {
                 self.op_status = format!("Unsupported RNA-read worker operation: {other:?}");
@@ -11908,7 +12102,7 @@ impl MainAreaDna {
                 Ok(guard) => {
                     let mut should_continue =
                         move || !cancel_for_compute.load(AtomicOrdering::Relaxed);
-                    guard.compute_rna_read_report_with_progress_and_cancel(
+                    guard.compute_rna_read_report_with_runtime_options_and_progress_and_cancel(
                         &seq_id,
                         seed_feature_id,
                         profile,
@@ -11921,6 +12115,10 @@ impl MainAreaDna {
                         &seed_filter,
                         &align_config,
                         report_id.as_deref(),
+                        report_mode,
+                        checkpoint_path.as_deref(),
+                        checkpoint_every_reads,
+                        resume_from_checkpoint,
                         &mut move |progress| {
                             if cancel_for_progress.load(AtomicOrdering::Relaxed) {
                                 return false;

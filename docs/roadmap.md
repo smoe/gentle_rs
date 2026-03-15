@@ -11,8 +11,22 @@ order. Durable architecture constraints and decisions remain in
 ### Engine and adapter baseline in place
 
 - Shared engine core in `src/engine.rs` with operation/workflow execution.
+- Engine module decomposition is now underway:
+  - `src/engine/tests.rs` (engine test suite extracted from monolithic engine file)
+  - `src/engine/ops/candidate_guides.rs` (candidate-set, guide-design, and macro-template operations)
+  - `src/engine/analysis/candidate_metrics.rs` (candidate metrics, feature-distance helpers, and expression scoring)
+  - `src/engine/analysis/feature_expert_ops.rs` (feature-expert, splicing, and isoform helper routines)
+  - `src/engine/io/genome_tracks.rs` (genome track parsing/import helpers for BED/BigWig/VCF/BLAST overlays)
+  - `src/engine/io/import_anchors.rs` (GenBank-derived anchor parsing and import-origin helpers)
+  - `src/engine/state/lineage_containers.rs` (lineage-node and container/arrangement helper routines)
+  - `src/engine/ops/operation_handlers.rs` (core operation-dispatch handler extracted from `apply_internal`)
+  - `src/engine/analysis/rna_reads.rs` (RNA-read report parsing, scoring, and export helper routines)
+  - `src/engine/state/sequence_ops.rs` (sequence digestion, enzyme resolution, FASTA/pool export, and primer/overhang utilities)
 - Shared shell layer in `src/engine_shell.rs` reused by GUI Shell and
   `gentle_cli shell`.
+- Engine-shell decomposition is now underway:
+  - `src/engine_shell/command_parsers.rs` (candidate/guide/macro/routine/planning command parser helpers)
+  - `src/engine_shell/tests.rs` (engine-shell test suite extracted from monolithic shell file)
 - CLI adapter in `src/bin/gentle_cli.rs` with state/capability utilities and
   first-class command trees (`genomes`, `helpers`, `resources`, `tracks`,
   `ladders`, `candidates`, `import-pool`).
