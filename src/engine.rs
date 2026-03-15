@@ -143,6 +143,7 @@ const FLEXIBILITY_TRACK_SCHEMA: &str = "gentle.flexibility_track.v1";
 pub const RNA_READ_REPORTS_METADATA_KEY: &str = "rna_read_reports";
 const RNA_READ_REPORTS_SCHEMA: &str = "gentle.rna_read_reports.v1";
 const RNA_READ_REPORT_SCHEMA: &str = "gentle.rna_read_report.v1";
+const RNA_READ_CHECKPOINT_SCHEMA: &str = "gentle.rna_read_interpret_checkpoint.v1";
 const RNA_READ_SAMPLE_SHEET_EXPORT_SCHEMA: &str = "gentle.rna_read_sample_sheet_export.v1";
 const RNA_READ_EXON_PATHS_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_paths_export.v1";
 const RNA_READ_EXON_ABUNDANCE_EXPORT_SCHEMA: &str = "gentle.rna_read_exon_abundance_export.v1";
@@ -152,6 +153,7 @@ const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1000;
 const RNA_READ_PROGRESS_MAX_HISTOGRAM_BINS: usize = 200;
 const RNA_READ_SCORE_DENSITY_BIN_COUNT: usize = 40;
 const RNA_READ_RETAINED_HITS_MAX: usize = 5_000;
+const RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS: usize = 10_000;
 const RNA_READ_PROGRESS_TOP_HITS_PREVIEW_MAX: usize = 20;
 const RNA_READ_SEED_CHAIN_MAX_CANDIDATES_PER_BIT: usize = 64;
 const RNA_READ_INFER_PARALLEL_MIN_MATCHED_BITS: usize = 96;
@@ -2861,6 +2863,23 @@ impl RnaReadInterpretationProfile {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+pub enum RnaReadReportMode {
+    #[default]
+    Full,
+    SeedPassedOnly,
+}
+
+impl RnaReadReportMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::SeedPassedOnly => "seed_passed_only",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum RnaReadOriginMode {
     #[default]
     SingleGene,
@@ -2912,7 +2931,7 @@ impl RnaReadScoreDensityScale {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct RnaReadSeedFilterConfig {
     pub kmer_len: usize,
@@ -2990,7 +3009,11 @@ fn default_min_transition_support_fraction() -> f64 {
     0.05
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn default_rna_read_checkpoint_every_reads() -> usize {
+    RNA_READ_CHECKPOINT_DEFAULT_EVERY_READS
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct RnaReadAlignConfig {
     pub band_width_bp: usize,
@@ -3249,6 +3272,8 @@ pub struct RnaSeedHashCatalogEntry {
 pub struct RnaReadInterpretationReport {
     pub schema: String,
     pub report_id: String,
+    #[serde(default)]
+    pub report_mode: RnaReadReportMode,
     pub seq_id: String,
     pub seed_feature_id: usize,
     pub generated_at_unix_ms: u128,
@@ -3262,6 +3287,12 @@ pub struct RnaReadInterpretationReport {
     pub target_gene_ids: Vec<String>,
     #[serde(default)]
     pub roi_seed_capture_enabled: bool,
+    #[serde(default)]
+    pub checkpoint_path: Option<String>,
+    #[serde(default = "default_rna_read_checkpoint_every_reads")]
+    pub checkpoint_every_reads: usize,
+    #[serde(default)]
+    pub resumed_from_checkpoint: bool,
     pub seed_filter: RnaReadSeedFilterConfig,
     pub align_config: RnaReadAlignConfig,
     pub read_count_total: usize,
@@ -3288,6 +3319,8 @@ pub struct RnaReadInterpretationReport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RnaReadInterpretationReportSummary {
     pub report_id: String,
+    #[serde(default)]
+    pub report_mode: RnaReadReportMode,
     pub seq_id: String,
     pub generated_at_unix_ms: u128,
     pub profile: RnaReadInterpretationProfile,
@@ -3509,7 +3542,8 @@ struct TranscriptSupportScore<'a> {
     transition_hits: usize,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 struct IsoformSupportAccumulator {
     transcript_feature_id: usize,
     transcript_id: String,
@@ -3529,6 +3563,74 @@ struct IsoformSupportAccumulator {
     reads_chain_same_strand: usize,
     reads_with_opposite_strand_competition: usize,
     reads_ambiguous_strand_ties: usize,
+}
+
+#[derive(Debug, Clone)]
+struct RnaReadInterpretOptions {
+    report_mode: RnaReadReportMode,
+    checkpoint_path: Option<String>,
+    checkpoint_every_reads: usize,
+    resume_from_checkpoint: bool,
+}
+
+impl Default for RnaReadInterpretOptions {
+    fn default() -> Self {
+        Self {
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: default_rna_read_checkpoint_every_reads(),
+            resume_from_checkpoint: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct RnaReadInterpretCheckpoint {
+    schema: String,
+    created_at_unix_ms: u128,
+    report_id: String,
+    report_mode: RnaReadReportMode,
+    seq_id: String,
+    seed_feature_id: usize,
+    profile: RnaReadInterpretationProfile,
+    input_path: String,
+    input_format: RnaReadInputFormat,
+    scope: SplicingScopePreset,
+    origin_mode: RnaReadOriginMode,
+    target_gene_ids: Vec<String>,
+    roi_seed_capture_enabled: bool,
+    seed_filter: RnaReadSeedFilterConfig,
+    align_config: RnaReadAlignConfig,
+    checkpoint_path: Option<String>,
+    checkpoint_every_reads: usize,
+    reads_processed: usize,
+    read_count_seed_passed: usize,
+    read_count_aligned: usize,
+    input_bytes_processed: u64,
+    input_bytes_total: u64,
+    cumulative_tested_kmers: usize,
+    cumulative_matched_kmers: usize,
+    cumulative_seed_compute_ms: f64,
+    cumulative_align_compute_ms: f64,
+    cumulative_io_read_ms: f64,
+    cumulative_fasta_parse_ms: f64,
+    cumulative_normalize_compute_ms: f64,
+    cumulative_inference_compute_ms: f64,
+    cumulative_progress_emit_ms: f64,
+    cumulative_read_bases_processed: u64,
+    read_length_counts: Vec<u64>,
+    support_aligned_reads: usize,
+    support_exon_counts: Vec<usize>,
+    support_junction_counts: Vec<usize>,
+    reads_with_transition_support: usize,
+    transition_confirmations: usize,
+    transition_support_rows: Vec<RnaReadTransitionSupportRow>,
+    isoform_support_accumulators: BTreeMap<String, IsoformSupportAccumulator>,
+    origin_class_counts: BTreeMap<String, usize>,
+    bins: Vec<RnaReadSeedHistogramBin>,
+    score_density_bins: Vec<u64>,
+    retained_hits: Vec<RnaReadInterpretationHit>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3955,6 +4057,14 @@ pub enum Operation {
         align_config: RnaReadAlignConfig,
         #[serde(default)]
         report_id: Option<String>,
+        #[serde(default)]
+        report_mode: RnaReadReportMode,
+        #[serde(default)]
+        checkpoint_path: Option<String>,
+        #[serde(default = "default_rna_read_checkpoint_every_reads")]
+        checkpoint_every_reads: usize,
+        #[serde(default)]
+        resume_from_checkpoint: bool,
     },
     ListRnaReadReports {
         #[serde(default)]
@@ -11320,6 +11430,53 @@ impl GentleEngine {
         Ok(out)
     }
 
+    fn normalize_rna_read_checkpoint_path(raw: Option<&str>) -> Option<String> {
+        raw.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+    }
+
+    fn read_rna_read_interpret_checkpoint(
+        path: &str,
+    ) -> Result<RnaReadInterpretCheckpoint, EngineError> {
+        let text = std::fs::read_to_string(path).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not read RNA-read checkpoint '{}': {e}", path),
+        })?;
+        let mut checkpoint =
+            serde_json::from_str::<RnaReadInterpretCheckpoint>(&text).map_err(|e| EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!("Could not parse RNA-read checkpoint '{}': {e}", path),
+            })?;
+        if checkpoint.schema.trim().is_empty() {
+            checkpoint.schema = RNA_READ_CHECKPOINT_SCHEMA.to_string();
+        }
+        if checkpoint.schema != RNA_READ_CHECKPOINT_SCHEMA {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Unsupported RNA-read checkpoint schema '{}' in '{}'",
+                    checkpoint.schema, path
+                ),
+            });
+        }
+        Ok(checkpoint)
+    }
+
+    fn write_rna_read_interpret_checkpoint(
+        path: &str,
+        checkpoint: &RnaReadInterpretCheckpoint,
+    ) -> Result<(), EngineError> {
+        let text = serde_json::to_string_pretty(checkpoint).map_err(|e| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize RNA-read checkpoint for '{}': {e}", path),
+        })?;
+        std::fs::write(path, text).map_err(|e| EngineError {
+            code: ErrorCode::Io,
+            message: format!("Could not write RNA-read checkpoint '{}': {e}", path),
+        })
+    }
+
     pub fn list_rna_read_reports(
         &self,
         seq_id_filter: Option<&str>,
@@ -11342,6 +11499,7 @@ impl GentleEngine {
             })
             .map(|report| RnaReadInterpretationReportSummary {
                 report_id: report.report_id.clone(),
+                report_mode: report.report_mode,
                 seq_id: report.seq_id.clone(),
                 generated_at_unix_ms: report.generated_at_unix_ms,
                 profile: report.profile,
@@ -13190,6 +13348,16 @@ impl GentleEngine {
         }
     }
 
+    fn retained_rna_read_hit_heap_from_rows(
+        rows: &[RnaReadInterpretationHit],
+    ) -> BinaryHeap<RetainedRnaReadHit> {
+        let mut heap = BinaryHeap::<RetainedRnaReadHit>::new();
+        for hit in rows.iter().cloned() {
+            Self::retain_top_rna_read_hit(&mut heap, hit);
+        }
+        heap
+    }
+
     fn make_rna_read_top_hit_preview(hit: &RnaReadInterpretationHit) -> RnaReadTopHitPreview {
         let sequence_preview = hit.sequence.chars().take(80).collect::<String>();
         RnaReadTopHitPreview {
@@ -13238,6 +13406,29 @@ impl GentleEngine {
         if should_replace {
             let _ = retained_hits.pop();
             retained_hits.push(RetainedRnaReadPreviewHit { rank, preview });
+        }
+    }
+
+    fn retained_rna_read_preview_heap_from_rows(
+        rows: &[RnaReadInterpretationHit],
+    ) -> BinaryHeap<RetainedRnaReadPreviewHit> {
+        let mut heap = BinaryHeap::<RetainedRnaReadPreviewHit>::new();
+        for hit in rows {
+            Self::retain_top_rna_read_preview_hit(&mut heap, hit);
+        }
+        heap
+    }
+
+    fn apply_rna_read_report_mode_to_hits(
+        report_mode: RnaReadReportMode,
+        hits: Vec<RnaReadInterpretationHit>,
+    ) -> Vec<RnaReadInterpretationHit> {
+        match report_mode {
+            RnaReadReportMode::Full => hits,
+            RnaReadReportMode::SeedPassedOnly => hits
+                .into_iter()
+                .filter(|hit| hit.passed_seed_filter)
+                .collect::<Vec<_>>(),
         }
     }
 
@@ -14061,11 +14252,12 @@ impl GentleEngine {
             .contains_key(report.report_id.as_str());
         self.upsert_rna_read_report(report.clone())?;
         result.messages.push(format!(
-            "{} RNA-read report '{}' (profile={}, mode={}, targets={}, reads={}, seed_passed={}, aligned={}, {})",
+            "{} RNA-read report '{}' (profile={}, origin_mode={}, report_mode={}, targets={}, reads={}, seed_passed={}, aligned={}, {})",
             if replaced { "Updated" } else { "Created" },
             report.report_id,
             report.profile.as_str(),
             report.origin_mode.as_str(),
+            report.report_mode.as_str(),
             report.target_gene_ids.len(),
             report.read_count_total,
             report.read_count_seed_passed,
@@ -14140,6 +14332,44 @@ impl GentleEngine {
             seed_filter,
             align_config,
             report_id,
+            &RnaReadInterpretOptions::default(),
+            on_progress,
+            should_continue,
+        )
+    }
+
+    fn compute_rna_read_report_with_options_and_progress_and_cancel(
+        &self,
+        seq_id: &str,
+        seed_feature_id: usize,
+        profile: RnaReadInterpretationProfile,
+        input_path: &str,
+        input_format: RnaReadInputFormat,
+        scope: SplicingScopePreset,
+        origin_mode: RnaReadOriginMode,
+        target_gene_ids: &[String],
+        roi_seed_capture_enabled: bool,
+        seed_filter: &RnaReadSeedFilterConfig,
+        align_config: &RnaReadAlignConfig,
+        report_id: Option<&str>,
+        options: &RnaReadInterpretOptions,
+        on_progress: &mut dyn FnMut(OperationProgress) -> bool,
+        should_continue: &mut dyn FnMut() -> bool,
+    ) -> Result<RnaReadInterpretationReport, EngineError> {
+        self.interpret_rna_reads_report_with_progress(
+            seq_id,
+            seed_feature_id,
+            profile,
+            input_path,
+            input_format,
+            scope,
+            origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled,
+            seed_filter,
+            align_config,
+            report_id,
+            options,
             on_progress,
             should_continue,
         )
@@ -14162,6 +14392,10 @@ impl GentleEngine {
             seed_filter: report.seed_filter.clone(),
             align_config: report.align_config.clone(),
             report_id: Some(report.report_id.clone()),
+            report_mode: report.report_mode,
+            checkpoint_path: report.checkpoint_path.clone(),
+            checkpoint_every_reads: report.checkpoint_every_reads,
+            resume_from_checkpoint: report.resumed_from_checkpoint,
         };
         let run_id = "interactive".to_string();
         let checkpoint = self.maybe_capture_checkpoint(&op);
@@ -14216,6 +14450,7 @@ impl GentleEngine {
             seed_filter,
             align_config,
             report_id,
+            &RnaReadInterpretOptions::default(),
             &mut on_progress,
             &mut keep_running,
         )
@@ -14235,6 +14470,7 @@ impl GentleEngine {
         seed_filter: &RnaReadSeedFilterConfig,
         align_config: &RnaReadAlignConfig,
         report_id: Option<&str>,
+        options: &RnaReadInterpretOptions,
         on_progress: &mut dyn FnMut(OperationProgress) -> bool,
         should_continue: &mut dyn FnMut() -> bool,
     ) -> Result<RnaReadInterpretationReport, EngineError> {
@@ -14398,8 +14634,7 @@ impl GentleEngine {
             .collect::<HashMap<_, _>>();
         let mut isoform_support_accumulators =
             Self::build_isoform_support_accumulators(&transcript_exon_models);
-        let mut isoform_support_rows =
-            Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        let mut isoform_support_rows: Vec<RnaReadIsoformSupportRow>;
         let transition_row_index = transition_support_rows
             .iter()
             .enumerate()
@@ -14410,44 +14645,255 @@ impl GentleEngine {
         let histogram_index =
             Self::build_rna_read_seed_histogram_index(&templates, dna.len(), &bins);
         let seed_template_positions = Self::build_seed_template_position_index(&templates);
-        let mut score_density_bins = vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT];
-        let mut input_bytes_processed = 0u64;
+        let report_mode = options.report_mode;
+        let checkpoint_path =
+            Self::normalize_rna_read_checkpoint_path(options.checkpoint_path.as_deref());
+        if options.resume_from_checkpoint && checkpoint_path.is_none() {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "resume_from_checkpoint=true requires checkpoint_path to be set".to_string(),
+            });
+        }
+        let checkpoint_every_reads = options.checkpoint_every_reads.max(1);
+        let loaded_checkpoint = if options.resume_from_checkpoint {
+            let path = checkpoint_path.as_deref().ok_or_else(|| EngineError {
+                code: ErrorCode::InvalidInput,
+                message:
+                    "resume_from_checkpoint=true requires checkpoint_path to be set".to_string(),
+            })?;
+            let checkpoint = Self::read_rna_read_interpret_checkpoint(path)?;
+            if checkpoint.seq_id != seq_id
+                || checkpoint.seed_feature_id != seed_feature_id
+                || checkpoint.profile != profile
+                || checkpoint.input_path != input_path
+                || checkpoint.input_format != input_format
+                || checkpoint.scope != scope
+                || checkpoint.origin_mode != origin_mode
+                || checkpoint.target_gene_ids != normalized_target_gene_ids
+                || checkpoint.roi_seed_capture_enabled != roi_seed_capture_enabled
+                || checkpoint.seed_filter != *seed_filter
+                || checkpoint.align_config != *align_config
+                || checkpoint.report_mode != report_mode
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "RNA-read checkpoint '{}' does not match requested interpret parameters",
+                        path
+                    ),
+                });
+            }
+            Some(checkpoint)
+        } else {
+            None
+        };
+        let report_id = match report_id {
+            Some(raw) => Self::normalize_rna_read_report_id(raw)?,
+            None => {
+                if let Some(checkpoint) = loaded_checkpoint.as_ref() {
+                    Self::normalize_rna_read_report_id(&checkpoint.report_id)?
+                } else {
+                    Self::normalize_rna_read_report_id(&format!(
+                        "rna_reads_{}_{}",
+                        seq_id,
+                        Self::now_unix_ms()
+                    ))?
+                }
+            }
+        };
+        if let Some(checkpoint) = loaded_checkpoint.as_ref() {
+            let checkpoint_report_id = Self::normalize_rna_read_report_id(&checkpoint.report_id)?;
+            if checkpoint_report_id != report_id {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Checkpoint report_id '{}' does not match requested report_id '{}'",
+                        checkpoint_report_id, report_id
+                    ),
+                });
+            }
+        }
+        let mut score_density_bins = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.score_density_bins.clone())
+            .unwrap_or_else(|| vec![0u64; RNA_READ_SCORE_DENSITY_BIN_COUNT]);
+        if score_density_bins.len() != RNA_READ_SCORE_DENSITY_BIN_COUNT {
+            score_density_bins.resize(RNA_READ_SCORE_DENSITY_BIN_COUNT, 0);
+        }
+        if let Some(checkpoint) = loaded_checkpoint.as_ref() {
+            if !checkpoint.bins.is_empty() {
+                bins = checkpoint.bins.clone();
+            }
+            if !checkpoint.transition_support_rows.is_empty()
+                && checkpoint.transition_support_rows.len() == transition_support_rows.len()
+            {
+                transition_support_rows = checkpoint.transition_support_rows.clone();
+            }
+            if !checkpoint.isoform_support_accumulators.is_empty() {
+                isoform_support_accumulators = checkpoint.isoform_support_accumulators.clone();
+            }
+        }
+        isoform_support_rows = Self::collect_isoform_support_rows(&isoform_support_accumulators);
+        let mut input_bytes_processed = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.input_bytes_processed)
+            .unwrap_or(0);
         let mut input_bytes_total = std::fs::metadata(input_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
+        if let Some(checkpoint) = loaded_checkpoint.as_ref() {
+            input_bytes_total = input_bytes_total.max(checkpoint.input_bytes_total);
+        }
+        let mut retained_hits = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| Self::retained_rna_read_hit_heap_from_rows(&checkpoint.retained_hits))
+            .unwrap_or_default();
+        let mut progress_top_hits = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| {
+                Self::retained_rna_read_preview_heap_from_rows(&checkpoint.retained_hits)
+            })
+            .unwrap_or_default();
+        let mut seed_passed = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_count_seed_passed)
+            .unwrap_or(0);
+        let mut aligned = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_count_aligned)
+            .unwrap_or(0);
+        let mut reads_processed = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.reads_processed)
+            .unwrap_or(0);
+        let mut cumulative_tested_kmers = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_tested_kmers)
+            .unwrap_or(0);
+        let mut cumulative_matched_kmers = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_matched_kmers)
+            .unwrap_or(0);
+        let mut cumulative_seed_compute_ms = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_seed_compute_ms)
+            .unwrap_or(0.0);
+        let mut cumulative_align_compute_ms = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_align_compute_ms)
+            .unwrap_or(0.0);
+        let resume_io_read_ms_base = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_io_read_ms)
+            .unwrap_or(0.0);
+        let resume_fasta_parse_ms_base = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_fasta_parse_ms)
+            .unwrap_or(0.0);
+        let mut cumulative_io_read_ms = resume_io_read_ms_base;
+        let mut cumulative_fasta_parse_ms = resume_fasta_parse_ms_base;
+        let mut cumulative_normalize_compute_ms = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_normalize_compute_ms)
+            .unwrap_or(0.0);
+        let mut cumulative_inference_compute_ms = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_inference_compute_ms)
+            .unwrap_or(0.0);
+        let mut cumulative_progress_emit_ms = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_progress_emit_ms)
+            .unwrap_or(0.0);
+        let mut cumulative_read_bases_processed = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.cumulative_read_bases_processed)
+            .unwrap_or(0);
+        let mut read_length_counts = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.read_length_counts.clone())
+            .unwrap_or_else(|| vec![0u64; 1]);
+        if read_length_counts.is_empty() {
+            read_length_counts.push(0);
+        }
+        let mut support_aligned_reads = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.support_aligned_reads)
+            .unwrap_or(0);
+        let mut support_exon_counts = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.support_exon_counts.clone())
+            .unwrap_or_else(|| vec![0usize; splicing.unique_exons.len()]);
+        if support_exon_counts.len() != splicing.unique_exons.len() {
+            support_exon_counts.resize(splicing.unique_exons.len(), 0);
+        }
+        let mut support_junction_counts = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.support_junction_counts.clone())
+            .unwrap_or_else(|| vec![0usize; splicing.junctions.len()]);
+        if support_junction_counts.len() != splicing.junctions.len() {
+            support_junction_counts.resize(splicing.junctions.len(), 0);
+        }
+        let mut reads_with_transition_support = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.reads_with_transition_support)
+            .unwrap_or(0);
+        let mut transition_confirmations = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.transition_confirmations)
+            .unwrap_or(0);
+        let mut origin_class_counts = loaded_checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.origin_class_counts.clone())
+            .unwrap_or_default();
+        let resume_skip_records = reads_processed;
+        let resumed_from_checkpoint = loaded_checkpoint.is_some();
+        if resumed_from_checkpoint {
+            let checkpoint_origin = checkpoint_path.as_deref().unwrap_or("<unknown>");
+            origin_mode_warnings.push(format!(
+                "resumed from checkpoint '{}' at record {}",
+                checkpoint_origin, resume_skip_records
+            ));
+        }
+        if checkpoint_path.is_some() {
+            origin_mode_warnings.push(format!(
+                "checkpoint snapshots enabled every {} reads",
+                checkpoint_every_reads
+            ));
+        }
         if !on_progress(OperationProgress::RnaReadInterpret(
             RnaReadInterpretProgress {
                 seq_id: seq_id.to_string(),
-                reads_processed: 0,
+                reads_processed,
                 reads_total: 0,
-                read_bases_processed: 0,
+                read_bases_processed: cumulative_read_bases_processed,
                 mean_read_length_bp: 0.0,
                 median_read_length_bp: 0,
                 p95_read_length_bp: 0,
                 input_bytes_processed,
                 input_bytes_total,
-                seed_passed: 0,
-                aligned: 0,
-                tested_kmers: 0,
-                matched_kmers: 0,
-                seed_compute_ms: 0.0,
-                align_compute_ms: 0.0,
-                io_read_ms: 0.0,
-                fasta_parse_ms: 0.0,
-                normalize_compute_ms: 0.0,
-                inference_compute_ms: 0.0,
-                progress_emit_ms: 0.0,
+                seed_passed,
+                aligned,
+                tested_kmers: cumulative_tested_kmers,
+                matched_kmers: cumulative_matched_kmers,
+                seed_compute_ms: cumulative_seed_compute_ms,
+                align_compute_ms: cumulative_align_compute_ms,
+                io_read_ms: cumulative_io_read_ms,
+                fasta_parse_ms: cumulative_fasta_parse_ms,
+                normalize_compute_ms: cumulative_normalize_compute_ms,
+                inference_compute_ms: cumulative_inference_compute_ms,
+                progress_emit_ms: cumulative_progress_emit_ms,
                 update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
                 done: false,
                 bins: bins.clone(),
                 score_density_bins: score_density_bins.clone(),
-                top_hits_preview: vec![],
+                top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
                 transition_support_rows: transition_support_rows.clone(),
                 isoform_support_rows: isoform_support_rows.clone(),
-                reads_with_transition_support: 0,
-                transition_confirmations: 0,
+                reads_with_transition_support,
+                transition_confirmations,
                 junction_crossing_seed_bits_indexed,
-                origin_class_counts: BTreeMap::new(),
+                origin_class_counts: origin_class_counts.clone(),
             },
         )) {
             return Err(EngineError {
@@ -14461,37 +14907,6 @@ impl GentleEngine {
                 message: "RNA-read interpretation cancelled before processing started".to_string(),
             });
         }
-        let report_id = match report_id {
-            Some(raw) => Self::normalize_rna_read_report_id(raw)?,
-            None => Self::normalize_rna_read_report_id(&format!(
-                "rna_reads_{}_{}",
-                seq_id,
-                Self::now_unix_ms()
-            ))?,
-        };
-
-        let mut retained_hits = BinaryHeap::<RetainedRnaReadHit>::new();
-        let mut progress_top_hits = BinaryHeap::<RetainedRnaReadPreviewHit>::new();
-        let mut seed_passed = 0usize;
-        let mut aligned = 0usize;
-        let mut reads_processed = 0usize;
-        let mut cumulative_tested_kmers = 0usize;
-        let mut cumulative_matched_kmers = 0usize;
-        let mut cumulative_seed_compute_ms = 0.0f64;
-        let mut cumulative_align_compute_ms = 0.0f64;
-        let mut cumulative_io_read_ms = 0.0f64;
-        let mut cumulative_fasta_parse_ms = 0.0f64;
-        let mut cumulative_normalize_compute_ms = 0.0f64;
-        let mut cumulative_inference_compute_ms = 0.0f64;
-        let mut cumulative_progress_emit_ms = 0.0f64;
-        let mut cumulative_read_bases_processed = 0u64;
-        let mut read_length_counts = vec![0u64; 1];
-        let mut support_aligned_reads = 0usize;
-        let mut support_exon_counts = vec![0usize; splicing.unique_exons.len()];
-        let mut support_junction_counts = vec![0usize; splicing.junctions.len()];
-        let mut reads_with_transition_support = 0usize;
-        let mut transition_confirmations = 0usize;
-        let mut origin_class_counts = BTreeMap::<String, usize>::new();
         let alignment_enabled = !matches!(profile, RnaReadInterpretationProfile::NanoporeCdnaV1)
             && align_config.max_secondary_mappings > 0;
         let final_visit_progress =
@@ -14502,10 +14917,15 @@ impl GentleEngine {
                         message: "RNA-read interpretation cancelled during FASTA scan".to_string(),
                     });
                 }
-                input_bytes_processed = visit_progress.input_bytes_processed;
-                input_bytes_total = visit_progress.input_bytes_total;
-                cumulative_io_read_ms = visit_progress.io_read_ms;
-                cumulative_fasta_parse_ms = visit_progress.record_parse_ms;
+                input_bytes_processed =
+                    input_bytes_processed.max(visit_progress.input_bytes_processed);
+                input_bytes_total = input_bytes_total.max(visit_progress.input_bytes_total);
+                cumulative_io_read_ms = resume_io_read_ms_base + visit_progress.io_read_ms;
+                cumulative_fasta_parse_ms =
+                    resume_fasta_parse_ms_base + visit_progress.record_parse_ms;
+                if record.record_index < resume_skip_records {
+                    return Ok(());
+                }
                 let normalize_started = Instant::now();
                 let (normalized_sequence, reverse_complement_applied) =
                     Self::normalize_rna_read_sequence_for_scoring(&record.sequence, seed_filter);
@@ -14791,14 +15211,73 @@ impl GentleEngine {
                     }
                     cumulative_progress_emit_ms += emit_started.elapsed().as_secs_f64() * 1000.0;
                 }
+                if let Some(path) = checkpoint_path.as_deref() {
+                    if reads_processed > 0 && reads_processed % checkpoint_every_reads == 0 {
+                        let mut retained_rows = retained_hits.iter().cloned().collect::<Vec<_>>();
+                        retained_rows.sort_by(|left, right| right.rank.cmp(&left.rank));
+                        let checkpoint = RnaReadInterpretCheckpoint {
+                            schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
+                            created_at_unix_ms: Self::now_unix_ms(),
+                            report_id: report_id.clone(),
+                            report_mode,
+                            seq_id: seq_id.to_string(),
+                            seed_feature_id,
+                            profile,
+                            input_path: input_path.to_string(),
+                            input_format,
+                            scope,
+                            origin_mode,
+                            target_gene_ids: normalized_target_gene_ids.clone(),
+                            roi_seed_capture_enabled,
+                            seed_filter: seed_filter.clone(),
+                            align_config: align_config.clone(),
+                            checkpoint_path: checkpoint_path.clone(),
+                            checkpoint_every_reads,
+                            reads_processed,
+                            read_count_seed_passed: seed_passed,
+                            read_count_aligned: aligned,
+                            input_bytes_processed,
+                            input_bytes_total,
+                            cumulative_tested_kmers,
+                            cumulative_matched_kmers,
+                            cumulative_seed_compute_ms,
+                            cumulative_align_compute_ms,
+                            cumulative_io_read_ms,
+                            cumulative_fasta_parse_ms,
+                            cumulative_normalize_compute_ms,
+                            cumulative_inference_compute_ms,
+                            cumulative_progress_emit_ms,
+                            cumulative_read_bases_processed,
+                            read_length_counts: read_length_counts.clone(),
+                            support_aligned_reads,
+                            support_exon_counts: support_exon_counts.clone(),
+                            support_junction_counts: support_junction_counts.clone(),
+                            reads_with_transition_support,
+                            transition_confirmations,
+                            transition_support_rows: transition_support_rows.clone(),
+                            isoform_support_accumulators: isoform_support_accumulators.clone(),
+                            origin_class_counts: origin_class_counts.clone(),
+                            bins: bins.clone(),
+                            score_density_bins: score_density_bins.clone(),
+                            retained_hits: retained_rows.into_iter().map(|row| row.hit).collect(),
+                        };
+                        Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
+                    }
+                }
                 Ok(())
             })?;
         input_bytes_processed = final_visit_progress.input_bytes_processed;
         input_bytes_total = final_visit_progress.input_bytes_total;
         let reads_total = final_visit_progress.records_processed;
-        let mut hits = retained_hits.into_vec();
-        hits.sort_by(|left, right| right.rank.cmp(&left.rank));
-        let hits = hits.into_iter().map(|row| row.hit).collect::<Vec<_>>();
+        let mut ranked_hits = retained_hits.into_vec();
+        ranked_hits.sort_by(|left, right| right.rank.cmp(&left.rank));
+        let retained_hits = ranked_hits
+            .into_iter()
+            .map(|row| row.hit)
+            .collect::<Vec<_>>();
+        let retained_hit_count = retained_hits.len();
+        let hits = Self::apply_rna_read_report_mode_to_hits(report_mode, retained_hits.clone());
+        let report_hit_count = hits.len();
         isoform_support_rows = Self::collect_isoform_support_rows(&isoform_support_accumulators);
         let (mean_len, median_len, p95_len) = Self::summarize_read_lengths(
             &read_length_counts,
@@ -14829,7 +15308,7 @@ impl GentleEngine {
             progress_emit_ms: cumulative_progress_emit_ms,
             update_every_reads: RNA_READ_PROGRESS_UPDATE_EVERY_READS,
             done: true,
-            bins,
+            bins: bins.clone(),
             score_density_bins: score_density_bins.clone(),
             top_hits_preview: Self::collect_rna_read_top_hit_previews(&progress_top_hits),
             transition_support_rows: transition_support_rows.clone(),
@@ -14846,6 +15325,55 @@ impl GentleEngine {
             });
         }
         let _final_emit_ms = final_emit_started.elapsed().as_secs_f64() * 1000.0;
+        if let Some(path) = checkpoint_path.as_deref() {
+            let checkpoint = RnaReadInterpretCheckpoint {
+                schema: RNA_READ_CHECKPOINT_SCHEMA.to_string(),
+                created_at_unix_ms: Self::now_unix_ms(),
+                report_id: report_id.clone(),
+                report_mode,
+                seq_id: seq_id.to_string(),
+                seed_feature_id,
+                profile,
+                input_path: input_path.to_string(),
+                input_format,
+                scope,
+                origin_mode,
+                target_gene_ids: normalized_target_gene_ids.clone(),
+                roi_seed_capture_enabled,
+                seed_filter: seed_filter.clone(),
+                align_config: align_config.clone(),
+                checkpoint_path: checkpoint_path.clone(),
+                checkpoint_every_reads,
+                reads_processed: reads_total,
+                read_count_seed_passed: seed_passed,
+                read_count_aligned: aligned,
+                input_bytes_processed,
+                input_bytes_total,
+                cumulative_tested_kmers,
+                cumulative_matched_kmers,
+                cumulative_seed_compute_ms,
+                cumulative_align_compute_ms,
+                cumulative_io_read_ms,
+                cumulative_fasta_parse_ms,
+                cumulative_normalize_compute_ms,
+                cumulative_inference_compute_ms,
+                cumulative_progress_emit_ms,
+                cumulative_read_bases_processed,
+                read_length_counts: read_length_counts.clone(),
+                support_aligned_reads,
+                support_exon_counts: support_exon_counts.clone(),
+                support_junction_counts: support_junction_counts.clone(),
+                reads_with_transition_support,
+                transition_confirmations,
+                transition_support_rows: transition_support_rows.clone(),
+                isoform_support_accumulators: isoform_support_accumulators.clone(),
+                origin_class_counts: origin_class_counts.clone(),
+                bins: bins.clone(),
+                score_density_bins: score_density_bins.clone(),
+                retained_hits: retained_hits.clone(),
+            };
+            Self::write_rna_read_interpret_checkpoint(path, &checkpoint)?;
+        }
 
         let (exon_support_frequencies, junction_support_frequencies) =
             Self::build_rna_read_support_frequencies_from_counts(
@@ -14875,17 +15403,24 @@ impl GentleEngine {
             seed_filter.min_confirmed_exon_transitions,
             seed_filter.min_transition_support_fraction,
         ));
-        if reads_total > hits.len() {
+        if reads_total > retained_hit_count {
             warnings.push(format!(
                 "retained_top_hits={} out of total_reads={} (scored by seed-hit fraction)",
-                hits.len(),
+                retained_hit_count,
                 reads_total
+            ));
+        }
+        if report_mode == RnaReadReportMode::SeedPassedOnly {
+            warnings.push(format!(
+                "report_mode=seed_passed_only kept {} of {} retained hits",
+                report_hit_count, retained_hit_count
             ));
         }
 
         Ok(RnaReadInterpretationReport {
             schema: RNA_READ_REPORT_SCHEMA.to_string(),
             report_id,
+            report_mode,
             seq_id: seq_id.to_string(),
             seed_feature_id,
             generated_at_unix_ms: Self::now_unix_ms(),
@@ -14896,6 +15431,9 @@ impl GentleEngine {
             origin_mode,
             target_gene_ids: normalized_target_gene_ids,
             roi_seed_capture_enabled,
+            checkpoint_path,
+            checkpoint_every_reads,
+            resumed_from_checkpoint,
             seed_filter: seed_filter.clone(),
             align_config: align_config.clone(),
             read_count_total: reads_total,
@@ -28742,9 +29280,13 @@ impl GentleEngine {
                 seed_filter,
                 align_config,
                 report_id,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
             } => {
                 let mut keep_running = || true;
-                let report = self.interpret_rna_reads_report_with_progress(
+                let report = self.compute_rna_read_report_with_options_and_progress_and_cancel(
                     &seq_id,
                     seed_feature_id,
                     profile,
@@ -28757,6 +29299,12 @@ impl GentleEngine {
                     &seed_filter,
                     &align_config,
                     report_id.as_deref(),
+                    &RnaReadInterpretOptions {
+                        report_mode,
+                        checkpoint_path: checkpoint_path.clone(),
+                        checkpoint_every_reads,
+                        resume_from_checkpoint,
+                    },
                     on_progress,
                     &mut keep_running,
                 )?;
@@ -40125,6 +40673,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter,
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_gz".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret gzip FASTA");
 
@@ -40279,6 +40831,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: cdna_seed_filter,
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_poly_t_cdna".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret cDNA-style reads");
         let cdna_report = engine
@@ -40306,6 +40862,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: direct_seed_filter,
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_poly_t_direct".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret direct-RNA-style reads");
         let direct_report = engine
@@ -40408,6 +40968,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_sparse_mode".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret reads with sparse-origin scaffolding");
         let report = engine
@@ -40491,6 +41055,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                     seed_filter: RnaReadSeedFilterConfig::default(),
                     align_config: RnaReadAlignConfig::default(),
                     report_id: Some("rna_reads_progress".to_string()),
+                    report_mode: RnaReadReportMode::Full,
+                    checkpoint_path: None,
+                    checkpoint_every_reads: 10_000,
+                    resume_from_checkpoint: false,
                 },
                 |progress| {
                     if let OperationProgress::RnaReadInterpret(p) = progress {
@@ -41507,6 +42075,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_support".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret reads");
         let report = engine
@@ -41580,6 +42152,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_sheet".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret reads");
         let sheet_path = td.path().join("sample_sheet.tsv");
@@ -41649,6 +42225,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_paths".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret reads");
 
@@ -41729,6 +42309,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_density".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret reads");
 
@@ -41824,6 +42408,10 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some("rna_reads_top5000".to_string()),
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
             })
             .expect("interpret reads");
         let report = engine
@@ -41849,6 +42437,230 @@ SQ   SEQUENCE   12 AA;  1200 MW;  0000000000000000 CRC64;
             report.hits.iter().map(|hit| hit.record_index).max(),
             Some(4999)
         );
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_report_mode_seed_passed_only_filters_hits() {
+        let mut state = ProjectState::default();
+        state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let mut engine = GentleEngine::from_state(state);
+        let feature_id = engine
+            .state()
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let pass_read = {
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let fail_read = "NNNNNNNNNNNNNNNNNNNNNNNNNNNN".to_string();
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_mode.fa");
+        fs::write(
+            &input_path,
+            format!(">read_pass\n{pass_read}\n>read_fail\n{fail_read}\n"),
+        )
+        .expect("write reads");
+
+        let mut seed_filter = RnaReadSeedFilterConfig::default();
+        seed_filter.min_seed_hit_fraction = 0.5;
+        seed_filter.min_weighted_seed_hit_fraction = 0.1;
+        seed_filter.min_unique_matched_kmers = 8;
+        seed_filter.min_chain_consistency_fraction = 0.3;
+        seed_filter.min_confirmed_exon_transitions = 0;
+        seed_filter.min_transition_support_fraction = 0.0;
+        engine
+            .apply(Operation::InterpretRnaReads {
+                seq_id: "seq_a".to_string(),
+                seed_feature_id: feature_id,
+                profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path: input_path.display().to_string(),
+                input_format: RnaReadInputFormat::Fasta,
+                scope: SplicingScopePreset::AllOverlappingBothStrands,
+                origin_mode: RnaReadOriginMode::SingleGene,
+                target_gene_ids: vec![],
+                roi_seed_capture_enabled: false,
+                seed_filter,
+                align_config: RnaReadAlignConfig::default(),
+                report_id: Some("rna_reads_seed_only".to_string()),
+                report_mode: RnaReadReportMode::SeedPassedOnly,
+                checkpoint_path: None,
+                checkpoint_every_reads: 10_000,
+                resume_from_checkpoint: false,
+            })
+            .expect("interpret reads");
+        let report = engine
+            .get_rna_read_report("rna_reads_seed_only")
+            .expect("report");
+        assert_eq!(report.report_mode, RnaReadReportMode::SeedPassedOnly);
+        assert_eq!(report.read_count_total, 2);
+        assert_eq!(report.read_count_seed_passed, 1);
+        assert_eq!(report.hits.len(), 1);
+        assert!(report.hits.iter().all(|hit| hit.passed_seed_filter));
+        assert_eq!(report.hits[0].header_id, "read_pass");
+    }
+
+    #[test]
+    fn test_interpret_rna_reads_checkpoint_resume_matches_uninterrupted_run() {
+        let mut base_state = ProjectState::default();
+        base_state
+            .sequences
+            .insert("seq_a".to_string(), splicing_test_sequence());
+        let feature_id = base_state
+            .sequences
+            .get("seq_a")
+            .expect("sequence present")
+            .features()
+            .iter()
+            .position(|feature| feature.kind.to_string().eq_ignore_ascii_case("mRNA"))
+            .expect("mRNA feature id");
+        let kmer_len = RnaReadSeedFilterConfig::default().kmer_len;
+        let pass_read = {
+            let engine = GentleEngine::from_state(base_state.clone());
+            let splicing = engine
+                .build_splicing_expert_view(
+                    "seq_a",
+                    feature_id,
+                    SplicingScopePreset::AllOverlappingBothStrands,
+                )
+                .expect("splicing view");
+            let dna = engine
+                .state()
+                .sequences
+                .get("seq_a")
+                .expect("sequence for transcript template");
+            let template =
+                GentleEngine::make_transcript_template(dna, &splicing.transcripts[0], kmer_len);
+            String::from_utf8(template.sequence).expect("template sequence utf-8")
+        };
+        let td = tempdir().expect("tempdir");
+        let input_path = td.path().join("reads_checkpoint.fa");
+        let mut fasta = String::new();
+        for idx in 0..25usize {
+            fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, pass_read));
+        }
+        fs::write(&input_path, fasta).expect("write reads");
+        let checkpoint_path = td.path().join("reads_checkpoint.json");
+
+        let full_engine = GentleEngine::from_state(base_state.clone());
+        let report_full = full_engine
+            .compute_rna_read_report_with_progress(
+                "seq_a",
+                feature_id,
+                RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path.to_str().expect("path"),
+                RnaReadInputFormat::Fasta,
+                SplicingScopePreset::AllOverlappingBothStrands,
+                RnaReadOriginMode::SingleGene,
+                &[],
+                false,
+                &RnaReadSeedFilterConfig::default(),
+                &RnaReadAlignConfig::default(),
+                Some("rna_reads_checkpoint"),
+                &mut |_progress| true,
+            )
+            .expect("full report");
+
+        let interrupted_engine = GentleEngine::from_state(base_state.clone());
+        let mut continue_budget = 40usize;
+        let interrupted = interrupted_engine.compute_rna_read_report_with_options_and_progress_and_cancel(
+            "seq_a",
+            feature_id,
+            RnaReadInterpretationProfile::NanoporeCdnaV1,
+            input_path.to_str().expect("path"),
+            RnaReadInputFormat::Fasta,
+            SplicingScopePreset::AllOverlappingBothStrands,
+            RnaReadOriginMode::SingleGene,
+            &[],
+            false,
+            &RnaReadSeedFilterConfig::default(),
+            &RnaReadAlignConfig::default(),
+            Some("rna_reads_checkpoint"),
+            &RnaReadInterpretOptions {
+                report_mode: RnaReadReportMode::Full,
+                checkpoint_path: Some(checkpoint_path.display().to_string()),
+                checkpoint_every_reads: 5,
+                resume_from_checkpoint: false,
+            },
+            &mut |_progress| true,
+            &mut || {
+                if continue_budget == 0 {
+                    false
+                } else {
+                    continue_budget = continue_budget.saturating_sub(1);
+                    true
+                }
+            },
+        );
+        assert!(interrupted.is_err(), "interrupted run should return cancellation error");
+        assert!(checkpoint_path.exists(), "checkpoint file should be written");
+
+        let resumed_engine = GentleEngine::from_state(base_state);
+        let report_resumed = resumed_engine
+            .compute_rna_read_report_with_options_and_progress_and_cancel(
+                "seq_a",
+                feature_id,
+                RnaReadInterpretationProfile::NanoporeCdnaV1,
+                input_path.to_str().expect("path"),
+                RnaReadInputFormat::Fasta,
+                SplicingScopePreset::AllOverlappingBothStrands,
+                RnaReadOriginMode::SingleGene,
+                &[],
+                false,
+                &RnaReadSeedFilterConfig::default(),
+                &RnaReadAlignConfig::default(),
+                Some("rna_reads_checkpoint"),
+                &RnaReadInterpretOptions {
+                    report_mode: RnaReadReportMode::Full,
+                    checkpoint_path: Some(checkpoint_path.display().to_string()),
+                    checkpoint_every_reads: 5,
+                    resume_from_checkpoint: true,
+                },
+                &mut |_progress| true,
+                &mut || true,
+            )
+            .expect("resumed report");
+
+        assert_eq!(report_resumed.read_count_total, report_full.read_count_total);
+        assert_eq!(
+            report_resumed.read_count_seed_passed,
+            report_full.read_count_seed_passed
+        );
+        assert_eq!(report_resumed.read_count_aligned, report_full.read_count_aligned);
+        assert_eq!(report_resumed.score_density_bins, report_full.score_density_bins);
+        assert_eq!(
+            report_resumed
+                .hits
+                .iter()
+                .map(|hit| hit.record_index)
+                .collect::<Vec<_>>(),
+            report_full
+                .hits
+                .iter()
+                .map(|hit| hit.record_index)
+                .collect::<Vec<_>>()
+        );
+        assert!(report_resumed.resumed_from_checkpoint);
     }
 
     #[test]

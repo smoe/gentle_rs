@@ -41,8 +41,8 @@ use crate::{
         PlanningProfileScope, PlanningSuggestionStatus, PrimerDesignBackend,
         PrimerDesignPairConstraint, PrimerDesignSideConstraint, ProjectState, RenderSvgMode,
         RnaReadAlignConfig, RnaReadHitSelection, RnaReadInputFormat, RnaReadInterpretationProfile,
-        RnaReadOriginMode, RnaReadScoreDensityScale, RnaReadSeedFilterConfig, SequenceAnchor,
-        SplicingScopePreset,
+        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale,
+        RnaReadSeedFilterConfig, SequenceAnchor, SplicingScopePreset,
         WORKFLOW_MACRO_TEMPLATES_METADATA_KEY, Workflow, WorkflowMacroTemplate,
         WorkflowMacroTemplateParam, WorkflowMacroTemplatePort,
     },
@@ -1080,6 +1080,10 @@ pub enum ShellCommand {
         seed_filter: RnaReadSeedFilterConfig,
         align_config: RnaReadAlignConfig,
         report_id: Option<String>,
+        report_mode: RnaReadReportMode,
+        checkpoint_path: Option<String>,
+        checkpoint_every_reads: usize,
+        resume_from_checkpoint: bool,
     },
     RnaReadsListReports {
         seq_id: Option<String>,
@@ -5584,8 +5588,12 @@ impl ShellCommand {
                 seed_filter,
                 align_config,
                 report_id,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
             } => format!(
-                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, origin_mode={}, target_genes={}, roi_seed_capture={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}')",
+                "interpret RNA reads from '{}' for '{}' feature={} (profile={}, format={}, scope={}, origin_mode={}, report_mode={}, target_genes={}, roi_seed_capture={}, k={}, short_max={}, long_window={}x{}, min_seed_hit_fraction={:.2}, min_weighted_seed_hit_fraction={:.2}, min_unique_matched_kmers={}, min_chain_consistency_fraction={:.2}, max_median_transcript_gap={:.2}, min_confirmed_exon_transitions={}, min_transition_support_fraction={:.2}, cdna_poly_t_flip={}, poly_t_prefix_min_bp={}, align_band={}, align_min_identity={:.2}, max_secondary={}, report_id='{}', checkpoint_path='{}', checkpoint_every_reads={}, resume_from_checkpoint={})",
                 input_path,
                 seq_id,
                 seed_feature_id,
@@ -5593,6 +5601,7 @@ impl ShellCommand {
                 input_format.as_str(),
                 scope.as_str(),
                 origin_mode.as_str(),
+                report_mode.as_str(),
                 target_gene_ids.len(),
                 roi_seed_capture_enabled,
                 seed_filter.kmer_len,
@@ -5614,7 +5623,13 @@ impl ShellCommand {
                 report_id
                     .as_deref()
                     .filter(|v| !v.trim().is_empty())
-                    .unwrap_or("auto")
+                    .unwrap_or("auto"),
+                checkpoint_path
+                    .as_deref()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or("-"),
+                checkpoint_every_reads,
+                resume_from_checkpoint
             ),
             Self::RnaReadsListReports { seq_id } => format!(
                 "list stored RNA-read reports{}",
@@ -9601,6 +9616,18 @@ fn parse_rna_read_origin_mode(raw: &str) -> Result<RnaReadOriginMode, String> {
     }
 }
 
+fn parse_rna_read_report_mode(raw: &str) -> Result<RnaReadReportMode, String> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "full" => Ok(RnaReadReportMode::Full),
+        "seed_passed_only" | "seed-passed-only" | "seed_passed" | "seed-only" => {
+            Ok(RnaReadReportMode::SeedPassedOnly)
+        }
+        other => Err(format!(
+            "Unsupported report mode '{other}', expected full|seed_passed_only"
+        )),
+    }
+}
+
 fn parse_rna_read_hit_selection(raw: &str) -> Result<RnaReadHitSelection, String> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "all" => Ok(RnaReadHitSelection::All),
@@ -9863,7 +9890,7 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "interpret" => {
             if tokens.len() < 5 {
                 return Err(
-                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
+                    "rna-reads interpret requires SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile PROFILE] [--format fasta] [--scope SCOPE] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]"
                         .to_string(),
                 );
             }
@@ -9890,6 +9917,10 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut seed_filter = RnaReadSeedFilterConfig::default();
             let mut align_config = RnaReadAlignConfig::default();
             let mut report_id: Option<String> = None;
+            let mut report_mode = RnaReadReportMode::Full;
+            let mut checkpoint_path: Option<String> = None;
+            let mut checkpoint_every_reads = 10_000usize;
+            let mut resume_from_checkpoint = false;
             let mut idx = 5usize;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
@@ -9909,6 +9940,45 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "rna-reads interpret",
                         )?;
                         profile = parse_rna_read_profile(&raw)?;
+                    }
+                    "--report-mode" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--report-mode",
+                            "rna-reads interpret",
+                        )?;
+                        report_mode = parse_rna_read_report_mode(&raw)?;
+                    }
+                    "--checkpoint-path" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-path",
+                            "rna-reads interpret",
+                        )?;
+                        checkpoint_path = Some(raw);
+                    }
+                    "--checkpoint-every-reads" => {
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--checkpoint-every-reads",
+                            "rna-reads interpret",
+                        )?;
+                        checkpoint_every_reads = raw.parse::<usize>().map_err(|e| {
+                            format!(
+                                "Invalid --checkpoint-every-reads value '{raw}' for rna-reads interpret: {e}"
+                            )
+                        })?;
+                    }
+                    "--resume-from-checkpoint" => {
+                        resume_from_checkpoint = true;
+                        idx += 1;
+                    }
+                    "--no-resume-from-checkpoint" => {
+                        resume_from_checkpoint = false;
+                        idx += 1;
                     }
                     "--format" => {
                         let raw =
@@ -10179,6 +10249,10 @@ fn parse_rna_reads_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 seed_filter,
                 align_config,
                 report_id,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
             })
         }
         "list-reports" => {
@@ -16919,6 +16993,10 @@ pub fn execute_shell_command_with_options(
             seed_filter,
             align_config,
             report_id,
+            report_mode,
+            checkpoint_path,
+            checkpoint_every_reads,
+            resume_from_checkpoint,
         } => {
             let op_result = engine
                 .apply(Operation::InterpretRnaReads {
@@ -16934,6 +17012,10 @@ pub fn execute_shell_command_with_options(
                     seed_filter: seed_filter.clone(),
                     align_config: align_config.clone(),
                     report_id: report_id.clone(),
+                    report_mode: *report_mode,
+                    checkpoint_path: checkpoint_path.clone(),
+                    checkpoint_every_reads: *checkpoint_every_reads,
+                    resume_from_checkpoint: *resume_from_checkpoint,
                 })
                 .map_err(|e| e.to_string())?;
             let report = if let Some(id) = report_id
@@ -24371,6 +24453,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 seed_filter,
                 align_config,
                 report_id,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
                 ..
             } => {
                 assert_eq!(seq_id, "seq_a");
@@ -24397,6 +24483,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 assert!((align_config.min_identity_fraction - 0.60).abs() < f64::EPSILON);
                 assert_eq!(align_config.max_secondary_mappings, 2);
                 assert_eq!(report_id.as_deref(), Some("tp73_reads"));
+                assert_eq!(report_mode, RnaReadReportMode::Full);
+                assert!(checkpoint_path.is_none());
+                assert_eq!(checkpoint_every_reads, 10_000);
+                assert!(!resume_from_checkpoint);
             }
             other => panic!("expected RnaReadsInterpret, got {other:?}"),
         }
@@ -24418,6 +24508,29 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                     vec!["TP73".to_string(), "TP53".to_string()]
                 );
                 assert!(roi_seed_capture_enabled);
+            }
+            other => panic!("expected RnaReadsInterpret, got {other:?}"),
+        }
+
+        let interpret_checkpoint = parse_shell_line(
+            "rna-reads interpret seq_a 7 reads.fa --report-mode seed_passed_only --checkpoint-path /tmp/tp53.chk.json --checkpoint-every-reads 2500 --resume-from-checkpoint",
+        )
+        .expect("parse rna-reads interpret checkpoint options");
+        match interpret_checkpoint {
+            ShellCommand::RnaReadsInterpret {
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
+                ..
+            } => {
+                assert_eq!(report_mode, RnaReadReportMode::SeedPassedOnly);
+                assert_eq!(
+                    checkpoint_path.as_deref(),
+                    Some("/tmp/tp53.chk.json")
+                );
+                assert_eq!(checkpoint_every_reads, 2500);
+                assert!(resume_from_checkpoint);
             }
             other => panic!("expected RnaReadsInterpret, got {other:?}"),
         }
@@ -24513,6 +24626,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 target_gene_ids,
                 roi_seed_capture_enabled,
                 seed_filter,
+                report_mode,
+                checkpoint_path,
+                checkpoint_every_reads,
+                resume_from_checkpoint,
                 ..
             } => {
                 assert_eq!(origin_mode, RnaReadOriginMode::SingleGene);
@@ -24523,6 +24640,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                     RnaReadSeedFilterConfig::default().kmer_len
                 );
                 assert_eq!(seed_filter.kmer_len, 10);
+                assert_eq!(report_mode, RnaReadReportMode::Full);
+                assert!(checkpoint_path.is_none());
+                assert_eq!(checkpoint_every_reads, 10_000);
+                assert!(!resume_from_checkpoint);
             }
             other => panic!("expected RnaReadsInterpret, got {other:?}"),
         }
@@ -24631,6 +24752,10 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
                 seed_filter: RnaReadSeedFilterConfig::default(),
                 align_config: RnaReadAlignConfig::default(),
                 report_id: Some(report_id.clone()),
+                report_mode: RnaReadReportMode::Full,
+                checkpoint_path: None,
+                checkpoint_every_reads: 10_000,
+                resume_from_checkpoint: false,
             },
         )
         .expect("execute rna-reads interpret");

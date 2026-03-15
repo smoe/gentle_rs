@@ -23,6 +23,7 @@ checks.
   - `ensembl_chimp_tp73_all.fasta`
   - `ensembl_human_tp73_all.fasta`
   - `ensembl_human_tp53_all.fasta`
+  - `ensembl_human_tp63_all.fasta`
   - `ensembl_mouse_trp73_all.fasta`
 
 ## Provenance and usage
@@ -100,7 +101,8 @@ checks.
   under committed fixtures.
 - Current provenance status:
   - biological source is Ensembl transcript FASTA exports (human/chimp TP73,
-    human TP53, mouse Trp73), as indicated by headers/filenames.
+    human TP53, human TP63, mouse Trp73), as indicated by headers/filenames.
+  - contributing Ensembl release for this cDNA fixture pack is `115`.
   - exact original export URLs/queries are not yet frozen in-repo; this is a
     known provenance follow-up item in `docs/roadmap.md`.
 - Primary usage:

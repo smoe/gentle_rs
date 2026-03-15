@@ -114,7 +114,7 @@ Current draft operations:
 - `DesignQpcrAssays { ... }` (implemented baseline; forward/reverse/probe)
 - `ComputeDotplot { seq_id, span_start_0based?, span_end_0based?, mode, word_size, step_bp, max_mismatches?, tile_bp?, store_as? }` (implemented baseline)
 - `ComputeFlexibilityTrack { seq_id, span_start_0based?, span_end_0based?, model, bin_bp, smoothing_bp?, store_as? }` (implemented baseline)
-- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id? }` (Nanopore cDNA profile implemented in phase-1; sparse multi-gene/ROI-capture params are persisted scaffolding in current phase)
+- `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }` (Nanopore cDNA profile implemented in phase-1; sparse multi-gene/ROI-capture params are persisted scaffolding in current phase)
 - `ListRnaReadReports { seq_id? }`
 - `ShowRnaReadReport { report_id }`
 - `ExportRnaReadReport { report_id, path }`
@@ -1365,7 +1365,7 @@ Dotplot + flexibility operation contract (implemented baseline):
 RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
 
 - Operation:
-  - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id? }`
+  - `InterpretRnaReads { seq_id, seed_feature_id, profile, input_path, input_format, scope, origin_mode?, target_gene_ids?, roi_seed_capture_enabled?, seed_filter, align_config, report_id?, report_mode?, checkpoint_path?, checkpoint_every_reads?, resume_from_checkpoint? }`
   - implemented profile: `nanopore_cdna_v1`
   - implemented input format: `fasta` (`.fa/.fasta`, optional `.fa.gz/.fasta.gz`; `.sra` must be converted externally in phase-1)
   - default seed/filter constants:
@@ -1400,6 +1400,14 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
     - current phase still executes the single-feature baseline index path;
       requests for sparse multi-gene/ROI capture are surfaced as deterministic
       warnings in report `warnings[]`
+  - report compaction and resume behavior:
+    - `report_mode=full` keeps retained top hits exactly as ranked
+    - `report_mode=seed_passed_only` keeps only retained hits that passed the
+      composite seed gate (counters remain based on the full stream)
+    - `checkpoint_path` + `checkpoint_every_reads` writes deterministic JSON
+      snapshots (`gentle.rna_read_interpret_checkpoint.v1`) during streaming
+    - `resume_from_checkpoint=true` resumes from the checkpoint snapshot and
+      fast-forwards already-processed records deterministically
 - Report persistence:
   - report schema: `gentle.rna_read_report.v1`
   - metadata store schema: `gentle.rna_read_reports.v1`
@@ -1407,6 +1415,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - report payload now includes per-report:
     - `exon_support_frequencies[]`
     - `junction_support_frequencies[]`
+    - storage/streaming controls:
+      - `report_mode` (`full` or `seed_passed_only`)
+      - `checkpoint_path` / `checkpoint_every_reads`
+      - `resumed_from_checkpoint`
     - request provenance fields:
       - `origin_mode`
       - `target_gene_ids[]`
@@ -1424,7 +1436,7 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
   - output: TSV with run/read metrics and JSON-serialized exon/junction
     frequency columns for cohort-level downstream analysis.
 - Shared-shell command family:
-- `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+- `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
   - `rna-reads list-reports [SEQ_ID]`
   - `rna-reads show-report REPORT_ID`
   - `rna-reads export-report REPORT_ID OUTPUT.json`

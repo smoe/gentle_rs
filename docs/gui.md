@@ -212,6 +212,9 @@ Feature tree grouping:
   moved outside the DNA sequence window bounds.
 - The splicing expert window content is vertically scrollable, so very large
   transcript sets no longer hide the `Transcript x exon matrix` section.
+- Very large `Transcript x exon` or `Exon -> exon` matrices may open collapsed
+  by default to reduce idle CPU usage; expand the section header to render the
+  full table.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - Splicing support frequencies are shown explicitly:
@@ -256,6 +259,15 @@ Feature tree grouping:
     (`target-group / target-strand`) for focused pilot filtering runs
   - default splicing scope is broad (`all overlapping / both strands`) with
     optional narrowing presets
+  - advanced `Origin mode` controls are available (phase-1 scaffolding):
+    - `single_gene` (baseline; current execution path)
+    - `multi_gene_sparse` (planned sparse multi-gene index mode; currently
+      persisted as request metadata with explicit fallback warnings)
+  - advanced `Target genes` field (comma/space/semicolon separated IDs) is
+    persisted in report metadata for follow-up sparse-index runs
+  - advanced `ROI seed capture` toggle is persisted in report metadata as a
+    planned annotation-independent capture-layer request (phase-1 fallback
+    warning emitted)
   - scope presets are explicit:
     - `all-overlap / both-strands`: all overlapping transcripts, `+` and `-`
     - `target-group / any-strand`: target group only, but both strands allowed
@@ -410,6 +422,18 @@ Patterns menu:
       and auto-rebinds that routine input
   - export stage uses shared process artifact route:
     - `export-run-bundle OUTPUT.run_bundle.json`
+- `Patterns -> Planning...`
+  - opens a dedicated standalone `Planning` window for the planning meta-layer.
+  - supports editing and applying:
+    - `global` planning profile
+    - `confirmed_agent_overlay` profile
+    - `project_override` profile
+    - planning objective
+  - shows merged effective profile (`global -> confirmed_agent_overlay -> project_override`).
+  - supports registering pending planning sync suggestions (`pull`/`push`) from
+    JSON payload and explicit `Accept`/`Reject` resolution in-window.
+  - exposes sync status (`pending count`, latest pull/push timestamps, last
+    source/snapshot, last error).
 - `Patterns -> Routine catalog`
   - routine discovery is grouped by `family` and `status`.
   - selecting a routine imports its linked template file when the routine
@@ -855,14 +879,14 @@ GENtle tracks open native windows and can raise a selected one to front.
   Configuration open probe is active to reduce first-frame contention.
 - `Windows` includes project, sequence/pool, and auxiliary windows
   (Help, Configuration, Prepare Genome, Retrieve, BLAST, Track Import,
-  Agent Assistant, UniProt Mapping, Operation History)
+  Planning, Agent Assistant, UniProt Mapping, Operation History)
 - Shortcut: `Cmd+Backtick` focuses the main project window
 - Specialist windows (including DNA sequence windows) include a top-left nav
   strip with:
   - `Help`: opens the GUI manual
   - `Main`: raises the main project window
 - `Cmd+W` closes the focused native window (sequence and auxiliary viewports,
-  including Configuration/Help/BLAST/Track Import/Agent Assistant/History).
+  including Configuration/Help/BLAST/Track Import/Planning/Agent Assistant/History).
 - Help shortcuts:
   - `F1` (Windows/Linux)
   - `Ctrl+F1` (fallback in function-key reserved environments)
@@ -1010,7 +1034,8 @@ In `Main window -> Graph` view:
 
 - Command Palette:
   - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`
-  - searchable action list for project, genome, help, and window actions
+  - searchable action list for project, genome, planning, help, and window actions
+  - includes `Planning` action (`Patterns -> Planning...` equivalent)
   - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`)
 - Operation History panel:
   - open via `Edit -> Operation History...` or `Window -> Show Operation History`

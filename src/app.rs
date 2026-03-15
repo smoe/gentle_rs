@@ -33,7 +33,8 @@ use crate::{
         DEFAULT_BIGWIG_TO_BEDGRAPH_BIN, DisplaySettings, DisplayTarget, Engine, EngineError,
         ErrorCode, GenomeAnnotationScope, GenomeTrackImportProgress, GenomeTrackSource,
         GenomeTrackSubscription, GenomeTrackSyncReport, GentleEngine, LineageMacroPortBinding,
-        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, ProjectState,
+        LinearSequenceLetterLayoutMode, OpResult, Operation, OperationProgress, PlanningObjective,
+        PlanningProfile, PlanningProfileScope, PlanningSuggestionStatus, ProjectState,
         SequenceGenomeAnchorSummary,
     },
     engine_shell::{
@@ -548,6 +549,7 @@ pub struct GENtleApp {
     genome_blast_selected_result: usize,
     genome_blast_status: String,
     show_genome_bed_track_dialog: bool,
+    show_planning_dialog: bool,
     show_routine_assistant_dialog: bool,
     show_agent_assistant_dialog: bool,
     genome_track_seq_id: String,
@@ -586,6 +588,18 @@ pub struct GENtleApp {
     routine_assistant_preflight_output: Option<serde_json::Value>,
     routine_assistant_execute_output: Option<serde_json::Value>,
     routine_assistant_status: String,
+    planning_profile_global_json: String,
+    planning_profile_overlay_json: String,
+    planning_profile_project_json: String,
+    planning_objective_json: String,
+    planning_sync_payload_json: String,
+    planning_sync_source: String,
+    planning_sync_confidence: String,
+    planning_sync_snapshot_id: String,
+    planning_sync_message: String,
+    planning_rejection_reason: String,
+    planning_suggestions_filter: Option<PlanningSuggestionStatus>,
+    planning_status: String,
     next_background_job_id: u64,
     job_event_log: Vec<BackgroundJobEvent>,
     genome_track_preflight_track_subscription: bool,
@@ -1120,6 +1134,13 @@ struct OpenWindowEntry {
     detail: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct PlanningSyncSuggestionPayloadUi {
+    profile_patch: Option<PlanningProfile>,
+    objective_patch: Option<PlanningObjective>,
+}
+
 #[derive(Clone, Copy)]
 enum CommandPaletteAction {
     NewProject,
@@ -1133,6 +1154,7 @@ enum CommandPaletteAction {
     OpenRetrieveGenome,
     OpenBlastGenome,
     OpenGenomeTracks,
+    OpenPlanning,
     OpenRoutineAssistant,
     OpenAgentAssistant,
     OpenPreparedInspector,
@@ -1335,6 +1357,7 @@ impl Default for GENtleApp {
             genome_blast_import_track_name: "blast_hits".to_string(),
             genome_blast_import_clear_existing: false,
             show_genome_bed_track_dialog: false,
+            show_planning_dialog: false,
             show_routine_assistant_dialog: false,
             show_agent_assistant_dialog: false,
             genome_track_seq_id: String::new(),
@@ -1371,6 +1394,18 @@ impl Default for GENtleApp {
             routine_assistant_preflight_output: None,
             routine_assistant_execute_output: None,
             routine_assistant_status: String::new(),
+            planning_profile_global_json: String::new(),
+            planning_profile_overlay_json: String::new(),
+            planning_profile_project_json: String::new(),
+            planning_objective_json: String::new(),
+            planning_sync_payload_json: String::new(),
+            planning_sync_source: "lab_manager".to_string(),
+            planning_sync_confidence: String::new(),
+            planning_sync_snapshot_id: String::new(),
+            planning_sync_message: String::new(),
+            planning_rejection_reason: String::new(),
+            planning_suggestions_filter: Some(PlanningSuggestionStatus::Pending),
+            planning_status: String::new(),
             next_background_job_id: 1,
             job_event_log: vec![],
             genome_track_preflight_track_subscription: true,
@@ -1423,6 +1458,10 @@ impl GENtleApp {
 
     fn bed_track_viewport_id() -> ViewportId {
         ViewportId::from_hash_of("GENtle BED Tracks Viewport")
+    }
+
+    fn planning_viewport_id() -> ViewportId {
+        ViewportId::from_hash_of("GENtle Planning Viewport")
     }
 
     fn routine_assistant_viewport_id() -> ViewportId {
@@ -2648,6 +2687,12 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGenomeTracks,
             },
             CommandPaletteEntry {
+                title: "Planning".to_string(),
+                detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
+                keywords: "planning profile objective suggestions sync meta-layer".to_string(),
+                action: CommandPaletteAction::OpenPlanning,
+            },
+            CommandPaletteEntry {
                 title: "Routine Assistant".to_string(),
                 detail: "Compare routine families and run semantic preflight".to_string(),
                 keywords: "routine assistant cloning preflight".to_string(),
@@ -2746,6 +2791,7 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenBlastGenome => self.open_reference_genome_blast_dialog(),
             CommandPaletteAction::OpenGenomeTracks => self.open_genome_bed_track_dialog(),
+            CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
             CommandPaletteAction::OpenAgentAssistant => self.open_agent_assistant_dialog(),
             CommandPaletteAction::OpenPreparedInspector => {
@@ -2987,6 +3033,8 @@ Error: `{err}`"
             "BLAST Genome focus acquisition"
         } else if viewport_id == Self::bed_track_viewport_id() {
             "Track Import focus acquisition"
+        } else if viewport_id == Self::planning_viewport_id() {
+            "Planning focus acquisition"
         } else if viewport_id == Self::routine_assistant_viewport_id() {
             "Routine Assistant focus acquisition"
         } else if viewport_id == Self::agent_assistant_viewport_id() {
@@ -3744,6 +3792,15 @@ Error: `{err}`"
         self.show_genome_bed_track_dialog = true;
     }
 
+    fn open_planning_dialog(&mut self) {
+        if self.show_planning_dialog {
+            self.queue_focus_viewport(Self::planning_viewport_id());
+            return;
+        }
+        self.refresh_planning_editor_buffers_from_engine();
+        self.show_planning_dialog = true;
+    }
+
     fn open_routine_assistant_dialog(&mut self) {
         if self.show_routine_assistant_dialog {
             self.queue_focus_viewport(Self::routine_assistant_viewport_id());
@@ -3778,6 +3835,282 @@ Error: `{err}`"
             return;
         }
         self.show_genbank_dialog = true;
+    }
+
+    fn pretty_json_or_fallback<T: Serialize>(value: &T) -> String {
+        serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    fn refresh_planning_editor_buffers_from_engine(&mut self) {
+        let (global, overlay, project_override, objective) = {
+            let engine = self.engine.read().unwrap();
+            (
+                engine.planning_profile(PlanningProfileScope::Global),
+                engine.planning_profile(PlanningProfileScope::ConfirmedAgentOverlay),
+                engine.planning_profile(PlanningProfileScope::ProjectOverride),
+                engine.planning_objective(),
+            )
+        };
+        self.planning_profile_global_json = global
+            .as_ref()
+            .map(Self::pretty_json_or_fallback)
+            .unwrap_or_default();
+        self.planning_profile_overlay_json = overlay
+            .as_ref()
+            .map(Self::pretty_json_or_fallback)
+            .unwrap_or_default();
+        self.planning_profile_project_json = project_override
+            .as_ref()
+            .map(Self::pretty_json_or_fallback)
+            .unwrap_or_default();
+        self.planning_objective_json = Self::pretty_json_or_fallback(&objective);
+    }
+
+    fn parse_optional_planning_profile_json(raw_json: &str) -> Result<Option<PlanningProfile>, String> {
+        let trimmed = raw_json.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        serde_json::from_str::<PlanningProfile>(trimmed)
+            .map(Some)
+            .map_err(|e| format!("Could not parse planning profile JSON: {e}"))
+    }
+
+    fn parse_optional_planning_objective_json(
+        raw_json: &str,
+    ) -> Result<Option<PlanningObjective>, String> {
+        let trimmed = raw_json.trim();
+        if trimmed.is_empty() {
+            return Ok(None);
+        }
+        serde_json::from_str::<PlanningObjective>(trimmed)
+            .map(Some)
+            .map_err(|e| format!("Could not parse planning objective JSON: {e}"))
+    }
+
+    fn apply_planning_profile_json(&mut self, scope: PlanningProfileScope, raw_json: &str) {
+        match Self::parse_optional_planning_profile_json(raw_json) {
+            Ok(profile) => {
+                let outcome = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .set_planning_profile(scope, profile);
+                match outcome {
+                    Ok(()) => {
+                        self.refresh_planning_editor_buffers_from_engine();
+                        self.planning_status = format!(
+                            "Planning profile '{}' updated",
+                            scope.as_str()
+                        );
+                    }
+                    Err(e) => {
+                        self.planning_status = format!(
+                            "Could not update planning profile '{}': {}",
+                            scope.as_str(),
+                            e.message
+                        );
+                    }
+                }
+            }
+            Err(err) => {
+                self.planning_status = err;
+            }
+        }
+    }
+
+    fn clear_planning_profile_scope(&mut self, scope: PlanningProfileScope) {
+        let outcome = self
+            .engine
+            .write()
+            .unwrap()
+            .set_planning_profile(scope, None);
+        match outcome {
+            Ok(()) => {
+                self.refresh_planning_editor_buffers_from_engine();
+                self.planning_status = format!("Planning profile '{}' cleared", scope.as_str());
+            }
+            Err(e) => {
+                self.planning_status = format!(
+                    "Could not clear planning profile '{}': {}",
+                    scope.as_str(),
+                    e.message
+                );
+            }
+        }
+    }
+
+    fn apply_planning_objective_json(&mut self, raw_json: &str) {
+        match Self::parse_optional_planning_objective_json(raw_json) {
+            Ok(objective) => {
+                let outcome = self
+                    .engine
+                    .write()
+                    .unwrap()
+                    .set_planning_objective(objective);
+                match outcome {
+                    Ok(()) => {
+                        self.refresh_planning_editor_buffers_from_engine();
+                        self.planning_status = "Planning objective updated".to_string();
+                    }
+                    Err(e) => {
+                        self.planning_status =
+                            format!("Could not update planning objective: {}", e.message);
+                    }
+                }
+            }
+            Err(err) => {
+                self.planning_status = err;
+            }
+        }
+    }
+
+    fn clear_planning_objective(&mut self) {
+        let outcome = self.engine.write().unwrap().set_planning_objective(None);
+        match outcome {
+            Ok(()) => {
+                self.refresh_planning_editor_buffers_from_engine();
+                self.planning_status = "Planning objective cleared (engine defaults active)"
+                    .to_string();
+            }
+            Err(e) => {
+                self.planning_status = format!("Could not clear planning objective: {}", e.message);
+            }
+        }
+    }
+
+    fn register_planning_sync_suggestion(&mut self, direction: &str) {
+        let payload_text = self.planning_sync_payload_json.trim().to_string();
+        if payload_text.is_empty() {
+            self.planning_status =
+                "Planning sync payload is empty; provide JSON with profile_patch/objective_patch"
+                    .to_string();
+            return;
+        }
+        let payload = match serde_json::from_str::<PlanningSyncSuggestionPayloadUi>(&payload_text) {
+            Ok(value) => value,
+            Err(e) => {
+                self.planning_status = format!("Could not parse planning sync payload JSON: {e}");
+                return;
+            }
+        };
+        let source = {
+            let trimmed = self.planning_sync_source.trim();
+            if trimmed.is_empty() {
+                "lab_manager".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        let confidence = if self.planning_sync_confidence.trim().is_empty() {
+            None
+        } else {
+            match self.planning_sync_confidence.trim().parse::<f64>() {
+                Ok(value) if value.is_finite() && (0.0..=1.0).contains(&value) => Some(value),
+                _ => {
+                    self.planning_status =
+                        "Planning sync confidence must be a number in range 0.0..=1.0".to_string();
+                    return;
+                }
+            }
+        };
+        let snapshot_id = self.planning_sync_snapshot_id.trim();
+        let snapshot_id = if snapshot_id.is_empty() {
+            None
+        } else {
+            Some(snapshot_id.to_string())
+        };
+        let message = self.planning_sync_message.trim().to_string();
+        let message = if message.is_empty() {
+            None
+        } else {
+            Some(message)
+        };
+        let outcome = self.engine.write().unwrap().propose_planning_suggestion(
+            direction,
+            &source,
+            confidence,
+            snapshot_id.as_deref(),
+            payload.profile_patch,
+            payload.objective_patch,
+            message.as_deref(),
+        );
+        match outcome {
+            Ok(suggestion) => {
+                self.refresh_planning_editor_buffers_from_engine();
+                self.planning_status = format!(
+                    "Registered planning {} suggestion '{}'",
+                    direction,
+                    suggestion.suggestion_id
+                );
+            }
+            Err(e) => {
+                self.planning_status = format!(
+                    "Could not register planning {} suggestion: {}",
+                    direction, e.message
+                );
+            }
+        }
+    }
+
+    fn accept_planning_suggestion(&mut self, suggestion_id: &str) {
+        let outcome = self
+            .engine
+            .write()
+            .unwrap()
+            .accept_planning_suggestion(suggestion_id);
+        match outcome {
+            Ok(suggestion) => {
+                self.refresh_planning_editor_buffers_from_engine();
+                self.planning_status = format!(
+                    "Accepted planning suggestion '{}'",
+                    suggestion.suggestion_id
+                );
+            }
+            Err(e) => {
+                self.planning_status = format!(
+                    "Could not accept planning suggestion '{}': {}",
+                    suggestion_id, e.message
+                );
+            }
+        }
+    }
+
+    fn reject_planning_suggestion(&mut self, suggestion_id: &str) {
+        let rejection_reason = self.planning_rejection_reason.trim().to_string();
+        let rejection_reason = if rejection_reason.is_empty() {
+            None
+        } else {
+            Some(rejection_reason)
+        };
+        let outcome = self.engine.write().unwrap().reject_planning_suggestion(
+            suggestion_id,
+            rejection_reason.as_deref(),
+        );
+        match outcome {
+            Ok(suggestion) => {
+                self.refresh_planning_editor_buffers_from_engine();
+                self.planning_status = format!(
+                    "Rejected planning suggestion '{}'",
+                    suggestion.suggestion_id
+                );
+            }
+            Err(e) => {
+                self.planning_status = format!(
+                    "Could not reject planning suggestion '{}': {}",
+                    suggestion_id, e.message
+                );
+            }
+        }
+    }
+
+    fn planning_filter_label(filter: Option<PlanningSuggestionStatus>) -> &'static str {
+        match filter {
+            None => "all",
+            Some(PlanningSuggestionStatus::Pending) => "pending",
+            Some(PlanningSuggestionStatus::Accepted) => "accepted",
+            Some(PlanningSuggestionStatus::Rejected) => "rejected",
+        }
     }
 
     fn track_name_default_from_path(path: &Path) -> String {
@@ -9768,6 +10101,365 @@ Error: `{err}`"
         });
     }
 
+    fn render_planning_contents(&mut self, ui: &mut Ui) {
+        self.render_specialist_window_nav(ui);
+        ui.label(
+            "Planning meta-layer controls for time/cost/local-fit routine ranking and advisory sync suggestions.",
+        );
+        ui.small(
+            "Effective merge precedence: global -> confirmed_agent_overlay -> project_override",
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .button("Reload From Engine")
+                .on_hover_text("Refresh all planning editor buffers from current project state")
+                .clicked()
+            {
+                self.refresh_planning_editor_buffers_from_engine();
+                self.planning_status = "Reloaded planning buffers from engine state".to_string();
+            }
+            if ui
+                .button("Close")
+                .on_hover_text("Close planning window")
+                .clicked()
+            {
+                self.show_planning_dialog = false;
+            }
+        });
+        ui.separator();
+
+        ui.heading("Profiles");
+        ui.small("Empty editor text means clear on Apply.");
+
+        ui.label("Global profile");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.planning_profile_global_json)
+                .desired_rows(7)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .button("Apply Global")
+                .on_hover_text("Set planning profile scope 'global' from this JSON")
+                .clicked()
+            {
+                let payload = self.planning_profile_global_json.clone();
+                self.apply_planning_profile_json(PlanningProfileScope::Global, &payload);
+            }
+            if ui
+                .button("Clear Global")
+                .on_hover_text("Clear planning profile scope 'global'")
+                .clicked()
+            {
+                self.clear_planning_profile_scope(PlanningProfileScope::Global);
+            }
+        });
+
+        ui.separator();
+        ui.label("Confirmed agent overlay profile");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.planning_profile_overlay_json)
+                .desired_rows(7)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .button("Apply Agent Overlay")
+                .on_hover_text("Set planning profile scope 'confirmed_agent_overlay' from this JSON")
+                .clicked()
+            {
+                let payload = self.planning_profile_overlay_json.clone();
+                self.apply_planning_profile_json(
+                    PlanningProfileScope::ConfirmedAgentOverlay,
+                    &payload,
+                );
+            }
+            if ui
+                .button("Clear Agent Overlay")
+                .on_hover_text("Clear planning profile scope 'confirmed_agent_overlay'")
+                .clicked()
+            {
+                self.clear_planning_profile_scope(PlanningProfileScope::ConfirmedAgentOverlay);
+            }
+        });
+
+        ui.separator();
+        ui.label("Project override profile");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.planning_profile_project_json)
+                .desired_rows(7)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .button("Apply Project Override")
+                .on_hover_text("Set planning profile scope 'project_override' from this JSON")
+                .clicked()
+            {
+                let payload = self.planning_profile_project_json.clone();
+                self.apply_planning_profile_json(PlanningProfileScope::ProjectOverride, &payload);
+            }
+            if ui
+                .button("Clear Project Override")
+                .on_hover_text("Clear planning profile scope 'project_override'")
+                .clicked()
+            {
+                self.clear_planning_profile_scope(PlanningProfileScope::ProjectOverride);
+            }
+        });
+
+        ui.separator();
+        ui.label("Effective profile (read-only)");
+        let mut effective_profile_json = {
+            let engine = self.engine.read().unwrap();
+            Self::pretty_json_or_fallback(&engine.planning_effective_profile())
+        };
+        ui.add_enabled(
+            false,
+            egui::TextEdit::multiline(&mut effective_profile_json)
+                .desired_rows(7)
+                .desired_width(f32::INFINITY),
+        );
+
+        ui.separator();
+        ui.heading("Objective");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.planning_objective_json)
+                .desired_rows(7)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .button("Apply Objective")
+                .on_hover_text("Set planning objective from this JSON")
+                .clicked()
+            {
+                let payload = self.planning_objective_json.clone();
+                self.apply_planning_objective_json(&payload);
+            }
+            if ui
+                .button("Clear Objective")
+                .on_hover_text("Clear planning objective and use engine defaults")
+                .clicked()
+            {
+                self.clear_planning_objective();
+            }
+        });
+
+        ui.separator();
+        ui.heading("Sync Suggestions");
+        ui.small(
+            "Register advisory planning patches as pending pull/push suggestions before explicit accept/reject.",
+        );
+        ui.horizontal(|ui| {
+            ui.label("source");
+            ui.add(egui::TextEdit::singleline(&mut self.planning_sync_source).desired_width(180.0));
+            ui.label("confidence");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.planning_sync_confidence).desired_width(80.0),
+            );
+            ui.label("snapshot");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.planning_sync_snapshot_id).desired_width(180.0),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("message");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.planning_sync_message).desired_width(f32::INFINITY),
+            );
+        });
+        ui.label("sync payload JSON ({ profile_patch?, objective_patch? })");
+        ui.add(
+            egui::TextEdit::multiline(&mut self.planning_sync_payload_json)
+                .desired_rows(6)
+                .desired_width(f32::INFINITY),
+        );
+        ui.horizontal(|ui| {
+            if ui
+                .button("Register Pull Suggestion")
+                .on_hover_text("Create pending suggestion with direction=pull")
+                .clicked()
+            {
+                self.register_planning_sync_suggestion("pull");
+            }
+            if ui
+                .button("Register Push Suggestion")
+                .on_hover_text("Create pending suggestion with direction=push")
+                .clicked()
+            {
+                self.register_planning_sync_suggestion("push");
+            }
+        });
+
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label("suggestion filter");
+            egui::ComboBox::from_id_salt("planning_suggestions_filter")
+                .selected_text(Self::planning_filter_label(self.planning_suggestions_filter))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.planning_suggestions_filter, None, "all");
+                    ui.selectable_value(
+                        &mut self.planning_suggestions_filter,
+                        Some(PlanningSuggestionStatus::Pending),
+                        "pending",
+                    );
+                    ui.selectable_value(
+                        &mut self.planning_suggestions_filter,
+                        Some(PlanningSuggestionStatus::Accepted),
+                        "accepted",
+                    );
+                    ui.selectable_value(
+                        &mut self.planning_suggestions_filter,
+                        Some(PlanningSuggestionStatus::Rejected),
+                        "rejected",
+                    );
+                });
+            ui.label("reject reason");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.planning_rejection_reason).desired_width(260.0),
+            );
+        });
+        let (sync_status, suggestions) = {
+            let engine = self.engine.read().unwrap();
+            (
+                engine.planning_sync_status(),
+                engine.list_planning_suggestions(self.planning_suggestions_filter),
+            )
+        };
+        ui.small(format!(
+            "sync status: pending={} | last_pull={:?} | last_push={:?} | source={} | snapshot={} | last_error={}",
+            sync_status.pending_suggestion_count,
+            sync_status.last_pull_at_unix_ms,
+            sync_status.last_push_at_unix_ms,
+            sync_status
+                .last_source
+                .as_deref()
+                .unwrap_or("-"),
+            sync_status
+                .last_snapshot_id
+                .as_deref()
+                .unwrap_or("-"),
+            sync_status.last_error.as_deref().unwrap_or("-")
+        ));
+
+        if suggestions.is_empty() {
+            ui.small("No planning suggestions for this filter.");
+        } else {
+            let mut accept_id: Option<String> = None;
+            let mut reject_id: Option<String> = None;
+            egui::ScrollArea::vertical()
+                .id_salt("planning_suggestions_scroll")
+                .max_height(320.0)
+                .show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    for suggestion in suggestions.iter().rev() {
+                        ui.group(|ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.monospace(&suggestion.suggestion_id);
+                                ui.label(format!("status={}", suggestion.status.as_str()));
+                                ui.label(format!("direction={}", suggestion.direction));
+                                ui.label(format!("source={}", suggestion.source));
+                                if let Some(confidence) = suggestion.confidence {
+                                    ui.label(format!("confidence={confidence:.2}"));
+                                }
+                                ui.label(format!("created={}", suggestion.created_at_unix_ms));
+                                if let Some(resolved_at) = suggestion.resolved_at_unix_ms {
+                                    ui.label(format!("resolved={resolved_at}"));
+                                }
+                            });
+                            if let Some(message) = suggestion.message.as_deref() {
+                                if !message.trim().is_empty() {
+                                    ui.small(format!("message: {message}"));
+                                }
+                            }
+                            if let Some(reason) = suggestion.rejection_reason.as_deref() {
+                                if !reason.trim().is_empty() {
+                                    ui.small(format!("rejection_reason: {reason}"));
+                                }
+                            }
+                            let mut diff_json = Self::pretty_json_or_fallback(&suggestion.diff);
+                            ui.add_enabled(
+                                false,
+                                egui::TextEdit::multiline(&mut diff_json)
+                                    .desired_rows(4)
+                                    .desired_width(f32::INFINITY),
+                            );
+                            if suggestion.status == PlanningSuggestionStatus::Pending {
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .button("Accept")
+                                        .on_hover_text(
+                                            "Accept this suggestion and merge patch into active planning state",
+                                        )
+                                        .clicked()
+                                    {
+                                        accept_id = Some(suggestion.suggestion_id.clone());
+                                    }
+                                    if ui
+                                        .button("Reject")
+                                        .on_hover_text(
+                                            "Reject this suggestion with optional reason text",
+                                        )
+                                        .clicked()
+                                    {
+                                        reject_id = Some(suggestion.suggestion_id.clone());
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            if let Some(suggestion_id) = accept_id {
+                self.accept_planning_suggestion(&suggestion_id);
+            }
+            if let Some(suggestion_id) = reject_id {
+                self.reject_planning_suggestion(&suggestion_id);
+            }
+        }
+
+        if !self.planning_status.trim().is_empty() {
+            ui.separator();
+            ui.monospace(self.planning_status.clone());
+        }
+    }
+
+    fn render_planning_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_planning_dialog {
+            return;
+        }
+        let mut open = self.show_planning_dialog;
+        let builder = egui::ViewportBuilder::default()
+            .with_title("Planning")
+            .with_inner_size([980.0, 760.0])
+            .with_min_inner_size([700.0, 520.0]);
+        ctx.show_viewport_immediate(Self::planning_viewport_id(), builder, |ctx, class| {
+            self.note_viewport_focus_if_active(ctx, Self::planning_viewport_id());
+            if class == egui::ViewportClass::Embedded {
+                egui::Window::new("Planning")
+                    .open(&mut open)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size(Vec2::new(980.0, 760.0))
+                    .show(ctx, |ui| self.render_planning_contents(ui));
+            } else {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.render_planning_contents(ui);
+                });
+                if Self::viewport_close_requested_or_shortcut(ctx) {
+                    open = false;
+                }
+            }
+        });
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            open = false;
+        }
+        self.show_planning_dialog = open;
+    }
+
     fn render_routine_assistant_contents(&mut self, ui: &mut Ui) {
         self.render_specialist_window_nav(ui);
         ui.label(
@@ -12117,6 +12809,14 @@ Error: `{err}`"
                 detail: "Import BED/BigWig/VCF track overlays".to_string(),
             });
         }
+        if self.show_planning_dialog {
+            entries.push(OpenWindowEntry {
+                native_menu_key: Self::native_menu_key_for_viewport(Self::planning_viewport_id()),
+                viewport_id: Self::planning_viewport_id(),
+                title: "Planning".to_string(),
+                detail: "Planning profiles/objectives and sync suggestions".to_string(),
+            });
+        }
         if self.show_routine_assistant_dialog {
             entries.push(OpenWindowEntry {
                 native_menu_key: Self::native_menu_key_for_viewport(
@@ -12213,6 +12913,8 @@ Error: `{err}`"
             self.show_reference_genome_blast_dialog = true;
         } else if viewport_id == Self::bed_track_viewport_id() {
             self.show_genome_bed_track_dialog = true;
+        } else if viewport_id == Self::planning_viewport_id() {
+            self.show_planning_dialog = true;
         } else if viewport_id == Self::routine_assistant_viewport_id() {
             self.show_routine_assistant_dialog = true;
         } else if viewport_id == Self::agent_assistant_viewport_id() {
@@ -12699,6 +13401,16 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.open_routine_assistant_dialog();
+                    ui.close();
+                }
+                if ui
+                    .button("Planning...")
+                    .on_hover_text(
+                        "Open planning profiles/objective editor and suggestion resolution view",
+                    )
+                    .clicked()
+                {
+                    self.open_planning_dialog();
                     ui.close();
                 }
                 ui.separator();
@@ -19161,6 +19873,7 @@ impl eframe::App for GENtleApp {
             self.render_reference_genome_blast_dialog(ctx);
             self.render_reference_genome_inspector_dialog(ctx);
             self.render_genome_bed_track_dialog(ctx);
+            self.render_planning_dialog(ctx);
             self.render_routine_assistant_dialog(ctx);
             self.render_agent_assistant_dialog(ctx);
             self.render_configuration_dialog(ctx);
@@ -19390,6 +20103,24 @@ mod tests {
     }
 
     #[test]
+    fn open_planning_dialog_focuses_existing_window_without_resetting_state() {
+        let mut app = GENtleApp::default();
+        app.open_planning_dialog();
+        app.planning_sync_source = "local_lab".to_string();
+        app.planning_status = "editing".to_string();
+
+        app.open_planning_dialog();
+
+        assert!(app.show_planning_dialog);
+        assert_eq!(app.planning_sync_source, "local_lab");
+        assert_eq!(app.planning_status, "editing");
+        assert!(
+            app.pending_focus_viewports
+                .contains(&GENtleApp::planning_viewport_id())
+        );
+    }
+
+    #[test]
     fn open_configuration_graphics_dialog_focuses_existing_window_without_resetting_edits() {
         let mut app = GENtleApp::default();
         app.open_configuration_dialog();
@@ -19464,6 +20195,13 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_includes_planning_entry() {
+        let app = GENtleApp::default();
+        let entries = app.collect_command_palette_entries();
+        assert!(entries.iter().any(|entry| entry.title == "Planning"));
+    }
+
+    #[test]
     fn execute_command_palette_action_opens_routine_assistant_dialog() {
         let mut app = GENtleApp::default();
         app.routine_assistant_candidates
@@ -19475,6 +20213,18 @@ mod tests {
         );
 
         assert!(app.show_routine_assistant_dialog);
+    }
+
+    #[test]
+    fn execute_command_palette_action_opens_planning_dialog() {
+        let mut app = GENtleApp::default();
+
+        app.execute_command_palette_action(
+            &egui::Context::default(),
+            CommandPaletteAction::OpenPlanning,
+        );
+
+        assert!(app.show_planning_dialog);
     }
 
     #[test]

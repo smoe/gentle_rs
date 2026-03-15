@@ -12,7 +12,9 @@ use crate::{
         PrimerDesignBackend, PrimerDesignBaseLock, PrimerDesignPairConstraint,
         PrimerDesignSideConstraint, RenderSvgMode, RnaReadAlignConfig, RnaReadHitSelection,
         RnaReadInputFormat, RnaReadInterpretProgress, RnaReadInterpretationProfile,
-        RnaReadScoreDensityScale, RnaReadSeedFilterConfig, RnaReadTopHitPreview,
+        RnaReadOriginMode, RnaReadReportMode, RnaReadScoreDensityScale,
+        RnaReadSeedFilterConfig,
+        RnaReadTopHitPreview,
         RnaSeedHashCatalogEntry, SequenceGenomeAnchorSummary, SnpMutationSpec, SplicingScopePreset,
         TfThresholdOverride, TfbsProgress, Workflow,
     },
@@ -258,6 +260,12 @@ struct RnaReadInterpretOpsUiState {
     scope: SplicingScopePreset,
     profile: RnaReadInterpretationProfile,
     input_format: RnaReadInputFormat,
+    #[serde(default)]
+    origin_mode: RnaReadOriginMode,
+    #[serde(default)]
+    target_gene_ids: String,
+    #[serde(default)]
+    roi_seed_capture_enabled: bool,
     #[serde(default = "default_true")]
     cdna_poly_t_flip_enabled: bool,
     #[serde(default = "default_poly_t_prefix_min_bp_text")]
@@ -290,6 +298,9 @@ impl Default for RnaReadInterpretOpsUiState {
             scope: SplicingScopePreset::AllOverlappingBothStrands,
             profile: RnaReadInterpretationProfile::NanoporeCdnaV1,
             input_format: RnaReadInputFormat::Fasta,
+            origin_mode: RnaReadOriginMode::SingleGene,
+            target_gene_ids: String::new(),
+            roi_seed_capture_enabled: false,
             cdna_poly_t_flip_enabled: true,
             poly_t_prefix_min_bp: "18".to_string(),
             kmer_len: "10".to_string(),
@@ -1881,7 +1892,7 @@ mod tests {
         let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
         let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
         area.show_splicing_expert_window = true;
-        area.splicing_expert_window_view = Some(SplicingExpertView {
+        area.splicing_expert_window_view = Some(Arc::new(SplicingExpertView {
             seq_id: "seq1".to_string(),
             target_feature_id: 17,
             group_label: "TP73".to_string(),
@@ -1897,10 +1908,10 @@ mod tests {
             boundaries: vec![],
             junctions: vec![],
             events: vec![],
-        });
+        }));
         area.show_isoform_expert_window = true;
         area.isoform_expert_window_panel_id = Some("TA".to_string());
-        area.isoform_expert_window_view = Some(IsoformArchitectureExpertView {
+        area.isoform_expert_window_view = Some(Arc::new(IsoformArchitectureExpertView {
             seq_id: "seq1".to_string(),
             panel_id: "TA".to_string(),
             gene_symbol: "TP73".to_string(),
@@ -1912,7 +1923,7 @@ mod tests {
             transcript_lanes: vec![],
             protein_lanes: vec![],
             warnings: vec![],
-        });
+        }));
 
         let entries = area.collect_open_auxiliary_window_entries();
         assert_eq!(entries.len(), 2);
@@ -1978,10 +1989,25 @@ mod tests {
         assert_eq!(decoded.rna_reads_ui.max_median_transcript_gap, "4.0");
         assert_eq!(decoded.rna_reads_ui.min_confirmed_exon_transitions, "1");
         assert_eq!(decoded.rna_reads_ui.min_transition_support_fraction, "0.05");
+        assert_eq!(
+            decoded.rna_reads_ui.origin_mode,
+            crate::engine::RnaReadOriginMode::SingleGene
+        );
+        assert!(decoded.rna_reads_ui.target_gene_ids.is_empty());
+        assert!(!decoded.rna_reads_ui.roi_seed_capture_enabled);
         assert!(decoded.rna_reads_ui.score_density_use_log_scale);
         assert_eq!(
             decoded.rna_reads_ui.scope,
             SplicingScopePreset::AllOverlappingBothStrands
+        );
+    }
+
+    #[test]
+    fn parse_rna_target_gene_ids_splits_and_deduplicates_case_insensitive() {
+        let genes = MainAreaDna::parse_rna_target_gene_ids("TP73, tp53 TP73;  tp63");
+        assert_eq!(
+            genes,
+            vec!["TP73".to_string(), "tp53".to_string(), "tp63".to_string()]
         );
     }
 
@@ -2151,6 +2177,18 @@ mod tests {
     }
 
     #[test]
+    fn large_splicing_matrix_defaults_to_collapsed_section() {
+        assert!(!MainAreaDna::splicing_matrix_should_default_collapsed(20, 200));
+        assert!(MainAreaDna::splicing_matrix_should_default_collapsed(100, 200));
+    }
+
+    #[test]
+    fn large_splicing_transition_matrix_defaults_to_collapsed_section() {
+        assert!(!MainAreaDna::splicing_transition_should_default_collapsed(80));
+        assert!(MainAreaDna::splicing_transition_should_default_collapsed(81));
+    }
+
+    #[test]
     fn splicing_map_placeholder_svg_mentions_selected_sequence() {
         let svg = MainAreaDna::render_splicing_map_placeholder_svg("tp53.seq");
         assert!(svg.contains("tp53.seq"));
@@ -2208,6 +2246,8 @@ const FEATURE_TREE_DEFAULT_WIDTH_PX: f32 = 320.0;
 const FEATURE_TREE_MIN_WIDTH_PX: f32 = 180.0;
 const FEATURE_TREE_MAX_WIDTH_PX: f32 = 680.0;
 const FEATURE_TREE_DEFAULT_SPLIT_FRACTION: f32 = 0.62;
+const SPLICING_MATRIX_EAGER_CELL_THRESHOLD: usize = 16_000;
+const SPLICING_TRANSITION_EAGER_CELL_THRESHOLD: usize = 6_400;
 const DECLUTTER_NOISE_SCORE_THRESHOLD: usize = 100;
 const DECLUTTER_VISIBLE_FEATURE_THRESHOLD: usize = 70;
 const DOTPLOT_RENDER_MAX_POINTS: usize = 120_000;
@@ -2632,10 +2672,10 @@ pub struct MainAreaDna {
     description_cache_expert_error: Option<String>,
     show_splicing_expert_window: bool,
     splicing_expert_window_feature_id: Option<usize>,
-    splicing_expert_window_view: Option<SplicingExpertView>,
+    splicing_expert_window_view: Option<Arc<SplicingExpertView>>,
     show_isoform_expert_window: bool,
     isoform_expert_window_panel_id: Option<String>,
-    isoform_expert_window_view: Option<IsoformArchitectureExpertView>,
+    isoform_expert_window_view: Option<Arc<IsoformArchitectureExpertView>>,
     linear_drag_selection_anchor_bp: Option<usize>,
     linear_pan_drag_origin_bp: Option<(usize, f32)>,
     last_linear_map_width_px: f32,
@@ -6248,7 +6288,7 @@ impl MainAreaDna {
                                         Ok(FeatureExpertView::IsoformArchitecture(view)) => {
                                             self.isoform_expert_window_panel_id =
                                                 Some(panel_id.clone());
-                                            self.isoform_expert_window_view = Some(view);
+                                            self.isoform_expert_window_view = Some(Arc::new(view));
                                             self.show_isoform_expert_window = true;
                                             let viewport_id =
                                                 Self::isoform_expert_viewport_id(&seq_id, &panel_id);
@@ -8040,6 +8080,14 @@ impl MainAreaDna {
         )
     }
 
+    fn splicing_matrix_should_default_collapsed(row_count: usize, exon_count: usize) -> bool {
+        row_count.saturating_mul(exon_count) > SPLICING_MATRIX_EAGER_CELL_THRESHOLD
+    }
+
+    fn splicing_transition_should_default_collapsed(exon_count: usize) -> bool {
+        exon_count.saturating_mul(exon_count) > SPLICING_TRANSITION_EAGER_CELL_THRESHOLD
+    }
+
     fn mix_rgb(from: [u8; 3], to: [u8; 3], t: f32) -> [u8; 3] {
         let t = t.clamp(0.0, 1.0);
         let lerp = |a: u8, b: u8| -> u8 {
@@ -9145,256 +9193,315 @@ impl MainAreaDna {
         });
 
         if !view.matrix_rows.is_empty() && !view.unique_exons.is_empty() {
+            let row_count = view.matrix_rows.len();
+            let exon_count = view.unique_exons.len();
+            let matrix_cell_count = row_count.saturating_mul(exon_count);
+            let matrix_heavy = Self::splicing_matrix_should_default_collapsed(row_count, exon_count);
             ui.separator();
-            ui.label(
-                egui::RichText::new("Transcript x exon matrix")
-                    .monospace()
-                    .size(self.feature_details_font_size()),
-            );
-            let transcript_total = view.transcript_count.max(1);
-            egui::ScrollArea::horizontal().show(ui, |ui| {
-                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                    ui,
-                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            if matrix_heavy {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Large transcript x exon matrix ({}x{} = {} cells); collapsed by default to reduce idle CPU usage.",
+                        row_count, exon_count, matrix_cell_count
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
-                egui::Grid::new("splicing_expert_matrix")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.label(egui::RichText::new("transcript").monospace().strong());
-                        for exon in &view.unique_exons {
-                            let mod3 = Self::splicing_exon_length_mod3(exon);
-                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{}..{}",
-                                    exon.start_1based, exon.end_1based
-                                ))
-                                .monospace()
-                                .size(9.0)
-                                .background_color(bg)
-                                .color(fg),
-                            )
-                            .on_hover_text(format!(
-                                "len={} bp, len%3={mod3} (heuristic frame cue)",
-                                Self::splicing_exon_length_bp(exon)
-                            ));
-                        }
-                        ui.end_row();
-                        ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong())
-                            .on_hover_text(
-                                "Genomic exon length modulo 3 (heuristic reading-frame cue)",
-                            );
-                        for exon in &view.unique_exons {
-                            let mod3 = Self::splicing_exon_length_mod3(exon);
-                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                            ui.label(
-                                egui::RichText::new(format!("{mod3}"))
+            }
+            egui::CollapsingHeader::new(
+                egui::RichText::new(format!(
+                    "Transcript x exon matrix ({} x {})",
+                    row_count, exon_count
+                ))
+                .monospace()
+                .size(self.feature_details_font_size()),
+            )
+            .id_salt((
+                "splicing_expert_matrix_section",
+                id_namespace,
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .default_open(!matrix_heavy)
+            .show(ui, |ui| {
+                let transcript_total = view.transcript_count.max(1);
+                egui::ScrollArea::horizontal().show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    egui::Grid::new("splicing_expert_matrix")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new("transcript").monospace().strong());
+                            for exon in &view.unique_exons {
+                                let mod3 = Self::splicing_exon_length_mod3(exon);
+                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{}..{}",
+                                        exon.start_1based, exon.end_1based
+                                    ))
                                     .monospace()
-                                    .size(8.5)
+                                    .size(9.0)
                                     .background_color(bg)
                                     .color(fg),
-                            )
-                            .on_hover_text(format!(
-                                "len={} bp, len%3={mod3} (heuristic frame cue)",
-                                Self::splicing_exon_length_bp(exon)
-                            ));
-                        }
-                        ui.end_row();
-                        ui.label(
-                            egui::RichText::new("support")
-                                .monospace()
-                                .size(9.0)
-                                .strong(),
-                        );
-                        for exon in &view.unique_exons {
-                            let support_ratio = Self::support_ratio_percent(
-                                exon.support_transcript_count,
-                                transcript_total,
-                            ) as f32
-                                / 100.0;
-                            let support_label = Self::format_support_fraction(
-                                exon.support_transcript_count,
-                                transcript_total,
-                            );
-                            let label = if exon.constitutive {
-                                format!("{support_label} const")
-                            } else {
-                                support_label
-                            };
-                            ui.label(egui::RichText::new(label).monospace().size(8.5).color(
-                                if exon.constitutive {
-                                    let rgb =
-                                        Self::mix_rgb([59, 130, 246], [30, 64, 175], support_ratio);
-                                    egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                                } else {
-                                    let rgb = Self::mix_rgb(
-                                        [107, 114, 128],
-                                        [30, 64, 175],
-                                        support_ratio,
-                                    );
-                                    egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
-                                },
-                            ));
-                        }
-                        ui.end_row();
-                        for row in &view.matrix_rows {
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "n-{} {}",
-                                    row.transcript_feature_id, row.transcript_id
-                                ))
-                                .monospace()
-                                .size(9.0),
-                            );
-                            for (col_idx, present) in row.exon_presence.iter().enumerate() {
-                                let support_count = view
-                                    .unique_exons
-                                    .get(col_idx)
-                                    .map(|exon| exon.support_transcript_count)
-                                    .unwrap_or(0);
-                                let support_ratio =
-                                    Self::support_ratio_percent(support_count, transcript_total)
-                                        as f32
-                                        / 100.0;
-                                let (bg, fg) =
-                                    Self::splicing_matrix_cell_colors(*present, support_ratio);
-                                let marker = if *present { "X" } else { "·" };
-                                ui.label(
-                                    egui::RichText::new(marker)
-                                        .monospace()
-                                        .size(9.0)
-                                        .color(fg)
-                                        .background_color(bg),
                                 )
                                 .on_hover_text(format!(
-                                    "Support {}",
-                                    Self::format_support_fraction(support_count, transcript_total)
+                                    "len={} bp, len%3={mod3} (heuristic frame cue)",
+                                    Self::splicing_exon_length_bp(exon)
                                 ));
                             }
                             ui.end_row();
-                        }
-                    });
+                            ui.label(egui::RichText::new("len%3").monospace().size(8.5).strong())
+                                .on_hover_text(
+                                    "Genomic exon length modulo 3 (heuristic reading-frame cue)",
+                                );
+                            for exon in &view.unique_exons {
+                                let mod3 = Self::splicing_exon_length_mod3(exon);
+                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                                ui.label(
+                                    egui::RichText::new(format!("{mod3}"))
+                                        .monospace()
+                                        .size(8.5)
+                                        .background_color(bg)
+                                        .color(fg),
+                                )
+                                .on_hover_text(format!(
+                                    "len={} bp, len%3={mod3} (heuristic frame cue)",
+                                    Self::splicing_exon_length_bp(exon)
+                                ));
+                            }
+                            ui.end_row();
+                            ui.label(
+                                egui::RichText::new("support")
+                                    .monospace()
+                                    .size(9.0)
+                                    .strong(),
+                            );
+                            for exon in &view.unique_exons {
+                                let support_ratio = Self::support_ratio_percent(
+                                    exon.support_transcript_count,
+                                    transcript_total,
+                                ) as f32
+                                    / 100.0;
+                                let support_label = Self::format_support_fraction(
+                                    exon.support_transcript_count,
+                                    transcript_total,
+                                );
+                                let label = if exon.constitutive {
+                                    format!("{support_label} const")
+                                } else {
+                                    support_label
+                                };
+                                ui.label(egui::RichText::new(label).monospace().size(8.5).color(
+                                    if exon.constitutive {
+                                        let rgb = Self::mix_rgb(
+                                            [59, 130, 246],
+                                            [30, 64, 175],
+                                            support_ratio,
+                                        );
+                                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+                                    } else {
+                                        let rgb = Self::mix_rgb(
+                                            [107, 114, 128],
+                                            [30, 64, 175],
+                                            support_ratio,
+                                        );
+                                        egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+                                    },
+                                ));
+                            }
+                            ui.end_row();
+                            for row in &view.matrix_rows {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "n-{} {}",
+                                        row.transcript_feature_id, row.transcript_id
+                                    ))
+                                    .monospace()
+                                    .size(9.0),
+                                );
+                                for (col_idx, present) in row.exon_presence.iter().enumerate() {
+                                    let support_count = view
+                                        .unique_exons
+                                        .get(col_idx)
+                                        .map(|exon| exon.support_transcript_count)
+                                        .unwrap_or(0);
+                                    let support_ratio =
+                                        Self::support_ratio_percent(support_count, transcript_total)
+                                            as f32
+                                            / 100.0;
+                                    let (bg, fg) =
+                                        Self::splicing_matrix_cell_colors(*present, support_ratio);
+                                    let marker = if *present { "X" } else { "·" };
+                                    ui.label(
+                                        egui::RichText::new(marker)
+                                            .monospace()
+                                            .size(9.0)
+                                            .color(fg)
+                                            .background_color(bg),
+                                    )
+                                    .on_hover_text(format!(
+                                        "Support {}",
+                                        Self::format_support_fraction(
+                                            support_count,
+                                            transcript_total
+                                        )
+                                    ));
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
             });
         }
 
         if view.unique_exons.len() >= 2 {
-            let transitions = compute_splicing_exon_transition_matrix(view);
-            let transcript_total = view.transcript_count.max(1);
+            let exon_count = view.unique_exons.len();
+            let transition_cell_count = exon_count.saturating_mul(exon_count);
+            let transition_heavy = Self::splicing_transition_should_default_collapsed(exon_count);
             ui.separator();
-            ui.label(
-                egui::RichText::new("Exon -> exon transition matrix")
-                    .monospace()
-                    .size(self.feature_details_font_size()),
-            );
-            ui.label(
-                egui::RichText::new(
-                    "Cell color encodes transition support frequency; exon header color encodes exon genomic length %3 (heuristic frame cue).",
-                )
-                .size(9.0)
-                .color(egui::Color32::from_rgb(71, 85, 105)),
-            );
-            egui::ScrollArea::horizontal().show(ui, |ui| {
-                scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                    ui,
-                    scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+            if transition_heavy {
+                ui.small(
+                    egui::RichText::new(format!(
+                        "Large exon transition matrix ({}x{} = {} cells); collapsed by default to reduce idle CPU usage.",
+                        exon_count, exon_count, transition_cell_count
+                    ))
+                    .color(egui::Color32::from_rgb(100, 116, 139)),
                 );
-                egui::Grid::new("splicing_exon_transition_grid")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        ui.label(
-                            egui::RichText::new("from \\ to")
-                                .monospace()
-                                .size(9.0)
-                                .strong(),
-                        );
-                        for (to_idx, exon) in view.unique_exons.iter().enumerate() {
-                            let mod3 = Self::splicing_exon_length_mod3(exon);
-                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+            }
+            egui::CollapsingHeader::new(
+                egui::RichText::new(format!(
+                    "Exon -> exon transition matrix ({} x {})",
+                    exon_count, exon_count
+                ))
+                .monospace()
+                .size(self.feature_details_font_size()),
+            )
+            .id_salt((
+                "splicing_transition_matrix_section",
+                id_namespace,
+                view.seq_id.as_str(),
+                view.target_feature_id,
+            ))
+            .default_open(!transition_heavy)
+            .show(ui, |ui| {
+                let transitions = compute_splicing_exon_transition_matrix(view);
+                let transcript_total = view.transcript_count.max(1);
+                ui.label(
+                    egui::RichText::new(
+                        "Cell color encodes transition support frequency; exon header color encodes exon genomic length %3 (heuristic frame cue).",
+                    )
+                    .size(9.0)
+                    .color(egui::Color32::from_rgb(71, 85, 105)),
+                );
+                egui::ScrollArea::horizontal().show(ui, |ui| {
+                    scroll_input_policy::apply_scrollarea_keyboard_navigation(
+                        ui,
+                        scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
+                    );
+                    egui::Grid::new("splicing_exon_transition_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
                             ui.label(
-                                egui::RichText::new(format!("E{}", to_idx + 1))
+                                egui::RichText::new("from \\ to")
                                     .monospace()
                                     .size(9.0)
-                                    .background_color(bg)
-                                    .color(fg),
-                            )
-                            .on_hover_text(format!(
-                                "{}..{} (len={} bp, len%3={mod3})",
-                                exon.start_1based,
-                                exon.end_1based,
-                                Self::splicing_exon_length_bp(exon),
-                            ));
-                        }
-                        ui.end_row();
-                        for (from_idx, from_exon) in view.unique_exons.iter().enumerate() {
-                            let mod3 = Self::splicing_exon_length_mod3(from_exon);
-                            let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
-                            ui.label(
-                                egui::RichText::new(format!("E{}", from_idx + 1))
-                                    .monospace()
-                                    .size(9.0)
-                                    .background_color(bg)
-                                    .color(fg),
-                            )
-                            .on_hover_text(format!(
-                                "{}..{} (len={} bp, len%3={mod3})",
-                                from_exon.start_1based,
-                                from_exon.end_1based,
-                                Self::splicing_exon_length_bp(from_exon),
-                            ));
-                            for to_idx in 0..view.unique_exons.len() {
-                                let support_count = transitions
-                                    .counts
-                                    .get(from_idx)
-                                    .and_then(|row| row.get(to_idx))
-                                    .copied()
-                                    .unwrap_or(0);
-                                let support_ratio =
-                                    Self::support_ratio_percent(support_count, transcript_total)
-                                        as f32
-                                        / 100.0;
-                                let (bg, fg) = Self::splicing_transition_cell_colors(support_ratio);
-                                let marker = if support_count > 0 {
-                                    support_count.to_string()
-                                } else {
-                                    "·".to_string()
-                                };
-                                let participants = transitions
-                                    .transcript_feature_ids
-                                    .get(from_idx)
-                                    .and_then(|row| row.get(to_idx))
-                                    .cloned()
-                                    .unwrap_or_default();
-                                let mut labels = participants
-                                    .iter()
-                                    .map(|feature_id| format!("n-{feature_id}"))
-                                    .collect::<Vec<_>>();
-                                if labels.len() > 12 {
-                                    let hidden = labels.len() - 12;
-                                    labels.truncate(12);
-                                    labels.push(format!("+{hidden} more"));
-                                }
+                                    .strong(),
+                            );
+                            for (to_idx, exon) in view.unique_exons.iter().enumerate() {
+                                let mod3 = Self::splicing_exon_length_mod3(exon);
+                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
                                 ui.label(
-                                    egui::RichText::new(marker)
+                                    egui::RichText::new(format!("E{}", to_idx + 1))
                                         .monospace()
                                         .size(9.0)
                                         .background_color(bg)
                                         .color(fg),
                                 )
                                 .on_hover_text(format!(
-                                    "E{} -> E{} support {}{}",
-                                    from_idx + 1,
-                                    to_idx + 1,
-                                    Self::format_support_fraction(support_count, transcript_total),
-                                    if labels.is_empty() {
-                                        "".to_string()
-                                    } else {
-                                        format!("\nTranscripts: {}", labels.join(", "))
-                                    }
+                                    "{}..{} (len={} bp, len%3={mod3})",
+                                    exon.start_1based,
+                                    exon.end_1based,
+                                    Self::splicing_exon_length_bp(exon),
                                 ));
                             }
                             ui.end_row();
-                        }
-                    });
+                            for (from_idx, from_exon) in view.unique_exons.iter().enumerate() {
+                                let mod3 = Self::splicing_exon_length_mod3(from_exon);
+                                let (bg, fg) = Self::splicing_exon_mod3_colors(mod3);
+                                ui.label(
+                                    egui::RichText::new(format!("E{}", from_idx + 1))
+                                        .monospace()
+                                        .size(9.0)
+                                        .background_color(bg)
+                                        .color(fg),
+                                )
+                                .on_hover_text(format!(
+                                    "{}..{} (len={} bp, len%3={mod3})",
+                                    from_exon.start_1based,
+                                    from_exon.end_1based,
+                                    Self::splicing_exon_length_bp(from_exon),
+                                ));
+                                for to_idx in 0..view.unique_exons.len() {
+                                    let support_count = transitions
+                                        .counts
+                                        .get(from_idx)
+                                        .and_then(|row| row.get(to_idx))
+                                        .copied()
+                                        .unwrap_or(0);
+                                    let support_ratio =
+                                        Self::support_ratio_percent(support_count, transcript_total)
+                                            as f32
+                                            / 100.0;
+                                    let (bg, fg) =
+                                        Self::splicing_transition_cell_colors(support_ratio);
+                                    let marker = if support_count > 0 {
+                                        support_count.to_string()
+                                    } else {
+                                        "·".to_string()
+                                    };
+                                    let participants = transitions
+                                        .transcript_feature_ids
+                                        .get(from_idx)
+                                        .and_then(|row| row.get(to_idx))
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    let mut labels = participants
+                                        .iter()
+                                        .map(|feature_id| format!("n-{feature_id}"))
+                                        .collect::<Vec<_>>();
+                                    if labels.len() > 12 {
+                                        let hidden = labels.len() - 12;
+                                        labels.truncate(12);
+                                        labels.push(format!("+{hidden} more"));
+                                    }
+                                    ui.label(
+                                        egui::RichText::new(marker)
+                                            .monospace()
+                                            .size(9.0)
+                                            .background_color(bg)
+                                            .color(fg),
+                                    )
+                                    .on_hover_text(format!(
+                                        "E{} -> E{} support {}{}",
+                                        from_idx + 1,
+                                        to_idx + 1,
+                                        Self::format_support_fraction(
+                                            support_count,
+                                            transcript_total
+                                        ),
+                                        if labels.is_empty() {
+                                            "".to_string()
+                                        } else {
+                                            format!("\nTranscripts: {}", labels.join(", "))
+                                        }
+                                    ));
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
             });
         }
 
@@ -9677,7 +9784,7 @@ impl MainAreaDna {
                     .unwrap_or(true);
             if needs_refresh {
                 self.splicing_expert_window_feature_id = Some(view.target_feature_id);
-                self.splicing_expert_window_view = Some(view.clone());
+                self.splicing_expert_window_view = Some(Arc::new(view.clone()));
                 self.show_splicing_expert_window = true;
             }
         }
@@ -9954,6 +10061,71 @@ impl MainAreaDna {
                             )
                             .changed();
                     });
+                    if self.rna_reads_ui.show_advanced {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Origin mode").on_hover_text(
+                                "Scaffolding for upcoming read-origin sparse index logic. Phase-1 still executes single-feature baseline scoring.",
+                            );
+                            egui::ComboBox::from_id_salt(format!(
+                                "rna_read_origin_mode_{}_{}",
+                                view.seq_id, view.target_feature_id
+                            ))
+                            .selected_text(Self::rna_read_origin_mode_label(
+                                self.rna_reads_ui.origin_mode,
+                            ))
+                            .show_ui(ui, |ui| {
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.origin_mode,
+                                        RnaReadOriginMode::SingleGene,
+                                        "single_gene (baseline)",
+                                    )
+                                    .on_hover_text(
+                                        "Current deterministic baseline: use current seed feature/scope only.",
+                                    )
+                                    .changed();
+                                persist_ui_state |= ui
+                                    .selectable_value(
+                                        &mut self.rna_reads_ui.origin_mode,
+                                        RnaReadOriginMode::MultiGeneSparse,
+                                        "multi_gene_sparse (scaffold)",
+                                    )
+                                    .on_hover_text(
+                                        "Planned sparse multi-gene mode; persisted now, currently falls back to baseline scoring with explicit warnings.",
+                                    )
+                                    .changed();
+                            });
+                            ui.label("Target genes").on_hover_text(
+                                "Optional gene IDs for future sparse multi-gene indexing. Comma/space/semicolon separated.",
+                            );
+                            persist_ui_state |= ui
+                                .add(
+                                    egui::TextEdit::singleline(
+                                        &mut self.rna_reads_ui.target_gene_ids,
+                                    )
+                                    .desired_width(280.0),
+                                )
+                                .on_hover_text(
+                                    "Example: TP73, TP53. Persisted in report payload for deterministic follow-up runs.",
+                                )
+                                .changed();
+                            persist_ui_state |= ui
+                                .checkbox(
+                                    &mut self.rna_reads_ui.roi_seed_capture_enabled,
+                                    "ROI seed capture (scaffold)",
+                                )
+                                .on_hover_text(
+                                    "Planned annotation-independent ROI seed-capture layer. Persisted now; phase-1 emits fallback warning.",
+                                )
+                                .changed();
+                        });
+                        ui.small(
+                            egui::RichText::new(
+                                "Sparse-origin settings are persisted in report metadata in phase-1; multi-gene sparse indexing and ROI capture are planned follow-up behavior.",
+                            )
+                            .color(egui::Color32::from_rgb(100, 116, 139)),
+                        );
+                    }
                     ui.horizontal_wrapped(|ui| {
                         persist_ui_state |= ui
                             .checkbox(
@@ -10004,7 +10176,9 @@ impl MainAreaDna {
                     ui.label(
                         egui::RichText::new(
                             format!(
-                                "Profile: nanopore_cdna_v1 | Input: fasta | Read mode: {} | Seed gate: raw>=min hit AND weighted>=min weighted AND unique>=min(min unique, tested kmers) AND chain>=min chain AND median transcript gap<=max gap AND confirmed transitions>=min transitions AND transition fraction>=min transition frac | alignment deferred to phase-2",
+                                "Profile: nanopore_cdna_v1 | Input: fasta | Origin mode: {} | Target genes: {} | Read mode: {} | Seed gate: raw>=min hit AND weighted>=min weighted AND unique>=min(min unique, tested kmers) AND chain>=min chain AND median transcript gap<=max gap AND confirmed transitions>=min transitions AND transition fraction>=min transition frac | alignment deferred to phase-2",
+                                self.rna_reads_ui.origin_mode.as_str(),
+                                Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids).len(),
                                 if self.rna_reads_ui.cdna_poly_t_flip_enabled {
                                     "cDNA (T-rich 5' head normalization enabled; minor interruptions tolerated)"
                                 } else {
@@ -10582,14 +10756,38 @@ impl MainAreaDna {
                                             * 100.0
                                     };
                                     ui.small(format!(
-                                        "Report '{}': retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={}",
+                                        "Report '{}': mode={} targets={} roi_capture={} | retained_hits={} / total_reads={} | seed-passed={} ({:.2}%) | aligned={}",
                                         report.report_id,
+                                        report.origin_mode.as_str(),
+                                        report.target_gene_ids.len(),
+                                        report.roi_seed_capture_enabled,
                                         report.hits.len(),
                                         report.read_count_total,
                                         report.read_count_seed_passed,
                                         report_seed_pass_pct,
                                         report.read_count_aligned
                                     ));
+                                    if !report.target_gene_ids.is_empty() {
+                                        let preview = report
+                                            .target_gene_ids
+                                            .iter()
+                                            .take(8)
+                                            .cloned()
+                                            .collect::<Vec<_>>()
+                                            .join(", ");
+                                        let suffix = if report.target_gene_ids.len() > 8 {
+                                            format!(
+                                                " (+{} more)",
+                                                report.target_gene_ids.len() - 8
+                                            )
+                                        } else {
+                                            String::new()
+                                        };
+                                        ui.small(format!(
+                                            "Target genes (report): {}{}",
+                                            preview, suffix
+                                        ));
+                                    }
                                     if !report.warnings.is_empty() {
                                         for warning in report.warnings.iter().take(2) {
                                             ui.small(
@@ -10758,6 +10956,29 @@ impl MainAreaDna {
         }
     }
 
+    fn rna_read_origin_mode_label(mode: RnaReadOriginMode) -> &'static str {
+        match mode {
+            RnaReadOriginMode::SingleGene => "single_gene / baseline",
+            RnaReadOriginMode::MultiGeneSparse => "multi_gene_sparse / scaffold",
+        }
+    }
+
+    fn parse_rna_target_gene_ids(raw: &str) -> Vec<String> {
+        let mut out = Vec::<String>::new();
+        let mut seen = HashSet::<String>::new();
+        for token in raw
+            .split(|ch: char| ch == ',' || ch == ';' || ch.is_ascii_whitespace())
+            .map(str::trim)
+            .filter(|token| !token.is_empty())
+        {
+            let key = token.to_ascii_lowercase();
+            if seen.insert(key) {
+                out.push(token.to_string());
+            }
+        }
+        out
+    }
+
     fn apply_rna_reads_tp73_specificity_preset(&mut self) {
         self.rna_reads_ui.scope = SplicingScopePreset::TargetGroupTargetStrand;
         self.rna_reads_ui.cdna_poly_t_flip_enabled = true;
@@ -10866,6 +11087,34 @@ impl MainAreaDna {
             format!("{:.2} Kbp/s", value / 1_000.0)
         } else {
             format!("{value:.0} bp/s")
+        }
+    }
+
+    fn format_count_compact_km(count: u64) -> String {
+        if count >= 1_000_000 {
+            let millions = count as f64 / 1_000_000.0;
+            let mut label = if millions < 10.0 {
+                format!("{millions:.1}M")
+            } else {
+                format!("{millions:.0}M")
+            };
+            if label.len() > 4 {
+                label = format!("{:.0}M", millions.min(999.0));
+            }
+            label
+        } else if count >= 1_000 {
+            let thousands = count as f64 / 1_000.0;
+            let mut label = if thousands < 10.0 {
+                format!("{thousands:.1}k")
+            } else {
+                format!("{thousands:.0}k")
+            };
+            if label.len() > 4 {
+                label = format!("{:.0}k", thousands.min(999.0));
+            }
+            label
+        } else {
+            count.to_string()
         }
     }
 
@@ -11336,6 +11585,7 @@ impl MainAreaDna {
                 Some(raw.to_string())
             }
         };
+        let target_gene_ids = Self::parse_rna_target_gene_ids(&self.rna_reads_ui.target_gene_ids);
         self.save_engine_ops_state();
         self.refresh_rna_seed_catalog_preview(
             &seq_id,
@@ -11350,9 +11600,9 @@ impl MainAreaDna {
             input_path: input_path.clone(),
             input_format: self.rna_reads_ui.input_format,
             scope: self.rna_reads_ui.scope,
-            origin_mode: Default::default(),
-            target_gene_ids: vec![],
-            roi_seed_capture_enabled: false,
+            origin_mode: self.rna_reads_ui.origin_mode,
+            target_gene_ids,
+            roi_seed_capture_enabled: self.rna_reads_ui.roi_seed_capture_enabled,
             seed_filter: RnaReadSeedFilterConfig {
                 kmer_len,
                 short_full_hash_max_bp,
@@ -11374,6 +11624,10 @@ impl MainAreaDna {
                 max_secondary_mappings,
             },
             report_id,
+            report_mode: RnaReadReportMode::Full,
+            checkpoint_path: None,
+            checkpoint_every_reads: 10_000,
+            resume_from_checkpoint: false,
         });
     }
 
@@ -11563,6 +11817,19 @@ impl MainAreaDna {
             Operation::InterpretRnaReads { input_path, .. } => input_path.clone(),
             _ => "<unknown>".to_string(),
         };
+        let (origin_mode_label, target_gene_count, roi_capture_enabled) = match &op {
+            Operation::InterpretRnaReads {
+                origin_mode,
+                target_gene_ids,
+                roi_seed_capture_enabled,
+                ..
+            } => (
+                origin_mode.as_str(),
+                target_gene_ids.len(),
+                *roi_seed_capture_enabled,
+            ),
+            _ => ("unknown", 0, false),
+        };
         let started = Instant::now();
         let (tx, rx) = mpsc::channel::<RnaReadTaskMessage>();
         self.rna_read_progress = None;
@@ -11571,8 +11838,8 @@ impl MainAreaDna {
         self.rna_stream_eta_text = None;
         self.rna_stream_eta_reads_processed = 0;
         self.op_status = format!(
-            "RNA-read interpretation started ({} mode): '{}'",
-            read_mode_label, input_path
+            "RNA-read interpretation started ({} mode, origin={}, targets={}, roi_capture={}): '{}'",
+            read_mode_label, origin_mode_label, target_gene_count, roi_capture_enabled, input_path
         );
         self.rna_read_task = Some(RnaReadTask {
             started,
@@ -11612,6 +11879,7 @@ impl MainAreaDna {
                 seed_filter,
                 align_config,
                 report_id,
+                ..
             } => (
                 seq_id,
                 seed_feature_id,
@@ -11955,6 +12223,15 @@ impl MainAreaDna {
                         0.0,
                         egui::Color32::from_rgb(249, 115, 22),
                     );
+                    if (x1 - x0) >= 22.0 && h >= 9.0 {
+                        painter.text(
+                            egui::pos2((x0 + x1) * 0.5, y0 + 1.0),
+                            egui::Align2::CENTER_TOP,
+                            Self::format_count_compact_km(count),
+                            egui::FontId::monospace(8.0),
+                            egui::Color32::from_rgb(12, 12, 12),
+                        );
+                    }
                 } else {
                     let y0 = mid_y - h;
                     let mut y1 = mid_y - 0.6;
@@ -11966,6 +12243,15 @@ impl MainAreaDna {
                         0.0,
                         egui::Color32::from_rgb(37, 99, 235),
                     );
+                    if (x1 - x0) >= 22.0 && h >= 9.0 {
+                        painter.text(
+                            egui::pos2((x0 + x1) * 0.5, y1 - 1.0),
+                            egui::Align2::CENTER_BOTTOM,
+                            Self::format_count_compact_km(count),
+                            egui::FontId::monospace(8.0),
+                            egui::Color32::from_rgb(245, 245, 245),
+                        );
+                    }
                 }
             };
         if use_exonic_coords {
@@ -12267,16 +12553,22 @@ impl MainAreaDna {
             }
         }
         ui.small(
-            "Seed-confirmation frequency by genomic position (blue/orange bars, sqrt-scaled). Red dots mark indexed seed-hash starts (+ above baseline, - below). Optional exon/intron guides are shown at the top (green/gray).",
+            "Seed-confirmation frequency by genomic position (blue/orange bars, sqrt-scaled). Red dots mark indexed seed-hash starts (+ above baseline, - below). Optional exon/intron guides are shown at the top (green/gray). Bar labels use compact counts (k/M).",
         );
-        ui.collapsing("Seed hash preview (first 120)", |ui| {
+        ui.collapsing(
+            format!(
+                "Seed hash preview (first 120 of {} seed-passed reads)",
+                progress.seed_passed
+            ),
+            |ui| {
             if seed_catalog.is_empty() {
                 ui.small("No seed-hash catalog loaded for preview.");
                 return;
             }
             ui.small(format!(
-                "Loaded seed hashes: {} (showing first 120; export TSV for full list).",
-                seed_catalog.len()
+                "Loaded seed hashes: {} (showing first 120; seed-passed reads so far: {}; export TSV for full list).",
+                seed_catalog.len(),
+                progress.seed_passed
             ));
             egui::ScrollArea::vertical()
                 .max_height(120.0)
@@ -12293,6 +12585,10 @@ impl MainAreaDna {
                     }
                 });
         });
+        ui.small(format!(
+            "Seed-pass summary: {} reads passed the current seed gate.",
+            progress.seed_passed
+        ));
     }
 
     fn render_rna_read_score_density_plot(
@@ -19001,7 +19297,7 @@ impl MainAreaDna {
                             .clicked()
                         {
                             self.splicing_expert_window_feature_id = Some(splicing.target_feature_id);
-                            self.splicing_expert_window_view = Some(splicing.clone());
+                            self.splicing_expert_window_view = Some(Arc::new(splicing.clone()));
                             self.show_splicing_expert_window = true;
                             let viewport_id = Self::splicing_expert_viewport_id(
                                 &splicing.seq_id,

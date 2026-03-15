@@ -1,6 +1,6 @@
 # GENtle Roadmap and Status
 
-Last updated: 2026-03-14
+Last updated: 2026-03-15
 
 Purpose: shared implementation status, known gaps, and prioritized execution
 order. Durable architecture constraints and decisions remain in
@@ -33,6 +33,11 @@ order. Durable architecture constraints and decisions remain in
   - procurement/queue business-day delays are converted to elapsed
     `estimated_time_hours` with deterministic weekend-aware mapping
     (`24h * 7/5` per business day)
+  - GUI planning baseline is now available:
+    - standalone `Planning` window in `Patterns -> Planning...`
+    - command palette action: `Planning`
+    - in-window profile/objective editing + pull/push suggestion registration
+      + explicit accept/reject resolution
 - CLI state loading now treats empty/whitespace `--state` files as
   uninitialized and starts from `ProjectState::default()` instead of failing
   parse.
@@ -785,6 +790,19 @@ Status:
     `origin_mode`, `target_gene_ids[]`, and `roi_seed_capture_enabled` with
     deterministic report persistence plus explicit phase-1 fallback warnings
     when sparse multi-gene/ROI capture is requested before phase-2 index work.
+  - Added non-breaking report-compaction controls:
+    `InterpretRnaReads` and `rna-reads interpret` now accept `report_mode`
+    (`full|seed_passed_only`) so persisted retained-hit payloads can be
+    compacted to seed-pass rows only while preserving full run counters.
+  - Added deterministic checkpoint/resume scaffolding for long runs:
+    `checkpoint_path`, `checkpoint_every_reads`, and
+    `resume_from_checkpoint` are now supported in engine and shell routes;
+    checkpoint snapshots are serialized to
+    `gentle.rna_read_interpret_checkpoint.v1` and resume restores counters,
+    support tables, retained hits, and score-density bins.
+  - Splicing Expert advanced Nanopore controls now expose the same sparse-origin
+    scaffold settings (`origin mode`, `target genes`, `ROI seed capture`) and
+    pass them through unchanged to engine/shell contracts.
   - Deterministic TP73 seed-filter tests now use compact committed mapping
     fixtures (`test_files/fixtures/mapping/`) and cover:
     - expected TP73 positive behavior (TP73-derived reads with 30% deletions

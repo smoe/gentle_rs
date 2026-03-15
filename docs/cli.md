@@ -914,7 +914,7 @@ Shared shell command:
     - `flex compute SEQ_ID [--start N] [--end N] [--model at_richness|at_skew] [--bin-bp N] [--smoothing-bp N] [--id TRACK_ID]`
     - `flex list [SEQ_ID]`
     - `flex show TRACK_ID`
-    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
+    - `rna-reads interpret SEQ_ID FEATURE_ID INPUT.fa[.gz] [--report-id ID] [--report-mode full|seed_passed_only] [--checkpoint-path PATH] [--checkpoint-every-reads N] [--resume-from-checkpoint|--no-resume-from-checkpoint] [--profile nanopore_cdna_v1] [--format fasta] [--scope all_overlapping_both_strands|target_group_any_strand|all_overlapping_target_strand|target_group_target_strand] [--origin-mode single_gene|multi_gene_sparse] [--target-gene GENE_ID]... [--roi-seed-capture|--no-roi-seed-capture] [--kmer-len N] [--short-max-bp N] [--long-window-bp N] [--long-window-count N] [--min-seed-hit-fraction F] [--min-weighted-seed-hit-fraction F] [--min-unique-matched-kmers N] [--min-chain-consistency-fraction F] [--max-median-transcript-gap F] [--min-confirmed-transitions N] [--min-transition-support-fraction F] [--cdna-poly-t-flip|--no-cdna-poly-t-flip] [--poly-t-prefix-min-bp N] [--align-band-bp N] [--align-min-identity F] [--max-secondary-mappings N]`
     - `rna-reads list-reports [SEQ_ID]`
     - `rna-reads show-report REPORT_ID`
     - `rna-reads export-report REPORT_ID OUTPUT.json`
@@ -952,6 +952,14 @@ Shared shell command:
         the report payload for deterministic follow-up runs
       - phase-1 execution still uses the single-feature baseline index; sparse
         multi-gene/ROI-capture requests are surfaced as report warnings
+    - report compaction and checkpoint options:
+      - `--report-mode full` (default): persist retained top hits as ranked
+      - `--report-mode seed_passed_only`: persist only retained hits that
+        passed the seed gate (stream counters are unchanged)
+      - `--checkpoint-path PATH --checkpoint-every-reads N`: persist
+        deterministic resume snapshots during streaming
+      - `--resume-from-checkpoint`: load checkpoint snapshot and continue from
+        the saved processed-read index
     - phase-1 seed-pass gate policy:
       - `pass = raw_hit_fraction >= min_seed_hit_fraction AND weighted_hit_fraction >= min_weighted_seed_hit_fraction AND unique_matched_kmers >= min(min_unique_matched_kmers, tested_kmers) AND chain_consistency_fraction >= min_chain_consistency_fraction AND median_transcript_gap <= max_median_transcript_gap AND confirmed_transitions >= min_confirmed_transitions AND confirmed_transition_fraction >= min_transition_support_fraction`
       - `chain_consistency_fraction` is the fraction of matched seed observations
