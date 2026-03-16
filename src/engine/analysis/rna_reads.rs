@@ -2881,50 +2881,7 @@ impl GentleEngine {
         }
     }
 
-    pub(super) fn align_read_to_template(
-        read: &[u8],
-        template: &SplicingTranscriptTemplate,
-        config: &RnaReadAlignConfig,
-    ) -> Option<RnaReadMappingHit> {
-        if read.is_empty() || template.sequence.is_empty() {
-            return None;
-        }
-        let semiglobal = Self::align_read_to_template_with_mode(
-            read,
-            template,
-            config,
-            RnaReadAlignmentMode::Semiglobal,
-        );
-        let local =
-            Self::align_read_to_template_with_mode(read, template, config, RnaReadAlignmentMode::Local);
-        match (semiglobal, local) {
-            (Some(left), Some(right)) => {
-                if Self::compare_mapping_quality(&left, &right) != Ordering::Less {
-                    Some(left)
-                } else {
-                    Some(right)
-                }
-            }
-            (Some(row), None) | (None, Some(row)) => Some(row),
-            (None, None) => None,
-        }
-    }
-
-    fn compare_mapping_quality(left: &RnaReadMappingHit, right: &RnaReadMappingHit) -> Ordering {
-        left.query_coverage_fraction
-            .partial_cmp(&right.query_coverage_fraction)
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| {
-                left.identity_fraction
-                    .partial_cmp(&right.identity_fraction)
-                    .unwrap_or(Ordering::Equal)
-            })
-            .then(left.matches.cmp(&right.matches))
-            .then(right.mismatches.cmp(&left.mismatches))
-            .then(left.score.cmp(&right.score))
-    }
-
-    fn align_read_to_template_with_mode(
+    fn align_read_to_template_dense_with_mode(
         read: &[u8],
         template: &SplicingTranscriptTemplate,
         config: &RnaReadAlignConfig,
@@ -2941,7 +2898,61 @@ impl GentleEngine {
             RnaReadAlignmentMode::Local => aligner.local(read, &template.sequence),
             RnaReadAlignmentMode::Semiglobal => aligner.semiglobal(read, &template.sequence),
         };
+        Self::rna_mapping_hit_from_alignment(read, template, config, mode, alignment)
+    }
+
+    fn effective_banded_k(seed_kmer_len: usize, read_len: usize, template_len: usize) -> usize {
+        let min_len = read_len.min(template_len);
+        if min_len <= 2 {
+            return min_len.max(1);
+        }
+        seed_kmer_len.clamp(3, min_len)
+    }
+
+    fn align_read_to_template_banded_with_mode(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        seed_kmer_len: usize,
+        mode: RnaReadAlignmentMode,
+    ) -> Option<RnaReadMappingHit> {
+        let k = Self::effective_banded_k(seed_kmer_len, read.len(), template.sequence.len());
+        let w = config.band_width_bp.max(1);
+        let mut aligner = bio::alignment::pairwise::banded::Aligner::new(
+            -5,
+            -1,
+            |a: u8, b: u8| {
+                if a.eq_ignore_ascii_case(&b) {
+                    2i32
+                } else {
+                    -3i32
+                }
+            },
+            k,
+            w,
+        );
+        let alignment = match mode {
+            RnaReadAlignmentMode::Local => aligner.local(read, &template.sequence),
+            RnaReadAlignmentMode::Semiglobal => aligner.semiglobal(read, &template.sequence),
+        };
+        Self::rna_mapping_hit_from_alignment(read, template, config, mode, alignment)
+    }
+
+    fn rna_mapping_hit_from_alignment(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        mode: RnaReadAlignmentMode,
+        alignment: bio::alignment::Alignment,
+    ) -> Option<RnaReadMappingHit> {
         if alignment.operations.is_empty() {
+            return None;
+        }
+        let query_span = alignment.xend.saturating_sub(alignment.xstart);
+        if query_span == 0 {
+            return None;
+        }
+        if alignment.yend <= alignment.ystart {
             return None;
         }
         let mut matches = 0usize;
@@ -2963,10 +2974,6 @@ impl GentleEngine {
         }
         let identity_fraction = matches as f64 / aligned_columns as f64;
         if identity_fraction + f64::EPSILON < config.min_identity_fraction {
-            return None;
-        }
-        let query_span = alignment.xend.saturating_sub(alignment.xstart);
-        if query_span == 0 {
             return None;
         }
         let query_coverage_fraction = if read.is_empty() {
@@ -3007,14 +3014,81 @@ impl GentleEngine {
         })
     }
 
+    pub(super) fn align_read_to_template(
+        read: &[u8],
+        template: &SplicingTranscriptTemplate,
+        config: &RnaReadAlignConfig,
+        seed_kmer_len: usize,
+    ) -> Option<RnaReadMappingHit> {
+        if read.is_empty() || template.sequence.is_empty() {
+            return None;
+        }
+        let semiglobal = Self::align_read_to_template_banded_with_mode(
+            read,
+            template,
+            config,
+            seed_kmer_len,
+            RnaReadAlignmentMode::Semiglobal,
+        )
+        .or_else(|| {
+            Self::align_read_to_template_dense_with_mode(
+                read,
+                template,
+                config,
+                RnaReadAlignmentMode::Semiglobal,
+            )
+        });
+        let local = Self::align_read_to_template_banded_with_mode(
+            read,
+            template,
+            config,
+            seed_kmer_len,
+            RnaReadAlignmentMode::Local,
+        )
+        .or_else(|| {
+            Self::align_read_to_template_dense_with_mode(
+                read,
+                template,
+                config,
+                RnaReadAlignmentMode::Local,
+            )
+        });
+        match (semiglobal, local) {
+            (Some(left), Some(right)) => {
+                if Self::compare_mapping_quality(&left, &right) != Ordering::Less {
+                    Some(left)
+                } else {
+                    Some(right)
+                }
+            }
+            (Some(row), None) | (None, Some(row)) => Some(row),
+            (None, None) => None,
+        }
+    }
+
+    fn compare_mapping_quality(left: &RnaReadMappingHit, right: &RnaReadMappingHit) -> Ordering {
+        left.query_coverage_fraction
+            .partial_cmp(&right.query_coverage_fraction)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                left.identity_fraction
+                    .partial_cmp(&right.identity_fraction)
+                    .unwrap_or(Ordering::Equal)
+            })
+            .then(left.matches.cmp(&right.matches))
+            .then(right.mismatches.cmp(&left.mismatches))
+            .then(left.score.cmp(&right.score))
+    }
+
     pub(super) fn align_read_to_templates(
         read: &[u8],
         templates: &[SplicingTranscriptTemplate],
         config: &RnaReadAlignConfig,
+        seed_kmer_len: usize,
     ) -> (Option<RnaReadMappingHit>, Vec<RnaReadMappingHit>) {
         let mut mappings = templates
             .iter()
-            .filter_map(|template| Self::align_read_to_template(read, template, config))
+            .filter_map(|template| Self::align_read_to_template(read, template, config, seed_kmer_len))
             .collect::<Vec<_>>();
         mappings.sort_by(|left, right| {
             right
@@ -3553,7 +3627,12 @@ impl GentleEngine {
             cumulative_inference_compute_ms += inference_started.elapsed().as_secs_f64() * 1000.0;
             let align_started = Instant::now();
             let (best_mapping, secondary_mappings) = if passed_seed_filter {
-                Self::align_read_to_templates(&normalized_sequence, &templates, &align_config)
+                Self::align_read_to_templates(
+                    &normalized_sequence,
+                    &templates,
+                    &align_config,
+                    report.seed_filter.kmer_len,
+                )
             } else {
                 (None, vec![])
             };
@@ -4559,7 +4638,12 @@ impl GentleEngine {
                                 .to_string(),
                         });
                     }
-                    Self::align_read_to_templates(&normalized_sequence, &templates, align_config)
+                    Self::align_read_to_templates(
+                        &normalized_sequence,
+                        &templates,
+                        align_config,
+                        seed_filter.kmer_len,
+                    )
                 } else {
                     (None, vec![])
                 };

@@ -333,6 +333,8 @@ Feature tree grouping:
   - phase-2 alignment strategy is reference-guided pairwise mapping
     (`semiglobal` preferred with deterministic `local` fallback), and the
     chosen mode is exported in read/report mapping summaries
+    - backend uses `bio::alignment::pairwise::banded`; `align band` controls
+      the band width around the seed backbone
   - run executes asynchronously (non-blocking UI) with live read-progress
     indicators
   - workflow access routes for the same payload are available in the panel:

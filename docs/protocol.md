@@ -1418,6 +1418,10 @@ RNA-read interpretation contract (Nanopore cDNA phase-1 baseline):
       retained subset (`all|seed_passed|aligned`)
     - aligner configuration uses `align_config_override` when supplied,
       otherwise the report-stored `align_config`
+    - mapping backend uses `bio::alignment::pairwise::banded` with
+      `align_band_bp` as band width (`w`) and transcript-seed `kmer_len` as
+      seed length (`k`), plus deterministic dense fallback when the banded
+      solver yields no mapping
     - updated report fields include:
       - per-hit mapping fields (`best_mapping`, `secondary_mappings`)
       - per-hit `msa_eligible` and `msa_eligibility_reason`
